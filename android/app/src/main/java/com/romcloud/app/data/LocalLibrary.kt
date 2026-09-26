@@ -1,0 +1,48 @@
+package com.romcloud.app.data
+
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Environment
+import androidx.core.content.ContextCompat
+import java.io.File
+
+/**
+ * Emplacement des ROMs sur l'appareil : <dossier ROMs>/<dossier du système>/<fichier>.
+ * Un jeu est considéré comme téléchargé si le fichier existe avec la taille attendue.
+ */
+class LocalLibrary(private val context: Context, private val settings: Settings) {
+
+    private fun root() = File(settings.config.value.romsDir)
+
+    fun systemDir(system: GameSystem) = File(root(), system.folder)
+
+    fun fileFor(system: GameSystem, game: Game) = File(systemDir(system), game.fileName)
+
+    fun isDownloaded(system: GameSystem, game: Game): Boolean {
+        val file = fileFor(system, game)
+        return file.isFile && file.length() == game.size
+    }
+
+    /** Identifiants des jeux présents localement (un seul listage du dossier). */
+    fun downloadedIds(system: GameSystem, games: List<Game>): Set<Long> {
+        val sizes = systemDir(system).listFiles()?.associate { it.name to it.length() } ?: return emptySet()
+        return games.filter { sizes[it.fileName] == it.size }.map { it.id }.toSet()
+    }
+
+    fun delete(system: GameSystem, game: Game): Boolean = fileFor(system, game).delete()
+
+    fun hasStoragePermission(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                PackageManager.PERMISSION_GRANTED
+        }
+
+    /** Le dossier choisi est-il dans l'espace privé de l'application (pas de permission requise) ? */
+    fun isAppPrivateDir(): Boolean {
+        val appDir = context.getExternalFilesDir(null)?.absolutePath ?: return false
+        return settings.config.value.romsDir.startsWith(appDir)
+    }
+}
