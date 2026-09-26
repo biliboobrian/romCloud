@@ -28,6 +28,17 @@ class AmStartParserTest {
     }
 
     @Test
+    fun `lecture d'un extra du modele`() {
+        assertEquals("snes9x", AmStartParser.stringExtra(retroArch.replace(Regex("/data/\\S+/(snes9x)_libretro_android.so"), "$1"), "LIBRETRO"))
+        assertEquals(
+            "/storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+            AmStartParser.stringExtra(retroArch, "CONFIGFILE"),
+        )
+        assertEquals("{file.path}", AmStartParser.stringExtra(retroArch, "ROM"))
+        assertEquals(null, AmStartParser.stringExtra(retroArch, "ABSENT"))
+    }
+
+    @Test
     fun `placeholders inconnus remplaces par une chaine vide`() {
         assertEquals("id=", AmStartParser.substitute("id={tags.steamappid}", emptyMap()))
         assertEquals("content://x", AmStartParser.substitute("{file.uri}", mapOf("file.uri" to "content://x")))
