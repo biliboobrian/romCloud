@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
@@ -58,6 +59,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import coil.compose.AsyncImage
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
+import com.romcloud.app.data.Player
 import com.romcloud.app.ui.theme.DownloadedGreen
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -166,7 +168,9 @@ fun GameDetailScreen(
                 }
             }
 
-            PlayerSelector(state, viewModel)
+            PlayerSelector(state, viewModel) { player ->
+                viewModel.installPlayer(activity, player)?.let { scope.launch { snackbar.showSnackbar(it) } }
+            }
 
             game.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
@@ -197,7 +201,11 @@ fun GameDetailScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlayerSelector(state: GameDetailViewModel.UiState, viewModel: GameDetailViewModel) {
+private fun PlayerSelector(
+    state: GameDetailViewModel.UiState,
+    viewModel: GameDetailViewModel,
+    onInstall: (Player) -> Unit,
+) {
     if (state.players.isEmpty()) {
         Text(
             "Aucun modèle d’émulateur pour ce système : le jeu sera ouvert avec le sélecteur d’applications Android.",
@@ -215,7 +223,7 @@ private fun PlayerSelector(state: GameDetailViewModel.UiState, viewModel: GameDe
             readOnly = true,
             label = { Text("Émulateur") },
             supportingText = if (!installed) {
-                { Text("Cet émulateur ne semble pas installé", color = MaterialTheme.colorScheme.error) }
+                { Text("Cet émulateur n’est pas installé", color = MaterialTheme.colorScheme.error) }
             } else null,
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
             modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
@@ -241,6 +249,13 @@ private fun PlayerSelector(state: GameDetailViewModel.UiState, viewModel: GameDe
                     },
                 )
             }
+        }
+    }
+    if (!installed && selected != null) {
+        OutlinedButton(onClick = { onInstall(selected) }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Shop, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Installer depuis le Play Store")
         }
     }
 }

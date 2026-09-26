@@ -47,7 +47,13 @@ class Settings(context: Context) {
         }.apply()
     }
 
+    /** Affichage des jeux en cartes (jaquettes) plutôt qu'en liste. */
+    var gamesAsGrid: Boolean
+        get() = prefs.getBoolean(KEY_GAMES_GRID, false)
+        set(value) = prefs.edit().putBoolean(KEY_GAMES_GRID, value).apply()
+
     companion object {
+        private const val KEY_GAMES_GRID = "gamesGrid"
         private const val KEY_URL = "serverUrl"
         private const val KEY_API_KEY = "apiKey"
         private const val KEY_ROMS_DIR = "romsDir"

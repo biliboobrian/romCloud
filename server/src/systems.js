@@ -19,6 +19,9 @@ function rowToSystem(row, stats) {
     screenscraperId: row.screenscraper_id,
     players: JSON.parse(row.players || '[]'),
     source: row.source,
+    hasImage: Boolean(row.image),
+    // Nom du fichier image : change à chaque envoi, sert à invalider les caches.
+    imageVersion: row.image,
     sourceRevision: row.source_revision,
     createdAt: row.created_at,
     gameCount: stats?.game_count ?? 0,
@@ -133,8 +136,51 @@ export function updateSystem(id, input) {
   return getSystem(id);
 }
 
+// ---------------------------------------------------------------------------
+// Image du système (logo, photo de la console…) affichée dans l'application
+// ---------------------------------------------------------------------------
+
+const IMAGE_EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
+const systemImagesDir = () => path.join(config.mediaDir, 'systems');
+
+function imageRow(id) {
+  return db.prepare('SELECT image FROM systems WHERE id = ?').get(id)?.image || null;
+}
+
+export function systemImagePath(id) {
+  requireSystem(id);
+  const image = imageRow(id);
+  return image ? path.join(systemImagesDir(), image) : null;
+}
+
+function removeImageFile(id) {
+  const image = imageRow(id);
+  if (image) fs.rmSync(path.join(systemImagesDir(), image), { force: true });
+}
+
+export function setSystemImage(id, buffer, mimeType) {
+  requireSystem(id);
+  const ext = IMAGE_EXT[mimeType];
+  if (!ext) throw new HttpError(415, 'Format d’image non supporté (PNG, JPEG, WebP ou GIF)');
+  if (!buffer?.length) throw new HttpError(400, 'Image manquante');
+  fs.mkdirSync(systemImagesDir(), { recursive: true });
+  removeImageFile(id);
+  const file = `${id}-${Date.now()}${ext}`;
+  fs.writeFileSync(path.join(systemImagesDir(), file), buffer);
+  db.prepare('UPDATE systems SET image = ? WHERE id = ?').run(file, id);
+  return getSystem(id);
+}
+
+export function deleteSystemImage(id) {
+  requireSystem(id);
+  removeImageFile(id);
+  db.prepare('UPDATE systems SET image = NULL WHERE id = ?').run(id);
+  return getSystem(id);
+}
+
 export function deleteSystem(id, { deleteFiles = false } = {}) {
   const system = requireSystem(id);
+  removeImageFile(id);
   const gameIds = db.prepare('SELECT id FROM games WHERE system_id = ?').all(id).map((r) => r.id);
   db.prepare('DELETE FROM systems WHERE id = ?').run(id);
   for (const gid of gameIds) fs.rmSync(path.join(config.mediaDir, String(gid)), { recursive: true, force: true });

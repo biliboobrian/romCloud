@@ -8,17 +8,22 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -28,6 +33,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.DownloadEvent
+import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.ui.theme.RomCloudTheme
 import kotlinx.coroutines.launch
 
@@ -93,12 +99,41 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
         }
     }
 
+    // Émulateur absent : proposer de l'installer depuis le Google Play Store.
+    val missing by app.missingEmulator.collectAsStateWithLifecycle()
+    missing?.let { emulator ->
+        val scope = rememberCoroutineScope()
+        AlertDialog(
+            onDismissRequest = { app.missingEmulator.value = null },
+            title = { Text("Émulateur non installé") },
+            text = {
+                Text(
+                    "Pour lancer ce jeu, installez l’émulateur « ${emulator.playerName ?: emulator.packageName} » " +
+                        "(${emulator.packageName}).\n\nVoulez-vous ouvrir sa page sur le Google Play Store ?\n\n" +
+                        "Vous pouvez aussi choisir un autre émulateur dans la fiche du jeu (appui long).",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    app.missingEmulator.value = null
+                    try {
+                        app.launcher.openStore(activity, emulator.packageName)
+                    } catch (e: LaunchException) {
+                        scope.launch { snackbar.showSnackbar(e.message ?: "Play Store indisponible") }
+                    }
+                }) { Text("Ouvrir le Play Store") }
+            },
+            dismissButton = { TextButton(onClick = { app.missingEmulator.value = null }) { Text("Annuler") } },
+        )
+    }
+
     NavHost(navController = nav, startDestination = start) {
         composable("systems") {
             val vm = viewModel { SystemsViewModel(app) }
             SystemsScreen(
                 viewModel = vm,
                 storageWarning = storageWarning,
+                imageUrl = { app.api.systemImageUrl(it) },
                 onOpenSystem = { nav.navigate("games/$it") },
                 onOpenSettings = { nav.navigate("settings") },
             )

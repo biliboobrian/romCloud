@@ -9,6 +9,7 @@ import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
 import com.romcloud.app.launch.LaunchException
+import com.romcloud.app.launch.MissingEmulatorException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,11 +18,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Lance un jeu déjà téléchargé ; renvoie un message d'erreur ou null. */
+/**
+ * Lance un jeu déjà téléchargé ; renvoie un message d'erreur ou null.
+ * Si l'émulateur n'est pas installé, la proposition d'installation est affichée à la place.
+ */
 fun RomCloudApp.play(activity: Activity, system: GameSystem, game: Game): String? {
     val file = library.fileFor(system, game)
     return try {
         launcher.launch(activity, system, file, launcher.selectedPlayer(system, game.fileName))
+        null
+    } catch (e: MissingEmulatorException) {
+        missingEmulator.value = e.emulator
         null
     } catch (e: LaunchException) {
         e.message
@@ -74,6 +81,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         val error: String? = null,
         val query: String = "",
         val filter: GameFilter = GameFilter.ALL,
+        val grid: Boolean = false,
     ) {
         val visibleGames: List<Game>
             get() = games.filter { g ->
@@ -86,7 +94,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
             }
     }
 
-    private val _state = MutableStateFlow(UiState())
+    private val _state = MutableStateFlow(UiState(grid = app.settings.gamesAsGrid))
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     val downloads = app.downloader.states
@@ -129,6 +137,12 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
 
     fun setQuery(q: String) = _state.update { it.copy(query = q) }
     fun setFilter(f: GameFilter) = _state.update { it.copy(filter = f) }
+
+    fun toggleView() {
+        val grid = !_state.value.grid
+        app.settings.gamesAsGrid = grid
+        _state.update { it.copy(grid = grid) }
+    }
 
     fun download(game: Game) {
         val system = _state.value.system ?: return
@@ -196,6 +210,17 @@ class GameDetailViewModel(
                     localPath = app.library.fileFor(system, game).absolutePath,
                 )
             }
+        }
+    }
+
+    /** Ouvre la fiche Play Store de l'émulateur ; renvoie un message d'erreur ou null. */
+    fun installPlayer(activity: Activity, player: Player): String? {
+        val pkg = app.launcher.packageOf(player) ?: return "Paquet de l’émulateur inconnu"
+        return try {
+            app.launcher.openStore(activity, pkg)
+            null
+        } catch (e: LaunchException) {
+            e.message
         }
     }
 

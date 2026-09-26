@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import com.romcloud.app.data.Game
@@ -13,7 +14,13 @@ import com.romcloud.app.data.Player
 import com.romcloud.app.data.Settings
 import java.io.File
 
-class LaunchException(message: String) : Exception(message)
+open class LaunchException(message: String) : Exception(message)
+
+/** L'émulateur requis n'est pas installé : on propose de l'installer depuis le Play Store. */
+class MissingEmulatorException(val emulator: MissingEmulator) :
+    LaunchException("Émulateur non installé : ${emulator.packageName}")
+
+data class MissingEmulator(val packageName: String, val playerName: String?)
 
 class GameLauncher(private val context: Context, private val settings: Settings) {
 
@@ -31,9 +38,34 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         return compatible.find { it.uniqueId == preferred } ?: compatible.firstOrNull()
     }
 
+    /** Paquet Android de l'émulateur (option -n ou -p du modèle). */
+    fun packageOf(player: Player): String? {
+        val intent = AmStartParser.parse(player.amStartArguments, emptyMap())
+        return intent.component?.packageName ?: intent.`package`
+    }
+
     fun isInstalled(player: Player): Boolean {
-        val pkg = AmStartParser.parse(player.amStartArguments, emptyMap()).component?.packageName ?: return true
-        return runCatching { context.packageManager.getPackageInfo(pkg, 0) }.isSuccess
+        val pkg = packageOf(player) ?: return true
+        return isPackageInstalled(pkg)
+    }
+
+    private fun isPackageInstalled(pkg: String): Boolean =
+        runCatching { context.packageManager.getPackageInfo(pkg, 0) }.isSuccess
+
+    /** Ouvre la fiche Google Play de l'application (app Play Store, sinon navigateur). */
+    fun openStore(activityContext: Context, packageName: String) {
+        val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName"))
+        val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))
+        for (intent in listOf(market, web)) {
+            if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                activityContext.startActivity(intent)
+                return
+            } catch (_: ActivityNotFoundException) {
+                // essaie l'intent suivant
+            }
+        }
+        throw LaunchException("Impossible d’ouvrir le Play Store")
     }
 
     /**
@@ -68,6 +100,9 @@ class GameLauncher(private val context: Context, private val settings: Settings)
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             intent.clipData = ClipData.newRawUri(file.name, uri)
         }
+        intent.component?.packageName?.let { pkg ->
+            if (!isPackageInstalled(pkg)) throw MissingEmulatorException(MissingEmulator(pkg, player.name))
+        }
         if (player.killPackageProcesses) {
             intent.component?.packageName?.let { pkg ->
                 runCatching {
@@ -84,10 +119,8 @@ class GameLauncher(private val context: Context, private val settings: Settings)
             activityContext.startActivity(intent)
         } catch (e: ActivityNotFoundException) {
             val pkg = intent.component?.packageName
-            throw LaunchException(
-                if (pkg != null) "Émulateur non installé : $pkg (${player?.name})"
-                else "Aucune application ne peut ouvrir ce fichier",
-            )
+            if (pkg != null) throw MissingEmulatorException(MissingEmulator(pkg, player?.name))
+            throw LaunchException("Aucune application ne peut ouvrir ce fichier")
         } catch (e: SecurityException) {
             throw LaunchException("Lancement refusé par l’émulateur : ${e.message}")
         }

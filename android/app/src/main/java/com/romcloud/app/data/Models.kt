@@ -30,6 +30,8 @@ data class GameSystem(
     val players: List<Player> = emptyList(),
     val gameCount: Int = 0,
     val totalSize: Long = 0,
+    val hasImage: Boolean = false,
+    val imageVersion: String? = null,
 )
 
 @Serializable

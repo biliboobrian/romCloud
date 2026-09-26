@@ -10,13 +10,18 @@ import com.romcloud.app.data.LocalLibrary
 import com.romcloud.app.data.Repository
 import com.romcloud.app.data.Settings
 import com.romcloud.app.launch.GameLauncher
+import com.romcloud.app.launch.MissingEmulator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.ConcurrentHashMap
 
 class RomCloudApp : Application(), ImageLoaderFactory {
 
     val appScope = CoroutineScope(SupervisorJob())
+
+    /** Émulateur manquant détecté au lancement : affiche la proposition d'installation. */
+    val missingEmulator = MutableStateFlow<MissingEmulator?>(null)
 
     /** Jeux à lancer automatiquement dès la fin de leur téléchargement. */
     val autoLaunch: MutableSet<Long> = ConcurrentHashMap.newKeySet()

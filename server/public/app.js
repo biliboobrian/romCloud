@@ -86,6 +86,10 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
+function systemImageUrl(system) {
+  return system.hasImage ? withKey(`/api/systems/${encodeURIComponent(system.id)}/image?v=${encodeURIComponent(system.imageVersion)}`) : '';
+}
+
 function mediaUrl(game, type, bust = '') {
   return withKey(`/api/games/${game.id}/media/${type}?v=${encodeURIComponent(game.updatedAt + bust)}`);
 }
@@ -126,7 +130,7 @@ function renderSystems() {
   for (const s of state.systems) {
     const btn = document.createElement('button');
     btn.className = `system-item${state.current?.id === s.id ? ' active' : ''}`;
-    btn.innerHTML = `<span>${escapeHtml(s.name)}</span><span class="n">${s.gameCount}</span>`;
+    btn.innerHTML = `${s.hasImage ? `<img class="thumb" src="${systemImageUrl(s)}" alt="">` : ''}<span>${escapeHtml(s.name)}</span><span class="n">${s.gameCount}</span>`;
     btn.onclick = () => {
       state.current = s;
       try {
@@ -148,6 +152,8 @@ async function showSystem() {
   $('#systemView').classList.toggle('hidden', !s);
   if (!s) return;
   $('#sysName').textContent = s.name;
+  $('#sysHeadImage').classList.toggle('hidden', !s.hasImage);
+  $('#sysHeadImage').src = systemImageUrl(s);
   const bits = [`${s.gameCount} jeu(x)`, formatSize(s.totalSize), `dossier : roms/${s.folder}`];
   if (s.players.length) bits.push(`${s.players.length} émulateur(s)`);
   $('#sysMeta').textContent = bits.join(' · ');
@@ -275,11 +281,40 @@ function openSystemSettings() {
   for (const k of ['name', 'shortname', 'filenameRegex', 'libretroName', 'screenscraperId']) {
     form.elements[k].value = s[k] ?? '';
   }
+  renderSystemImage(s);
   $('#sysFolder').textContent = `Identifiant : ${s.id} — dossier des ROMs : roms/${s.folder}`;
   $('#sysPlayers').innerHTML = s.players.length
     ? s.players.map((p) => `<li><strong>${escapeHtml(p.name)}</strong><br><span class="mono">${escapeHtml(p.amStartArguments)}</span></li>`).join('')
     : '<li class="muted">Aucun (système personnalisé). L’application Android ne pourra lancer les jeux que via « Ouvrir avec ».</li>';
   $('#sysDialog').showModal();
+}
+
+function renderSystemImage(s) {
+  $('#sysImagePreview').innerHTML = s.hasImage
+    ? `<img src="${systemImageUrl(s)}" alt="">`
+    : '<span class="muted">Aucune image</span>';
+  $('#sysImageDelete').disabled = !s.hasImage;
+}
+
+async function uploadSystemImage(file) {
+  await guard(async () => {
+    state.current = await api(`/systems/${encodeURIComponent(state.current.id)}/image`, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type },
+    });
+    renderSystemImage(state.current);
+    toast('Image du système enregistrée');
+    await loadSystems();
+  });
+}
+
+async function deleteSystemImage() {
+  await guard(async () => {
+    state.current = await api(`/systems/${encodeURIComponent(state.current.id)}/image`, { method: 'DELETE' });
+    renderSystemImage(state.current);
+    await loadSystems();
+  });
 }
 
 async function saveSystemSettings(e) {
@@ -537,6 +572,12 @@ function bindEvents() {
   $('#editSysBtn').onclick = openSystemSettings;
   $('#sysForm').onsubmit = saveSystemSettings;
   $('#deleteSysBtn').onclick = deleteCurrentSystem;
+  $('#sysImageInput').onchange = (e) => {
+    const file = e.target.files[0];
+    if (file) uploadSystemImage(file);
+    e.target.value = '';
+  };
+  $('#sysImageDelete').onclick = deleteSystemImage;
   $('#scanSysBtn').onclick = () => guard(async () => {
     const r = await api(`/systems/${encodeURIComponent(state.current.id)}/scan`, { method: 'POST' });
     toast(`${r.added.length} ajouté(s), ${r.updated} modifié(s), ${r.removed} retiré(s)`);

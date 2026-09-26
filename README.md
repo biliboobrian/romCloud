@@ -37,7 +37,8 @@ docker run -d -p 8080:8080 -v /chemin/vers/data:/data -e API_KEY=monsecret romcl
 1. **Ajouter un système** → onglet *Catalogue Daijishou* : cochez les plateformes (SNES, PSX, GBA…) et importez-les. Elles arrivent avec leurs émulateurs, le filtre d'extensions, le nom Libretro et l'identifiant ScreenScraper. L'onglet *Personnalisé* permet de créer un système à la main.
 2. **Ajouter des ROMs** : glisser-déposer dans la page (case « scraper automatiquement » cochée par défaut), ou copier les fichiers dans `data/roms/<dossier du système>/` puis cliquer sur **Rescanner**.
 3. **Scraper** : bouton *Scraper les jeux* (toute la liste, en tâche de fond) ou depuis la fiche d'un jeu (ScreenScraper / Libretro au choix). Titre, description, date, genre, éditeur, jaquette et capture sont enregistrés sur le serveur et renvoyés à l'application.
-4. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
+4. **Image du système** : dans *Réglages* du système, *Choisir une image* (PNG, JPEG, WebP ou GIF, 10 Mo max.) — logo ou photo de la console, affichée sur la carte du système dans l’application.
+5. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
 
 ### Configuration (`.env`)
 
@@ -64,6 +65,7 @@ Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <API_KEY>` (
 | POST/PUT/DELETE | `/api/systems[/:id]` | Créer / modifier / supprimer (`?deleteFiles=1`) |
 | GET | `/api/daijishou/platforms` | Catalogue Daijishou |
 | POST | `/api/daijishou/import` | `{ "filenames": ["SuperNintendoEntertainmentSystem.json"] }` |
+| GET/PUT/DELETE | `/api/systems/:id/image` | Image du système (PUT : corps binaire, `Content-Type: image/png`…) |
 | POST | `/api/systems/:id/scan` · `/api/scan` | Synchroniser avec les dossiers |
 | GET | `/api/systems/:id/games` | Liste des jeux (`?q=` recherche) |
 | POST | `/api/systems/:id/games` | Envoi multipart `files[]` (`?scrape=1`) |
@@ -95,7 +97,8 @@ Pour une diffusion, remplacez `signingConfig` dans `app/build.gradle.kts` par vo
 ### Fonctionnement
 
 - **Premier lancement** : saisir l'adresse du serveur (`http://192.168.x.x:8080`) et la clé d'API, *Tester la connexion*, puis autoriser **l'accès à tous les fichiers** : les ROMs sont écrites dans un dossier partagé (`/storage/emulated/0/RomCloud/<système>/` par défaut) pour que les émulateurs puissent les lire.
-- **Liste des jeux** : jaquette, titre, année, genre, taille, et un indicateur à droite :
+- **Systèmes** : cartes avec l’image configurée sur le serveur.
+- **Liste des jeux** : deux affichages au choix (bouton en haut à droite, choix mémorisé) — **liste** (jaquette, titre, année, genre, taille) ou **cartes** (grandes jaquettes, jeux non téléchargés légèrement estompés). Les filtres *Tous / Téléchargés / À télécharger* et la recherche s’appliquent aux deux. Indicateur de chaque jeu :
   - ☁ gris : non téléchargé
   - cercle de progression : téléchargement en cours (pourcentage)
   - ✓ vert : présent sur l'appareil
