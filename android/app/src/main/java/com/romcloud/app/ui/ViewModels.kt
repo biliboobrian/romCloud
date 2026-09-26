@@ -11,6 +11,7 @@ import com.romcloud.app.data.Player
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulatorException
+import com.romcloud.app.launch.RetroArchInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -185,6 +186,7 @@ class GameDetailViewModel(
         val selectedPlayer: Player? = null,
         val localPath: String? = null,
         val launchCommand: String? = null,
+        val retroArchInfo: RetroArchInfo? = null,
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -222,6 +224,7 @@ class GameDetailViewModel(
                     selectedPlayer = selected,
                     localPath = file.absolutePath,
                     launchCommand = selected?.let { p -> app.launcher.describe(p, file) },
+                    retroArchInfo = selected?.let(app.launcher::retroArchInfo),
                 )
             }
         }

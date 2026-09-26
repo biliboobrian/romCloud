@@ -15,6 +15,8 @@ data class ServerConfig(
     val isConfigured: Boolean get() = serverUrl.isNotBlank()
 }
 
+enum class RetroArchSafMode(val label: String) { AUTO("Automatique"), SAF("SAF"), PATH("Chemin classique") }
+
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("romcloud", Context.MODE_PRIVATE)
 
@@ -46,6 +48,23 @@ class Settings(context: Context) {
             if (playerId == null) remove("player.$systemId") else putString("player.$systemId", playerId)
         }.apply()
     }
+
+    /**
+     * Chemin de ROM transmis à RetroArch : AUTO = chemin saf:// si RetroArch vient du Play Store
+     * (pas d'accès à tous les fichiers), SAF = toujours, PATH = chemin de fichier classique.
+     */
+    var retroArchSafMode: RetroArchSafMode
+        get() = runCatching { RetroArchSafMode.valueOf(prefs.getString("retroArchSafMode", null) ?: "") }
+            .getOrDefault(RetroArchSafMode.AUTO)
+        set(value) = prefs.edit().putString("retroArchSafMode", value.name).apply()
+
+    /**
+     * RetroArch se ferme complètement dès qu'on le quitte (extra QUITFOCUS). Évite l'écran noir
+     * au lancement suivant, RomCloud ne pouvant plus fermer RetroArch lui-même depuis Android 14.
+     */
+    var retroArchQuitOnExit: Boolean
+        get() = prefs.getBoolean("retroArchQuitOnExit", true)
+        set(value) = prefs.edit().putBoolean("retroArchQuitOnExit", value).apply()
 
     /** Avertissement « fermez l'émulateur avant de jouer » masqué pour ce paquet. */
     fun isCloseWarningDismissed(packageName: String) = prefs.getBoolean("closeWarning.$packageName", false)

@@ -23,12 +23,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -40,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,6 +52,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
 import kotlinx.coroutines.launch
 
@@ -129,6 +133,48 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
             }
             testResult?.let { (ok, msg) ->
                 Text(msg, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            }
+
+            Text("Émulateurs", style = MaterialTheme.typography.titleMedium)
+            var quitOnExit by remember { mutableStateOf(app.settings.retroArchQuitOnExit) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Fermer RetroArch en quittant le jeu", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Recommandé : évite l’écran noir au lancement suivant. Quitter RetroArch en cours de partie " +
+                            "(bouton Accueil, applications récentes) ferme alors le jeu — sauvegardez avant.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = quitOnExit, onCheckedChange = {
+                    quitOnExit = it
+                    app.settings.retroArchQuitOnExit = it
+                })
+            }
+
+            var safMode by remember { mutableStateOf(app.settings.retroArchSafMode) }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Accès aux ROMs pour RetroArch", style = MaterialTheme.typography.bodyLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RetroArchSafMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = safMode == mode,
+                            onClick = {
+                                safMode = mode
+                                app.settings.retroArchSafMode = mode
+                            },
+                            label = { Text(mode.label) },
+                        )
+                    }
+                }
+                Text(
+                    "La version Play Store de RetroArch ne peut lire le dossier des ROMs qu’en SAF : dans RetroArch, " +
+                        "« Charger du contenu », ajoutez le dossier des ROMs de RomCloud (ci-dessous) et autorisez l’accès. " +
+                        "Automatique : SAF si RetroArch vient du Play Store, chemin classique sinon.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             Text("Stockage des ROMs", style = MaterialTheme.typography.titleMedium)

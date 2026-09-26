@@ -12,6 +12,7 @@ import androidx.core.content.FileProvider
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
+import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
 import java.io.File
 
@@ -22,6 +23,22 @@ class MissingEmulatorException(val emulator: MissingEmulator) :
     LaunchException("Émulateur non installé : ${emulator.packageName}")
 
 data class MissingEmulator(val packageName: String, val playerName: String?)
+
+/** Ce qu'il faut configurer dans RetroArch pour un modèle donné (guide « ⓘ » de la fiche du jeu). */
+data class RetroArchInfo(
+    val packageName: String,
+    val installed: Boolean,
+    /** Nom du cœur demandé par le modèle (ex. mupen64plus_next_gles3), null s'il n'en impose pas. */
+    val core: String?,
+    val configFile: String?,
+    val fromPlayStore: Boolean,
+    /** La ROM est transmise en chemin saf:// (dossier à autoriser dans RetroArch). */
+    val usesSaf: Boolean,
+    val romsDir: String,
+    val quitOnExit: Boolean,
+    /** Android 14+ : RomCloud ne peut pas fermer RetroArch lui-même. */
+    val mustCloseManually: Boolean,
+)
 
 /**
  * Lancement en attente : l'émulateur doit être fermé à la main avant (Android 14+ interdit
@@ -35,6 +52,11 @@ data class CloseEmulatorPrompt(
 )
 
 class GameLauncher(private val context: Context, private val settings: Settings) {
+
+    private companion object {
+        /** Extra lu par RetroActivityFuture : RetroArch appelle System.exit(0) dans onStop(). */
+        const val RETROARCH_QUIT_EXTRA = "QUITFOCUS"
+    }
 
     /** Émulateurs compatibles avec ce fichier (regex acceptedFilenameRegex du modèle). */
     fun compatiblePlayers(system: GameSystem, fileName: String): List<Player> =
@@ -95,7 +117,8 @@ class GameLauncher(private val context: Context, private val settings: Settings)
             return
         }
 
-        val intent = AmStartParser.parse(player.amStartArguments, placeholders(file))
+        val intent = AmStartParser.parse(player.amStartArguments, placeholders(file, packageOf(player)))
+        if (quitOnExit(intent.component?.packageName)) intent.putExtra(RETROARCH_QUIT_EXTRA, "1")
         if (player.amStartArguments.contains("{file.uri}")) {
             // Autorise l'émulateur à lire le fichier via le FileProvider.
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
@@ -119,8 +142,8 @@ class GameLauncher(private val context: Context, private val settings: Settings)
     private fun mimeOf(file: File) =
         MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
 
-    private fun placeholders(file: File) = mapOf(
-        "file.path" to file.absolutePath,
+    private fun placeholders(file: File, packageName: String?) = mapOf(
+        "file.path" to (retroArchSafPath(file, packageName) ?: file.absolutePath),
         "file.uri" to fileUri(file).toString(),
         "file.mime" to mimeOf(file),
         "file.name" to file.name,
@@ -131,12 +154,79 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
     /** Commande de lancement avec les valeurs réelles, pour vérifier cœur et chemin de la ROM. */
     fun describe(player: Player, file: File): String {
-        val values = runCatching { placeholders(file) }.getOrElse { mapOf("file.path" to file.absolutePath) }
-        return player.amStartArguments.lines()
+        val values = runCatching { placeholders(file, packageOf(player)) }
+            .getOrElse { mapOf("file.path" to file.absolutePath) }
+        val lines = player.amStartArguments.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-            .joinToString("\n") { AmStartParser.substitute(it, values) }
+            .map { AmStartParser.substitute(it, values) }
+        val extra = if (quitOnExit(packageOf(player))) listOf("-e $RETROARCH_QUIT_EXTRA 1") else emptyList()
+        return (lines + extra).joinToString("\n")
     }
+
+    fun isRetroArch(packageName: String?) = packageName?.startsWith("com.retroarch") == true
+
+    /** Configuration RetroArch attendue par ce modèle, ou null si ce n'est pas RetroArch. */
+    fun retroArchInfo(player: Player): RetroArchInfo? {
+        val pkg = packageOf(player)?.takeIf(::isRetroArch) ?: return null
+        val installed = isPackageInstalled(pkg)
+        val fromPlayStore = installed && isFromPlayStore(pkg)
+        return RetroArchInfo(
+            packageName = pkg,
+            installed = installed,
+            core = AmStartParser.stringExtra(player.amStartArguments, "LIBRETRO")
+                ?.substringAfterLast('/')
+                ?.removeSuffix(".so")
+                ?.removeSuffix("_android")
+                ?.removeSuffix("_libretro"),
+            configFile = AmStartParser.stringExtra(player.amStartArguments, "CONFIGFILE"),
+            fromPlayStore = fromPlayStore,
+            usesSaf = when (settings.retroArchSafMode) {
+                RetroArchSafMode.SAF -> true
+                RetroArchSafMode.PATH -> false
+                RetroArchSafMode.AUTO -> fromPlayStore
+            },
+            romsDir = settings.config.value.romsDir,
+            quitOnExit = settings.retroArchQuitOnExit,
+            mustCloseManually = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+        )
+    }
+
+    /** Ouvre RetroArch (pour installer un cœur, autoriser un dossier…). */
+    fun openApp(activityContext: Context, packageName: String) {
+        val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+            ?: throw LaunchException("Impossible d’ouvrir $packageName")
+        activityContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /** RetroArch installé depuis le Play Store (sans accès à tous les fichiers). */
+    fun isFromPlayStore(packageName: String): Boolean = runCatching {
+        val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.packageManager.getInstallSourceInfo(packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getInstallerPackageName(packageName)
+        }
+        installer == "com.android.vending"
+    }.getOrDefault(false)
+
+    /**
+     * Chemin saf:// pour RetroArch quand il ne peut pas lire le chemin de fichier (version
+     * Play Store) ; null pour garder le chemin classique.
+     */
+    private fun retroArchSafPath(file: File, packageName: String?): String? {
+        if (!isRetroArch(packageName)) return null
+        val useSaf = when (settings.retroArchSafMode) {
+            RetroArchSafMode.SAF -> true
+            RetroArchSafMode.PATH -> false
+            RetroArchSafMode.AUTO -> isFromPlayStore(packageName!!)
+        }
+        return if (useSaf) RetroArchSaf.path(settings.config.value.romsDir, file.absolutePath) else null
+    }
+
+    /** RetroArch (tous paquets com.retroarch*) avec l'option « se fermer en quittant le jeu ». */
+    private fun quitOnExit(packageName: String?) =
+        settings.retroArchQuitOnExit && isRetroArch(packageName)
 
     /**
      * Paquet à faire fermer par l'utilisateur avant le lancement, ou null.

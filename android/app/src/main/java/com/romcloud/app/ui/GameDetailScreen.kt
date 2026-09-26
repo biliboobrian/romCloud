@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material3.AlertDialog
@@ -173,8 +174,21 @@ fun GameDetailScreen(
                 }
             }
 
-            PlayerSelector(state, viewModel) { player ->
-                viewModel.installPlayer(activity, player)?.let { scope.launch { snackbar.showSnackbar(it) } }
+            var showRetroArchHelp by remember { mutableStateOf(false) }
+            PlayerSelector(
+                state = state,
+                viewModel = viewModel,
+                onInstall = { player ->
+                    viewModel.installPlayer(activity, player)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                },
+                onInfo = if (state.retroArchInfo != null) ({ showRetroArchHelp = true }) else null,
+            )
+            state.retroArchInfo?.takeIf { showRetroArchHelp }?.let { info ->
+                RetroArchHelpDialog(
+                    info = info,
+                    onDismiss = { showRetroArchHelp = false },
+                    onMessage = { scope.launch { snackbar.showSnackbar(it) } },
+                )
             }
 
             state.launchCommand?.let { LaunchCommand(it) }
@@ -236,6 +250,7 @@ private fun PlayerSelector(
     state: GameDetailViewModel.UiState,
     viewModel: GameDetailViewModel,
     onInstall: (Player) -> Unit,
+    onInfo: (() -> Unit)?,
 ) {
     if (state.players.isEmpty()) {
         Text(
@@ -247,38 +262,49 @@ private fun PlayerSelector(
     var expanded by remember { mutableStateOf(false) }
     val selected = state.selectedPlayer
     val installed = state.players.find { it.first.uniqueId == selected?.uniqueId }?.second ?: true
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-        OutlinedTextField(
-            value = selected?.name ?: "",
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Émulateur") },
-            supportingText = if (!installed) {
-                { Text("Cet émulateur n’est pas installé", color = MaterialTheme.colorScheme.error) }
-            } else null,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            state.players.forEach { (player, isInstalled) ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(player.name)
-                            if (!isInstalled) {
-                                Text("non installé", style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+            modifier = Modifier.weight(1f),
+        ) {
+            OutlinedTextField(
+                value = selected?.name ?: "",
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Émulateur") },
+                supportingText = if (!installed) {
+                    { Text("Cet émulateur n’est pas installé", color = MaterialTheme.colorScheme.error) }
+                } else null,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                state.players.forEach { (player, isInstalled) ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(player.name)
+                                if (!isInstalled) {
+                                    Text("non installé", style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
-                        }
-                    },
-                    leadingIcon = if (isInstalled) {
-                        { Spacer(Modifier.size(8.dp)) }
-                    } else null,
-                    onClick = {
-                        viewModel.selectPlayer(player)
-                        expanded = false
-                    },
-                )
+                        },
+                        leadingIcon = if (isInstalled) {
+                            { Spacer(Modifier.size(8.dp)) }
+                        } else null,
+                        onClick = {
+                            viewModel.selectPlayer(player)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+        if (onInfo != null) {
+            IconButton(onClick = onInfo) {
+                Icon(Icons.Filled.Info, "Configurer RetroArch", tint = MaterialTheme.colorScheme.primary)
             }
         }
     }

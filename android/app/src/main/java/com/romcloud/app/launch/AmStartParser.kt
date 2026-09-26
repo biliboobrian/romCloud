@@ -106,6 +106,15 @@ object AmStartParser {
         return intent
     }
 
+    /** Valeur d'un extra chaîne (-e / --es) du modèle, sans remplacer les placeholders. */
+    fun stringExtra(arguments: String, key: String): String? {
+        val tokens = tokenize(arguments)
+        for (i in 0 until tokens.size - 2) {
+            if ((tokens[i] == "-e" || tokens[i] == "--es") && tokens[i + 1] == key) return tokens[i + 2]
+        }
+        return null
+    }
+
     /** "pkg/.Activity" ou "pkg/pkg.Activity" */
     fun parseComponent(value: String): ComponentName? {
         val slash = value.indexOf('/')
