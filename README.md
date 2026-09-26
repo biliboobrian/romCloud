@@ -80,7 +80,7 @@ Tests : `npm test`.
 
 ## 2. Application Android (`android/`)
 
-Kotlin + Jetpack Compose, minSdk 26 (Android 8), targetSdk 35.
+Kotlin + Jetpack Compose, minSdk 26 (Android 8), targetSdk 36 (Android 16).
 
 ### Compiler l'APK
 
@@ -92,7 +92,33 @@ cd android
 ./gradlew assembleRelease    # app/build/outputs/apk/release/app-release.apk (signé avec la clé de debug)
 ```
 
-Pour une diffusion, remplacez `signingConfig` dans `app/build.gradle.kts` par votre propre keystore.
+L’app cible Android 16 (API 36) et s’installe à partir d’Android 8 (API 26).
+
+**Signature release** : lue depuis les variables d’environnement `ROMCLOUD_KEYSTORE_FILE`, `ROMCLOUD_KEYSTORE_PASSWORD`, `ROMCLOUD_KEY_ALIAS`, `ROMCLOUD_KEY_PASSWORD`, ou depuis `android/keystore.properties` (non versionné) :
+
+```properties
+storeFile=C:/chemin/vers/romcloud-release.jks
+storePassword=...
+keyAlias=romcloud
+keyPassword=...
+```
+
+Sans clé configurée, l’APK release est signé avec la clé de debug.
+
+### Compilation automatique (GitHub Actions)
+
+Le workflow [`.github/workflows/android.yml`](.github/workflows/android.yml) :
+
+- à chaque push sur `main` touchant `android/` : tests unitaires + APK release signé, téléchargeable dans l’onglet **Actions** (artifact `RomCloud-0.0.<n°>-<commit>`) ;
+- sur un tag `v*` : même chose + **Release GitHub** avec l’APK attaché :
+
+  ```bash
+  git tag v1.1.0 && git push origin v1.1.0
+  ```
+
+Secrets à définir dans *Settings → Secrets and variables → Actions* : `ROMCLOUD_KEYSTORE_BASE64` (keystore encodé en base64), `ROMCLOUD_KEYSTORE_PASSWORD`, `ROMCLOUD_KEY_ALIAS`, `ROMCLOUD_KEY_PASSWORD`. Le `versionCode` est le numéro d’exécution du workflow, le `versionName` celui du tag.
+
+Pour installer et recevoir les mises à jour sur le téléphone : [Obtainium](https://github.com/ImranR98/Obtainium) avec l’URL du dépôt GitHub.
 
 ### Fonctionnement
 
