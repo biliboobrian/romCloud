@@ -51,6 +51,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS games_system ON games(system_id);
 `);
 
+// Migrations légères pour les bases créées par une version antérieure.
+const systemColumns = db.prepare('PRAGMA table_info(systems)').all().map((c) => c.name);
+if (!systemColumns.includes('image')) db.exec('ALTER TABLE systems ADD COLUMN image TEXT');
+
 /** Exécute fn dans une transaction. */
 export function transaction(fn) {
   db.exec('BEGIN');

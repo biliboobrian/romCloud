@@ -23,11 +23,14 @@ import { SCRAPE_SOURCES, saveCustomMedia, scrapeGame } from './scraper/index.js'
 import {
   createSystem,
   deleteSystem,
+  deleteSystemImage,
   importDaijishouPlatform,
   listDaijishouPlatforms,
   listSystems,
   requireSystem,
+  setSystemImage,
   systemDir,
+  systemImagePath,
   updateSystem,
 } from './systems.js';
 
@@ -82,6 +85,21 @@ api.delete('/systems/:id', (req, res) => {
   deleteSystem(req.params.id, { deleteFiles: req.query.deleteFiles === '1' });
   res.status(204).end();
 });
+
+api.get('/systems/:id/image', (req, res) => {
+  const file = systemImagePath(req.params.id);
+  if (!file) throw new HttpError(404, 'Aucune image pour ce système');
+  // Le nom de fichier change à chaque envoi : on peut mettre en cache longtemps.
+  res.sendFile(file, { maxAge: '30d' });
+});
+
+api.put(
+  '/systems/:id/image',
+  express.raw({ type: 'image/*', limit: '10mb' }),
+  (req, res) => res.json(setSystemImage(req.params.id, req.body, req.get('content-type')?.split(';')[0])),
+);
+
+api.delete('/systems/:id/image', (req, res) => res.json(deleteSystemImage(req.params.id)));
 
 api.post('/systems/:id/scan', (req, res) => res.json(scanSystem(req.params.id)));
 

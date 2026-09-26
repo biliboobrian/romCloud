@@ -2,9 +2,13 @@ package com.romcloud.app.ui
 
 import android.app.Activity
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,10 +16,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -25,10 +36,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -45,14 +58,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import coil.compose.SubcomposeAsyncImage
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import kotlinx.coroutines.launch
@@ -126,6 +143,10 @@ fun GamesScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = viewModel::toggleView) {
+                        if (state.grid) Icon(Icons.AutoMirrored.Filled.ViewList, "Affichage en liste")
+                        else Icon(Icons.Filled.GridView, "Affichage en cartes")
+                    }
                     IconButton(onClick = {
                         if (searching) viewModel.setQuery("")
                         searching = !searching
@@ -161,6 +182,23 @@ fun GamesScreen(
                     state.games.isEmpty() && state.loading -> Centered("Chargement…")
                     state.games.isEmpty() && state.error != null -> Centered("Erreur : ${state.error}", "Réessayer", viewModel::refresh)
                     games.isEmpty() -> Centered("Aucun jeu")
+                    state.grid -> LazyVerticalGrid(
+                        columns = GridCells.Adaptive(116.dp),
+                        contentPadding = PaddingValues(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        items(games, key = { it.id }) { game ->
+                            GameCard(
+                                game = game,
+                                coverUrl = mediaUrl(game),
+                                status = statusOf(game),
+                                onClick = { onClick(game) },
+                                onDetails = { onOpenGame(game.id) },
+                            )
+                        }
+                    }
                     else -> LazyColumn(Modifier.fillMaxSize()) {
                         items(games, key = { it.id }) { game ->
                             GameRow(
@@ -226,6 +264,82 @@ fun GamesScreen(
                 }
             },
             dismissButton = { TextButton(onClick = { askCancel = null }) { Text("Continuer") } },
+        )
+    }
+}
+
+/** Carte d'un jeu : jaquette en grand, indicateur de téléchargement en surimpression. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GameCard(
+    game: Game,
+    coverUrl: String?,
+    status: LocalStatus,
+    onClick: () -> Unit,
+    onDetails: () -> Unit,
+) {
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onDetails),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(3f / 4f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            val placeholder = @Composable {
+                Text(
+                    game.title, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp),
+                )
+            }
+            if (coverUrl == null) {
+                placeholder()
+            } else {
+                SubcomposeAsyncImage(
+                    model = coverUrl,
+                    contentDescription = game.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    loading = { placeholder() },
+                    error = { placeholder() },
+                )
+            }
+            // Jeu non téléchargé : jaquette légèrement estompée.
+            if (status !is LocalStatus.Downloaded) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)))
+            }
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+            ) {
+                DownloadIndicator(status)
+            }
+            if (status is LocalStatus.Downloading) {
+                LinearProgressIndicator(
+                    progress = { status.state.progress },
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                )
+            }
+        }
+        Text(
+            game.title,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 2,
+            minLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp, start = 2.dp, end = 2.dp),
+        )
+        Text(
+            listOfNotNull(game.year, formatSize(game.size)).joinToString(" · "),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 2.dp),
         )
     }
 }

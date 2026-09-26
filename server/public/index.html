@@ -38,9 +38,12 @@
 
       <section id="systemView" class="hidden">
         <div class="system-head">
-          <div>
-            <h2 id="sysName"></h2>
-            <p class="muted" id="sysMeta"></p>
+          <div class="system-title">
+            <img id="sysHeadImage" class="head-image hidden" alt="">
+            <div>
+              <h2 id="sysName"></h2>
+              <p class="muted" id="sysMeta"></p>
+            </div>
           </div>
           <div class="actions">
             <label class="btn primary">
@@ -111,6 +114,16 @@
       <button class="icon-btn" aria-label="Fermer">✕</button>
     </form>
     <form id="sysForm" class="form">
+      <div class="sys-image">
+        <div class="sys-image-preview" id="sysImagePreview"><span class="muted">Aucune image</span></div>
+        <div class="sys-image-actions">
+          <span class="muted">Image affichée dans l’application Android (logo ou photo de la console).</span>
+          <div class="actions">
+            <label class="btn small">Choisir une image<input type="file" id="sysImageInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
+            <button type="button" class="btn small ghost danger" id="sysImageDelete">Retirer</button>
+          </div>
+        </div>
+      </div>
       <label>Nom <input name="name" required></label>
       <label>Nom court <input name="shortname"></label>
       <label>Regex des fichiers acceptés <input name="filenameRegex"></label>

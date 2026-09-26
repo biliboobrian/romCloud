@@ -52,6 +52,11 @@ class ApiClient(private val settings: Settings) {
         return url("/api/games/${game.id}/media/$type?v=${game.updatedAt}")
     }
 
+    fun systemImageUrl(system: GameSystem): String? {
+        if (!system.hasImage || settings.config.value.serverUrl.isBlank()) return null
+        return url("/api/systems/${system.id}/image?v=${system.imageVersion}")
+    }
+
     fun fileUrl(game: Game): String = url("/api/games/${game.id}/file")
 
     private suspend fun get(path: String): String = withContext(Dispatchers.IO) {
