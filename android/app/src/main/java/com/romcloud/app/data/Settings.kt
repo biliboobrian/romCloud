@@ -72,6 +72,16 @@ class Settings(context: Context) {
     fun setCloseWarningDismissed(packageName: String, dismissed: Boolean) =
         prefs.edit().putBoolean("closeWarning.$packageName", dismissed).apply()
 
+    private val _fullscreen = MutableStateFlow(prefs.getBoolean("fullscreen", true))
+
+    /** Plein écran immersif : barre d'état et boutons de navigation masqués. */
+    val fullscreen: StateFlow<Boolean> = _fullscreen.asStateFlow()
+
+    fun setFullscreen(value: Boolean) {
+        prefs.edit().putBoolean("fullscreen", value).apply()
+        _fullscreen.value = value
+    }
+
     /** Affichage des jeux en cartes (jaquettes) plutôt qu'en liste. */
     var gamesAsGrid: Boolean
         get() = prefs.getBoolean(KEY_GAMES_GRID, false)
