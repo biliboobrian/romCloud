@@ -1,0 +1,16 @@
+# Dépendances et builds
+node_modules/
+.gradle/
+.kotlin/
+build/
+*.apk
+
+# Données et secrets locaux
+server/data/
+.env
+local.properties
+
+# IDE
+.idea/
+.vscode/
+*.iml

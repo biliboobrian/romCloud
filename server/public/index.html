@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RomCloud</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn only-mobile" id="menuBtn" aria-label="Systèmes">☰</button>
+    <h1>RomCloud</h1>
+    <div class="topbar-right">
+      <span id="scraperState" class="pill"></span>
+      <button class="btn ghost" id="jobsBtn">Tâches <span id="jobsCount" class="count hidden">0</span></button>
+      <button class="btn ghost" id="keyBtn" title="Clé d’API">🔑</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <span>Systèmes</span>
+        <button class="btn small" id="addSystemBtn">+ Ajouter</button>
+      </div>
+      <nav id="systemList" class="system-list"></nav>
+      <div class="sidebar-foot">
+        <button class="btn ghost small" id="scanAllBtn">Rescanner tous les dossiers</button>
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <section id="emptyState" class="empty">
+        <h2>Bienvenue</h2>
+        <p>Ajoutez un système (depuis le catalogue Daijishou ou manuellement), puis déposez vos ROMs.</p>
+        <button class="btn primary" id="emptyAddBtn">Ajouter un système</button>
+      </section>
+
+      <section id="systemView" class="hidden">
+        <div class="system-head">
+          <div>
+            <h2 id="sysName"></h2>
+            <p class="muted" id="sysMeta"></p>
+          </div>
+          <div class="actions">
+            <label class="btn primary">
+              Ajouter des ROMs
+              <input type="file" id="fileInput" multiple hidden>
+            </label>
+            <button class="btn" id="scrapeSysBtn">Scraper les jeux</button>
+            <button class="btn" id="scanSysBtn">Rescanner</button>
+            <button class="btn ghost" id="editSysBtn">Réglages</button>
+          </div>
+        </div>
+
+        <div id="dropzone" class="dropzone">
+          Glissez-déposez des ROMs ici
+          <label class="inline"><input type="checkbox" id="autoScrape" checked> scraper automatiquement</label>
+        </div>
+        <div id="uploads" class="uploads"></div>
+
+        <div class="toolbar">
+          <input type="search" id="search" placeholder="Rechercher un jeu…">
+          <select id="statusFilter">
+            <option value="">Tous</option>
+            <option value="ok">Scrapés</option>
+            <option value="missing">Non scrapés</option>
+          </select>
+          <span class="muted" id="gameCount"></span>
+        </div>
+
+        <div id="games" class="games"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Ajout de système -->
+  <dialog id="addDialog" class="dialog wide">
+    <form method="dialog" class="dialog-head">
+      <h3>Ajouter un système</h3>
+      <button class="icon-btn" aria-label="Fermer">✕</button>
+    </form>
+    <div class="tabs">
+      <button class="tab active" data-tab="daijishou">Catalogue Daijishou</button>
+      <button class="tab" data-tab="custom">Personnalisé</button>
+    </div>
+    <div class="tab-panel" id="tab-daijishou">
+      <p class="muted">Plateformes et modèles d’émulateurs issus de <a href="https://github.com/TapiocaFox/Daijishou/tree/main/platforms" target="_blank" rel="noopener">github.com/TapiocaFox/Daijishou</a>.</p>
+      <input type="search" id="platformSearch" placeholder="Filtrer…">
+      <div id="platformList" class="platform-list"><p class="muted">Chargement…</p></div>
+      <div class="dialog-foot">
+        <span class="muted" id="platformSel">0 sélectionné</span>
+        <button class="btn primary" id="importBtn" disabled>Importer</button>
+      </div>
+    </div>
+    <form class="tab-panel hidden form" id="tab-custom">
+      <label>Identifiant <input name="id" required pattern="[a-z0-9][a-z0-9._-]*" placeholder="snes"></label>
+      <label>Nom <input name="name" required placeholder="Super Nintendo"></label>
+      <label>Dossier <input name="folder" placeholder="(identique à l’identifiant)"></label>
+      <label>Regex des fichiers acceptés <input name="filenameRegex" placeholder="^.*\.(sfc|smc|zip)$"></label>
+      <label>Nom Libretro <input name="libretroName" placeholder="Nintendo - Super Nintendo Entertainment System"></label>
+      <label>ID système ScreenScraper <input name="screenscraperId" type="number" min="1"></label>
+      <div class="dialog-foot"><button class="btn primary">Créer</button></div>
+    </form>
+  </dialog>
+
+  <!-- Réglages d'un système -->
+  <dialog id="sysDialog" class="dialog">
+    <form method="dialog" class="dialog-head">
+      <h3>Réglages du système</h3>
+      <button class="icon-btn" aria-label="Fermer">✕</button>
+    </form>
+    <form id="sysForm" class="form">
+      <label>Nom <input name="name" required></label>
+      <label>Nom court <input name="shortname"></label>
+      <label>Regex des fichiers acceptés <input name="filenameRegex"></label>
+      <label>Nom Libretro <input name="libretroName"></label>
+      <label>ID système ScreenScraper <input name="screenscraperId" type="number" min="1"></label>
+      <p class="muted" id="sysFolder"></p>
+      <details>
+        <summary>Émulateurs (modèles « am start »)</summary>
+        <ul id="sysPlayers" class="players"></ul>
+      </details>
+      <div class="dialog-foot split">
+        <button type="button" class="btn danger" id="deleteSysBtn">Supprimer…</button>
+        <button class="btn primary">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Fiche d'un jeu -->
+  <dialog id="gameDialog" class="dialog wide">
+    <form method="dialog" class="dialog-head">
+      <h3 id="gameDialogTitle">Jeu</h3>
+      <button class="icon-btn" aria-label="Fermer">✕</button>
+    </form>
+    <div class="game-edit">
+      <div class="media-col">
+        <div class="media-slot" data-type="boxart"><span>Jaquette</span><img alt=""><label class="btn small">Remplacer<input type="file" accept="image/*" hidden></label></div>
+        <div class="media-slot" data-type="screenshot"><span>Capture</span><img alt=""><label class="btn small">Remplacer<input type="file" accept="image/*" hidden></label></div>
+      </div>
+      <form id="gameForm" class="form">
+        <p class="muted mono" id="gameFile"></p>
+        <label>Titre <input name="title" required></label>
+        <div class="row">
+          <label>Date de sortie <input name="releaseDate"></label>
+          <label>Joueurs <input name="players"></label>
+          <label>Note /5 <input name="rating" type="number" step="0.1" min="0" max="5"></label>
+        </div>
+        <div class="row">
+          <label>Développeur <input name="developer"></label>
+          <label>Éditeur <input name="publisher"></label>
+        </div>
+        <label>Genre <input name="genre"></label>
+        <label>Description <textarea name="description" rows="6"></textarea></label>
+        <p class="muted" id="gameScrapeInfo"></p>
+        <div class="dialog-foot split">
+          <div class="actions">
+            <button type="button" class="btn" data-scrape="auto">Scraper</button>
+            <button type="button" class="btn ghost" data-scrape="screenscraper">ScreenScraper</button>
+            <button type="button" class="btn ghost" data-scrape="libretro">Libretro</button>
+          </div>
+          <div class="actions">
+            <a class="btn ghost" id="gameDownload">Télécharger</a>
+            <button type="button" class="btn danger" id="deleteGameBtn">Supprimer</button>
+            <button class="btn primary">Enregistrer</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Tâches -->
+  <dialog id="jobsDialog" class="dialog">
+    <form method="dialog" class="dialog-head">
+      <h3>Tâches de scraping</h3>
+      <button class="icon-btn" aria-label="Fermer">✕</button>
+    </form>
+    <div id="jobsList" class="jobs"></div>
+  </dialog>
+
+  <div id="toasts" class="toasts"></div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nuage + manette stylisés -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,70h34c7.2,0 13,-5.8 13,-13c0,-6.7 -5.1,-12.2 -11.6,-12.9C71.7,36.6 65,31 57,31c-6.8,0 -12.7,4.1 -15.3,10C35.1,41.6 30,47.2 30,54v3c0,7.2 5.8,13 8,13z" />
+    <path
+        android:fillColor="#5B4FE0"
+        android:pathData="M44,50h22c3.9,0 7,3.1 7,7s-3.1,7 -7,7H44c-3.9,0 -7,-3.1 -7,-7S40.1,50 44,50zM45,54.5v1.5h-1.5v2H45v1.5h2V58h1.5v-2H47v-1.5H45zM63,54a1.5,1.5 0,1 0,0 3a1.5,1.5 0,1 0,0 -3zM67,57a1.5,1.5 0,1 0,0 3a1.5,1.5 0,1 0,0 -3z" />
+</vector>
