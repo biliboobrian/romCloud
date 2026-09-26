@@ -1,5 +1,10 @@
 # RomCloud
 
+[![Release](https://img.shields.io/github/v/release/biliboobrian/romCloud?label=APK&logo=android)](https://github.com/biliboobrian/romCloud/releases/latest)
+[![Docker Hub](https://img.shields.io/docker/v/biliboobrian/romcloud-server?label=Docker%20Hub&logo=docker&sort=semver)](https://hub.docker.com/r/biliboobrian/romcloud-server)
+[![Android APK](https://github.com/biliboobrian/romCloud/actions/workflows/android.yml/badge.svg)](https://github.com/biliboobrian/romCloud/actions/workflows/android.yml)
+[![Serveur Docker](https://github.com/biliboobrian/romCloud/actions/workflows/server-docker.yml/badge.svg)](https://github.com/biliboobrian/romCloud/actions/workflows/server-docker.yml)
+
 Frontend Android de rétro-gaming inspiré de [Daijishou](https://github.com/TapiocaFox/Daijishou), dont la bibliothèque de jeux se trouve sur un **serveur distant** : l'application affiche la liste des jeux de chaque système, télécharge une ROM à la demande, puis la lance dans l'émulateur choisi.
 
 > Le code source de l'APK Daijishou n'est pas public : son dépôt GitHub ne contient que les définitions de plateformes et d'émulateurs (JSON, licence MIT). RomCloud est donc une application distincte qui **réutilise ces définitions** : même catalogue de systèmes, mêmes modèles de lancement `am start` (RetroArch, Dolphin, DuckStation, PPSSPP…).
@@ -14,9 +19,80 @@ Frontend Android de rétro-gaming inspiré de [Daijishou](https://github.com/Tap
 └───────────────────────────┘                                └──────────────────────────────┘
 ```
 
-## 1. Serveur (`server/`)
+## Installation
 
-Prérequis : **Node.js ≥ 22.13** (utilise le module SQLite intégré `node:sqlite`, aucune dépendance native).
+### Serveur — Docker Hub
+
+L’image [`biliboobrian/romcloud-server`](https://hub.docker.com/r/biliboobrian/romcloud-server) est publiée pour **amd64** et **arm64** (PC, NAS Synology/Unraid, Raspberry Pi 4/5).
+
+```bash
+mkdir -p romcloud/data && sudo chown -R 1000:1000 romcloud/data
+docker run -d --name romcloud --restart unless-stopped \
+  -p 8080:8080 \
+  -v "$PWD/romcloud/data:/data" \
+  -e API_KEY=choisissez-une-cle \
+  biliboobrian/romcloud-server:latest
+```
+
+Ou avec Docker Compose — fichier `docker-compose.yml`, puis `docker compose up -d` :
+
+```yaml
+services:
+  romcloud:
+    image: biliboobrian/romcloud-server:latest
+    container_name: romcloud
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data                 # base de données, images scrapées, ROMs (./data/roms)
+      # - /mnt/nas/roms:/data/roms   # ou un dossier de ROMs existant
+    environment:
+      API_KEY: choisissez-une-cle
+      # Facultatif : scraping ScreenScraper (sinon Libretro seul)
+      SCREENSCRAPER_DEV_ID: ""
+      SCREENSCRAPER_DEV_PASSWORD: ""
+      SCREENSCRAPER_USER: ""
+      SCREENSCRAPER_PASSWORD: ""
+```
+
+Ouvrez ensuite `http://<ip-du-serveur>:8080` pour l’interface web d’administration (la clé d’API est demandée au premier accès).
+
+| Tag | Contenu |
+|---|---|
+| `latest` | Dernier état de la branche `main` |
+| `1.0.0`, `1.0`, `1` | Versions publiées (recommandé pour éviter les changements inattendus) |
+| `sha-xxxxxxx` | Image d’un commit précis |
+
+Mise à jour : `docker compose pull && docker compose up -d` (les données dans `/data` sont conservées).
+
+Le conteneur s’exécute avec l’utilisateur `node` (uid 1000) : le dossier monté sur `/data` doit lui être accessible en écriture (d’où le `chown` ci-dessus), sinon lancez le conteneur avec `--user <votre-uid>`.
+
+### Application Android — Obtainium (recommandé)
+
+[Obtainium](https://github.com/ImranR98/Obtainium) installe l’APK depuis les [Releases GitHub](https://github.com/biliboobrian/romCloud/releases) et vous prévient à chaque nouvelle version.
+
+1. Installez Obtainium depuis ses [Releases](https://github.com/ImranR98/Obtainium/releases/latest) ou [F-Droid](https://f-droid.org/packages/dev.imranr.obtainium.fdroid/).
+2. Dans Obtainium : **Ajouter une application**, collez l’URL `https://github.com/biliboobrian/romCloud`, puis **Ajouter**.
+3. Appuyez sur **Installer** (autorisez Obtainium à installer des applications si Android le demande).
+
+Les mises à jour apparaissent ensuite dans Obtainium dès qu’une nouvelle Release est publiée.
+
+### Application Android — installation manuelle
+
+Téléchargez `RomCloud-<version>.apk` depuis la [dernière Release](https://github.com/biliboobrian/romCloud/releases/latest) et ouvrez-le sur le téléphone (autorisez l’installation depuis le navigateur ou le gestionnaire de fichiers).
+
+Android 8 minimum. Les APK sont signés avec la clé RomCloud — empreinte SHA-256 du certificat :
+`3d7da376fa94f95e0c7d46b26638961c9a818c6f2170c04a6dd8cec9d371d559`
+(vérifiable avec `apksigner verify --print-certs RomCloud-<version>.apk`).
+
+### Premier lancement de l’app
+
+Saisissez l’adresse du serveur (`http://<ip-du-serveur>:8080`) et la clé d’API, **Tester la connexion**, **Enregistrer**, puis autorisez **l’accès à tous les fichiers** (voir [Fonctionnement](#fonctionnement)).
+
+## 1. Serveur (`server/`) — développement et configuration
+
+Sans Docker, prérequis : **Node.js ≥ 22.13** (utilise le module SQLite intégré `node:sqlite`, aucune dépendance native).
 
 ```bash
 cd server
@@ -25,35 +101,7 @@ npm install
 npm start                 # http://<ip-du-pc>:8080
 ```
 
-Ou avec Docker, depuis l’image publiée sur Docker Hub (amd64 et arm64 : PC, NAS, Raspberry Pi) :
-
-```bash
-docker run -d --name romcloud -p 8080:8080   -v /chemin/vers/data:/data   -e API_KEY=monsecret   <utilisateur-dockerhub>/romcloud-server:latest
-```
-
-Ou avec Docker Compose (`docker compose up -d`) :
-
-```yaml
-services:
-  romcloud:
-    image: <utilisateur-dockerhub>/romcloud-server:latest
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/data               # base, médias ; ROMs dans ./data/roms
-      # - /mnt/nas/roms:/data/roms # ou un dossier de ROMs existant
-    environment:
-      API_KEY: monsecret
-      SCREENSCRAPER_DEV_ID: ""
-      SCREENSCRAPER_DEV_PASSWORD: ""
-      SCREENSCRAPER_USER: ""
-      SCREENSCRAPER_PASSWORD: ""
-```
-
-Le conteneur s’exécute avec l’utilisateur `node` (uid 1000) : le dossier monté sur `/data` doit lui être accessible en écriture (`sudo chown -R 1000:1000 ./data`), ou lancez le conteneur avec `--user` et votre propre uid.
-
-Pour compiler l’image vous-même : `docker build -t romcloud-server server`.
+Avec Docker : voir [Installation](#serveur--docker-hub). Pour compiler l’image vous-même : `docker build -t romcloud-server server`.
 
 **Publication automatique** : le workflow [`.github/workflows/server-docker.yml`](.github/workflows/server-docker.yml) teste le serveur puis publie l’image sur Docker Hub — `latest` à chaque push sur `main` touchant `server/`, `1.2.3` / `1.2` / `1` sur un tag `v1.2.3`. Secrets requis : `DOCKERHUB_USERNAME` et `DOCKERHUB_TOKEN` (jeton d’accès créé dans Docker Hub → *Account settings → Personal access tokens*, droits *Read & Write*).
 
@@ -114,7 +162,7 @@ Ouvrir `android/` dans Android Studio, ou en ligne de commande (JDK 17 à 21) :
 ```bash
 cd android
 ./gradlew assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
-./gradlew assembleRelease    # app/build/outputs/apk/release/app-release.apk (signé avec la clé de debug)
+./gradlew assembleRelease    # app/build/outputs/apk/release/app-release.apk
 ```
 
 L’app cible Android 16 (API 36) et s’installe à partir d’Android 8 (API 26).
@@ -122,7 +170,7 @@ L’app cible Android 16 (API 36) et s’installe à partir d’Android 8 (API 2
 **Signature release** : lue depuis les variables d’environnement `ROMCLOUD_KEYSTORE_FILE`, `ROMCLOUD_KEYSTORE_PASSWORD`, `ROMCLOUD_KEY_ALIAS`, `ROMCLOUD_KEY_PASSWORD`, ou depuis `android/keystore.properties` (non versionné) :
 
 ```properties
-storeFile=C:/chemin/vers/romcloud-release.jks
+storeFile=C\:/chemin/vers/romcloud-release.jks
 storePassword=...
 keyAlias=romcloud
 keyPassword=...
@@ -143,7 +191,7 @@ Le workflow [`.github/workflows/android.yml`](.github/workflows/android.yml) :
 
 Secrets à définir dans *Settings → Secrets and variables → Actions* : `ROMCLOUD_KEYSTORE_BASE64` (keystore encodé en base64), `ROMCLOUD_KEYSTORE_PASSWORD`, `ROMCLOUD_KEY_ALIAS`, `ROMCLOUD_KEY_PASSWORD`. Le `versionCode` est le numéro d’exécution du workflow, le `versionName` celui du tag.
 
-Pour installer et recevoir les mises à jour sur le téléphone : [Obtainium](https://github.com/ImranR98/Obtainium) avec l’URL du dépôt GitHub.
+Les Releases sont celles qu’Obtainium surveille (voir [Installation](#application-android--obtainium-recommandé)).
 
 ### Fonctionnement
 
