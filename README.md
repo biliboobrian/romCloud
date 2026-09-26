@@ -25,12 +25,37 @@ npm install
 npm start                 # http://<ip-du-pc>:8080
 ```
 
-Ou avec Docker :
+Ou avec Docker, depuis l’image publiée sur Docker Hub (amd64 et arm64 : PC, NAS, Raspberry Pi) :
 
 ```bash
-docker build -t romcloud server
-docker run -d -p 8080:8080 -v /chemin/vers/data:/data -e API_KEY=monsecret romcloud
+docker run -d --name romcloud -p 8080:8080   -v /chemin/vers/data:/data   -e API_KEY=monsecret   <utilisateur-dockerhub>/romcloud-server:latest
 ```
+
+Ou avec Docker Compose (`docker compose up -d`) :
+
+```yaml
+services:
+  romcloud:
+    image: <utilisateur-dockerhub>/romcloud-server:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data               # base, médias ; ROMs dans ./data/roms
+      # - /mnt/nas/roms:/data/roms # ou un dossier de ROMs existant
+    environment:
+      API_KEY: monsecret
+      SCREENSCRAPER_DEV_ID: ""
+      SCREENSCRAPER_DEV_PASSWORD: ""
+      SCREENSCRAPER_USER: ""
+      SCREENSCRAPER_PASSWORD: ""
+```
+
+Le conteneur s’exécute avec l’utilisateur `node` (uid 1000) : le dossier monté sur `/data` doit lui être accessible en écriture (`sudo chown -R 1000:1000 ./data`), ou lancez le conteneur avec `--user` et votre propre uid.
+
+Pour compiler l’image vous-même : `docker build -t romcloud-server server`.
+
+**Publication automatique** : le workflow [`.github/workflows/server-docker.yml`](.github/workflows/server-docker.yml) teste le serveur puis publie l’image sur Docker Hub — `latest` à chaque push sur `main` touchant `server/`, `1.2.3` / `1.2` / `1` sur un tag `v1.2.3`. Secrets requis : `DOCKERHUB_USERNAME` et `DOCKERHUB_TOKEN` (jeton d’accès créé dans Docker Hub → *Account settings → Personal access tokens*, droits *Read & Write*).
 
 ### Utilisation de l'interface web
 
