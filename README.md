@@ -197,7 +197,11 @@ Les Releases sont celles qu’Obtainium surveille (voir [Installation](#applicat
 
 - **Premier lancement** : saisir l'adresse du serveur (`http://192.168.x.x:8080`) et la clé d'API, *Tester la connexion*, puis autoriser **l'accès à tous les fichiers** : les ROMs sont écrites dans un dossier partagé (`/storage/emulated/0/RomCloud/<système>/` par défaut) pour que les émulateurs puissent les lire.
 - **Systèmes** : cartes avec l’image configurée sur le serveur.
-- **Liste des jeux** : deux affichages au choix (bouton en haut à droite, choix mémorisé) — **liste** (jaquette, titre, année, genre, taille) ou **cartes** (grandes jaquettes, jeux non téléchargés légèrement estompés). Les filtres *Tous / Téléchargés / À télécharger* et la recherche s’appliquent aux deux. Indicateur de chaque jeu :
+- **Liste des jeux** : deux affichages au choix (bouton en haut à droite, choix mémorisé) :
+  - **liste** : jaquette, titre, année, genre, taille ;
+  - **carrousel** façon Netflix : bannière du jeu mis en avant (capture en fond, boutons *Jouer* / *Télécharger* et *Infos*), puis rangées défilant horizontalement — *Téléchargés*, *Ajoutés récemment* (au-delà de 20 jeux), puis une rangée par genre. Chaque carte porte le bouton **ⓘ** (fiche du jeu et choix de l’émulateur). Pendant une recherche, les résultats s’affichent en grille.
+
+  Les filtres *Tous / Téléchargés / À télécharger* et la recherche s’appliquent aux deux affichages. Indicateur de chaque jeu :
   - ☁ gris : non téléchargé
   - cercle de progression : téléchargement en cours (pourcentage)
   - ✓ vert : présent sur l'appareil
