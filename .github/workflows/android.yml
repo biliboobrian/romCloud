@@ -1,0 +1,86 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write # création des Releases sur les tags
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.${{ github.run_number }}-${GITHUB_SHA::7}"
+          fi
+          echo "ROMCLOUD_VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
+          echo "ROMCLOUD_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "Version : $VERSION (code ${{ github.run_number }})"
+
+      # La clé de signature vient des secrets du dépôt. Sans eux (ex. pull request
+      # depuis un fork), l'APK est signé avec une clé de debug temporaire.
+      - name: Clé de signature
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ROMCLOUD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ROMCLOUD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ROMCLOUD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ROMCLOUD_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::Secret ROMCLOUD_KEYSTORE_BASE64 absent : APK signé avec une clé de debug (non installable par-dessus une version signée)."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "ROMCLOUD_KEYSTORE_FILE=$RUNNER_TEMP/release.jks"
+            echo "ROMCLOUD_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ROMCLOUD_KEY_ALIAS=$KEY_ALIAS"
+            echo "ROMCLOUD_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Tests et compilation
+        run: ./gradlew testDebugUnitTest assembleRelease --no-daemon
+
+      - name: Renommer l'APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/RomCloud-${ROMCLOUD_VERSION_NAME}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RomCloud-${{ env.ROMCLOUD_VERSION_NAME }}
+          path: android/dist/*.apk
+
+      - name: Release GitHub
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/dist/*.apk
+          generate_release_notes: true

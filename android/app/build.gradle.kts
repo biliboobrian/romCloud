@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,16 +7,39 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Clé de signature release : variables d'environnement (CI GitHub) ou fichier
+// android/keystore.properties (local, non versionné). À défaut, clé de debug.
+val keystoreProps = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+fun signingValue(env: String, prop: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(prop)
+
+val releaseStoreFile = signingValue("ROMCLOUD_KEYSTORE_FILE", "storeFile")
+
 android {
     namespace = "com.romcloud.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.romcloud.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 36
+        // Fournis par le CI (numéro de build, tag de version) ; valeurs par défaut en local.
+        versionCode = System.getenv("ROMCLOUD_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("ROMCLOUD_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.0.0-dev"
+    }
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = signingValue("ROMCLOUD_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingValue("ROMCLOUD_KEY_ALIAS", "keyAlias")
+                keyPassword = signingValue("ROMCLOUD_KEY_PASSWORD", "keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -22,9 +47,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signature de debug pour pouvoir installer l'APK release sans keystore dédié.
-            // Remplacez par votre propre signingConfig pour une diffusion.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {
