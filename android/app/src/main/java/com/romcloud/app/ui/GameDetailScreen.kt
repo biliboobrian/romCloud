@@ -1,7 +1,9 @@
 package com.romcloud.app.ui
 
 import android.app.Activity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -50,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -172,6 +177,8 @@ fun GameDetailScreen(
                 viewModel.installPlayer(activity, player)?.let { scope.launch { snackbar.showSnackbar(it) } }
             }
 
+            state.launchCommand?.let { LaunchCommand(it) }
+
             game.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
             mediaUrl(game, "screenshot")?.let { url ->
@@ -196,6 +203,30 @@ fun GameDetailScreen(
             confirmButton = { TextButton(onClick = { viewModel.deleteLocal(); confirmDelete = false }) { Text("Supprimer") } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Annuler") } },
         )
+    }
+}
+
+/** Commande « am start » réelle (repliable) : utile pour vérifier le cœur et le chemin de la ROM. */
+@Composable
+private fun LaunchCommand(command: String) {
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
+            Text(if (expanded) "Masquer la commande de lancement" else "Voir la commande de lancement")
+        }
+        if (expanded) {
+            SelectionContainer {
+                Text(
+                    command,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                        .padding(10.dp),
+                )
+            }
+        }
     }
 }
 
