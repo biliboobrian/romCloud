@@ -47,6 +47,12 @@ class Settings(context: Context) {
         }.apply()
     }
 
+    /** Avertissement « fermez l'émulateur avant de jouer » masqué pour ce paquet. */
+    fun isCloseWarningDismissed(packageName: String) = prefs.getBoolean("closeWarning.$packageName", false)
+
+    fun setCloseWarningDismissed(packageName: String, dismissed: Boolean) =
+        prefs.edit().putBoolean("closeWarning.$packageName", dismissed).apply()
+
     /** Affichage des jeux en cartes (jaquettes) plutôt qu'en liste. */
     var gamesAsGrid: Boolean
         get() = prefs.getBoolean(KEY_GAMES_GRID, false)

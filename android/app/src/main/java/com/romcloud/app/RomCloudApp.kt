@@ -9,6 +9,7 @@ import com.romcloud.app.data.Downloader
 import com.romcloud.app.data.LocalLibrary
 import com.romcloud.app.data.Repository
 import com.romcloud.app.data.Settings
+import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.GameLauncher
 import com.romcloud.app.launch.MissingEmulator
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +23,9 @@ class RomCloudApp : Application(), ImageLoaderFactory {
 
     /** Émulateur manquant détecté au lancement : affiche la proposition d'installation. */
     val missingEmulator = MutableStateFlow<MissingEmulator?>(null)
+
+    /** Lancement en attente de la fermeture de l'émulateur par l'utilisateur. */
+    val closeEmulatorPrompt = MutableStateFlow<CloseEmulatorPrompt?>(null)
 
     /** Jeux à lancer automatiquement dès la fin de leur téléchargement. */
     val autoLaunch: MutableSet<Long> = ConcurrentHashMap.newKeySet()

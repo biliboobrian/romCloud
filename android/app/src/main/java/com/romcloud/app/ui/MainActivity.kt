@@ -8,7 +8,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -21,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -124,6 +128,51 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
                 }) { Text("Ouvrir le Play Store") }
             },
             dismissButton = { TextButton(onClick = { app.missingEmulator.value = null }) { Text("Annuler") } },
+        )
+    }
+
+    // Android 14+ : l'émulateur (RetroArch…) doit être fermé à la main avant le lancement.
+    val closePrompt by app.closeEmulatorPrompt.collectAsStateWithLifecycle()
+    closePrompt?.let { prompt ->
+        val scope = rememberCoroutineScope()
+        var dontShowAgain by remember(prompt) { mutableStateOf(false) }
+        fun dismiss() {
+            if (dontShowAgain) app.settings.setCloseWarningDismissed(prompt.packageName, true)
+            app.closeEmulatorPrompt.value = null
+        }
+        AlertDialog(
+            onDismissRequest = { app.closeEmulatorPrompt.value = null },
+            title = { Text("Fermez d’abord l’émulateur") },
+            text = {
+                Column {
+                    Text(
+                        "Si « ${prompt.playerName} » est encore ouvert en arrière-plan, le jeu restera sur un écran noir. " +
+                            "Depuis Android 14, RomCloud ne peut plus le fermer lui-même.\n\n" +
+                            "Touchez « Forcer l’arrêt » ci-dessous, puis « Forcer l’arrêt » dans la page qui s’ouvre, " +
+                            "revenez ici et touchez « Lancer ». Si l’émulateur est déjà fermé, touchez directement « Lancer ».",
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = dontShowAgain, onCheckedChange = { dontShowAgain = it })
+                        Text("Ne plus afficher pour cet émulateur")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    dismiss()
+                    app.play(activity, prompt.system, prompt.game, emulatorClosed = true)
+                        ?.let { scope.launch { snackbar.showSnackbar(it) } }
+                }) { Text("Lancer") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    try {
+                        app.launcher.openAppSettings(activity, prompt.packageName)
+                    } catch (e: LaunchException) {
+                        scope.launch { snackbar.showSnackbar(e.message ?: "Paramètres indisponibles") }
+                    }
+                }) { Text("Forcer l’arrêt") }
+            },
         )
     }
 

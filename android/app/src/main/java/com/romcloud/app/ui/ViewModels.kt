@@ -8,6 +8,7 @@ import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
+import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulatorException
 import kotlinx.coroutines.Dispatchers
@@ -20,12 +21,21 @@ import kotlinx.coroutines.withContext
 
 /**
  * Lance un jeu déjà téléchargé ; renvoie un message d'erreur ou null.
- * Si l'émulateur n'est pas installé, la proposition d'installation est affichée à la place.
+ * Si l'émulateur n'est pas installé, la proposition d'installation est affichée à la place ;
+ * s'il doit être fermé d'abord (Android 14+), l'avertissement correspondant est affiché
+ * (le lancement reprend avec [emulatorClosed] = true).
  */
-fun RomCloudApp.play(activity: Activity, system: GameSystem, game: Game): String? {
+fun RomCloudApp.play(activity: Activity, system: GameSystem, game: Game, emulatorClosed: Boolean = false): String? {
     val file = library.fileFor(system, game)
+    val player = launcher.selectedPlayer(system, game.fileName)
+    if (!emulatorClosed) {
+        launcher.closeWarningPackage(player)?.let { pkg ->
+            closeEmulatorPrompt.value = CloseEmulatorPrompt(system, game, pkg, player?.name ?: pkg)
+            return null
+        }
+    }
     return try {
-        launcher.launch(activity, system, file, launcher.selectedPlayer(system, game.fileName))
+        launcher.launch(activity, system, file, player)
         null
     } catch (e: MissingEmulatorException) {
         missingEmulator.value = e.emulator
@@ -174,6 +184,7 @@ class GameDetailViewModel(
         val players: List<Pair<Player, Boolean>> = emptyList(), // (émulateur, installé ?)
         val selectedPlayer: Player? = null,
         val localPath: String? = null,
+        val launchCommand: String? = null,
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -202,12 +213,15 @@ class GameDetailViewModel(
                 app.library.isDownloaded(system, game) to
                     app.launcher.compatiblePlayers(system, game.fileName).map { it to app.launcher.isInstalled(it) }
             }
+            val selected = app.launcher.selectedPlayer(system, game.fileName)
+            val file = app.library.fileFor(system, game)
             _state.update {
                 it.copy(
                     downloaded = downloaded,
                     players = players,
-                    selectedPlayer = app.launcher.selectedPlayer(system, game.fileName),
-                    localPath = app.library.fileFor(system, game).absolutePath,
+                    selectedPlayer = selected,
+                    localPath = file.absolutePath,
+                    launchCommand = selected?.let { p -> app.launcher.describe(p, file) },
                 )
             }
         }
@@ -227,6 +241,7 @@ class GameDetailViewModel(
     fun selectPlayer(player: Player) {
         app.settings.setPreferredPlayer(systemId, player.uniqueId)
         _state.update { it.copy(selectedPlayer = player) }
+        refreshLocal()
     }
 
     fun download() {
