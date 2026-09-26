@@ -50,9 +50,14 @@ data class Game(
     val rating: Double? = null,
     val hasBoxart: Boolean = false,
     val hasScreenshot: Boolean = false,
+    val addedAt: String = "",
     val updatedAt: String = "",
 ) {
     val year: String? get() = releaseDate?.take(4)?.takeIf { it.all(Char::isDigit) }
+
+    /** Premier genre (« Plateforme, Action » -> « Plateforme »), pour les rangées du carrousel. */
+    val mainGenre: String?
+        get() = genre?.split(',', '/', ';')?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
 }
 
 /** Données chargées, avec indication si elles proviennent du cache hors ligne. */

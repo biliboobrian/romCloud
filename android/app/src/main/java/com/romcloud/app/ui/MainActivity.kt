@@ -146,7 +146,7 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
             val vm = viewModel { GamesViewModel(app, systemId) }
             GamesScreen(
                 viewModel = vm,
-                mediaUrl = { app.api.mediaUrl(it, "boxart") },
+                mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
                 snackbar = snackbar,
                 autoLaunch = app.autoLaunch,
                 onBack = { nav.popBackStack() },
