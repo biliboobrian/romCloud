@@ -50,6 +50,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.RetroArchSafMode
@@ -133,6 +134,20 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
             }
             testResult?.let { (ok, msg) ->
                 Text(msg, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            }
+
+            Text("Affichage", style = MaterialTheme.typography.titleMedium)
+            val fullscreen by app.settings.fullscreen.collectAsStateWithLifecycle()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Plein écran", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Masque la barre d’état et les boutons de navigation. Glissez depuis le bord de l’écran pour les afficher.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = fullscreen, onCheckedChange = app.settings::setFullscreen)
             }
 
             Text("Émulateurs", style = MaterialTheme.typography.titleMedium)
