@@ -22,6 +22,7 @@ import {
 import { SCRAPE_SOURCES, saveCustomMedia, scrapeGame } from './scraper/index.js';
 import {
   createSystem,
+  daijishouPlayers,
   deleteSystem,
   deleteSystemImage,
   importDaijishouPlatform,
@@ -107,6 +108,11 @@ api.post('/scan', (req, res) => res.json(scanAll()));
 
 // ---- Plateformes Daijishou ----
 api.get('/daijishou/platforms', h(async (req, res) => res.json(await listDaijishouPlatforms())));
+
+api.get(
+  '/daijishou/platforms/:filename/players',
+  h(async (req, res) => res.json(await daijishouPlayers(req.params.filename))),
+);
 
 api.post(
   '/daijishou/import',

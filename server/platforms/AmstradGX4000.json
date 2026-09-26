@@ -1,0 +1,54 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Amstrad GX4000",
+    "uniqueId": "gx4000",
+    "shortname": "gx4000",
+    "description": "Console de salon Amstrad (1990), basée sur le CPC Plus. Jeux sur cartouches (.cpr).",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [
+      "LIBRETRO:Amstrad - GX4000"
+    ],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "gx4000 - RetroArch 64 - cap32",
+      "uniqueId": "gx4000.ra64.cap32",
+      "description": "Supported extensions: cpr, zip.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:cpr|zip)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO cap32\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "gx4000 - RetroArch 32 - cap32",
+      "uniqueId": "gx4000.ra32.cap32",
+      "description": "Supported extensions: cpr, zip.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:cpr|zip)$",
+      "amStartArguments": "-n com.retroarch.ra32/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO cap32\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.ra32/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "gx4000 - RetroArch - cap32",
+      "uniqueId": "gx4000.ra.cap32",
+      "description": "Supported extensions: cpr, zip.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:cpr|zip)$",
+      "amStartArguments": "-n com.retroarch/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO cap32\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

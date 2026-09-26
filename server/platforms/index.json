@@ -1,0 +1,12 @@
+{
+  "description": "Plateformes fournies par RomCloud, absentes du catalogue Daijishou (même format).",
+  "platformList": [
+    {
+      "filename": "AmstradGX4000.json",
+      "platformName": "Amstrad GX4000",
+      "platformShortname": "gx4000",
+      "platformUniqueId": "gx4000",
+      "revisionNumber": 1
+    }
+  ]
+}

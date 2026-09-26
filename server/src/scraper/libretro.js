@@ -65,11 +65,12 @@ export async function scrapeLibretro({ system, fileName }) {
   if (!system.libretroName) throw new Error('Nom de système Libretro non configuré');
   const box = await findImage(system.libretroName, 'Named_Boxarts', fileName);
   const snap = await findImage(system.libretroName, 'Named_Snaps', fileName);
-  const title = box || snap ? null : await findImage(system.libretroName, 'Named_Titles', fileName);
+  // Écran-titre : couverture de repli quand la base n'a pas de jaquette (ex. Amstrad - GX4000).
+  const title = box ? null : await findImage(system.libretroName, 'Named_Titles', fileName);
   if (!box && !snap && !title) return null;
   return {
     media: {
-      boxart: box?.url ?? title?.url,
+      boxart: box?.url ?? title?.url ?? snap?.url,
       screenshot: snap?.url ?? title?.url,
     },
   };

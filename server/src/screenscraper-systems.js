@@ -33,6 +33,7 @@ export const SCREENSCRAPER_SYSTEM_IDS = {
   genesis: 1,
   genesismsu: 1,
   gw: 52,
+  gx4000: 87,
   intellivision: 115,
   jaguar: 27,
   jaguarcd: 171,

@@ -189,10 +189,22 @@ export function deleteSystem(id, { deleteFiles = false } = {}) {
 
 // ---------------------------------------------------------------------------
 // Import des plateformes Daijishou (https://github.com/TapiocaFox/Daijishou/tree/main/platforms)
+// et des plateformes fournies par RomCloud (server/platforms/, même format), pour les
+// systèmes absents du catalogue Daijishou (ex. Amstrad GX4000).
 // ---------------------------------------------------------------------------
 
 let indexCache = null;
 let indexCacheAt = 0;
+
+const LOCAL_PLATFORMS_DIR = path.join(config.rootDir, 'platforms');
+
+function localPlatformList() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(LOCAL_PLATFORMS_DIR, 'index.json'), 'utf8')).platformList || [];
+  } catch {
+    return [];
+  }
+}
 
 async function fetchJson(url) {
   const res = await fetch(url, { headers: { 'User-Agent': 'romcloud-server' } });
@@ -201,25 +213,41 @@ async function fetchJson(url) {
 }
 
 export async function listDaijishouPlatforms() {
+  const local = localPlatformList();
   if (!indexCache || Date.now() - indexCacheAt > 3600_000) {
-    const index = await fetchJson(new URL('index.json', config.daijishouBaseUrl).href);
-    indexCache = index.platformList;
-    indexCacheAt = Date.now();
+    try {
+      const index = await fetchJson(new URL('index.json', config.daijishouBaseUrl).href);
+      indexCache = index.platformList;
+      indexCacheAt = Date.now();
+    } catch (err) {
+      // Sans accès à GitHub, le catalogue RomCloud reste disponible.
+      if (!local.length) throw err;
+      indexCache = null;
+    }
   }
+  const daijishou = indexCache || [];
+  const daijishouIds = new Set(daijishou.map((p) => p.platformUniqueId));
+  const entries = [
+    ...daijishou.map((p) => ({ ...p, source: 'daijishou' })),
+    // Une plateforme ajoutée plus tard au catalogue Daijishou prend le pas sur la version RomCloud.
+    ...local.filter((p) => !daijishouIds.has(p.platformUniqueId)).map((p) => ({ ...p, source: 'romcloud' })),
+  ].sort((a, b) => a.platformName.localeCompare(b.platformName, 'fr'));
+
   const existing = new Map(listSystems().map((s) => [s.id, s]));
-  return indexCache.map((p) => ({
+  return entries.map((p) => ({
     filename: p.filename,
     name: p.platformName,
     shortname: p.platformShortname,
     uniqueId: p.platformUniqueId,
     revision: p.revisionNumber,
+    source: p.source,
     imported: existing.has(p.platformUniqueId),
     importedRevision: existing.get(p.platformUniqueId)?.sourceRevision ?? null,
   }));
 }
 
 /** Transforme un fichier plateforme Daijishou en données de système. */
-export function platformToSystem(json) {
+export function platformToSystem(json, source = 'daijishou') {
   const p = json.platform;
   if (!p?.uniqueId) throw new HttpError(400, 'Fichier plateforme Daijishou invalide');
   const libretro = (p.scraperSourceList || []).find((s) => s.startsWith('LIBRETRO:'));
@@ -239,24 +267,40 @@ export function platformToSystem(json) {
       amStartArguments: pl.amStartArguments,
       killPackageProcesses: Boolean(pl.killPackageProcesses),
     })),
-    source: 'daijishou',
+    source,
     sourceRevision: json.revisionNumber ?? null,
   };
 }
 
+/** Charge une plateforme : catalogue RomCloud (fichier local) en priorité, sinon Daijishou. */
+async function fetchPlatform(filename) {
+  if (!filename || !/^[\w&.' -]+\.json$/.test(filename)) throw new HttpError(400, 'Nom de fichier invalide');
+  if (localPlatformList().some((p) => p.filename === filename)) {
+    const json = JSON.parse(fs.readFileSync(path.join(LOCAL_PLATFORMS_DIR, filename), 'utf8'));
+    return { json, source: 'romcloud' };
+  }
+  const json = await fetchJson(new URL(encodeURIComponent(filename), config.daijishouBaseUrl).href);
+  return { json, source: 'daijishou' };
+}
+
+/** Émulateurs d'une plateforme du catalogue (pour les copier vers un autre système). */
+export async function daijishouPlayers(filename) {
+  const { json, source } = await fetchPlatform(filename);
+  return platformToSystem(json, source).players;
+}
+
 /** Importe (ou met à jour) une plateforme à partir de son nom de fichier ou de son JSON brut. */
 export async function importDaijishouPlatform({ filename, json }) {
-  if (!json) {
-    if (!filename || !/^[\w&.' -]+\.json$/.test(filename)) throw new HttpError(400, 'Nom de fichier invalide');
-    json = await fetchJson(new URL(encodeURIComponent(filename), config.daijishouBaseUrl).href);
-  }
-  const data = platformToSystem(json);
+  let source = 'daijishou';
+  if (!json) ({ json, source } = await fetchPlatform(filename));
+  const data = platformToSystem(json, source);
   const existing = getSystem(data.id);
   if (existing) {
     // Mise à jour : on conserve le dossier et les réglages de scraping saisis à la main.
     updateSystem(data.id, { name: data.name, shortname: data.shortname, filenameRegex: data.filenameRegex, players: data.players });
-    db.prepare('UPDATE systems SET source = ?, source_revision = ? WHERE id = ?').run('daijishou', data.sourceRevision, data.id);
+    db.prepare('UPDATE systems SET source = ?, source_revision = ? WHERE id = ?').run(source, data.sourceRevision, data.id);
     if (!existing.libretroName && data.libretroName) updateSystem(data.id, { libretroName: data.libretroName });
+    if (!existing.screenscraperId && data.screenscraperId) updateSystem(data.id, { screenscraperId: data.screenscraperId });
     return getSystem(data.id);
   }
   let folder = data.folder;
