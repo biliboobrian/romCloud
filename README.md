@@ -107,11 +107,12 @@ Avec Docker : voir [Installation](#serveur--docker-hub). Pour compiler l’image
 
 ### Utilisation de l'interface web
 
-1. **Ajouter un système** → onglet *Catalogue Daijishou* : cochez les plateformes (SNES, PSX, GBA…) et importez-les. Elles arrivent avec leurs émulateurs, le filtre d'extensions, le nom Libretro et l'identifiant ScreenScraper. L'onglet *Personnalisé* permet de créer un système à la main.
+1. **Ajouter un système** → onglet *Catalogue Daijishou* : cochez les plateformes (SNES, PSX, GBA…) et importez-les. Le catalogue est complété par des plateformes fournies par RomCloud, marquées « RomCloud » (dossier [`server/platforms/`](server/platforms/), même format) : **Amstrad GX4000** (cartouches `.cpr`, cœur RetroArch `cap32`), distincte de l’Amstrad CPC. Elles arrivent avec leurs émulateurs, le filtre d'extensions, le nom Libretro et l'identifiant ScreenScraper. L'onglet *Personnalisé* permet de créer un système à la main.
 2. **Ajouter des ROMs** : glisser-déposer dans la page (case « scraper automatiquement » cochée par défaut), ou copier les fichiers dans `data/roms/<dossier du système>/` puis cliquer sur **Rescanner**.
 3. **Scraper** : bouton *Scraper les jeux* (toute la liste, en tâche de fond) ou depuis la fiche d'un jeu (ScreenScraper / Libretro au choix). Titre, description, date, genre, éditeur, jaquette et capture sont enregistrés sur le serveur et renvoyés à l'application.
 4. **Image du système** : dans *Réglages* du système, *Choisir une image* (PNG, JPEG, WebP ou GIF, 10 Mo max.) — logo ou photo de la console, affichée sur la carte du système dans l’application.
-5. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
+5. **Émulateurs d’un système** : dans *Réglages → Émulateurs*, retirez les modèles inutiles ou ajoutez ceux d’un autre système (du serveur ou du catalogue Daijishou). Utile pour un système créé à la main (onglet *Personnalisé*).
+6. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
 
 ### Configuration (`.env`)
 
@@ -216,4 +217,5 @@ Les Releases sont celles qu’Obtainium surveille (voir [Installation](#applicat
 - Un jeu = un fichier. Pour les jeux multi-fichiers (`.cue` + `.bin`), privilégiez `.chd` ou `.m3u` + fichiers, ou une archive `.zip` si le cœur la supporte.
 - Les placeholders `{tags.*}` de Daijishou (Steam, Vita, PS3…) ne sont pas gérés : ces plateformes ne sont pas pertinentes pour des ROMs téléchargées.
 - Les modèles utilisant `{file.uri}` reçoivent une URI `content://` de RomCloud au lieu d'une URI SAF comme dans Daijishou ; la plupart des émulateurs l'acceptent, certains peuvent exiger `{file.path}`.
+- La base Libretro ne contient presque aucune image pour l’Amstrad GX4000 (pas de jaquettes) : configurez ScreenScraper pour ce système. À défaut, l’écran-titre ou la capture Libretro sert de couverture.
 - Les identifiants ScreenScraper de quelques systèmes rares ne sont pas pré-remplis : on peut les saisir dans *Réglages* du système.

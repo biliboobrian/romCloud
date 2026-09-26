@@ -231,7 +231,7 @@ function renderPlatforms() {
     row.className = 'platform-row';
     row.innerHTML = `<input type="checkbox" ${state.selectedPlatforms.has(p.filename) ? 'checked' : ''}>
       <span>${escapeHtml(p.name)}</span>
-      <span class="tag">${p.imported ? (p.importedRevision !== null && p.importedRevision < p.revision ? 'mise à jour dispo' : 'déjà importé') : escapeHtml(p.uniqueId)}</span>`;
+      <span class="tag">${p.source === 'romcloud' ? 'RomCloud · ' : ''}${p.imported ? (p.importedRevision !== null && p.importedRevision < p.revision ? 'mise à jour dispo' : 'déjà importé') : escapeHtml(p.uniqueId)}</span>`;
     $('input', row).onchange = (e) => {
       if (e.target.checked) state.selectedPlatforms.add(p.filename);
       else state.selectedPlatforms.delete(p.filename);
@@ -283,10 +283,87 @@ function openSystemSettings() {
   }
   renderSystemImage(s);
   $('#sysFolder').textContent = `Identifiant : ${s.id} — dossier des ROMs : roms/${s.folder}`;
-  $('#sysPlayers').innerHTML = s.players.length
-    ? s.players.map((p) => `<li><strong>${escapeHtml(p.name)}</strong><br><span class="mono">${escapeHtml(p.amStartArguments)}</span></li>`).join('')
-    : '<li class="muted">Aucun (système personnalisé). L’application Android ne pourra lancer les jeux que via « Ouvrir avec ».</li>';
+  renderPlayers(s);
+  // Sans émulateur, la section est ouverte d'emblée pour inviter à en ajouter.
+  $('#sysPlayersBox').open = s.players.length === 0;
+  fillCopyPlayersSelect(s);
   $('#sysDialog').showModal();
+}
+
+function renderPlayers(s) {
+  $('#sysPlayersSummary').textContent = `Émulateurs (${s.players.length})`;
+  const list = $('#sysPlayers');
+  list.innerHTML = '';
+  if (!s.players.length) {
+    list.innerHTML = '<li class="muted">Aucun : l’application Android ne pourra lancer les jeux que via « Ouvrir avec ». Ajoutez les émulateurs d’un système proche ci-dessous.</li>';
+    return;
+  }
+  s.players.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<div><strong>${escapeHtml(p.name)}</strong>${p.acceptedFilenameRegex ? ` <span class="muted mono">${escapeHtml(p.acceptedFilenameRegex)}</span>` : ''}<br><span class="mono">${escapeHtml(p.amStartArguments)}</span></div>`;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn small ghost danger remove';
+    btn.textContent = 'Retirer';
+    btn.onclick = () => savePlayers(s.players.filter((_, j) => j !== i), 'Émulateur retiré');
+    li.append(btn);
+    list.append(li);
+  });
+}
+
+async function fillCopyPlayersSelect(s) {
+  const select = $('#copyPlayersFrom');
+  const local = state.systems.filter((o) => o.id !== s.id && o.players.length);
+  const options = ['<option value="">Choisir un système…</option>'];
+  if (local.length) {
+    options.push('<optgroup label="Systèmes du serveur">');
+    for (const o of local) options.push(`<option value="sys:${escapeHtml(o.id)}">${escapeHtml(o.name)} (${o.players.length})</option>`);
+    options.push('</optgroup>');
+  }
+  select.innerHTML = options.join('');
+  if (!state.platforms) {
+    try {
+      state.platforms = await api('/daijishou/platforms');
+    } catch {
+      return; // catalogue indisponible : seuls les systèmes du serveur sont proposés
+    }
+  }
+  const group = document.createElement('optgroup');
+  group.label = 'Catalogue Daijishou';
+  for (const p of state.platforms) {
+    const opt = document.createElement('option');
+    opt.value = `dj:${p.filename}`;
+    opt.textContent = p.name;
+    group.append(opt);
+  }
+  select.append(group);
+}
+
+async function copyPlayers() {
+  const value = $('#copyPlayersFrom').value;
+  if (!value) return;
+  const btn = $('#copyPlayersBtn');
+  btn.disabled = true;
+  await guard(async () => {
+    const source = value.startsWith('sys:')
+      ? state.systems.find((o) => o.id === value.slice(4))?.players || []
+      : await api(`/daijishou/platforms/${encodeURIComponent(value.slice(3))}/players`);
+    const current = state.current.players;
+    const known = new Set(current.map((p) => p.uniqueId));
+    const added = source.filter((p) => !known.has(p.uniqueId));
+    if (!added.length) return toast('Ces émulateurs sont déjà présents');
+    await savePlayers([...current, ...added], `${added.length} émulateur(s) ajouté(s)`);
+  });
+  btn.disabled = false;
+}
+
+async function savePlayers(players, message) {
+  await guard(async () => {
+    state.current = await api(`/systems/${encodeURIComponent(state.current.id)}`, { method: 'PUT', body: { players } });
+    renderPlayers(state.current);
+    toast(message);
+    await loadSystems();
+  });
 }
 
 function renderSystemImage(s) {
@@ -578,6 +655,7 @@ function bindEvents() {
     e.target.value = '';
   };
   $('#sysImageDelete').onclick = deleteSystemImage;
+  $('#copyPlayersBtn').onclick = copyPlayers;
   $('#scanSysBtn').onclick = () => guard(async () => {
     const r = await api(`/systems/${encodeURIComponent(state.current.id)}/scan`, { method: 'POST' });
     toast(`${r.added.length} ajouté(s), ${r.updated} modifié(s), ${r.removed} retiré(s)`);

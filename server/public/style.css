@@ -179,6 +179,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .system-head { align-items: center; }
 .system-head .head-image { height: 56px; max-width: 120px; object-fit: contain; margin-right: 14px; }
 .system-title { display: flex; align-items: center; }
+.players li { display: flex; gap: 8px; align-items: flex-start; }
+.players li > div { flex: 1; min-width: 0; }
+.players .remove { flex-shrink: 0; }
+.copy-players { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; font-size: 12px; }
+.copy-players .row { align-items: center; }
 .players { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
 .players li { margin-bottom: 4px; }
 

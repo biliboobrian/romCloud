@@ -60,10 +60,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
     /** Émulateurs compatibles avec ce fichier (regex acceptedFilenameRegex du modèle). */
     fun compatiblePlayers(system: GameSystem, fileName: String): List<Player> =
-        system.players.filter { player ->
-            val regex = player.acceptedFilenameRegex ?: return@filter true
-            runCatching { Regex(regex).matches(fileName) }.getOrDefault(true)
-        }
+        PlayerFilter.compatible(system.players, fileName)
 
     /** L'émulateur choisi par l'utilisateur s'il est compatible, sinon le premier compatible. */
     fun selectedPlayer(system: GameSystem, fileName: String): Player? {

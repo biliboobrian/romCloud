@@ -88,7 +88,7 @@
       <button class="tab" data-tab="custom">Personnalisé</button>
     </div>
     <div class="tab-panel" id="tab-daijishou">
-      <p class="muted">Plateformes et modèles d’émulateurs issus de <a href="https://github.com/TapiocaFox/Daijishou/tree/main/platforms" target="_blank" rel="noopener">github.com/TapiocaFox/Daijishou</a>.</p>
+      <p class="muted">Plateformes et modèles d’émulateurs issus de <a href="https://github.com/TapiocaFox/Daijishou/tree/main/platforms" target="_blank" rel="noopener">github.com/TapiocaFox/Daijishou</a>, complétés par RomCloud (marqués « RomCloud », ex. Amstrad GX4000).</p>
       <input type="search" id="platformSearch" placeholder="Filtrer…">
       <div id="platformList" class="platform-list"><p class="muted">Chargement…</p></div>
       <div class="dialog-foot">
@@ -130,9 +130,16 @@
       <label>Nom Libretro <input name="libretroName"></label>
       <label>ID système ScreenScraper <input name="screenscraperId" type="number" min="1"></label>
       <p class="muted" id="sysFolder"></p>
-      <details>
-        <summary>Émulateurs (modèles « am start »)</summary>
+      <details id="sysPlayersBox">
+        <summary id="sysPlayersSummary">Émulateurs (modèles « am start »)</summary>
         <ul id="sysPlayers" class="players"></ul>
+        <div class="copy-players">
+          <span class="muted">Ajouter les émulateurs d’un autre système (ex. Amstrad CPC → GX4000) :</span>
+          <div class="row">
+            <select id="copyPlayersFrom"><option value="">Chargement…</option></select>
+            <button type="button" class="btn small" id="copyPlayersBtn">Ajouter</button>
+          </div>
+        </div>
       </details>
       <div class="dialog-foot split">
         <button type="button" class="btn danger" id="deleteSysBtn">Supprimer…</button>
