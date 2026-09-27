@@ -149,7 +149,8 @@ L’interface est disponible en **français** et en **anglais** : menu de langue
 4. **Image du système** : dans *Réglages* du système, *Choisir une image* (PNG, JPEG, WebP ou GIF, 10 Mo max.) — logo ou photo de la console, affichée sur la carte du système dans l’application.
 5. **Émulateurs d’un système** : dans *Réglages → Émulateurs*, retirez les modèles inutiles ou ajoutez ceux d’un autre système (du serveur ou du catalogue Daijishou). Utile pour un système créé à la main (onglet *Personnalisé*).
 6. **Doublons** (bouton dans la vue d’un système) : liste les **fichiers identiques** (même contenu sous plusieurs noms, vérifié par MD5 — les copies sont pré-cochées) et les **jeux en plusieurs versions** (régions, révisions : à cocher soi-même). Dans chaque groupe, RomCloud propose le fichier à conserver : sans marque de copie « (2) », pas de démo/bêta/dump défectueux, région préférée (`SCRAPE_REGIONS`), révision la plus récente, puis déjà scrapé. Les fichiers de plus de `HASH_MAX_MB` ne sont comparés que par leur titre.
-7. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
+7. **BIOS** (bouton dans la vue d’un système) : liste les BIOS **attendus par les cœurs RetroArch** des émulateurs du système (fiches [libretro-core-info](https://github.com/libretro/libretro-core-info) : chemin, requis ou facultatif, MD5 de référence) et les fichiers envoyés, avec contrôle du MD5. Glissez les fichiers via *Ajouter des BIOS* : un fichier nommé comme un BIOS attendu est rangé dans le bon sous-dossier (ex. `dc_boot.bin` → `dc/dc_boot.bin`), ou utilisez *Envoyer…* sur la ligne d’un BIOS. Les fichiers sont stockés dans `DATA_DIR/bios/<système>/`. Les applications proposent ensuite de les télécharger avec le jeu.
+8. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
 
 ### Configuration (`.env`)
 
@@ -181,6 +182,9 @@ Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <API_KEY>` (
 | GET | `/api/systems/:id/duplicates` | Groupes `identical` / `similar` avec le fichier proposé (`keepId`) |
 | POST | `/api/systems/:id/duplicates/delete` | `{ "ids": [12, 15] }` : supprime fichiers, fiches et images |
 | POST | `/api/systems/:id/scan` · `/api/scan` | Synchroniser avec les dossiers |
+| GET | `/api/systems/:id/bios` | BIOS présents (`files`, avec `md5Status`) et attendus par les cœurs (`expected`) ; `?catalog=0` : fichiers seuls |
+| POST | `/api/systems/:id/bios` | Envoi multipart `files[]` (champ `path` facultatif pour imposer le chemin, ex. `dc/dc_boot.bin`) |
+| GET/DELETE | `/api/bios/:id[/file]` | Téléchargement (Range) / suppression d’un BIOS |
 | GET | `/api/search?q=mots&limit=300` | Recherche dans tous les systèmes (chaque mot dans le titre ou le nom de fichier) |
 | GET | `/api/systems/:id/games` | Liste des jeux (`?q=` recherche) |
 | POST | `/api/systems/:id/games` | Envoi multipart `files[]` (`?scrape=1`) |
@@ -260,6 +264,7 @@ Les Releases sont celles qu’Obtainium surveille (voir [Installation](#applicat
   - ⚠ rouge : échec du dernier téléchargement
 - **Appui sur un jeu** : s'il n'est pas téléchargé, une fenêtre demande de le télécharger d'abord (option « Lancer le jeu une fois téléchargé ») ; s'il l'est, il se lance directement. **Appui long / ⓘ** : fiche détaillée (description, capture, choix de l'émulateur, suppression locale).
 - Téléchargements en arrière-plan avec notification, reprise automatique d'un fichier partiel (`.part`).
+- **BIOS** : si le serveur a des BIOS pour le système, la fenêtre de téléchargement propose *Télécharger aussi les BIOS manquants* (cochée par défaut). Pour un jeu déjà présent, RomCloud propose de télécharger les BIOS absents avant de jouer (ou *Jouer quand même*), et la fiche du jeu indique leur état avec un bouton *Télécharger les BIOS*. Ils sont copiés dans le **dossier des BIOS** (*Paramètres*), sous-dossiers compris : choisissez le dossier `system` de RetroArch (raccourcis *RetroArch (Play Store)* → `Android/media/com.retroarch.aarch64/RetroArch/system`, *RetroArch (site)* → `RetroArch/system`, ou `RomCloud/bios`). Sur Windows, le dossier par défaut est `system` à côté de `retroarch.exe`.
 - **Hors ligne** : les listes sont mises en cache ; les jeux déjà téléchargés restent jouables.
 - **Langue** : *Paramètres → Langue* : Système, Français ou English (téléphone et TV), appliquée immédiatement. Les messages du serveur suivent la langue choisie.
 - **Lancement** : les modèles Daijishou sont interprétés (`-n`, `-a`, `-d`, `-t`, `-c`, `-e/--es`, `--ez`, `--ei`, `--esa`, `-f`, `--activity-*`…) avec les placeholders `{file.path}`, `{file.uri}` (via FileProvider), `{file.mime}`. Pour un système sans modèle, le sélecteur « Ouvrir avec » d'Android est proposé.

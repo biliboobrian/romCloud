@@ -26,8 +26,11 @@ function rowToSystem(row, stats) {
     createdAt: row.created_at,
     gameCount: stats?.game_count ?? 0,
     totalSize: stats?.total_size ?? 0,
+    biosCount: stats?.bios_count ?? 0,
   };
 }
+
+const biosCount = (id) => db.prepare('SELECT COUNT(*) AS n FROM bios WHERE system_id = ?').get(id).n;
 
 export function listSystems() {
   const stats = new Map(
@@ -39,7 +42,7 @@ export function listSystems() {
   return db
     .prepare('SELECT * FROM systems ORDER BY name COLLATE NOCASE')
     .all()
-    .map((r) => rowToSystem(r, stats.get(r.id)));
+    .map((r) => rowToSystem(r, { ...stats.get(r.id), bios_count: biosCount(r.id) }));
 }
 
 export function getSystem(id) {
@@ -48,7 +51,7 @@ export function getSystem(id) {
   const stats = db
     .prepare('SELECT COUNT(*) AS game_count, SUM(size) AS total_size FROM games WHERE system_id = ?')
     .get(id);
-  return rowToSystem(row, stats);
+  return rowToSystem(row, { ...stats, bios_count: biosCount(id) });
 }
 
 export function requireSystem(id) {
@@ -184,6 +187,7 @@ export function deleteSystem(id, { deleteFiles = false } = {}) {
   const gameIds = db.prepare('SELECT id FROM games WHERE system_id = ?').all(id).map((r) => r.id);
   db.prepare('DELETE FROM systems WHERE id = ?').run(id);
   for (const gid of gameIds) fs.rmSync(path.join(config.mediaDir, String(gid)), { recursive: true, force: true });
+  fs.rmSync(path.join(config.dataDir, 'bios', system.id), { recursive: true, force: true });
   if (deleteFiles) fs.rmSync(systemDir(system), { recursive: true, force: true });
 }
 

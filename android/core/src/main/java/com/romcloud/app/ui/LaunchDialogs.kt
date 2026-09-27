@@ -55,6 +55,8 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                     val resumed = activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
                     if (app.autoLaunch.remove(event.game.id) && resumed) {
                         app.play(activity, event.system, event.game)?.let { snackbar.showSnackbar(it) }
+                    } else if (!event.romIncluded) {
+                        launch { snackbar.showSnackbar(I18n.get(R.string.bios_downloaded_snackbar, event.system.name)) }
                     } else {
                         launch {
                             val result = snackbar.showSnackbar(

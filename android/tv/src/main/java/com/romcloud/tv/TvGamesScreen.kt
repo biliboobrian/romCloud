@@ -78,6 +78,7 @@ fun TvGamesScreen(
     var focusedRow by rememberSaveable { mutableStateOf<String?>(null) }
     var askDownload by remember { mutableStateOf<Game?>(null) }
     var askCancel by remember { mutableStateOf<Game?>(null) }
+    var askBios by remember { mutableStateOf<Game?>(null) }
     // Guide RetroArch ouvert après confirmation d'un téléchargement (jeu, guide, lancer ensuite ?)
     var postDownloadHelp by remember { mutableStateOf<Triple<Game, RetroArchInfo, Boolean>?>(null) }
     var searching by remember { mutableStateOf(false) }
@@ -96,7 +97,8 @@ fun TvGamesScreen(
 
     fun onClick(game: Game) {
         when (statusOf(game)) {
-            LocalStatus.Downloaded -> viewModel.play(activity, game)?.let(onMessage)
+            LocalStatus.Downloaded ->
+                if (state.missingBios.isNotEmpty()) askBios = game else viewModel.play(activity, game)?.let(onMessage)
             is LocalStatus.Downloading -> askCancel = game
             else -> askDownload = game
         }
@@ -188,11 +190,12 @@ fun TvGamesScreen(
         DownloadDialog(
             game = game,
             error = (statusOf(game) as? LocalStatus.Error)?.message,
-            onDownload = { launchAfter ->
+            missingBios = state.missingBios,
+            onDownload = { launchAfter, withBios ->
                 val help = viewModel.retroArchHelpFor(game)
                 // Avec le guide ouvert, le lancement attend sa fermeture (voir plus bas).
                 if (launchAfter && help == null) autoLaunch += game.id else autoLaunch -= game.id
-                viewModel.download(game)
+                viewModel.download(game, withBios)
                 askDownload = null
                 if (help != null) postDownloadHelp = Triple(game, help, launchAfter)
             },
@@ -216,6 +219,22 @@ fun TvGamesScreen(
             },
             onMessage = onMessage,
             onDontShowAgainChange = { viewModel.setRetroArchHelpDismissed(info.packageName, it) },
+        )
+    }
+
+    askBios?.let { game ->
+        MissingBiosDialog(
+            missingBios = state.missingBios,
+            onDownloadAndPlay = {
+                askBios = null
+                autoLaunch += game.id
+                viewModel.downloadBios(game)
+            },
+            onPlay = {
+                askBios = null
+                viewModel.play(activity, game)?.let(onMessage)
+            },
+            onDismiss = { askBios = null },
         )
     }
 

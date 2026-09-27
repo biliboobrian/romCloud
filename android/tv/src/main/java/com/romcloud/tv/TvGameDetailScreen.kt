@@ -143,6 +143,19 @@ fun TvGameDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // BIOS du système : téléchargés avec le jeu, ou via le bouton si le jeu est déjà présent.
+                if (state.bios.isNotEmpty() && download !is DownloadState.Running) {
+                    val missing = state.missingBios
+                    if (missing.isEmpty()) {
+                        Text(stringResource(R.string.bios_present, state.bios.size), color = DownloadedGreen, style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        Text(
+                            stringResource(R.string.bios_missing, missing.size, formatSize(missing.sumOf { it.size })),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
 
                 // Actions
                 Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
@@ -152,6 +165,9 @@ fun TvGameDetailScreen(
                             ActionButton(stringResource(R.string.tv_cancel_percent, (download.progress * 100).toInt()), Icons.Filled.Close, primary) { viewModel.cancel() }
                         state.downloaded -> {
                             ActionButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, primary) { viewModel.play(activity)?.let(onMessage) }
+                            if (state.missingBios.isNotEmpty()) {
+                                SecondaryButton(stringResource(R.string.action_download_bios), Icons.Filled.CloudDownload) { viewModel.downloadBios() }
+                            }
                         }
                         else -> ActionButton(
                             if (download is DownloadState.Failed) stringResource(R.string.action_retry)

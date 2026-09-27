@@ -177,6 +177,26 @@ fun GameDetailScreen(
                 }
             }
 
+            // ---- BIOS du système (téléchargés avec le jeu, ou séparément s'il est déjà présent) ----
+            if (state.bios.isNotEmpty() && downloads[game.id] !is DownloadState.Running) {
+                val missing = state.missingBios
+                if (missing.isEmpty()) {
+                    Text(stringResource(R.string.bios_present, state.bios.size), color = DownloadedGreen, style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(R.string.bios_missing, missing.size, formatSize(missing.sumOf { it.size })),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (state.downloaded) {
+                            TextButton(onClick = viewModel::downloadBios) { Text(stringResource(R.string.action_download_bios)) }
+                        }
+                    }
+                }
+            }
+
             var showRetroArchHelp by remember { mutableStateOf(false) }
             PlayerSelector(
                 state = state,

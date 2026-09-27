@@ -30,6 +30,16 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         return games.filter { sizes[it.fileName] == it.size }.map { it.id }.toSet()
     }
 
+    /** Emplacement d'un BIOS : <dossier BIOS>/<chemin relatif, sous-dossiers compris>. */
+    fun biosFile(bios: BiosFile) = File(
+        settings.config.value.biosDir,
+        bios.path.split('/').filter { it.isNotEmpty() && it != "." && it != ".." }.joinToString("/"),
+    )
+
+    /** BIOS absents de l'appareil (ou de taille différente). */
+    fun missingBios(files: List<BiosFile>): List<BiosFile> =
+        files.filterNot { biosFile(it).let { f -> f.isFile && f.length() == it.size } }
+
     fun delete(system: GameSystem, game: Game): Boolean = fileFor(system, game).delete()
 
     fun hasStoragePermission(): Boolean =

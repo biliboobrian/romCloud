@@ -36,14 +36,15 @@ sealed interface DownloadState {
 }
 
 sealed interface DownloadEvent {
-    data class Completed(val system: GameSystem, val game: Game) : DownloadEvent
+    /** [romIncluded] = false : seuls les BIOS manquants ont été téléchargés (jeu déjà présent). */
+    data class Completed(val system: GameSystem, val game: Game, val romIncluded: Boolean = true) : DownloadEvent
     data class Failed(val game: Game, val message: String) : DownloadEvent
 }
 
 /**
- * Télécharge les ROMs depuis le serveur vers le dossier local. Un fichier « .part » est
- * utilisé pendant le transfert, ce qui permet de reprendre un téléchargement interrompu
- * (requête HTTP Range).
+ * Télécharge les ROMs (et les BIOS de leur système) depuis le serveur vers les dossiers locaux.
+ * Un fichier « .part » est utilisé pendant le transfert, ce qui permet de reprendre un
+ * téléchargement interrompu (requête HTTP Range).
  */
 class Downloader(
     private val context: Context,
@@ -61,15 +62,29 @@ class Downloader(
 
     val activeCount: Int get() = _states.value.values.count { it is DownloadState.Running }
 
-    fun start(system: GameSystem, game: Game) {
+    /**
+     * Télécharge d'abord les [bios] indiqués (BIOS manquants du système), puis le jeu sauf si
+     * [includeRom] vaut false. La progression affichée couvre l'ensemble.
+     */
+    fun start(system: GameSystem, game: Game, bios: List<BiosFile> = emptyList(), includeRom: Boolean = true) {
         if (jobs[game.id]?.isActive == true) return
-        _states.update { it + (game.id to DownloadState.Running(game.title, 0, game.size)) }
+        if (!includeRom && bios.isEmpty()) return
+        val total = bios.sumOf { it.size } + if (includeRom) game.size else 0
+        _states.update { it + (game.id to DownloadState.Running(game.title, 0, total)) }
         ContextCompat.startForegroundService(context, Intent(context, DownloadService::class.java))
         jobs[game.id] = scope.launch(Dispatchers.IO) {
             try {
-                download(system, game)
+                var done = 0L
+                val progress = { bytes: Long ->
+                    _states.update { it + (game.id to DownloadState.Running(game.title, done + bytes, total)) }
+                }
+                for (file in bios) {
+                    fetch(api.biosFileUrl(file), library.biosFile(file), file.size, progress)
+                    done += file.size
+                }
+                if (includeRom) fetch(api.fileUrl(game), library.fileFor(system, game), game.size, progress)
                 _states.update { it - game.id }
-                _events.emit(DownloadEvent.Completed(system, game))
+                _events.emit(DownloadEvent.Completed(system, game, includeRom))
             } catch (e: CancellationException) {
                 _states.update { it - game.id }
                 throw e
@@ -92,8 +107,8 @@ class Downloader(
         _states.update { if (it[gameId] is DownloadState.Failed) it - gameId else it }
     }
 
-    private suspend fun download(system: GameSystem, game: Game) {
-        val target = library.fileFor(system, game)
+    /** Télécharge [url] vers [target] (via « .part », avec reprise) ; [progress] reçoit les octets reçus. */
+    private suspend fun fetch(url: String, target: File, size: Long, progress: (Long) -> Unit) {
         val dir = target.parentFile ?: throw IOException(I18n.get(R.string.err_invalid_folder))
         if (!dir.exists() && !dir.mkdirs()) {
             throw IOException(
@@ -101,14 +116,14 @@ class Downloader(
                 else I18n.get(R.string.err_storage_permission),
             )
         }
-        val part = File(dir, "${game.fileName}.part")
+        val part = File(dir, "${target.name}.part")
         var offset = if (part.exists()) part.length() else 0L
-        if (offset > game.size) {
+        if (offset > size) {
             part.delete()
             offset = 0
         }
 
-        val request = Request.Builder().url(api.fileUrl(game)).apply {
+        val request = Request.Builder().url(url).apply {
             if (offset > 0) header("Range", "bytes=$offset-")
         }.build()
 
@@ -139,7 +154,7 @@ class Downloader(
                             val now = System.currentTimeMillis()
                             if (now - lastUpdate > 200) {
                                 lastUpdate = now
-                                _states.update { it + (game.id to DownloadState.Running(game.title, bytes, game.size)) }
+                                progress(bytes)
                             }
                         }
                     }
@@ -147,8 +162,8 @@ class Downloader(
             }
         }
 
-        if (part.length() != game.size) {
-            throw IOException(I18n.get(R.string.err_wrong_size, part.length(), game.size))
+        if (part.length() != size) {
+            throw IOException(I18n.get(R.string.err_wrong_size, part.length(), size))
         }
         if (target.exists()) target.delete()
         if (!part.renameTo(target)) throw IOException(I18n.get(R.string.err_rename))

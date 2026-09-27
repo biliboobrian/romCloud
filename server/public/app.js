@@ -122,6 +122,7 @@ function refreshTexts() {
   if (state.current && $('#sysDialog').open) openSystemSettings();
   if (state.editingGame && $('#gameDialog').open) fillGameDialog(state.editingGame);
   if ($('#dupDialog').open) openDuplicates();
+  if ($('#biosDialog').open) openBios();
   guard(async () => {
     await loadSystems();
     await refreshJobs();
@@ -187,6 +188,7 @@ async function showSystem() {
   $('#sysHeadImage').src = systemImageUrl(s);
   const bits = [t('system.meta.games', { n: s.gameCount }), formatSize(s.totalSize), t('system.meta.folder', { folder: s.folder })];
   if (s.players.length) bits.push(t('system.meta.emulators', { n: s.players.length }));
+  if (s.biosCount) bits.push(t('system.meta.bios', { n: s.biosCount }));
   $('#sysMeta').textContent = bits.join(' · ');
   await loadGames();
 }
@@ -681,6 +683,120 @@ async function deleteDuplicates() {
 // Scraping d'un système et tâches
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// BIOS
+// ---------------------------------------------------------------------------
+
+async function openBios() {
+  const s = state.current;
+  if (!s) return;
+  $('#biosTitle').textContent = t('bios.title', { name: s.name });
+  if (!$('#biosDialog').open) {
+    $('#biosSummary').textContent = t('bios.loading');
+    $('#biosContent').innerHTML = '';
+    $('#biosDialog').showModal();
+  }
+  await guard(async () => renderBios(await api(`/systems/${encodeURIComponent(s.id)}/bios`)));
+}
+
+/** « dc/naomi.zip (Naomi Bios from MAME) » -> « Naomi Bios from MAME » (le chemin est déjà affiché). */
+function biosDescription({ path, description }) {
+  if (!description?.startsWith(path)) return description;
+  return description.slice(path.length).trim().replace(/^\((.*)\)$/, '$1');
+}
+
+function renderBios(res) {
+  const bits = [t('bios.files', { n: res.files.length })];
+  if (!res.cores.length) bits.push(t('bios.noCores'));
+  else if (!res.coreInfoAvailable) bits.push(t('bios.noCoreInfo', { cores: res.cores.join(', ') }));
+  else {
+    bits.push(t('bios.cores', { cores: res.cores.join(', ') }));
+    const required = res.expected.filter((e) => e.required && !e.present).length;
+    if (required) bits.push(t('bios.missingRequired', { n: required }));
+  }
+  $('#biosSummary').textContent = bits.join(' · ');
+
+  const box = $('#biosContent');
+  box.innerHTML = '';
+  const section = (title, hint, rows) => {
+    const h = document.createElement('h4');
+    h.textContent = title;
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = hint;
+    const group = document.createElement('div');
+    group.className = 'dup-group';
+    group.append(...rows);
+    box.append(h, p, group);
+  };
+
+  if (res.expected.length) {
+    section(t('bios.expected'), t('bios.expectedHint'), res.expected.map((e) => {
+      const row = document.createElement('div');
+      row.className = 'dup-row bios-row';
+      const tag = `<span class="tag${e.required ? ' req' : ''}">${escapeHtml(t(e.required ? 'bios.required' : 'bios.optional'))}</span>`;
+      const details = [biosDescription(e), e.md5 && `md5 ${e.md5}`].filter(Boolean).join(' · ');
+      row.innerHTML = `<span class="bios-state ${e.present ? 'ok' : 'missing'}">${e.present ? '✓' : '✗'}</span>
+        <span class="name"><code>${escapeHtml(e.path)}</code><br><span class="muted">${escapeHtml(details)}</span></span>
+        ${tag}`;
+      if (!e.present) {
+        const label = document.createElement('label');
+        label.className = 'btn small';
+        label.innerHTML = `<span>${escapeHtml(t('bios.send'))}</span><input type="file" hidden>`;
+        $('input', label).onchange = (ev) => {
+          if (ev.target.files[0]) uploadBios([ev.target.files[0]], e.path);
+        };
+        row.append(label);
+      }
+      return row;
+    }));
+  }
+
+  if (res.files.length) {
+    section(t('bios.onServer'), t('bios.onServerHint'), res.files.map((f) => {
+      const row = document.createElement('div');
+      row.className = 'dup-row bios-row';
+      const md5 = { ok: t('bios.md5ok'), mismatch: t('bios.md5mismatch') }[f.md5Status];
+      row.innerHTML = `<span class="name"><code>${escapeHtml(f.path)}</code><br><span class="muted">${formatSize(f.size)} · md5 ${escapeHtml(f.md5 || '?')}${f.description ? ` · ${escapeHtml(biosDescription(f))}` : ''}</span></span>
+        ${md5 ? `<span class="tag ${f.md5Status}">${escapeHtml(md5)}</span>` : ''}
+        <a class="btn small" href="${withKey(`/api/bios/${f.id}/file`)}" download>${escapeHtml(t('bios.download'))}</a>
+        <button class="btn small danger">${escapeHtml(t('bios.delete'))}</button>`;
+      $('button', row).onclick = () => guard(async () => {
+        if (!confirm(t('bios.confirmDelete', { path: f.path }))) return;
+        await api(`/bios/${f.id}`, { method: 'DELETE' });
+        await openBios();
+        await loadSystems();
+      });
+      return row;
+    }));
+  }
+  if (!res.expected.length && !res.files.length) {
+    const p = document.createElement('p');
+    p.textContent = t('bios.empty');
+    box.append(p);
+  }
+}
+
+/** Envoie des BIOS ; « target » impose le chemin (fichier choisi pour un BIOS attendu précis). */
+function uploadBios(files, target) {
+  const s = state.current;
+  if (!s || !files.length) return;
+  const form = new FormData();
+  if (target) form.append('path', target);
+  for (const f of files) form.append('files', f, f.name);
+  const headers = { 'Accept-Language': getLanguage() };
+  const key = apiKey();
+  if (key) headers.Authorization = `Bearer ${key}`;
+  guard(async () => {
+    const res = await fetch(`/api/systems/${encodeURIComponent(s.id)}/bios`, { method: 'POST', headers, body: form });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || t('errors.http', { status: res.status }));
+    toast(t('bios.uploaded', { n: data.saved.length }));
+    renderBios(data);
+    await loadSystems();
+  });
+}
+
 async function scrapeSystem() {
   const s = state.current;
   const onlyMissing = confirm(t('scrape.onlyMissing'));
@@ -794,6 +910,11 @@ function bindEvents() {
   $('#scrapeSysBtn').onclick = scrapeSystem;
   $('#dupSysBtn').onclick = openDuplicates;
   $('#dupDeleteBtn').onclick = deleteDuplicates;
+  $('#biosSysBtn').onclick = openBios;
+  $('#biosInput').onchange = (e) => {
+    uploadBios([...e.target.files]);
+    e.target.value = '';
+  };
 
   $('#search').oninput = renderGames;
   $('#statusFilter').onchange = renderGames;

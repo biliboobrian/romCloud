@@ -49,6 +49,17 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS games_system ON games(system_id);
+
+  -- BIOS d'un système, stockés dans data/bios/<id du système>/<path>.
+  CREATE TABLE IF NOT EXISTS bios (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    system_id  TEXT NOT NULL REFERENCES systems(id) ON DELETE CASCADE,
+    path       TEXT NOT NULL,
+    size       INTEGER NOT NULL,
+    md5        TEXT,
+    added_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (system_id, path)
+  );
 `);
 
 // Migrations légères pour les bases créées par une version antérieure.

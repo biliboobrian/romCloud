@@ -85,6 +85,8 @@ fun GamesScreen(
     var searching by rememberSaveable { mutableStateOf(false) }
     var askDownload by remember { mutableStateOf<Game?>(null) }
     var askCancel by remember { mutableStateOf<Game?>(null) }
+    // Jeu présent mais BIOS du système absents : proposer de les télécharger avant de jouer.
+    var askBios by remember { mutableStateOf<Game?>(null) }
     // Guide RetroArch ouvert après confirmation d'un téléchargement (jeu, guide, lancer ensuite ?)
     var postDownloadHelp by remember { mutableStateOf<Triple<Game, RetroArchInfo, Boolean>?>(null) }
     // Paysage : les filtres passent dans la barre du haut pour libérer une ligne.
@@ -113,7 +115,9 @@ fun GamesScreen(
 
     fun onClick(game: Game) {
         when (statusOf(game)) {
-            LocalStatus.Downloaded -> viewModel.play(activity, game)?.let { scope.launch { snackbar.showSnackbar(it) } }
+            LocalStatus.Downloaded ->
+                if (state.missingBios.isNotEmpty()) askBios = game
+                else viewModel.play(activity, game)?.let { scope.launch { snackbar.showSnackbar(it) } }
             is LocalStatus.Downloading -> askCancel = game
             else -> askDownload = game
         }
@@ -237,6 +241,8 @@ fun GamesScreen(
 
     askDownload?.let { game ->
         var launchAfter by remember { mutableStateOf(true) }
+        var withBios by remember { mutableStateOf(true) }
+        val missingBios = state.missingBios
         AlertDialog(
             onDismissRequest = { askDownload = null },
             title = { Text(stringResource(R.string.download_title)) },
@@ -254,6 +260,12 @@ fun GamesScreen(
                         Checkbox(checked = launchAfter, onCheckedChange = { launchAfter = it })
                         Text(stringResource(R.string.download_launch_after))
                     }
+                    if (missingBios.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = withBios, onCheckedChange = { withBios = it })
+                            Text(stringResource(R.string.bios_download_too, missingBios.size, formatSize(missingBios.sumOf { it.size })))
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -261,7 +273,7 @@ fun GamesScreen(
                     val help = viewModel.retroArchHelpFor(game)
                     // Avec le guide ouvert, le lancement attend sa fermeture (voir plus bas).
                     if (launchAfter && help == null) autoLaunch += game.id else autoLaunch -= game.id
-                    viewModel.download(game)
+                    viewModel.download(game, withBios)
                     askDownload = null
                     if (help != null) postDownloadHelp = Triple(game, help, launchAfter)
                 }) { Text(stringResource(R.string.action_download)) }
@@ -291,6 +303,30 @@ fun GamesScreen(
             },
             onMessage = { scope.launch { snackbar.showSnackbar(it) } },
             onDontShowAgainChange = { viewModel.setRetroArchHelpDismissed(info.packageName, it) },
+        )
+    }
+
+    askBios?.let { game ->
+        val missingBios = state.missingBios
+        AlertDialog(
+            onDismissRequest = { askBios = null },
+            title = { Text(stringResource(R.string.bios_before_play_title)) },
+            text = {
+                Text(stringResource(R.string.bios_before_play_text, missingBios.size, formatSize(missingBios.sumOf { it.size })))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    askBios = null
+                    autoLaunch += game.id
+                    viewModel.downloadBios(game)
+                }) { Text(stringResource(R.string.action_download_and_play)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    askBios = null
+                    viewModel.play(activity, game)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                }) { Text(stringResource(R.string.action_play_anyway)) }
+            },
         )
     }
 

@@ -205,6 +205,15 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .dup-row .name { flex: 1; min-width: 0; word-break: break-all; }
 .dup-row .keep { color: var(--ok); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .dup-row.marked .name { text-decoration: line-through; color: var(--muted); }
+.bios-row { cursor: default; }
+.bios-row code { font-size: 12px; }
+.bios-state { font-weight: 700; width: 14px; text-align: center; }
+.bios-state.ok { color: var(--ok); }
+.bios-state.missing { color: var(--danger); }
+.tag { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.tag.req { color: var(--warn); border-color: var(--warn); }
+.tag.ok { color: var(--ok); border-color: var(--ok); }
+.tag.mismatch { color: var(--danger); border-color: var(--danger); }
 .dup-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--border); }
 .jobs { padding: 12px 18px 18px; display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; }
 .job { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
