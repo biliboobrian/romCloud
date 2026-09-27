@@ -56,6 +56,7 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .pill {
   font-size: 12px; padding: 3px 10px; border-radius: 99px; background: var(--surface-2); color: var(--muted);
 }
+.lang-select { width: auto; padding: 5px 8px; font-size: 13px; background: transparent; }
 .count {
   display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 99px;
   background: var(--accent); color: var(--accent-text); font-size: 11px; text-align: center;
@@ -109,6 +110,7 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 }
 .dropzone.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--text); }
 .inline { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.inline input { width: auto; }
 .uploads { display: flex; flex-direction: column; gap: 6px; }
 .upload-row { display: flex; gap: 10px; align-items: center; font-size: 12px; }
 .upload-row progress { flex: 1; }

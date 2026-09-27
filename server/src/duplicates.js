@@ -134,12 +134,12 @@ export async function systemDuplicates(systemId) {
 /** Supprime (fichier + fiche + médias) les jeux indiqués, qui doivent appartenir au système. */
 export function deleteGamesOfSystem(systemId, ids) {
   requireSystem(systemId);
-  if (!Array.isArray(ids) || !ids.length) throw new HttpError(400, 'Aucun jeu indiqué');
+  if (!Array.isArray(ids) || !ids.length) throw new HttpError(400, 'errors.noGames');
   const owned = new Set(
     db.prepare('SELECT id FROM games WHERE system_id = ?').all(systemId).map((r) => r.id),
   );
   const invalid = ids.filter((id) => !owned.has(Number(id)));
-  if (invalid.length) throw new HttpError(400, `Jeux hors de ce système : ${invalid.join(', ')}`);
+  if (invalid.length) throw new HttpError(400, 'errors.gamesNotInSystem', { ids: invalid.join(', ') });
   let freed = 0;
   for (const id of ids) {
     freed += db.prepare('SELECT size FROM games WHERE id = ?').get(Number(id))?.size ?? 0;

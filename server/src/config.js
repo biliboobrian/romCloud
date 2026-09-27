@@ -29,6 +29,8 @@ export const config = {
   dbFile: path.join(dataDir, 'romcloud.db'),
   // Si défini, toutes les routes /api exigent "Authorization: Bearer <API_KEY>" (ou ?key=).
   apiKey: env.API_KEY || '',
+  // Langue par défaut (fr | en) : journal du serveur et clients sans en-tête Accept-Language.
+  language: (env.DEFAULT_LANGUAGE || 'en').toLowerCase(),
   // Taille max. d'un fichier envoyé depuis l'interface web (en Mo).
   maxUploadMb: Number(env.MAX_UPLOAD_MB || 16384),
   // Au-delà de cette taille, on ne calcule pas CRC/MD5 (ScreenScraper se rabat sur nom + taille).
