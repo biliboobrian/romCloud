@@ -14,6 +14,7 @@ data class ServerConfig(
     val serverUrl: String,
     val apiKey: String,
     val romsDir: String,
+    val biosDir: String,
 ) {
     val isConfigured: Boolean get() = serverUrl.isNotBlank()
 }
@@ -40,15 +41,17 @@ class Settings(context: Context) {
         serverUrl = prefs.getString(KEY_URL, "") ?: "",
         apiKey = prefs.getString(KEY_API_KEY, "") ?: "",
         romsDir = prefs.getString(KEY_ROMS_DIR, null) ?: defaultRomsDir(),
+        biosDir = prefs.getString(KEY_BIOS_DIR, null) ?: defaultBiosDir(),
     )
 
-    fun save(serverUrl: String, apiKey: String, romsDir: String) {
+    fun save(serverUrl: String, apiKey: String, romsDir: String, biosDir: String) {
         val url = normalizeUrl(serverUrl)
         val dir = romsDir.trim().trimEnd('/').ifBlank { defaultRomsDir() }
         prefs.edit()
             .putString(KEY_URL, url)
             .putString(KEY_API_KEY, apiKey.trim())
             .putString(KEY_ROMS_DIR, dir)
+            .putString(KEY_BIOS_DIR, biosDir.trim().trimEnd('/').ifBlank { defaultBiosDir() })
             .apply()
         _config.value = read()
     }
@@ -111,10 +114,28 @@ class Settings(context: Context) {
         private const val KEY_URL = "serverUrl"
         private const val KEY_API_KEY = "apiKey"
         private const val KEY_ROMS_DIR = "romsDir"
+        private const val KEY_BIOS_DIR = "biosDir"
 
         @Suppress("DEPRECATION")
-        fun defaultRomsDir(): String =
-            File(Environment.getExternalStorageDirectory(), "RomCloud").absolutePath
+        private val storage: File get() = Environment.getExternalStorageDirectory()
+
+        fun defaultRomsDir(): String = File(storage, "RomCloud").absolutePath
+
+        /**
+         * Dossiers BIOS proposés : dossier « system » de RetroArch (version Play Store, dans
+         * Android/media, ou version du site) et dossier RomCloud.
+         */
+        fun biosPresets(): List<Pair<Int, String>> = listOf(
+            R.string.bios_preset_retroarch_play to File(storage, "Android/media/com.retroarch.aarch64/RetroArch/system").absolutePath,
+            R.string.bios_preset_retroarch_site to File(storage, "RetroArch/system").absolutePath,
+            R.string.bios_preset_romcloud to File(storage, "RomCloud/bios").absolutePath,
+        )
+
+        /** Par défaut : le dossier « system » de RetroArch s'il existe déjà, sinon RomCloud/bios. */
+        fun defaultBiosDir(): String {
+            val presets = biosPresets().map { it.second }
+            return presets.dropLast(1).firstOrNull { File(it).isDirectory } ?: presets.last()
+        }
 
         /** "192.168.1.10:8080" -> "http://192.168.1.10:8080" */
         fun normalizeUrl(input: String): String {

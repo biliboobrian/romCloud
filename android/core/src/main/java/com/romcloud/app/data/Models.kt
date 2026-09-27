@@ -32,7 +32,20 @@ data class GameSystem(
     val totalSize: Long = 0,
     val hasImage: Boolean = false,
     val imageVersion: String? = null,
+    val biosCount: Int = 0,
 )
+
+/** BIOS d'un système sur le serveur ; [path] est relatif au dossier BIOS (« dc/dc_boot.bin »). */
+@Serializable
+data class BiosFile(
+    val id: Long,
+    val path: String,
+    val size: Long,
+    val md5: String? = null,
+)
+
+@Serializable
+data class BiosList(val files: List<BiosFile> = emptyList())
 
 @Serializable
 data class Game(

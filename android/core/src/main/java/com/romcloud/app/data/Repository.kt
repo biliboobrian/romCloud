@@ -59,6 +59,16 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
         return loaded
     }
 
+    /** BIOS du système sur le serveur (liste vide sans appel réseau si le système n'en a pas). */
+    suspend fun bios(system: GameSystem): List<BiosFile> {
+        if (system.biosCount == 0) return emptyList()
+        return runCatching {
+            loadWithCache("bios-${safeName(system.id)}.json", { api.biosRaw(system.id) }) {
+                api.json.decodeFromString(BiosList.serializer(), it).files
+            }.data
+        }.getOrDefault(emptyList())
+    }
+
     suspend fun system(systemId: String): GameSystem? =
         systemsMemory[systemId] ?: runCatching { systems() }.getOrNull()?.data?.find { it.id == systemId }
 

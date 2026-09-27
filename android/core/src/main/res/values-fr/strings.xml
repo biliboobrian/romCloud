@@ -225,4 +225,19 @@
     <string name="notif_title">Téléchargement de ROM</string>
     <string name="notif_preparing">Préparation du téléchargement…</string>
     <string name="notif_games_running">%1$d jeux en cours</string>
+    <!-- BIOS -->
+    <string name="bios_download_too">Télécharger aussi les BIOS manquants (%1$d · %2$s)</string>
+    <string name="bios_missing">BIOS : %1$d fichier(s) absent(s) de l’appareil (%2$s)</string>
+    <string name="bios_present">BIOS : %1$d fichier(s) présent(s)</string>
+    <string name="action_download_bios">Télécharger les BIOS</string>
+    <string name="bios_downloaded_snackbar">BIOS %1$s téléchargés</string>
+    <string name="bios_folder">Dossier des BIOS</string>
+    <string name="bios_folder_hint">Les BIOS du serveur y sont copiés, avec leurs sous-dossiers. Pour RetroArch, choisissez son dossier « system ».</string>
+    <string name="bios_preset_retroarch_play">RetroArch (Play Store)</string>
+    <string name="bios_preset_retroarch_site">RetroArch (site)</string>
+    <string name="bios_preset_romcloud">RomCloud</string>
+    <string name="bios_before_play_title">BIOS manquants</string>
+    <string name="bios_before_play_text">%1$d BIOS de ce système (%2$s) ne sont pas encore sur l’appareil. Les télécharger avant de jouer ?</string>
+    <string name="action_play_anyway">Jouer quand même</string>
+    <string name="action_download_and_play">Télécharger et jouer</string>
 </resources>

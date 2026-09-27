@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import multer from 'multer';
+import { addBiosFiles, biosFilePath, deleteBios, requireBios, systemBios } from './bios.js';
 import { config, screenscraperEnabled } from './config.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { HttpError } from './http-error.js';
@@ -118,6 +119,58 @@ api.get('/systems/:id/duplicates', h(async (req, res) => res.json(await systemDu
 
 api.post('/systems/:id/duplicates/delete', (req, res) => {
   res.json(deleteGamesOfSystem(req.params.id, (req.body && req.body.ids) || []));
+});
+
+// ---- BIOS ----
+// { cores, coreInfoAvailable, files: BIOS présents, expected: BIOS attendus par les cœurs RetroArch }
+// ?catalog=0 : fichiers présents seulement (utilisé par les applications).
+api.get(
+  '/systems/:id/bios',
+  h(async (req, res) => res.json(await systemBios(req.params.id, { catalog: req.query.catalog !== '0' }))),
+);
+
+const biosUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dir = path.join(config.dataDir, 'bios', '.upload');
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => cb(null, crypto.randomUUID()),
+  }),
+  limits: { fileSize: 1024 * 1024 * 1024 },
+});
+
+// Envoi de BIOS (champ « files ») ; « path » (facultatif, un seul fichier) force le chemin relatif.
+api.post(
+  '/systems/:id/bios',
+  biosUpload.array('files'),
+  h(async (req, res) => {
+    const files = req.files || [];
+    try {
+      if (!files.length) throw new HttpError(400, 'errors.noFiles');
+      const uploads = files.map((f) => ({
+        tempPath: f.path,
+        originalName: Buffer.from(f.originalname, 'latin1').toString('utf8'),
+      }));
+      const saved = await addBiosFiles(req.params.id, uploads, req.body && req.body.path);
+      res.status(201).json({ saved, ...(await systemBios(req.params.id)) });
+    } finally {
+      for (const f of files) fs.rmSync(f.path, { force: true });
+    }
+  }),
+);
+
+api.get('/bios/:id/file', (req, res, next) => {
+  const row = requireBios(req.params.id);
+  res.download(biosFilePath(row), path.posix.basename(row.path), { dotfiles: 'allow' }, (err) => {
+    if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
+  });
+});
+
+api.delete('/bios/:id', (req, res) => {
+  deleteBios(req.params.id);
+  res.status(204).end();
 });
 
 api.post('/systems/:id/scan', (req, res) => res.json(scanSystem(req.params.id)));

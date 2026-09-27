@@ -7,6 +7,7 @@ import com.romcloud.core.R
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.data.BiosFile
 import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
@@ -172,6 +173,9 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         val query: String = "",
         val filter: GameFilter = GameFilter.ALL,
         val grid: Boolean = false,
+        /** BIOS du système sur le serveur et ceux absents de l'appareil. */
+        val bios: List<BiosFile> = emptyList(),
+        val missingBios: List<BiosFile> = emptyList(),
     ) {
         val visibleGames: List<Game>
             get() = games.filter { g ->
@@ -202,10 +206,11 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
             try {
                 val system = app.repository.system(systemId)
                 val loaded = app.repository.games(systemId)
+                val bios = system?.let { app.repository.bios(it) }.orEmpty()
                 _state.update {
                     it.copy(
                         loading = false, system = system, games = loaded.data,
-                        offline = loaded.offline, error = loaded.error,
+                        offline = loaded.offline, error = loaded.error, bios = bios,
                     )
                 }
                 refreshLocal()
@@ -220,8 +225,10 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         val s = _state.value
         val system = s.system ?: return
         viewModelScope.launch {
-            val ids = withContext(Dispatchers.IO) { app.library.downloadedIds(system, s.games) }
-            _state.update { it.copy(downloaded = ids) }
+            val (ids, missing) = withContext(Dispatchers.IO) {
+                app.library.downloadedIds(system, s.games) to app.library.missingBios(s.bios)
+            }
+            _state.update { it.copy(downloaded = ids, missingBios = missing) }
         }
     }
 
@@ -234,10 +241,18 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         _state.update { it.copy(grid = grid) }
     }
 
-    fun download(game: Game) {
+    /** Télécharge le jeu et, si [withBios], les BIOS du système absents de l'appareil. */
+    fun download(game: Game, withBios: Boolean = true) {
         val system = _state.value.system ?: return
         app.downloader.dismissError(game.id)
-        app.downloader.start(system, game)
+        app.downloader.start(system, game, if (withBios) _state.value.missingBios else emptyList())
+    }
+
+    /** Télécharge seulement les BIOS manquants du système (le jeu est déjà sur l'appareil). */
+    fun downloadBios(game: Game) {
+        val system = _state.value.system ?: return
+        app.downloader.dismissError(game.id)
+        app.downloader.start(system, game, _state.value.missingBios, includeRom = false)
     }
 
     fun cancel(game: Game) = app.downloader.cancel(game.id)
@@ -279,6 +294,8 @@ class GameDetailViewModel(
         val localPath: String? = null,
         val launchCommand: String? = null,
         val retroArchInfo: RetroArchInfo? = null,
+        val bios: List<BiosFile> = emptyList(),
+        val missingBios: List<BiosFile> = emptyList(),
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -290,11 +307,12 @@ class GameDetailViewModel(
         viewModelScope.launch {
             val system = app.repository.system(systemId)
             val game = app.repository.game(systemId, gameId)
-            _state.value = UiState(loading = false, system = system, game = game)
+            val bios = system?.let { app.repository.bios(it) }.orEmpty()
+            _state.value = UiState(loading = false, system = system, game = game, bios = bios)
             refreshLocal()
         }
         viewModelScope.launch {
-            app.downloader.events.collect { if (it is DownloadEvent.Completed && it.game.id == gameId) refreshLocal() }
+            app.downloader.events.collect { if (it is DownloadEvent.Completed && it.system.id == systemId) refreshLocal() }
         }
     }
 
@@ -307,6 +325,7 @@ class GameDetailViewModel(
                 app.library.isDownloaded(system, game) to
                     app.launcher.compatiblePlayers(system, game.fileName).map { it to app.launcher.isInstalled(it) }
             }
+            val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(s.bios) }
             val selected = app.launcher.selectedPlayer(system, game.fileName)
             val file = app.library.fileFor(system, game)
             _state.update {
@@ -317,6 +336,7 @@ class GameDetailViewModel(
                     localPath = file.absolutePath,
                     launchCommand = selected?.let { p -> app.launcher.describe(p, file) },
                     retroArchInfo = selected?.let(app.launcher::retroArchInfo),
+                    missingBios = missingBios,
                 )
             }
         }
@@ -339,12 +359,22 @@ class GameDetailViewModel(
         refreshLocal()
     }
 
+    /** Télécharge le jeu et les BIOS manquants du système. */
     fun download() {
         val s = _state.value
         val system = s.system ?: return
         val game = s.game ?: return
         app.downloader.dismissError(game.id)
-        app.downloader.start(system, game)
+        app.downloader.start(system, game, s.missingBios)
+    }
+
+    /** Télécharge seulement les BIOS manquants (jeu déjà présent sur l'appareil). */
+    fun downloadBios() {
+        val s = _state.value
+        val system = s.system ?: return
+        val game = s.game ?: return
+        app.downloader.dismissError(game.id)
+        app.downloader.start(system, game, s.missingBios, includeRom = false)
     }
 
     fun cancel() = app.downloader.cancel(gameId)

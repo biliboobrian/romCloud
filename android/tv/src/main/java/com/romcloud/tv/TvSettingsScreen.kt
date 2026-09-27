@@ -60,6 +60,7 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
     var url by rememberSaveable { mutableStateOf(current.serverUrl) }
     var key by rememberSaveable { mutableStateOf(current.apiKey) }
     var dir by rememberSaveable { mutableStateOf(current.romsDir) }
+    var biosDir by rememberSaveable { mutableStateOf(current.biosDir) }
     var testResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var testing by remember { mutableStateOf(false) }
     var hasPermission by remember { mutableStateOf(app.library.hasStoragePermission()) }
@@ -152,6 +153,22 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
             OutlinedButton(onClick = { dir = Settings.defaultRomsDir() }) { Text(stringResource(R.string.default_folder)) }
         }
+        OutlinedTextField(
+            value = biosDir, onValueChange = { biosDir = it },
+            label = { androidx.compose.material3.Text(stringResource(R.string.bios_folder)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(0.7f),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
+            Settings.biosPresets().forEach { (label, path) ->
+                FilterChip(selected = biosDir == path, onClick = { biosDir = path }) { Text(stringResource(label)) }
+            }
+        }
+        Text(
+            stringResource(R.string.bios_folder_hint),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(
             stringResource(if (hasPermission) R.string.all_files_granted else R.string.all_files_denied),
             color = if (hasPermission) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
@@ -207,7 +224,7 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
 
         Button(
             onClick = {
-                app.settings.save(url, key, dir)
+                app.settings.save(url, key, dir, biosDir)
                 app.repository.clearMemory()
                 onSaved()
             },

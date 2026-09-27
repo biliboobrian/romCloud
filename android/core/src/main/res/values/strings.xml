@@ -232,4 +232,19 @@
     <string name="notif_preparing">Preparing the download…</string>
     <!-- Affiché seulement pour 2 téléchargements ou plus. -->
     <string name="notif_games_running" tools:ignore="PluralsCandidate">%1$d games in progress</string>
+    <!-- BIOS -->
+    <string name="bios_download_too">Also download the missing BIOS (%1$d · %2$s)</string>
+    <string name="bios_missing">BIOS: %1$d file(s) missing on this device (%2$s)</string>
+    <string name="bios_present">BIOS: %1$d file(s) present</string>
+    <string name="action_download_bios">Download the BIOS</string>
+    <string name="bios_downloaded_snackbar">BIOS of %1$s downloaded</string>
+    <string name="bios_folder">BIOS folder</string>
+    <string name="bios_folder_hint">The BIOS files from the server are copied here, with their sub-folders. For RetroArch, choose its “system” folder.</string>
+    <string name="bios_preset_retroarch_play">RetroArch (Play Store)</string>
+    <string name="bios_preset_retroarch_site">RetroArch (website)</string>
+    <string name="bios_preset_romcloud">RomCloud</string>
+    <string name="bios_before_play_title">Missing BIOS</string>
+    <string name="bios_before_play_text">%1$d BIOS file(s) of this system (%2$s) are not on this device yet. Download them before playing?</string>
+    <string name="action_play_anyway">Play anyway</string>
+    <string name="action_download_and_play">Download and play</string>
 </resources>

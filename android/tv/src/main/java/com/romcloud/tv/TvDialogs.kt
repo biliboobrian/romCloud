@@ -4,11 +4,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ListItem
+import com.romcloud.app.data.BiosFile
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
 import com.romcloud.app.ui.formatSize
@@ -43,11 +46,13 @@ private fun rememberInitialFocus(): FocusRequester {
 fun DownloadDialog(
     game: Game,
     error: String?,
-    onDownload: (launchAfter: Boolean) -> Unit,
+    missingBios: List<BiosFile>,
+    onDownload: (launchAfter: Boolean, withBios: Boolean) -> Unit,
     onDetails: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val focus = rememberInitialFocus()
+    var withBios by remember { mutableStateOf(true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.tv_download_title, game.title)) },
@@ -60,18 +65,45 @@ fun DownloadDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 error?.let { Text(stringResource(R.string.download_last_error, it), color = MaterialTheme.colorScheme.error) }
+                if (missingBios.isNotEmpty()) {
+                    // Case à cocher dans un bouton : sélectionnable à la télécommande.
+                    TextButton(onClick = { withBios = !withBios }) {
+                        Checkbox(checked = withBios, onCheckedChange = null)
+                        Text(
+                            stringResource(R.string.bios_download_too, missingBios.size, formatSize(missingBios.sumOf { it.size })),
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onDownload(true) }, modifier = Modifier.focusRequester(focus)) {
+            TextButton(onClick = { onDownload(true, withBios) }, modifier = Modifier.focusRequester(focus)) {
                 Text(stringResource(R.string.tv_download_and_play))
             }
-            TextButton(onClick = { onDownload(false) }) { Text(stringResource(R.string.action_download)) }
+            TextButton(onClick = { onDownload(false, withBios) }) { Text(stringResource(R.string.action_download)) }
         },
         dismissButton = {
             TextButton(onClick = onDetails) { Text(stringResource(R.string.tv_game_details)) }
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
         },
+    )
+}
+
+/** Jeu présent mais BIOS du système absents : les télécharger avant de jouer ? */
+@Composable
+fun MissingBiosDialog(missingBios: List<BiosFile>, onDownloadAndPlay: () -> Unit, onPlay: () -> Unit, onDismiss: () -> Unit) {
+    val focus = rememberInitialFocus()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.bios_before_play_title)) },
+        text = { Text(stringResource(R.string.bios_before_play_text, missingBios.size, formatSize(missingBios.sumOf { it.size }))) },
+        confirmButton = {
+            TextButton(onClick = onDownloadAndPlay, modifier = Modifier.focusRequester(focus)) {
+                Text(stringResource(R.string.action_download_and_play))
+            }
+        },
+        dismissButton = { TextButton(onClick = onPlay) { Text(stringResource(R.string.action_play_anyway)) } },
     )
 }
 

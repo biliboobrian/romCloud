@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -69,6 +70,7 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
     var url by rememberSaveable { mutableStateOf(current.serverUrl) }
     var key by rememberSaveable { mutableStateOf(current.apiKey) }
     var dir by rememberSaveable { mutableStateOf(current.romsDir) }
+    var biosDir by rememberSaveable { mutableStateOf(current.biosDir) }
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var hasPermission by remember { mutableStateOf(app.library.hasStoragePermission()) }
@@ -211,6 +213,19 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                 }) { Text(stringResource(R.string.private_folder)) }
             }
 
+            OutlinedTextField(
+                value = biosDir, onValueChange = { biosDir = it },
+                label = { Text(stringResource(R.string.bios_folder)) },
+                supportingText = { Text(stringResource(R.string.bios_folder_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Settings.biosPresets().forEach { (label, path) ->
+                    FilterChip(selected = biosDir == path, onClick = { biosDir = path }, label = { Text(stringResource(label)) })
+                }
+            }
+
             Card {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -242,7 +257,7 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
 
             Button(
                 onClick = {
-                    app.settings.save(url, key, dir)
+                    app.settings.save(url, key, dir, biosDir)
                     app.repository.clearMemory()
                     onSaved()
                 },

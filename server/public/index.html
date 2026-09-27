@@ -54,6 +54,7 @@
             <button class="btn" id="scrapeSysBtn" data-i18n="system.scrape"></button>
             <button class="btn" id="scanSysBtn" data-i18n="system.rescan"></button>
             <button class="btn" id="dupSysBtn" data-i18n="system.duplicates"></button>
+            <button class="btn" id="biosSysBtn" data-i18n="system.bios"></button>
             <button class="btn ghost" id="editSysBtn" data-i18n="system.settings"></button>
           </div>
         </div>
@@ -205,6 +206,25 @@
     <div class="dup-foot">
       <span class="muted" id="dupSelection"></span>
       <button class="btn danger" id="dupDeleteBtn" disabled data-i18n="dup.deleteSelection"></button>
+    </div>
+  </dialog>
+
+  <!-- BIOS -->
+  <dialog id="biosDialog" class="dialog wide">
+    <form method="dialog" class="dialog-head">
+      <h3 id="biosTitle"></h3>
+      <button class="icon-btn" data-i18n-aria-label="app.close">✕</button>
+    </form>
+    <div class="dup-body">
+      <p class="muted" id="biosSummary"></p>
+      <div id="biosContent"></div>
+    </div>
+    <div class="dup-foot">
+      <span class="muted" data-i18n="bios.addHint"></span>
+      <label class="btn primary">
+        <span data-i18n="bios.add"></span>
+        <input type="file" id="biosInput" multiple hidden>
+      </label>
     </div>
   </dialog>
 
