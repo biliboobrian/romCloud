@@ -171,7 +171,7 @@
 
     <!-- Fenêtres de lancement -->
     <string name="missing_emulator_title">Emulator not installed</string>
-    <string name="missing_emulator_text">To launch this game, install the emulator “%1$s” (%2$s).\n\nDo you want to open its page on the Google Play Store?\n\nYou can also choose another emulator in the game details.</string>
+    <string name="missing_emulator_text">To launch this game, install the emulator “%1$s” (%2$s).\n\nYou can also choose another emulator in the game details.</string>
     <string name="play_store_unavailable">Play Store unavailable</string>
     <string name="close_emulator_title">Close the emulator first</string>
     <string name="close_emulator_text">If “%1$s” is still open in the background, the game will stay on a black screen. Since Android 14, RomCloud can no longer close it by itself.\n\nChoose “Force stop” below, then “Force stop” in the page that opens, come back here and choose “Launch”. If the emulator is already closed, choose “Launch” directly.</string>
@@ -247,4 +247,14 @@
     <string name="bios_before_play_text">%1$d BIOS file(s) of this system (%2$s) are not on this device yet. Download them before playing?</string>
     <string name="action_play_anyway">Play anyway</string>
     <string name="action_download_and_play">Download and play</string>
+    <!-- APK des émulateurs -->
+    <string name="apk_available">Available on your RomCloud server: %1$s %2$s (%3$s).</string>
+    <string name="apk_not_on_server">Not available on your RomCloud server: install it from the Play Store.</string>
+    <string name="action_install_from_server">Install from RomCloud</string>
+    <string name="apk_downloading_title">Downloading %1$s</string>
+    <string name="apk_permission_title">Allow installing apps</string>
+    <string name="apk_permission_text">To install %1$s, Android must allow RomCloud to install apps. Enable “Allow from this source” for RomCloud, then come back: the installation will continue.</string>
+    <string name="action_open_settings">Open the settings</string>
+    <string name="apk_install_failed">Installation of %1$s failed: %2$s</string>
+    <string name="apk_no_installer">No app installer available on this device</string>
 </resources>

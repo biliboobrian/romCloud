@@ -202,7 +202,7 @@ fun GameDetailScreen(
                 state = state,
                 viewModel = viewModel,
                 onInstall = { player ->
-                    viewModel.installPlayer(activity, player)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                    viewModel.installPlayer(player)?.let { scope.launch { snackbar.showSnackbar(it) } }
                 },
                 onInfo = if (state.retroArchInfo != null) ({ showRetroArchHelp = true }) else null,
             )

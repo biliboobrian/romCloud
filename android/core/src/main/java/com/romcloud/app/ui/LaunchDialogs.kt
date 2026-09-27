@@ -5,10 +5,14 @@ import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -18,23 +22,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.I18n
 import com.romcloud.core.R
 import com.romcloud.app.data.DownloadEvent
+import com.romcloud.app.data.EmulatorApk
 import com.romcloud.app.launch.LaunchException
 import kotlinx.coroutines.launch
 
 /**
  * Comportements globaux communs aux applications téléphone et TV : fins de téléchargement
- * (lancement automatique ou proposition « Jouer »), émulateur manquant (Play Store),
+ * (lancement automatique ou proposition « Jouer »), émulateur manquant (APK du serveur ou Play Store),
  * émulateur à fermer avant le lancement (Android 14+), autorisation des notifications.
  */
 @Composable
@@ -78,35 +87,100 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         }
     }
 
-    // Émulateur absent : proposer de l'installer depuis le Google Play Store.
+    // Émulateur absent : proposer l'APK du serveur RomCloud (s'il en a un) ou le Google Play Store.
     val missing by app.missingEmulator.collectAsStateWithLifecycle()
     missing?.let { emulator ->
         val scope = rememberCoroutineScope()
         val unavailable = stringResource(R.string.play_store_unavailable)
+        // null = liste des APK en cours de chargement.
+        val apk by produceState<Result<EmulatorApk?>?>(null, emulator) {
+            value = Result.success(app.repository.apks().find { it.packageName == emulator.packageName })
+        }
+        val serverApk = apk?.getOrNull()
         AlertDialog(
             onDismissRequest = { app.missingEmulator.value = null },
             title = { Text(stringResource(R.string.missing_emulator_title)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.missing_emulator_text,
-                        emulator.playerName ?: emulator.packageName,
-                        emulator.packageName,
-                    ),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        stringResource(
+                            R.string.missing_emulator_text,
+                            emulator.playerName ?: emulator.packageName,
+                            emulator.packageName,
+                        ),
+                    )
+                    when {
+                        apk == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                        serverApk != null -> Text(
+                            stringResource(R.string.apk_available, serverApk.label, serverApk.versionName.orEmpty(), formatSize(serverApk.size)),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        else -> Text(stringResource(R.string.apk_not_on_server), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    app.missingEmulator.value = null
-                    try {
-                        app.launcher.openStore(activity, emulator.packageName)
-                    } catch (e: LaunchException) {
-                        scope.launch { snackbar.showSnackbar(e.message ?: unavailable) }
+                Row {
+                    TextButton(onClick = {
+                        app.missingEmulator.value = null
+                        try {
+                            app.launcher.openStore(activity, emulator.packageName)
+                        } catch (e: LaunchException) {
+                            scope.launch { snackbar.showSnackbar(e.message ?: unavailable) }
+                        }
+                    }) { Text(stringResource(R.string.action_open_play_store)) }
+                    if (serverApk != null) {
+                        TextButton(onClick = {
+                            app.missingEmulator.value = null
+                            app.apkInstaller.install(activity, serverApk)
+                        }) { Text(stringResource(R.string.action_install_from_server)) }
                     }
-                }) { Text(stringResource(R.string.action_open_play_store)) }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { app.missingEmulator.value = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    // Installation d'un APK du serveur : erreurs, autorisation « sources inconnues », progression.
+    LaunchedEffect(Unit) {
+        app.apkInstaller.errors.collect { launch { snackbar.showSnackbar(it) } }
+    }
+    val lifecycle = activity.lifecycle
+    LaunchedEffect(lifecycle) {
+        // Au retour du réglage Android, l'installation en attente reprend si elle a été autorisée.
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { app.apkInstaller.resumePending(activity) }
+    }
+    val pendingApk by app.apkInstaller.pending.collectAsStateWithLifecycle()
+    pendingApk?.let { apk ->
+        AlertDialog(
+            onDismissRequest = app.apkInstaller::dismissPending,
+            title = { Text(stringResource(R.string.apk_permission_title)) },
+            text = { Text(stringResource(R.string.apk_permission_text, apk.label)) },
+            confirmButton = {
+                TextButton(onClick = { app.apkInstaller.openInstallPermissionSettings(activity) }) {
+                    Text(stringResource(R.string.action_open_settings))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = app.apkInstaller::dismissPending) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+    val apkProgress by app.apkInstaller.progress.collectAsStateWithLifecycle()
+    apkProgress?.let { p ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.apk_downloading_title, p.apk.label)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LinearProgressIndicator(progress = { p.fraction }, modifier = Modifier.fillMaxWidth())
+                    Text("${formatSize(p.bytes)} / ${formatSize(p.apk.size)}", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = app.apkInstaller::cancel) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }

@@ -165,7 +165,7 @@
 
     <!-- Fenêtres de lancement -->
     <string name="missing_emulator_title">Émulateur non installé</string>
-    <string name="missing_emulator_text">Pour lancer ce jeu, installez l’émulateur « %1$s » (%2$s).\n\nVoulez-vous ouvrir sa page sur le Google Play Store ?\n\nVous pouvez aussi choisir un autre émulateur dans la fiche du jeu.</string>
+    <string name="missing_emulator_text">Pour lancer ce jeu, installez l’émulateur « %1$s » (%2$s).\n\nVous pouvez aussi choisir un autre émulateur dans la fiche du jeu.</string>
     <string name="play_store_unavailable">Play Store indisponible</string>
     <string name="close_emulator_title">Fermez d’abord l’émulateur</string>
     <string name="close_emulator_text">Si « %1$s » est encore ouvert en arrière-plan, le jeu restera sur un écran noir. Depuis Android 14, RomCloud ne peut plus le fermer lui-même.\n\nChoisissez « Forcer l’arrêt » ci-dessous, puis « Forcer l’arrêt » dans la page qui s’ouvre, revenez ici et choisissez « Lancer ». Si l’émulateur est déjà fermé, choisissez directement « Lancer ».</string>
@@ -240,4 +240,14 @@
     <string name="bios_before_play_text">%1$d BIOS de ce système (%2$s) ne sont pas encore sur l’appareil. Les télécharger avant de jouer ?</string>
     <string name="action_play_anyway">Jouer quand même</string>
     <string name="action_download_and_play">Télécharger et jouer</string>
+    <!-- APK des émulateurs -->
+    <string name="apk_available">Disponible sur votre serveur RomCloud : %1$s %2$s (%3$s).</string>
+    <string name="apk_not_on_server">Absent de votre serveur RomCloud : installez-le depuis le Play Store.</string>
+    <string name="action_install_from_server">Installer depuis RomCloud</string>
+    <string name="apk_downloading_title">Téléchargement de %1$s</string>
+    <string name="apk_permission_title">Autoriser l’installation d’applications</string>
+    <string name="apk_permission_text">Pour installer %1$s, Android doit autoriser RomCloud à installer des applications. Activez « Autoriser cette source » pour RomCloud, puis revenez : l’installation continuera.</string>
+    <string name="action_open_settings">Ouvrir les paramètres</string>
+    <string name="apk_install_failed">Échec de l’installation de %1$s : %2$s</string>
+    <string name="apk_no_installer">Aucun installateur d’applications sur cet appareil</string>
 </resources>

@@ -187,7 +187,7 @@ fun TvGameDetailScreen(
                     val installed = state.players.find { it.first.uniqueId == selected?.uniqueId }?.second ?: true
                     if (selected != null && !installed) {
                         SecondaryButton(stringResource(R.string.tv_install_emulator), Icons.Filled.Shop) {
-                            viewModel.installPlayer(activity, selected)?.let(onMessage)
+                            viewModel.installPlayer(selected)?.let(onMessage)
                         }
                     }
                     if (state.retroArchInfo != null) {

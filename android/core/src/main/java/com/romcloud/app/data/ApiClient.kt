@@ -118,4 +118,9 @@ class ApiClient(private val settings: Settings) {
     suspend fun biosRaw(systemId: String): String = get("/api/systems/$systemId/bios?catalog=0")
 
     fun biosFileUrl(bios: BiosFile): String = url("/api/bios/${bios.id}/file")
+
+    /** APK des émulateurs Android disponibles sur le serveur. */
+    suspend fun apksRaw(): String = get("/api/apks")
+
+    fun apkFileUrl(apk: EmulatorApk): String = url("/api/apks/${apk.id}/file")
 }
