@@ -90,6 +90,9 @@ test('BIOS attendus, envoi, contrôle MD5, téléchargement et suppression', asy
     ['dc/dc_flash.bin', false, false],
   ]);
   assert.deepEqual(empty.expected[1].cores, ['flycast_gles2']);
+  // MD5 acceptés : référence libretro, puis bios-md5.json fourni avec le serveur.
+  assert.deepEqual(empty.expected[0].md5s, ['490f666e1afb15b7362b406ed1cea246', '924e392ed05558ffdb115408c263dccf']);
+  assert.equal(empty.expected[0].md5, '490f666e1afb15b7362b406ed1cea246');
 
   // Un fichier « dc_boot.bin » envoyé seul est rangé dans dc/ comme l'attend le cœur.
   const upload = (name, content) => {
@@ -101,10 +104,12 @@ test('BIOS attendus, envoi, contrôle MD5, téléchargement et suppression', asy
   assert.deepEqual(saved, ['dc/dc_boot.bin', 'extra.bin']);
   assert.deepEqual(await bios.addBiosFiles('dc', [upload('whatever.rom', 'psx')], 'scph5501.bin'), ['scph5501.bin']);
 
+  // MD5 supplémentaires de l'utilisateur (DATA_DIR/bios-md5.json) : « extra.bin » (contenu « x ») devient valide.
+  fs.writeFileSync(path.join(dataDir, 'bios-md5.json'), JSON.stringify({ _comment: 'test', 'EXTRA.bin': '9dd4e461268c8034f5c8564e155c67a6' }));
   const state = await bios.systemBios('dc');
   assert.deepEqual(state.files.map((f) => [f.path, f.size, f.md5Status]), [
     ['dc/dc_boot.bin', 4, 'mismatch'],
-    ['extra.bin', 1, 'unknown'],
+    ['extra.bin', 1, 'ok'],
     ['scph5501.bin', 3, 'mismatch'],
   ]);
   assert.deepEqual(state.expected.map((e) => e.present), [true, true, false]);

@@ -11,6 +11,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src
 COPY public ./public
 COPY platforms ./platforms
+COPY bios-md5.json ./
 
 # Exécution sans droits root (utilisateur « node », uid 1000).
 RUN mkdir -p /data && chown node:node /data
