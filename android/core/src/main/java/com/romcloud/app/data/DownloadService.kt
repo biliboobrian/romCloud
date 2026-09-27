@@ -13,7 +13,6 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.romcloud.app.RomCloudApp
-import com.romcloud.app.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,8 +65,12 @@ class DownloadService : Service() {
     }
 
     private fun buildNotification(text: String, percent: Int, indeterminate: Boolean): Notification {
+        // Application hôte (téléphone : lanceur classique ; TV : lanceur Android TV).
+        val launch = packageManager.getLaunchIntentForPackage(packageName)
+            ?: packageManager.getLeanbackLaunchIntentForPackage(packageName)
+            ?: Intent()
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
+            this, 0, launch,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)

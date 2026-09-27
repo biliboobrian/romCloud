@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Application Android TV (même clé, même version que l’application téléphone).
 // Clé de signature release : variables d'environnement (CI GitHub) ou fichier
 // android/keystore.properties (local, non versionné). À défaut, clé de debug.
 val keystoreProps = Properties().apply {
@@ -19,11 +20,11 @@ fun signingValue(env: String, prop: String): String? =
 val releaseStoreFile = signingValue("ROMCLOUD_KEYSTORE_FILE", "storeFile")
 
 android {
-    namespace = "com.romcloud.app"
+    namespace = "com.romcloud.tv"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.romcloud.app"
+        applicationId = "com.romcloud.app.tv"
         minSdk = 26
         targetSdk = 36
         // Fournis par le CI (numéro de build, tag de version) ; valeurs par défaut en local.
@@ -60,12 +61,16 @@ android {
     buildFeatures {
         compose = true
     }
+    lint {
+        // Téléviseurs : xhdpi (1080p) et xxhdpi (4K) uniquement, pas de mdpi/hdpi.
+        disable += "IconMissingDensityFolder"
+    }
 }
 
 dependencies {
     implementation(project(":core"))
+    implementation(libs.tv.material)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
-    testImplementation(libs.junit)
 }

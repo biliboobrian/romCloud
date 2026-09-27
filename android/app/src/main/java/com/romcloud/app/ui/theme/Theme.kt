@@ -11,8 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
-val DownloadedGreen = Color(0xFF2EB872)
-
 private val Dark = darkColorScheme(
     primary = Color(0xFF9D95FF),
     onPrimary = Color(0xFF1B1464),

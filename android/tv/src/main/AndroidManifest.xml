@@ -1,27 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Application téléphone / tablette. Autorisations, service et FileProvider : module core. -->
+<!-- Application Android TV. Autorisations, service et FileProvider : module core. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Application réservée aux téléviseurs (lanceur Android TV / Google TV). -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
 
     <application
         android:name="com.romcloud.app.RomCloudApp"
         android:allowBackup="true"
+        android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
-        android:theme="@style/Theme.RomCloud"
+        android:theme="@style/Theme.RomCloudTv"
         android:usesCleartextTraffic="true"
         tools:targetApi="35">
 
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".TvActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
     </application>

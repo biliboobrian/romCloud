@@ -1,6 +1,7 @@
 package com.romcloud.app.ui
 
 import android.app.Activity
+import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,6 +82,17 @@ fun GamesScreen(
     var searching by rememberSaveable { mutableStateOf(false) }
     var askDownload by remember { mutableStateOf<Game?>(null) }
     var askCancel by remember { mutableStateOf<Game?>(null) }
+    // Paysage : les filtres passent dans la barre du haut pour libérer une ligne.
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val filters = @Composable {
+        GameFilter.entries.forEach { f ->
+            FilterChip(
+                selected = state.filter == f,
+                onClick = { viewModel.setFilter(f) },
+                label = { Text(f.label) },
+            )
+        }
+    }
 
     // Au retour dans l'application (ex. après une partie), re-vérifie les fichiers locaux.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -132,6 +145,11 @@ fun GamesScreen(
                     }
                 },
                 actions = {
+                    if (landscape) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(end = 8.dp)) {
+                            filters()
+                        }
+                    }
                     IconButton(onClick = viewModel::toggleView) {
                         if (state.grid) Icon(Icons.AutoMirrored.Filled.ViewList, "Affichage en liste")
                         else Icon(Icons.Filled.ViewCarousel, "Affichage en carrousel")
@@ -149,16 +167,12 @@ fun GamesScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (state.offline) Banner("Hors ligne — liste en cache.")
-            Row(
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GameFilter.entries.forEach { f ->
-                    FilterChip(
-                        selected = state.filter == f,
-                        onClick = { viewModel.setFilter(f) },
-                        label = { Text(f.label) },
-                    )
+            if (!landscape) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    filters()
                 }
             }
             PullToRefreshBox(

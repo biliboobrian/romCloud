@@ -1,5 +1,9 @@
 name: Android APK
 
+# Deux applications, même version et même clé de signature :
+#   RomCloud-<version>.apk     téléphone / tablette (com.romcloud.app)
+#   RomCloud-TV-<version>.apk  Android TV (com.romcloud.app.tv)
+
 on:
   push:
     branches: [main]
@@ -66,12 +70,13 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Tests et compilation
-        run: ./gradlew testDebugUnitTest assembleRelease --no-daemon
+        run: ./gradlew :core:testDebugUnitTest :app:assembleRelease :tv:assembleRelease --no-daemon
 
-      - name: Renommer l'APK
+      - name: Renommer les APK
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/RomCloud-${ROMCLOUD_VERSION_NAME}.apk"
+          cp tv/build/outputs/apk/release/tv-release.apk "dist/RomCloud-TV-${ROMCLOUD_VERSION_NAME}.apk"
 
       - uses: actions/upload-artifact@v7
         with:

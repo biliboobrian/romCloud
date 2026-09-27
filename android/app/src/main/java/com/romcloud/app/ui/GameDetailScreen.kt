@@ -66,7 +66,6 @@ import coil.compose.AsyncImage
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
-import com.romcloud.app.ui.theme.DownloadedGreen
 import kotlinx.coroutines.launch
 import java.util.Locale
 
