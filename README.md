@@ -108,6 +108,17 @@ Utilisation à la télécommande :
 - **Fiche du jeu** : Jouer / Télécharger / Annuler, choix de l’émulateur, *Configurer RetroArch* (même guide que sur téléphone), *Supprimer du téléviseur*.
 - Le focus revient sur le dernier élément choisi au retour d’un écran ou d’une partie.
 
+### Application Windows
+
+**RomCloud pour Windows** reprend l’application Android sur PC : systèmes, jeux en carrousel ou en liste, filtres, recherche globale (logo de la console sur les cartes), fiche du jeu, téléchargement à la demande avec reprise, cache hors ligne, français / anglais.
+
+- **Installation** : `RomCloud-Windows-<version>-x64.exe` (installeur) ou `RomCloud-Windows-<version>-portable.exe` (sans installation) depuis la [dernière Release](https://github.com/biliboobrian/romCloud/releases/latest). L’application n’étant pas signée, Windows SmartScreen peut afficher « Windows a protégé votre ordinateur » : *Informations complémentaires → Exécuter quand même*.
+- **Paramètres** : adresse du serveur et clé d’API, dossier des ROMs (par défaut `DocumentsRomCloud`), chemin de `retroarch.exe`, langue.
+- **Lancement des jeux** :
+  - **RetroArch pour Windows** : le cœur est repris des modèles d’émulateurs du système (ex. `mupen64plus_next` pour la N64) et le jeu est lancé avec `retroarch.exe -L <dossier de RetroArch>cores<cœur>_libretro.dll "<jeu>"`. Installez les cœurs dans RetroArch : *Mise à jour en ligne → Télécharger des cœurs* ; le guide *Configurer RetroArch* indique ce qui manque ;
+  - **commande personnalisée** par système (fiche du jeu → Émulateur), `{file}` étant le chemin du jeu, ex. `"C:EmulateursDolphinDolphin.exe" -b -e "{file}"` ;
+  - **programme Windows par défaut** associé au type de fichier.
+
 ### Premier lancement de l’app
 
 Saisissez l’adresse du serveur (`http://<ip-du-serveur>:8080`) et la clé d’API, **Tester la connexion**, **Enregistrer**, puis autorisez **l’accès à tous les fichiers** (voir [Fonctionnement](#fonctionnement)).
@@ -191,6 +202,8 @@ Kotlin + Jetpack Compose, minSdk 26 (Android 8), targetSdk 36 (Android 16). Troi
 | `core` | Code partagé : API du serveur, cache hors ligne, téléchargements (service de premier plan), lancement des émulateurs (modèles `am start`, chemins SAF RetroArch…), réglages, ViewModels, fenêtres communes |
 | `app` | Application téléphone / tablette (`com.romcloud.app`) |
 | `tv` | Application Android TV (`com.romcloud.app.tv`), interface [tv-material](https://developer.android.com/jetpack/androidx/releases/tv) pour la télécommande |
+
+L’application Windows est dans [`desktop/`](desktop/) (Electron) : `npm install`, `npm start` pour la lancer, `npm test`, `npm run dist` pour produire l’installeur et la version portable dans `desktop/dist/`. Le workflow [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml) les joint à chaque Release.
 
 ### Compiler l'APK
 
