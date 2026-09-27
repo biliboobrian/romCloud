@@ -33,7 +33,22 @@ data class GameSystem(
     val hasImage: Boolean = false,
     val imageVersion: String? = null,
     val biosCount: Int = 0,
-)
+) {
+    /**
+     * Certains modèles Daijishou contiennent deux émulateurs de même uniqueId (ex. deux variantes
+     * de DuckStation pour la PlayStation) : les suivants sont suffixés (« …#2 ») pour que chacun
+     * puisse être choisi et mémorisé séparément.
+     */
+    fun withUniquePlayerIds(): GameSystem {
+        val seen = mutableMapOf<String, Int>()
+        val renamed = players.map { p ->
+            val n = (seen[p.uniqueId] ?: 0) + 1
+            seen[p.uniqueId] = n
+            if (n == 1) p else p.copy(uniqueId = "${p.uniqueId}#$n")
+        }
+        return if (renamed == players) this else copy(players = renamed)
+    }
+}
 
 /** BIOS d'un système sur le serveur ; [path] est relatif au dossier BIOS (« dc/dc_boot.bin »). */
 @Serializable

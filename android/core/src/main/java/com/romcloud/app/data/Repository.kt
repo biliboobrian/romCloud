@@ -44,7 +44,7 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
 
     suspend fun systems(): Loaded<List<GameSystem>> {
         val loaded = loadWithCache("systems.json", api::systemsRaw) {
-            api.json.decodeFromString(systemListSerializer, it)
+            api.json.decodeFromString(systemListSerializer, it).map(GameSystem::withUniquePlayerIds)
         }
         systemsMemory.clear()
         loaded.data.forEach { systemsMemory[it.id] = it }
