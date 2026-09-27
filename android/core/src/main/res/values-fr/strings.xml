@@ -154,6 +154,14 @@
     <string name="clear_search">Effacer la recherche</string>
     <string name="search_query">« %1$s »</string>
     <string name="choose_emulator">Choisir l’émulateur</string>
+    <string name="search_all_hint">Rechercher dans tous les jeux…</string>
+    <string name="search_all_title">Rechercher dans tous les systèmes</string>
+    <string name="search_no_results">Aucun jeu trouvé pour « %1$s »</string>
+    <string name="search_offline">Hors ligne — recherche limitée aux listes déjà ouvertes.</string>
+    <plurals name="search_results">
+        <item quantity="one">%1$d résultat pour « %2$s »</item>
+        <item quantity="other">%1$d résultats pour « %2$s »</item>
+    </plurals>
 
     <!-- Fenêtres de lancement -->
     <string name="missing_emulator_title">Émulateur non installé</string>

@@ -212,6 +212,8 @@ fun GameCard(
     onClick: () -> Unit,
     onDetails: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Élément en bas à droite de la jaquette (ex. logo de la console dans les résultats de recherche). */
+    badge: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier
@@ -253,6 +255,9 @@ fun GameCard(
                 IconButton(onClick = onDetails, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Filled.Info, stringResource(R.string.details_and_emulator), modifier = Modifier.size(22.dp))
                 }
+            }
+            if (badge != null) {
+                Box(Modifier.align(Alignment.BottomEnd).padding(6.dp)) { badge() }
             }
             if (status is LocalStatus.Downloading) {
                 LinearProgressIndicator(

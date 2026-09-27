@@ -13,6 +13,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 class ApiException(message: String, val code: Int = 0) : IOException(message)
@@ -109,4 +110,7 @@ class ApiClient(private val settings: Settings) {
     suspend fun systemsRaw(): String = get("/api/systems")
 
     suspend fun gamesRaw(systemId: String): String = get("/api/systems/$systemId/games")
+
+    /** Recherche dans tous les systèmes. */
+    suspend fun searchRaw(query: String): String = get("/api/search?q=" + URLEncoder.encode(query, "UTF-8"))
 }

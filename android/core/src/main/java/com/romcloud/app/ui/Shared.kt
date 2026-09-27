@@ -1,8 +1,13 @@
 package com.romcloud.app.ui
 
 import androidx.annotation.PluralsRes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
@@ -14,20 +19,58 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.romcloud.app.I18n
 import com.romcloud.app.data.DownloadState
+import com.romcloud.app.data.GameSystem
 import com.romcloud.core.R
 import java.util.Locale
 
 // Éléments communs aux applications téléphone et TV.
 
 val DownloadedGreen = Color(0xFF2EB872)
+
+/**
+ * Logo de la console d'un jeu, en surimpression sur sa carte (résultats de recherche) :
+ * image du système configurée sur le serveur, sinon son nom court.
+ */
+@Composable
+fun SystemBadge(system: GameSystem?, imageUrl: String?, modifier: Modifier = Modifier, height: Dp = 22.dp) {
+    if (system == null) return
+    Box(
+        modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (imageUrl != null) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = system.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.height(height).widthIn(max = height * 3),
+            )
+        } else {
+            Text(
+                system.shortname.uppercase(),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = (height.value * 0.55f).sp,
+                maxLines = 1,
+            )
+        }
+    }
+}
 
 /** Pluriel traduit (ex. « 1 game » / « 3 games ») dans la langue de l'écran. */
 @Composable
