@@ -53,7 +53,7 @@ export function getSystem(id) {
 
 export function requireSystem(id) {
   const system = getSystem(id);
-  if (!system) throw new HttpError(404, `Système inconnu : ${id}`);
+  if (!system) throw new HttpError(404, 'errors.systemNotFound', { id });
   return system;
 }
 
@@ -67,25 +67,25 @@ function validateRegex(re) {
     new RegExp(re);
     return re;
   } catch {
-    throw new HttpError(400, `Expression régulière invalide : ${re}`);
+    throw new HttpError(400, 'errors.invalidRegex', { re });
   }
 }
 
 function validateFolder(folder) {
   if (!folder || !/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/.test(folder)) {
-    throw new HttpError(400, 'Nom de dossier invalide (lettres, chiffres, espace, . _ -)');
+    throw new HttpError(400, 'errors.invalidFolder');
   }
   return folder;
 }
 
 export function createSystem(input) {
   const id = String(input.id || '').toLowerCase();
-  if (!ID_RE.test(id)) throw new HttpError(400, 'Identifiant invalide (a-z, 0-9, . _ -)');
-  if (!input.name) throw new HttpError(400, 'Le nom est obligatoire');
-  if (getSystem(id)) throw new HttpError(409, `Le système « ${id} » existe déjà`);
+  if (!ID_RE.test(id)) throw new HttpError(400, 'errors.invalidId');
+  if (!input.name) throw new HttpError(400, 'errors.nameRequired');
+  if (getSystem(id)) throw new HttpError(409, 'errors.systemExists', { id });
   const folder = validateFolder(input.folder || id);
   if (db.prepare('SELECT 1 FROM systems WHERE folder = ?').get(folder)) {
-    throw new HttpError(409, `Le dossier « ${folder} » est déjà utilisé`);
+    throw new HttpError(409, 'errors.folderInUse', { folder });
   }
   db.prepare(
     `INSERT INTO systems (id, name, shortname, folder, filename_regex, libretro_name, screenscraper_id, players, source, source_revision)
@@ -161,8 +161,8 @@ function removeImageFile(id) {
 export function setSystemImage(id, buffer, mimeType) {
   requireSystem(id);
   const ext = IMAGE_EXT[mimeType];
-  if (!ext) throw new HttpError(415, 'Format d’image non supporté (PNG, JPEG, WebP ou GIF)');
-  if (!buffer?.length) throw new HttpError(400, 'Image manquante');
+  if (!ext) throw new HttpError(415, 'errors.imageFormat');
+  if (!buffer?.length) throw new HttpError(400, 'errors.imageMissing');
   fs.mkdirSync(systemImagesDir(), { recursive: true });
   removeImageFile(id);
   const file = `${id}-${Date.now()}${ext}`;
@@ -208,7 +208,7 @@ function localPlatformList() {
 
 async function fetchJson(url) {
   const res = await fetch(url, { headers: { 'User-Agent': 'romcloud-server' } });
-  if (!res.ok) throw new HttpError(502, `Échec du téléchargement de ${url} (${res.status})`);
+  if (!res.ok) throw new HttpError(502, 'errors.downloadFailed', { url, status: res.status });
   return res.json();
 }
 
@@ -249,7 +249,7 @@ export async function listDaijishouPlatforms() {
 /** Transforme un fichier plateforme Daijishou en données de système. */
 export function platformToSystem(json, source = 'daijishou') {
   const p = json.platform;
-  if (!p?.uniqueId) throw new HttpError(400, 'Fichier plateforme Daijishou invalide');
+  if (!p?.uniqueId) throw new HttpError(400, 'errors.invalidPlatform');
   const libretro = (p.scraperSourceList || []).find((s) => s.startsWith('LIBRETRO:'));
   return {
     id: p.uniqueId.toLowerCase(),
@@ -274,7 +274,7 @@ export function platformToSystem(json, source = 'daijishou') {
 
 /** Charge une plateforme : catalogue RomCloud (fichier local) en priorité, sinon Daijishou. */
 async function fetchPlatform(filename) {
-  if (!filename || !/^[\w&.' -]+\.json$/.test(filename)) throw new HttpError(400, 'Nom de fichier invalide');
+  if (!filename || !/^[\w&.' -]+\.json$/.test(filename)) throw new HttpError(400, 'errors.invalidFileName');
   if (localPlatformList().some((p) => p.filename === filename)) {
     const json = JSON.parse(fs.readFileSync(path.join(LOCAL_PLATFORMS_DIR, filename), 'utf8'));
     return { json, source: 'romcloud' };

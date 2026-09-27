@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { screenscraperEnabled } from '../config.js';
+import { I18nError } from '../i18n.js';
 import { db } from '../db.js';
 import { ensureHashes, gameMediaDir, getGameRow, requireGameRow, rowToGame } from '../library.js';
 import { requireSystem } from '../systems.js';
@@ -37,7 +38,7 @@ function markStatus(id, status, source, error) {
  * source = 'auto' : ScreenScraper (si configuré) puis repli sur Libretro pour les images manquantes.
  */
 export async function scrapeGame(gameId, source = 'auto') {
-  if (!SCRAPE_SOURCES.includes(source)) throw new Error(`Source inconnue : ${source}`);
+  if (!SCRAPE_SOURCES.includes(source)) throw new I18nError('errors.unknownSource', { source });
   let row = requireGameRow(gameId);
   const system = requireSystem(row.system_id);
   const useSS = source === 'screenscraper' || (source === 'auto' && screenscraperEnabled());
@@ -83,7 +84,7 @@ export async function scrapeGame(gameId, source = 'auto') {
 
   if (!meta) {
     const status = errors.length ? 'error' : 'notfound';
-    markStatus(row.id, status, usedSources.join('+') || source, errors.join(' ; ') || null);
+    markStatus(row.id, status, usedSources.join('+') || source, errors[0] || null);
     return rowToGame(getGameRow(row.id));
   }
 
@@ -118,7 +119,7 @@ export async function scrapeGame(gameId, source = 'auto') {
     screenshot,
     row.id,
   );
-  markStatus(row.id, 'ok', usedSources.join('+'), errors.join(' ; ') || null);
+  markStatus(row.id, 'ok', usedSources.join('+'), errors[0] || null);
   return rowToGame(getGameRow(row.id));
 }
 
@@ -126,7 +127,7 @@ export async function scrapeGame(gameId, source = 'auto') {
 export function saveCustomMedia(gameId, type, buffer, mimeType) {
   const row = requireGameRow(gameId);
   const ext = EXT_BY_TYPE[mimeType];
-  if (!ext) throw new Error('Format d’image non supporté');
+  if (!ext) throw new I18nError('errors.imageFormat');
   const dir = gameMediaDir(row.id);
   fs.mkdirSync(dir, { recursive: true });
   for (const old of fs.readdirSync(dir)) if (old.startsWith(`${type}.`)) fs.rmSync(path.join(dir, old));

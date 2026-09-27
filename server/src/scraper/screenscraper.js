@@ -2,10 +2,11 @@
 // (SCREENSCRAPER_DEV_ID / SCREENSCRAPER_DEV_PASSWORD) ; le compte utilisateur
 // (SCREENSCRAPER_USER / SCREENSCRAPER_PASSWORD) est facultatif mais augmente les quotas.
 import { config } from '../config.js';
+import { I18nError } from '../i18n.js';
 
 const API = 'https://api.screenscraper.fr/api2/jeuInfos.php';
 
-export class QuotaError extends Error {
+export class QuotaError extends I18nError {
   name = 'QuotaError';
 }
 
@@ -63,7 +64,7 @@ function parseGame(jeu) {
  */
 export async function scrapeScreenScraper({ system, fileName, size, crc32, md5 }) {
   const s = config.screenscraper;
-  if (!s.devId || !s.devPassword) throw new Error('Identifiants ScreenScraper non configurés');
+  if (!s.devId || !s.devPassword) throw new I18nError('scrape.ssNotConfigured');
   const params = new URLSearchParams({
     devid: s.devId,
     devpassword: s.devPassword,
@@ -83,14 +84,14 @@ export async function scrapeScreenScraper({ system, fileName, size, crc32, md5 }
   const body = await res.text();
   if (res.status === 404) return null;
   if (res.status === 429 || res.status === 430 || res.status === 431) {
-    throw new QuotaError(`Quota ScreenScraper atteint (${res.status}) : ${body.trim().slice(0, 200)}`);
+    throw new QuotaError('scrape.ssQuota', { status: res.status, detail: body.trim().slice(0, 200) });
   }
-  if (!res.ok) throw new Error(`ScreenScraper ${res.status} : ${body.trim().slice(0, 200)}`);
+  if (!res.ok) throw new I18nError('scrape.ssError', { status: res.status, detail: body.trim().slice(0, 200) });
   let json;
   try {
     json = JSON.parse(body);
   } catch {
-    throw new Error(`Réponse ScreenScraper illisible : ${body.trim().slice(0, 200)}`);
+    throw new I18nError('scrape.ssUnreadable', { detail: body.trim().slice(0, 200) });
   }
   const jeu = json?.response?.jeu;
   if (!jeu || !jeu.id) return null;

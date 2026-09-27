@@ -69,7 +69,7 @@ export function getGameRow(id) {
 
 export function requireGameRow(id) {
   const row = getGameRow(id);
-  if (!row) throw new HttpError(404, `Jeu inconnu : ${id}`);
+  if (!row) throw new HttpError(404, 'errors.gameNotFound', { id });
   return row;
 }
 
@@ -101,7 +101,7 @@ export function updateGame(id, input) {
     if (input[key] === undefined) continue;
     let value = input[key] === '' ? null : input[key];
     if (key === 'rating' && value !== null) value = Number(value);
-    if (key === 'title' && !value) throw new HttpError(400, 'Le titre est obligatoire');
+    if (key === 'title' && !value) throw new HttpError(400, 'errors.titleRequired');
     sets.push(`${column} = ?`);
     values.push(value);
   }
@@ -190,6 +190,6 @@ export function scanAll() {
 /** Nom de fichier sûr (pas de chemin, pas de caractères interdits sous Windows/Android). */
 export function safeFileName(name) {
   const base = path.basename(String(name)).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim();
-  if (!base || base === '.' || base === '..') throw new HttpError(400, 'Nom de fichier invalide');
+  if (!base || base === '.' || base === '..') throw new HttpError(400, 'errors.invalidFileName');
   return base;
 }

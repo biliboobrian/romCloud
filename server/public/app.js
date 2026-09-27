@@ -1,4 +1,5 @@
 // Interface d'administration RomCloud (vanilla JS, sans build).
+import { LANGUAGES, applyTranslations, formatSize, getLanguage, setLanguage, t } from './i18n.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -39,7 +40,8 @@ function withKey(url) {
 }
 
 async function api(path, { method = 'GET', body, headers = {} } = {}) {
-  const opts = { method, headers: { ...headers } };
+  // Accept-Language : le serveur renvoie ses messages (erreurs, tâches) dans la langue choisie.
+  const opts = { method, headers: { 'Accept-Language': getLanguage(), ...headers } };
   const key = apiKey();
   if (key) opts.headers.Authorization = `Bearer ${key}`;
   if (body !== undefined && !(body instanceof Blob)) {
@@ -51,11 +53,11 @@ async function api(path, { method = 'GET', body, headers = {} } = {}) {
   const res = await fetch(`/api${path}`, opts);
   if (res.status === 401) {
     askKey();
-    throw new Error('Clé d’API requise');
+    throw new Error(t('key.required'));
   }
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+  if (!res.ok) throw new Error(data.error || t('errors.http', { status: res.status }));
   return data;
 }
 
@@ -75,13 +77,6 @@ async function guard(fn) {
   }
 }
 
-function formatSize(bytes) {
-  if (!bytes) return '0 o';
-  const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
-  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-  return `${(bytes / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`;
-}
-
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
@@ -95,11 +90,47 @@ function mediaUrl(game, type, bust = '') {
 }
 
 function askKey() {
-  const key = prompt('Clé d’API du serveur RomCloud :', apiKey());
+  const key = prompt(t('key.prompt'), apiKey());
   if (key !== null) {
     setApiKey(key.trim());
     init();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Langue
+// ---------------------------------------------------------------------------
+
+function setupLanguageSelect() {
+  const select = $('#langSelect');
+  select.innerHTML = Object.entries(LANGUAGES)
+    .map(([code, name]) => `<option value="${code}">${escapeHtml(name)}</option>`)
+    .join('');
+  select.value = getLanguage();
+  select.onchange = () => {
+    setLanguage(select.value);
+    refreshTexts();
+  };
+}
+
+/** Redessine les parties dynamiques dans la nouvelle langue (et recharge les textes du serveur). */
+function refreshTexts() {
+  applyTranslations();
+  updateScraperState();
+  updatePlatformSelection();
+  if (state.platforms) renderPlatforms();
+  if (state.current && $('#sysDialog').open) openSystemSettings();
+  if (state.editingGame && $('#gameDialog').open) fillGameDialog(state.editingGame);
+  if ($('#dupDialog').open) openDuplicates();
+  guard(async () => {
+    await loadSystems();
+    await refreshJobs();
+  });
+}
+
+function updateScraperState() {
+  if (!state.status) return;
+  $('#scraperState').textContent = t(state.status.scrapers.screenscraper ? 'scraper.both' : 'scraper.libretroOnly');
 }
 
 // ---------------------------------------------------------------------------
@@ -154,8 +185,8 @@ async function showSystem() {
   $('#sysName').textContent = s.name;
   $('#sysHeadImage').classList.toggle('hidden', !s.hasImage);
   $('#sysHeadImage').src = systemImageUrl(s);
-  const bits = [`${s.gameCount} jeu(x)`, formatSize(s.totalSize), `dossier : roms/${s.folder}`];
-  if (s.players.length) bits.push(`${s.players.length} émulateur(s)`);
+  const bits = [t('system.meta.games', { n: s.gameCount }), formatSize(s.totalSize), t('system.meta.folder', { folder: s.folder })];
+  if (s.players.length) bits.push(t('system.meta.emulators', { n: s.players.length }));
   $('#sysMeta').textContent = bits.join(' · ');
   await loadGames();
 }
@@ -180,10 +211,9 @@ function renderGames() {
   const grid = $('#games');
   grid.innerHTML = '';
   if (!state.games.length) {
-    grid.innerHTML = '<p class="muted">Aucun jeu pour l’instant. Déposez des ROMs ci-dessus ou copiez-les dans le dossier du système puis cliquez sur « Rescanner ».</p>';
+    grid.innerHTML = `<p class="muted">${escapeHtml(t('system.noGames'))}</p>`;
     return;
   }
-  const statusLabel = { ok: 'Scrapé', none: 'Non scrapé', notfound: 'Introuvable', error: 'Erreur' };
   for (const g of games) {
     const card = document.createElement('div');
     card.className = 'game';
@@ -192,7 +222,7 @@ function renderGames() {
       <div class="game-info">
         <div class="game-title" title="${escapeHtml(g.fileName)}">${escapeHtml(g.title)}</div>
         <div class="game-sub"><span>${formatSize(g.size)}${g.releaseDate ? ` · ${escapeHtml(g.releaseDate.slice(0, 4))}` : ''}</span>
-          <span class="dot ${g.scrapeStatus}" title="${statusLabel[g.scrapeStatus] || ''}"></span></div>
+          <span class="dot ${g.scrapeStatus}" title="${escapeHtml(t(`status.${g.scrapeStatus}`))}"></span></div>
       </div>`;
     card.onclick = () => openGame(g);
     grid.append(card);
@@ -220,7 +250,7 @@ async function openAddDialog() {
 function renderPlatforms() {
   const list = $('#platformList');
   if (!state.platforms) {
-    list.innerHTML = '<p class="muted" style="padding:12px">Catalogue indisponible (pas d’accès à GitHub ?). Utilisez l’onglet « Personnalisé ».</p>';
+    list.innerHTML = `<p class="muted" style="padding:12px">${escapeHtml(t('add.catalogUnavailable'))}</p>`;
     return;
   }
   const q = $('#platformSearch').value.trim().toLowerCase();
@@ -229,9 +259,12 @@ function renderPlatforms() {
     if (q && !`${p.name} ${p.uniqueId}`.toLowerCase().includes(q)) continue;
     const row = document.createElement('label');
     row.className = 'platform-row';
+    const tag = p.imported
+      ? t(p.importedRevision !== null && p.importedRevision < p.revision ? 'add.updateAvailable' : 'add.alreadyImported')
+      : p.uniqueId;
     row.innerHTML = `<input type="checkbox" ${state.selectedPlatforms.has(p.filename) ? 'checked' : ''}>
       <span>${escapeHtml(p.name)}</span>
-      <span class="tag">${p.source === 'romcloud' ? 'RomCloud · ' : ''}${p.imported ? (p.importedRevision !== null && p.importedRevision < p.revision ? 'mise à jour dispo' : 'déjà importé') : escapeHtml(p.uniqueId)}</span>`;
+      <span class="tag">${p.source === 'romcloud' ? 'RomCloud · ' : ''}${escapeHtml(tag)}</span>`;
     $('input', row).onchange = (e) => {
       if (e.target.checked) state.selectedPlatforms.add(p.filename);
       else state.selectedPlatforms.delete(p.filename);
@@ -243,7 +276,7 @@ function renderPlatforms() {
 
 function updatePlatformSelection() {
   const n = state.selectedPlatforms.size;
-  $('#platformSel').textContent = `${n} sélectionné${n > 1 ? 's' : ''}`;
+  $('#platformSel').textContent = t('add.selected', { n });
   $('#importBtn').disabled = n === 0;
 }
 
@@ -251,7 +284,7 @@ async function importPlatforms() {
   $('#importBtn').disabled = true;
   await guard(async () => {
     const imported = await api('/daijishou/import', { method: 'POST', body: { filenames: [...state.selectedPlatforms] } });
-    toast(`${imported.length} système(s) importé(s)`);
+    toast(t('add.imported', { n: imported.length }));
     $('#addDialog').close();
     state.current = imported[0];
     await loadSystems();
@@ -265,7 +298,7 @@ async function createCustomSystem(e) {
   for (const k of Object.keys(data)) if (data[k] === '') delete data[k];
   await guard(async () => {
     const created = await api('/systems', { method: 'POST', body: data });
-    toast(`Système « ${created.name} » créé`);
+    toast(t('add.created', { name: created.name }));
     e.target.reset();
     $('#addDialog').close();
     state.current = created;
@@ -282,20 +315,20 @@ function openSystemSettings() {
     form.elements[k].value = s[k] ?? '';
   }
   renderSystemImage(s);
-  $('#sysFolder').textContent = `Identifiant : ${s.id} — dossier des ROMs : roms/${s.folder}`;
+  $('#sysFolder').textContent = t('sys.folderInfo', { id: s.id, folder: s.folder });
   renderPlayers(s);
   // Sans émulateur, la section est ouverte d'emblée pour inviter à en ajouter.
   $('#sysPlayersBox').open = s.players.length === 0;
   fillCopyPlayersSelect(s);
-  $('#sysDialog').showModal();
+  if (!$('#sysDialog').open) $('#sysDialog').showModal();
 }
 
 function renderPlayers(s) {
-  $('#sysPlayersSummary').textContent = `Émulateurs (${s.players.length})`;
+  $('#sysPlayersSummary').textContent = t('sys.emulators', { n: s.players.length });
   const list = $('#sysPlayers');
   list.innerHTML = '';
   if (!s.players.length) {
-    list.innerHTML = '<li class="muted">Aucun : l’application Android ne pourra lancer les jeux que via « Ouvrir avec ». Ajoutez les émulateurs d’un système proche ci-dessous.</li>';
+    list.innerHTML = `<li class="muted">${escapeHtml(t('sys.noEmulators'))}</li>`;
     return;
   }
   s.players.forEach((p, i) => {
@@ -304,8 +337,8 @@ function renderPlayers(s) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn small ghost danger remove';
-    btn.textContent = 'Retirer';
-    btn.onclick = () => savePlayers(s.players.filter((_, j) => j !== i), 'Émulateur retiré');
+    btn.textContent = t('sys.remove');
+    btn.onclick = () => savePlayers(s.players.filter((_, j) => j !== i), t('sys.emulatorRemoved'));
     li.append(btn);
     list.append(li);
   });
@@ -314,9 +347,9 @@ function renderPlayers(s) {
 async function fillCopyPlayersSelect(s) {
   const select = $('#copyPlayersFrom');
   const local = state.systems.filter((o) => o.id !== s.id && o.players.length);
-  const options = ['<option value="">Choisir un système…</option>'];
+  const options = [`<option value="">${escapeHtml(t('sys.copyChoose'))}</option>`];
   if (local.length) {
-    options.push('<optgroup label="Systèmes du serveur">');
+    options.push(`<optgroup label="${escapeHtml(t('sys.copyServer'))}">`);
     for (const o of local) options.push(`<option value="sys:${escapeHtml(o.id)}">${escapeHtml(o.name)} (${o.players.length})</option>`);
     options.push('</optgroup>');
   }
@@ -329,7 +362,7 @@ async function fillCopyPlayersSelect(s) {
     }
   }
   const group = document.createElement('optgroup');
-  group.label = 'Catalogue Daijishou';
+  group.label = t('sys.copyCatalog');
   for (const p of state.platforms) {
     const opt = document.createElement('option');
     opt.value = `dj:${p.filename}`;
@@ -351,8 +384,8 @@ async function copyPlayers() {
     const current = state.current.players;
     const known = new Set(current.map((p) => p.uniqueId));
     const added = source.filter((p) => !known.has(p.uniqueId));
-    if (!added.length) return toast('Ces émulateurs sont déjà présents');
-    await savePlayers([...current, ...added], `${added.length} émulateur(s) ajouté(s)`);
+    if (!added.length) return toast(t('sys.emulatorsPresent'));
+    await savePlayers([...current, ...added], t('sys.emulatorsAdded', { n: added.length }));
   });
   btn.disabled = false;
 }
@@ -369,7 +402,7 @@ async function savePlayers(players, message) {
 function renderSystemImage(s) {
   $('#sysImagePreview').innerHTML = s.hasImage
     ? `<img src="${systemImageUrl(s)}" alt="">`
-    : '<span class="muted">Aucune image</span>';
+    : `<span class="muted">${escapeHtml(t('sys.noImage'))}</span>`;
   $('#sysImageDelete').disabled = !s.hasImage;
 }
 
@@ -381,7 +414,7 @@ async function uploadSystemImage(file) {
       headers: { 'Content-Type': file.type },
     });
     renderSystemImage(state.current);
-    toast('Image du système enregistrée');
+    toast(t('sys.imageSaved'));
     await loadSystems();
   });
 }
@@ -400,20 +433,20 @@ async function saveSystemSettings(e) {
   await guard(async () => {
     state.current = await api(`/systems/${encodeURIComponent(state.current.id)}`, { method: 'PUT', body: data });
     $('#sysDialog').close();
-    toast('Réglages enregistrés');
+    toast(t('sys.saved'));
     await loadSystems();
   });
 }
 
 async function deleteCurrentSystem() {
   const s = state.current;
-  if (!confirm(`Supprimer le système « ${s.name} » de RomCloud ?`)) return;
-  const deleteFiles = confirm(`Supprimer aussi les ${s.gameCount} fichier(s) du dossier roms/${s.folder} ?\n\nOK = supprimer les fichiers, Annuler = les conserver sur le disque.`);
+  if (!confirm(t('sys.confirmDelete', { name: s.name }))) return;
+  const deleteFiles = confirm(t('sys.confirmDeleteFiles', { n: s.gameCount, folder: s.folder }));
   await guard(async () => {
     await api(`/systems/${encodeURIComponent(s.id)}${deleteFiles ? '?deleteFiles=1' : ''}`, { method: 'DELETE' });
     $('#sysDialog').close();
     state.current = null;
-    toast('Système supprimé');
+    toast(t('sys.deleted'));
     await loadSystems();
   });
 }
@@ -428,7 +461,7 @@ function uploadFiles(files) {
   const row = document.createElement('div');
   row.className = 'upload-row';
   const total = [...files].reduce((n, f) => n + f.size, 0);
-  row.innerHTML = `<span>${files.length} fichier(s) · ${formatSize(total)}</span><progress max="1" value="0"></progress><span class="pct">0 %</span>`;
+  row.innerHTML = `<span>${escapeHtml(t('upload.files', { n: files.length, size: formatSize(total) }))}</span><progress max="1" value="0"></progress><span class="pct">0 %</span>`;
   $('#uploads').append(row);
 
   const form = new FormData();
@@ -436,6 +469,7 @@ function uploadFiles(files) {
   const xhr = new XMLHttpRequest();
   const scrape = $('#autoScrape').checked ? '?scrape=1' : '';
   xhr.open('POST', `/api/systems/${encodeURIComponent(s.id)}/games${scrape}`);
+  xhr.setRequestHeader('Accept-Language', getLanguage());
   const key = apiKey();
   if (key) xhr.setRequestHeader('Authorization', `Bearer ${key}`);
   xhr.upload.onprogress = (e) => {
@@ -451,14 +485,15 @@ function uploadFiles(files) {
     } catch {
       /* ignore */
     }
-    if (xhr.status >= 300) return toast(data.error || `Échec de l’envoi (${xhr.status})`, 'error');
-    toast(`${data.saved.length} ROM(s) ajoutée(s)${data.rejected.length ? `, ${data.rejected.length} refusée(s) (extension non acceptée)` : ''}`, data.rejected.length ? 'error' : '');
+    if (xhr.status >= 300) return toast(data.error || t('upload.failed', { status: xhr.status }), 'error');
+    const rejected = data.rejected.length ? t('upload.rejected', { n: data.rejected.length }) : '';
+    toast(t('upload.done', { n: data.saved.length }) + rejected, data.rejected.length ? 'error' : '');
     if (data.job) refreshJobs();
     await loadSystems();
   };
   xhr.onerror = () => {
     row.remove();
-    toast('Échec de l’envoi (connexion interrompue)', 'error');
+    toast(t('upload.interrupted'), 'error');
   };
   xhr.send(form);
 }
@@ -481,10 +516,10 @@ function fillGameDialog(game, bust = '') {
     form.elements[k].value = game[k] ?? '';
   }
   const statusText = {
-    none: 'Jamais scrapé',
-    ok: `Scrapé via ${game.scrapeSource}`,
-    notfound: 'Introuvable lors du dernier scraping',
-    error: `Erreur : ${game.scrapeError || ''}`,
+    none: t('game.never'),
+    ok: t('game.scrapedVia', { source: game.scrapeSource }),
+    notfound: t('game.notFound'),
+    error: t('game.error', { error: game.scrapeError || '' }),
   }[game.scrapeStatus];
   $('#gameScrapeInfo').textContent = `${statusText}${game.scrapedAt ? ` (${game.scrapedAt})` : ''}`;
   for (const slot of $$('.media-slot')) {
@@ -501,7 +536,7 @@ async function saveGame(e) {
   await guard(async () => {
     await api(`/games/${state.editingGame.id}`, { method: 'PUT', body: data });
     $('#gameDialog').close();
-    toast('Jeu enregistré');
+    toast(t('game.saved'));
     await loadGames();
   });
 }
@@ -510,12 +545,12 @@ async function scrapeCurrentGame(source, btn) {
   const buttons = $$('[data-scrape]');
   buttons.forEach((b) => (b.disabled = true));
   const label = btn.textContent;
-  btn.textContent = 'Scraping…';
+  btn.textContent = t('game.scraping');
   await guard(async () => {
     const game = await api(`/games/${state.editingGame.id}/scrape`, { method: 'POST', body: { source } });
     state.editingGame = game;
     fillGameDialog(game, `-${Date.now()}`);
-    toast(game.scrapeStatus === 'ok' ? 'Informations récupérées' : 'Jeu introuvable', game.scrapeStatus === 'ok' ? '' : 'error');
+    toast(t(game.scrapeStatus === 'ok' ? 'game.found' : 'game.missing'), game.scrapeStatus === 'ok' ? '' : 'error');
     await loadGames();
   });
   btn.textContent = label;
@@ -537,11 +572,11 @@ async function uploadMedia(type, file) {
 
 async function deleteCurrentGame() {
   const g = state.editingGame;
-  if (!confirm(`Supprimer définitivement « ${g.fileName} » du serveur ?`)) return;
+  if (!confirm(t('game.confirmDelete', { file: g.fileName }))) return;
   await guard(async () => {
     await api(`/games/${g.id}`, { method: 'DELETE' });
     $('#gameDialog').close();
-    toast('Jeu supprimé');
+    toast(t('game.deleted'));
     await loadSystems();
   });
 }
@@ -554,23 +589,24 @@ const dup = { groups: [], marked: new Set(), sizes: new Map() };
 
 async function openDuplicates() {
   const s = state.current;
-  $('#dupTitle').textContent = `Doublons — ${s.name}`;
-  $('#dupSummary').textContent = 'Analyse en cours… (calcul des empreintes des fichiers de même taille)';
+  $('#dupTitle').textContent = t('dup.title', { name: s.name });
+  $('#dupSummary').textContent = t('dup.analysing');
   $('#dupGroups').innerHTML = '';
   dup.marked.clear();
   updateDupSelection();
-  $('#dupDialog').showModal();
+  if (!$('#dupDialog').open) $('#dupDialog').showModal();
   await guard(async () => {
     const res = await api(`/systems/${encodeURIComponent(s.id)}/duplicates`);
     dup.groups = [...res.identical, ...res.similar];
     dup.sizes = new Map(dup.groups.flatMap((g) => g.games.map((x) => [x.id, x.size])));
     // Copies identiques : toutes pré-cochées sauf le fichier conservé. Versions différentes : rien.
     for (const g of res.identical) for (const x of g.games) if (x.id !== g.keepId) dup.marked.add(x.id);
-    const parts = [];
-    parts.push(res.identical.length ? `${res.identical.length} groupe(s) de fichiers identiques` : 'aucun fichier identique');
-    parts.push(res.similar.length ? `${res.similar.length} jeu(x) en plusieurs versions` : 'aucun jeu en plusieurs versions');
+    const parts = [
+      res.identical.length ? t('dup.groupsIdentical', { n: res.identical.length }) : t('dup.noneIdentical'),
+      res.similar.length ? t('dup.groupsSimilar', { n: res.similar.length }) : t('dup.noneSimilar'),
+    ];
     let summary = parts.join(', ') + '.';
-    if (res.unhashed) summary += ` ${res.unhashed} fichier(s) de plus de ${res.hashMaxMb} Mo n’ont pas été comparés octet par octet.`;
+    if (res.unhashed) summary += t('dup.unhashed', { n: res.unhashed, mb: res.hashMaxMb });
     $('#dupSummary').textContent = summary;
     renderDuplicates(res);
   });
@@ -589,8 +625,8 @@ function renderDuplicates(res) {
     box.append(h, p);
     for (const g of groups) box.append(renderDupGroup(g));
   };
-  section('Fichiers identiques', 'Même contenu sous plusieurs noms : les copies sont cochées pour suppression.', res.identical);
-  section('Même jeu, versions différentes', 'Régions, révisions ou variantes : cochez celles à supprimer.', res.similar);
+  section(t('dup.identical'), t('dup.identicalHint'), res.identical);
+  section(t('dup.similar'), t('dup.similarHint'), res.similar);
   updateDupSelection();
 }
 
@@ -598,14 +634,14 @@ function renderDupGroup(g) {
   const el = document.createElement('div');
   el.className = 'dup-group';
   const total = g.games.reduce((n, x) => n + x.size, 0);
-  el.innerHTML = `<div class="dup-group-head"><span>${escapeHtml(g.games[0].title)}</span><span class="muted">${g.games.length} fichiers · ${formatSize(total)}</span></div>`;
+  el.innerHTML = `<div class="dup-group-head"><span>${escapeHtml(g.games[0].title)}</span><span class="muted">${escapeHtml(t('dup.files', { n: g.games.length, size: formatSize(total) }))}</span></div>`;
   for (const x of g.games) {
     const row = document.createElement('label');
     row.className = `dup-row${dup.marked.has(x.id) ? ' marked' : ''}`;
     row.innerHTML = `<input type="checkbox" ${dup.marked.has(x.id) ? 'checked' : ''}>
       <span class="name">${escapeHtml(x.fileName)}</span>
-      ${x.id === g.keepId ? '<span class="keep">À conserver</span>' : ''}
-      <span class="muted">${formatSize(x.size)}${x.scrapeStatus === 'ok' ? ' · scrapé' : ''}</span>`;
+      ${x.id === g.keepId ? `<span class="keep">${escapeHtml(t('dup.keep'))}</span>` : ''}
+      <span class="muted">${formatSize(x.size)}${x.scrapeStatus === 'ok' ? escapeHtml(t('dup.scraped')) : ''}</span>`;
     $('input', row).onchange = (e) => {
       if (e.target.checked) dup.marked.add(x.id);
       else dup.marked.delete(x.id);
@@ -619,20 +655,23 @@ function renderDupGroup(g) {
 
 function updateDupSelection() {
   const n = dup.marked.size;
-  const size = [...dup.marked].reduce((t, id) => t + (dup.sizes.get(id) || 0), 0);
-  $('#dupSelection').textContent = n ? `${n} fichier(s) sélectionné(s) · ${formatSize(size)} libérés` : 'Aucun fichier sélectionné';
+  const size = [...dup.marked].reduce((total, id) => total + (dup.sizes.get(id) || 0), 0);
+  $('#dupSelection').textContent = n ? t('dup.selection', { n, size: formatSize(size) }) : t('dup.noSelection');
   $('#dupDeleteBtn').disabled = n === 0;
 }
 
 async function deleteDuplicates() {
   const ids = [...dup.marked];
-  // Garde-fou : ne jamais supprimer tous les fichiers d'un groupe.
+  // Garde-fou : ne jamais supprimer tous les fichiers d'un groupe sans le signaler.
   const wiped = dup.groups.filter((g) => g.games.every((x) => dup.marked.has(x.id)));
-  if (wiped.length && !confirm(`Tous les fichiers de « ${wiped[0].games[0].title} »${wiped.length > 1 ? ` (et ${wiped.length - 1} autre(s) jeu(x))` : ''} sont cochés : le jeu disparaîtra complètement. Continuer ?`)) return;
-  if (!confirm(`Supprimer définitivement ${ids.length} fichier(s) du serveur ?`)) return;
+  if (wiped.length) {
+    const more = wiped.length > 1 ? t('dup.confirmWipeMore', { n: wiped.length - 1 }) : '';
+    if (!confirm(t('dup.confirmWipe', { title: wiped[0].games[0].title, more }))) return;
+  }
+  if (!confirm(t('dup.confirmDelete', { n: ids.length }))) return;
   await guard(async () => {
     const r = await api(`/systems/${encodeURIComponent(state.current.id)}/duplicates/delete`, { method: 'POST', body: { ids } });
-    toast(`${r.deleted} fichier(s) supprimé(s), ${formatSize(r.freed)} libérés`);
+    toast(t('dup.deleted', { n: r.deleted, size: formatSize(r.freed) }));
     await loadSystems();
     await openDuplicates();
   });
@@ -644,11 +683,11 @@ async function deleteDuplicates() {
 
 async function scrapeSystem() {
   const s = state.current;
-  const all = confirm('Scraper uniquement les jeux pas encore scrapés ?\n\nOK = seulement les manquants, Annuler = tout re-scraper.');
+  const onlyMissing = confirm(t('scrape.onlyMissing'));
   await guard(async () => {
-    const res = await api(`/systems/${encodeURIComponent(s.id)}/scrape`, { method: 'POST', body: { onlyMissing: all } });
+    const res = await api(`/systems/${encodeURIComponent(s.id)}/scrape`, { method: 'POST', body: { onlyMissing } });
     if (!res.job) return toast(res.message);
-    toast(`Scraping lancé (${res.job.total} jeu(x))`);
+    toast(t('scrape.started', { n: res.job.total }));
     refreshJobs();
   });
 }
@@ -681,23 +720,22 @@ async function refreshJobs() {
 function renderJobs(jobs) {
   const list = $('#jobsList');
   if (!jobs.length) {
-    list.innerHTML = '<p class="muted">Aucune tâche récente.</p>';
+    list.innerHTML = `<p class="muted">${escapeHtml(t('jobs.none'))}</p>`;
     return;
   }
-  const statusText = { queued: 'En attente', running: 'En cours', done: 'Terminé', cancelled: 'Annulé', failed: 'Interrompu' };
   list.innerHTML = '';
   for (const j of jobs) {
     const el = document.createElement('div');
     el.className = 'job';
     el.innerHTML = `
-      <div class="job-head"><strong>${escapeHtml(j.label)}</strong><span class="muted">${statusText[j.status]}</span></div>
+      <div class="job-head"><strong>${escapeHtml(j.label)}</strong><span class="muted">${escapeHtml(t(`jobs.${j.status}`))}</span></div>
       <progress max="${j.total}" value="${j.done}"></progress>
-      <div class="muted">${j.done}/${j.total} — ${j.ok} trouvé(s), ${j.notFound} introuvable(s), ${j.failed} erreur(s)</div>
+      <div class="muted">${escapeHtml(t('jobs.progress', j))}</div>
       ${j.lastError ? `<div class="err">${escapeHtml(j.lastError)}</div>` : ''}`;
     if (j.cancellable) {
       const btn = document.createElement('button');
       btn.className = 'btn small ghost';
-      btn.textContent = 'Annuler';
+      btn.textContent = t('jobs.cancel');
       btn.onclick = () => guard(async () => {
         await api(`/jobs/${j.id}`, { method: 'DELETE' });
         refreshJobs();
@@ -723,13 +761,13 @@ function bindEvents() {
   $('#emptyAddBtn').onclick = openAddDialog;
   $('#scanAllBtn').onclick = () => guard(async () => {
     await api('/scan', { method: 'POST' });
-    toast('Dossiers rescannés');
+    toast(t('rescan.allDone'));
     await loadSystems();
   });
 
   for (const tab of $$('.tab')) {
     tab.onclick = () => {
-      $$('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+      $$('.tab').forEach((x) => x.classList.toggle('active', x === tab));
       $('#tab-daijishou').classList.toggle('hidden', tab.dataset.tab !== 'daijishou');
       $('#tab-custom').classList.toggle('hidden', tab.dataset.tab !== 'custom');
     };
@@ -750,7 +788,7 @@ function bindEvents() {
   $('#copyPlayersBtn').onclick = copyPlayers;
   $('#scanSysBtn').onclick = () => guard(async () => {
     const r = await api(`/systems/${encodeURIComponent(state.current.id)}/scan`, { method: 'POST' });
-    toast(`${r.added.length} ajouté(s), ${r.updated} modifié(s), ${r.removed} retiré(s)`);
+    toast(t('rescan.done', { added: r.added.length, updated: r.updated, removed: r.removed }));
     await loadSystems();
   });
   $('#scrapeSysBtn').onclick = scrapeSystem;
@@ -794,13 +832,14 @@ function bindEvents() {
 async function init() {
   await guard(async () => {
     state.status = await api('/status');
-    $('#scraperState').textContent = state.status.scrapers.screenscraper
-      ? 'ScreenScraper + Libretro'
-      : 'Libretro seul (ScreenScraper non configuré)';
+    updateScraperState();
     await loadSystems();
     refreshJobs();
   });
 }
 
+applyTranslations();
+setupLanguageSelect();
+updatePlatformSelection();
 bindEvents();
 init();

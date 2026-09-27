@@ -6,6 +6,7 @@ import multer from 'multer';
 import { config, screenscraperEnabled } from './config.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { HttpError } from './http-error.js';
+import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
 import { cancelJob, enqueueScrape, listJobs } from './jobs.js';
 import {
   acceptsFileName,
@@ -44,9 +45,18 @@ const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(
 
 api.use(express.json({ limit: '2mb' }));
 
+// Langue de la réponse (Accept-Language) ; les jetons de message sont traduits à l'envoi.
+api.use((req, res, next) => {
+  const lang = requestLanguage(req);
+  res.set('Content-Language', lang);
+  const json = res.json.bind(res);
+  res.json = (body) => json(localize(body, lang));
+  next();
+});
+
 // Informations publiques (permet à l'application de savoir si une clé est requise).
 api.get('/info', (req, res) => {
-  res.json({ name: 'RomCloud', version: VERSION, authRequired: Boolean(config.apiKey) });
+  res.json({ name: 'RomCloud', version: VERSION, authRequired: Boolean(config.apiKey), languages: LANGUAGES });
 });
 
 // ---- Authentification par clé d'API ----
@@ -62,7 +72,7 @@ api.use((req, res, next) => {
   const auth = req.get('authorization') || '';
   const given = auth.startsWith('Bearer ') ? auth.slice(7) : req.get('x-api-key') || req.query.key;
   if (keyMatches(given)) return next();
-  res.status(401).json({ error: 'Clé d’API invalide ou manquante' });
+  res.status(401).json({ error: token('errors.apiKey') });
 });
 
 api.get('/status', (req, res) => {
@@ -90,7 +100,7 @@ api.delete('/systems/:id', (req, res) => {
 
 api.get('/systems/:id/image', (req, res) => {
   const file = systemImagePath(req.params.id);
-  if (!file) throw new HttpError(404, 'Aucune image pour ce système');
+  if (!file) throw new HttpError(404, 'errors.noSystemImage');
   // Le nom de fichier change à chaque envoi : on peut mettre en cache longtemps.
   res.sendFile(file, { maxAge: '30d' });
 });
@@ -127,7 +137,7 @@ api.post(
     const { filename, filenames, json } = req.body || {};
     if (json) return res.status(201).json([await importDaijishouPlatform({ json })]);
     const list = filenames || (filename ? [filename] : []);
-    if (!list.length) throw new HttpError(400, 'Aucune plateforme indiquée');
+    if (!list.length) throw new HttpError(400, 'errors.noPlatform');
     const imported = [];
     for (const f of list) imported.push(await importDaijishouPlatform({ filename: f }));
     res.status(201).json(imported);
@@ -182,7 +192,7 @@ api.post(
     const scan = scanSystem(system.id);
     let job = null;
     if (req.query.scrape === '1' && scan.added.length) {
-      job = enqueueScrape({ label: `${system.name} : ${scan.added.length} nouveau(x) jeu(x)`, systemId: system.id, gameIds: scan.added });
+      job = enqueueScrape({ label: token('jobs.newGames', { system: system.name, count: scan.added.length }), systemId: system.id, gameIds: scan.added });
     }
     res.status(201).json({ saved, rejected, scan, job });
   }),
@@ -201,7 +211,7 @@ api.delete('/games/:id', (req, res) => {
 api.get('/games/:id/file', (req, res, next) => {
   const row = requireGameRow(req.params.id);
   res.download(gameFilePath(row), row.file_name, { dotfiles: 'allow' }, (err) => {
-    if (err && !res.headersSent) next(new HttpError(404, 'Fichier introuvable sur le serveur'));
+    if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
   });
 });
 
@@ -209,9 +219,9 @@ const MEDIA_TYPES = ['boxart', 'screenshot'];
 
 api.get('/games/:id/media/:type', (req, res) => {
   const { type } = req.params;
-  if (!MEDIA_TYPES.includes(type)) throw new HttpError(404, 'Type de média inconnu');
+  if (!MEDIA_TYPES.includes(type)) throw new HttpError(404, 'errors.unknownMediaType');
   const row = requireGameRow(req.params.id);
-  if (!row[type]) throw new HttpError(404, 'Aucun média');
+  if (!row[type]) throw new HttpError(404, 'errors.noMedia');
   res.sendFile(path.join(gameMediaDir(row.id), row[type]), { maxAge: '1h' });
 });
 
@@ -220,8 +230,8 @@ api.put(
   express.raw({ type: 'image/*', limit: '20mb' }),
   (req, res) => {
     const { type } = req.params;
-    if (!MEDIA_TYPES.includes(type)) throw new HttpError(404, 'Type de média inconnu');
-    if (!Buffer.isBuffer(req.body) || !req.body.length) throw new HttpError(400, 'Image manquante');
+    if (!MEDIA_TYPES.includes(type)) throw new HttpError(404, 'errors.unknownMediaType');
+    if (!Buffer.isBuffer(req.body) || !req.body.length) throw new HttpError(400, 'errors.imageMissing');
     res.json(saveCustomMedia(req.params.id, type, req.body, req.get('content-type')));
   },
 );
@@ -229,7 +239,7 @@ api.put(
 // ---- Scraping ----
 function sourceParam(req) {
   const source = (req.body && req.body.source) || req.query.source || 'auto';
-  if (!SCRAPE_SOURCES.includes(source)) throw new HttpError(400, `Source inconnue : ${source}`);
+  if (!SCRAPE_SOURCES.includes(source)) throw new HttpError(400, 'errors.unknownSource', { source });
   return source;
 }
 
@@ -239,9 +249,9 @@ api.post('/systems/:id/scrape', (req, res) => {
   const system = requireSystem(req.params.id);
   const onlyMissing = (req.body && req.body.onlyMissing) !== false;
   const games = listGames(system.id).filter((g) => !onlyMissing || g.scrapeStatus !== 'ok');
-  if (!games.length) return res.json({ job: null, message: 'Aucun jeu à scraper' });
+  if (!games.length) return res.json({ job: null, message: token('messages.nothingToScrape') });
   const job = enqueueScrape({
-    label: `${system.name} : ${games.length} jeu(x)`,
+    label: token('jobs.systemGames', { system: system.name, count: games.length }),
     systemId: system.id,
     gameIds: games.map((g) => g.id),
     source: sourceParam(req),
@@ -252,16 +262,18 @@ api.post('/systems/:id/scrape', (req, res) => {
 api.get('/jobs', (req, res) => res.json(listJobs()));
 
 api.delete('/jobs/:id', (req, res) => {
-  if (!cancelJob(req.params.id)) throw new HttpError(404, 'Tâche inconnue');
+  if (!cancelJob(req.params.id)) throw new HttpError(404, 'errors.unknownJob');
   res.status(204).end();
 });
 
 // ---- Erreurs ----
-api.use((req, res) => res.status(404).json({ error: 'Route inconnue' }));
+api.use((req, res) => res.status(404).json({ error: token('errors.routeNotFound') }));
 
 // eslint-disable-next-line no-unused-vars
 api.use((err, req, res, next) => {
-  const status = err.status || (err.code === 'LIMIT_FILE_SIZE' ? 413 : 500);
+  const tooLarge = err.code === 'LIMIT_FILE_SIZE';
+  const status = err.status || (tooLarge ? 413 : 500);
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: err.message || 'Erreur interne' });
+  const error = tooLarge ? token('errors.fileTooLarge') : err.message || token('errors.internal');
+  res.status(status).json({ error, code: err.key });
 });

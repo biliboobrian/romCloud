@@ -1,3 +1,5 @@
+import { I18nError } from '../i18n.js';
+
 // Scraper basé sur les miniatures Libretro (https://thumbnails.libretro.com) :
 // gratuit et sans compte, fournit jaquette, capture et écran-titre (pas de texte).
 
@@ -62,7 +64,7 @@ async function findImage(system, type, fileName) {
  * @returns {Promise<null | { title?: string, media: { boxart?: string, screenshot?: string } }>}
  */
 export async function scrapeLibretro({ system, fileName }) {
-  if (!system.libretroName) throw new Error('Nom de système Libretro non configuré');
+  if (!system.libretroName) throw new I18nError('scrape.libretroNotConfigured');
   const box = await findImage(system.libretroName, 'Named_Boxarts', fileName);
   const snap = await findImage(system.libretroName, 'Named_Snaps', fileName);
   // Écran-titre : couverture de repli quand la base n'a pas de jaquette (ex. Amstrad - GX4000).
