@@ -52,6 +52,7 @@
             </label>
             <button class="btn" id="scrapeSysBtn">Scraper les jeux</button>
             <button class="btn" id="scanSysBtn">Rescanner</button>
+            <button class="btn" id="dupSysBtn">Doublons</button>
             <button class="btn ghost" id="editSysBtn">Réglages</button>
           </div>
         </div>
@@ -187,6 +188,22 @@
           </div>
         </div>
       </form>
+    </div>
+  </dialog>
+
+  <!-- Doublons -->
+  <dialog id="dupDialog" class="dialog wide">
+    <form method="dialog" class="dialog-head">
+      <h3 id="dupTitle">Doublons</h3>
+      <button class="icon-btn" aria-label="Fermer">✕</button>
+    </form>
+    <div class="dup-body">
+      <p class="muted" id="dupSummary">Analyse en cours…</p>
+      <div id="dupGroups"></div>
+    </div>
+    <div class="dup-foot">
+      <span class="muted" id="dupSelection"></span>
+      <button class="btn danger" id="dupDeleteBtn" disabled>Supprimer la sélection</button>
     </div>
   </dialog>
 

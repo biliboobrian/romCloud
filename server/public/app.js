@@ -547,6 +547,98 @@ async function deleteCurrentGame() {
 }
 
 // ---------------------------------------------------------------------------
+// Doublons
+// ---------------------------------------------------------------------------
+
+const dup = { groups: [], marked: new Set(), sizes: new Map() };
+
+async function openDuplicates() {
+  const s = state.current;
+  $('#dupTitle').textContent = `Doublons — ${s.name}`;
+  $('#dupSummary').textContent = 'Analyse en cours… (calcul des empreintes des fichiers de même taille)';
+  $('#dupGroups').innerHTML = '';
+  dup.marked.clear();
+  updateDupSelection();
+  $('#dupDialog').showModal();
+  await guard(async () => {
+    const res = await api(`/systems/${encodeURIComponent(s.id)}/duplicates`);
+    dup.groups = [...res.identical, ...res.similar];
+    dup.sizes = new Map(dup.groups.flatMap((g) => g.games.map((x) => [x.id, x.size])));
+    // Copies identiques : toutes pré-cochées sauf le fichier conservé. Versions différentes : rien.
+    for (const g of res.identical) for (const x of g.games) if (x.id !== g.keepId) dup.marked.add(x.id);
+    const parts = [];
+    parts.push(res.identical.length ? `${res.identical.length} groupe(s) de fichiers identiques` : 'aucun fichier identique');
+    parts.push(res.similar.length ? `${res.similar.length} jeu(x) en plusieurs versions` : 'aucun jeu en plusieurs versions');
+    let summary = parts.join(', ') + '.';
+    if (res.unhashed) summary += ` ${res.unhashed} fichier(s) de plus de ${res.hashMaxMb} Mo n’ont pas été comparés octet par octet.`;
+    $('#dupSummary').textContent = summary;
+    renderDuplicates(res);
+  });
+}
+
+function renderDuplicates(res) {
+  const box = $('#dupGroups');
+  box.innerHTML = '';
+  const section = (title, hint, groups) => {
+    if (!groups.length) return;
+    const h = document.createElement('h4');
+    h.textContent = title;
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = hint;
+    box.append(h, p);
+    for (const g of groups) box.append(renderDupGroup(g));
+  };
+  section('Fichiers identiques', 'Même contenu sous plusieurs noms : les copies sont cochées pour suppression.', res.identical);
+  section('Même jeu, versions différentes', 'Régions, révisions ou variantes : cochez celles à supprimer.', res.similar);
+  updateDupSelection();
+}
+
+function renderDupGroup(g) {
+  const el = document.createElement('div');
+  el.className = 'dup-group';
+  const total = g.games.reduce((n, x) => n + x.size, 0);
+  el.innerHTML = `<div class="dup-group-head"><span>${escapeHtml(g.games[0].title)}</span><span class="muted">${g.games.length} fichiers · ${formatSize(total)}</span></div>`;
+  for (const x of g.games) {
+    const row = document.createElement('label');
+    row.className = `dup-row${dup.marked.has(x.id) ? ' marked' : ''}`;
+    row.innerHTML = `<input type="checkbox" ${dup.marked.has(x.id) ? 'checked' : ''}>
+      <span class="name">${escapeHtml(x.fileName)}</span>
+      ${x.id === g.keepId ? '<span class="keep">À conserver</span>' : ''}
+      <span class="muted">${formatSize(x.size)}${x.scrapeStatus === 'ok' ? ' · scrapé' : ''}</span>`;
+    $('input', row).onchange = (e) => {
+      if (e.target.checked) dup.marked.add(x.id);
+      else dup.marked.delete(x.id);
+      row.classList.toggle('marked', e.target.checked);
+      updateDupSelection();
+    };
+    el.append(row);
+  }
+  return el;
+}
+
+function updateDupSelection() {
+  const n = dup.marked.size;
+  const size = [...dup.marked].reduce((t, id) => t + (dup.sizes.get(id) || 0), 0);
+  $('#dupSelection').textContent = n ? `${n} fichier(s) sélectionné(s) · ${formatSize(size)} libérés` : 'Aucun fichier sélectionné';
+  $('#dupDeleteBtn').disabled = n === 0;
+}
+
+async function deleteDuplicates() {
+  const ids = [...dup.marked];
+  // Garde-fou : ne jamais supprimer tous les fichiers d'un groupe.
+  const wiped = dup.groups.filter((g) => g.games.every((x) => dup.marked.has(x.id)));
+  if (wiped.length && !confirm(`Tous les fichiers de « ${wiped[0].games[0].title} »${wiped.length > 1 ? ` (et ${wiped.length - 1} autre(s) jeu(x))` : ''} sont cochés : le jeu disparaîtra complètement. Continuer ?`)) return;
+  if (!confirm(`Supprimer définitivement ${ids.length} fichier(s) du serveur ?`)) return;
+  await guard(async () => {
+    const r = await api(`/systems/${encodeURIComponent(state.current.id)}/duplicates/delete`, { method: 'POST', body: { ids } });
+    toast(`${r.deleted} fichier(s) supprimé(s), ${formatSize(r.freed)} libérés`);
+    await loadSystems();
+    await openDuplicates();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Scraping d'un système et tâches
 // ---------------------------------------------------------------------------
 
@@ -662,6 +754,8 @@ function bindEvents() {
     await loadSystems();
   });
   $('#scrapeSysBtn').onclick = scrapeSystem;
+  $('#dupSysBtn').onclick = openDuplicates;
+  $('#dupDeleteBtn').onclick = deleteDuplicates;
 
   $('#search').oninput = renderGames;
   $('#statusFilter').onchange = renderGames;
