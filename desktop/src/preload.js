@@ -1,0 +1,32 @@
+// Pont entre l'interface (page web isolée) et le processus principal.
+const { contextBridge, ipcRenderer } = require('electron');
+
+const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
+
+contextBridge.exposeInMainWorld('romcloud', {
+  settings: { get: call('settings:get'), save: call('settings:save') },
+  api: {
+    test: call('api:test'),
+    systems: call('api:systems'),
+    games: call('api:games'),
+    search: call('api:search'),
+  },
+  library: { downloaded: call('library:downloaded'), path: call('library:path'), remove: call('library:remove') },
+  bios: { missing: call('bios:missing') },
+  downloads: {
+    start: call('downloads:start'),
+    cancel: call('downloads:cancel'),
+    dismiss: call('downloads:dismiss'),
+    states: call('downloads:states'),
+    onUpdate: (fn) => ipcRenderer.on('downloads:update', (_e, payload) => fn(payload)),
+  },
+  launcher: {
+    options: call('launcher:options'),
+    choose: call('launcher:choose'),
+    play: call('launcher:play'),
+    check: call('launcher:check'),
+  },
+  dialog: { pickFile: call('dialog:pickFile'), pickFolder: call('dialog:pickFolder') },
+  shell: { showItem: call('shell:showItem'), openExternal: call('shell:openExternal') },
+  app: { version: call('app:version') },
+});

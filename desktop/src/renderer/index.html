@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Scripts locaux uniquement ; images et médias depuis le serveur RomCloud (http/https). -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' http: https: data:">
+  <title>RomCloud</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn hidden" id="backBtn"></button>
+    <div class="title-block">
+      <h1 id="title">RomCloud</h1>
+      <span class="subtitle" id="subtitle"></span>
+    </div>
+    <div class="topbar-center" id="topbarCenter"></div>
+    <div class="topbar-right" id="topbarRight"></div>
+  </header>
+  <div id="banners"></div>
+  <main id="main"></main>
+  <div id="modalRoot"></div>
+  <div id="toasts" class="toasts"></div>
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
