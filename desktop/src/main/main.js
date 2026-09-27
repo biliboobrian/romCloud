@@ -68,6 +68,12 @@ handle('launcher:options', (system) => launcher.options(system));
 handle('launcher:choose', (systemId, option, command) => launcher.choose(systemId, option, command));
 handle('launcher:play', (system, game) => launcher.play(system, game));
 handle('launcher:check', (system) => launcher.check(system));
+handle('launcher:describe', (system, game) => launcher.describe(system, game));
+handle('emulators:list', () => launcher.listEmulators());
+handle('emulators:detect', () => launcher.detectEmulators());
+handle('emulators:setPath', (id, file) => launcher.setEmulatorPath(id, file));
+handle('emulators:setArgs', (id, args) => launcher.setEmulatorArgs(id, args));
+handle('emulators:launch', (id) => launcher.launchEmulator(id));
 handle('dialog:pickFile', async (filters) => {
   const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters });
   return r.canceled ? null : r.filePaths[0];

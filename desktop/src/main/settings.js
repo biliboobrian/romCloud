@@ -14,7 +14,10 @@ function defaults() {
     biosDir: '', // vide : dossier « system » de RetroArch, sinon Documents\RomCloud\bios
     language: 'system', // system | fr | en
     view: 'carousel', // list | carousel
-    emulators: {}, // { [systemId]: { option: 'retroarch:<core>' | 'custom' | 'default', command: '' } }
+    emulators: {}, // { [systemId]: { option: 'retroarch:<core>' | 'emu:<id>' | 'custom' | 'default', command: '' } }
+    emulatorPaths: {}, // { [id émulateur du catalogue]: chemin de l'exécutable }
+    emulatorArgs: {}, // { [id]: arguments personnalisés, vide = ceux du catalogue }
+    emulatorsDetectedAt: '', // date de la dernière recherche des émulateurs sur le PC
     retroarchHelpDismissed: false,
   };
 }

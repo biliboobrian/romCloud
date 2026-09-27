@@ -1,7 +1,7 @@
 {
   "name": "romcloud-desktop",
   "productName": "RomCloud",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "RomCloud pour Windows : bibliothèque de jeux du serveur RomCloud, téléchargement à la demande et lancement des émulateurs",
   "author": "biliboobrian",
   "license": "MIT",

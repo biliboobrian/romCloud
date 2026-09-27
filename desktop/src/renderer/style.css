@@ -197,3 +197,13 @@ main { flex: 1; overflow-y: auto; position: relative; overflow-anchor: none; }
 .toast { background: var(--surface-2); border: 1px solid var(--border); padding: 12px 16px; border-radius: 10px; box-shadow: var(--shadow); max-width: 420px; display: flex; gap: 14px; align-items: center; }
 .toast.error { border-color: var(--danger); }
 .toast .btn { padding: 5px 12px; }
+
+/* Émulateurs du catalogue (fiche du jeu et paramètres) */
+.small { font-size: 12px; }
+.emu-block { display: flex; flex-direction: column; gap: 8px; }
+.emu-block label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.emu-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.emu-list { display: flex; flex-direction: column; gap: 10px; }
+.emu-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface, transparent); }
+.emu-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.emu-head span { font-size: 12px; word-break: break-all; text-align: right; }
