@@ -43,6 +43,7 @@
     carousel: 'M7 19h10V4H7v15zm-5-2h4V6H2v11zM18 6v11h4V6h-4z',
     folder: 'M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
     trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+    open: 'M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z',
     pad: 'M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z',
   };
   const icon = (name, size = 20) => `<svg class="icon" viewBox="0 0 24 24" style="width:${size}px;height:${size}px"><path d="${ICONS[name]}"/></svg>`;
@@ -539,15 +540,69 @@
 
   async function play(system, game) {
     try {
-      await call(rc.launcher.play, system, game);
+      const result = await call(rc.launcher.play, system, game);
+      if (result?.manual) showManualLaunch(result);
     } catch (err) {
       const key = err.info?.key;
-      if (key === 'errors.retroarchMissing' || key === 'errors.coreMissing') {
+      if (key === 'errors.emulatorMissing') {
+        showEmulatorMissing(err.info.vars.id);
+      } else if (key === 'errors.retroarchMissing' || key === 'errors.coreMissing') {
         toast(err.message, { type: 'error', action: t('detail.configureRetroArch'), onAction: () => showRetroArchHelp(system) });
       } else {
         toast(err.message, { type: 'error' });
       }
     }
+  }
+
+  /** Émulateur ouvert seul (pas de lancement direct possible) : indiquer le jeu à ouvrir. */
+  function showManualLaunch({ emulator, file }) {
+    modal({
+      title: t('emulator.manualTitle', { name: emulator }),
+      body: `<p>${esc(t('emulator.manualText', { name: emulator }))}</p><p class="mono">${esc(file)}</p>`,
+      buttons: [
+        { label: t('emulator.copyPath'), left: true, keepOpen: true, onClick: () => { navigator.clipboard.writeText(file); toast(t('emulator.copied')); } },
+        { label: t('detail.showInFolder'), onClick: () => rc.shell.showItem(file) },
+        { label: t('app.close'), kind: 'primary' },
+      ],
+    });
+  }
+
+  /** Émulateur du catalogue introuvable : le télécharger ou indiquer son emplacement. */
+  async function showEmulatorMissing(id) {
+    const emu = (await call(rc.emulators.list)).find((e) => e.id === id);
+    if (!emu) return;
+    modal({
+      title: t('emulator.missingTitle', { name: emu.name }),
+      body: `<p>${esc(t('emulator.missingText', { name: emu.name }))}</p>
+        <p class="muted">${esc(t('emulator.defaultLocation', { path: emu.defaultLocation }))}</p>`,
+      buttons: [
+        { label: t('app.cancel'), kind: 'ghost', left: true },
+        { label: t('emulator.browse'), onClick: () => locateEmulator(emu) },
+        { label: t('emulator.download', { name: emu.name }), kind: 'primary', onClick: () => rc.shell.openExternal(emu.url) },
+      ],
+    });
+  }
+
+  /** Choix manuel de l'exécutable d'un émulateur. */
+  async function locateEmulator(emu) {
+    const file = await call(rc.dialog.pickFile, [{ name: emu.name, extensions: ['exe'] }]);
+    if (!file) return false;
+    await call(rc.emulators.setPath, emu.id, file);
+    toast(t('emulator.located', { name: emu.name }));
+    if (S.route.name === 'game') renderGame();
+    else if (S.route.name === 'settings') renderSettings();
+    return true;
+  }
+
+  async function detectEmulators(button) {
+    if (button) {
+      button.disabled = true;
+      button.textContent = t('emulator.detecting');
+    }
+    const list = await call(rc.emulators.detect);
+    toast(t('emulator.detected', { n: list.filter((e) => e.path).length }));
+    if (S.route.name === 'game') renderGame();
+    else if (S.route.name === 'settings') renderSettings();
   }
 
   function modal({ title, body, buttons }) {
@@ -690,17 +745,24 @@
       return;
     }
     const downloaded = new Set(await call(rc.library.downloaded, [system], [game]));
-    const [emu, localPath, missingBios] = await Promise.all([
+    const [emu, localPath, missingBios, emulators, command] = await Promise.all([
       call(rc.launcher.options, system),
       call(rc.library.path, system, game),
       system.biosCount ? call(rc.bios.missing, system).catch(() => []) : [],
+      call(rc.emulators.list),
+      call(rc.launcher.describe, system, game),
     ]);
     if (S.route.name !== 'game' || S.route.gameId !== gameId) return;
     const st = statusOf(game, downloaded);
     const cover = mediaUrl(game, 'boxart');
     const shot = mediaUrl(game, 'screenshot');
     const selected = emu.options.find((o) => o.id === emu.selected);
-    const optionLabel = (o) => (o.kind === 'retroarch' ? t('emu.retroarch', { core: o.core }) : t(`emu.${o.kind}`));
+    const optionLabel = (o) => {
+      if (o.kind === 'retroarch') return t('emu.retroarch', { core: o.core });
+      if (o.kind === 'emulator') return o.installed ? o.name : t('emu.notInstalled', { name: o.name });
+      return t(`emu.${o.kind}`);
+    };
+    const catalogEmu = selected.kind === 'emulator' ? emulators.find((e) => e.id === selected.emuId) : null;
     const meta = [
       game.releaseDate && t('detail.release', { v: game.releaseDate }),
       game.genre,
@@ -744,6 +806,8 @@
             ${selected.kind === 'custom' ? `<label class="muted">${esc(t('detail.command'))}</label>
               <input type="text" id="emuCommand" value="${esc(emu.command)}" placeholder="${esc(t('detail.commandHint'))}">` : ''}
             ${selected.kind === 'retroarch' ? `<div><button class="btn ghost" id="raHelpBtn">${icon('info', 18)} ${esc(t('detail.configureRetroArch'))}</button></div>` : ''}
+            ${catalogEmu ? emulatorBlock(catalogEmu) : ''}
+            ${command ? `<div class="muted small">${esc(t('emulator.command'))}</div><div class="mono">${esc(command)}</div>` : ''}
           </div>
           ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
           ${shot ? `<img class="shot" src="${esc(shot)}" alt="">` : ''}
@@ -761,6 +825,7 @@
     $('#cancelBtn')?.addEventListener('click', () => rc.downloads.cancel(game.id));
     $('#folderBtn')?.addEventListener('click', () => rc.shell.showItem(localPath));
     $('#raHelpBtn')?.addEventListener('click', () => showRetroArchHelp(system));
+    if (catalogEmu) bindEmulatorBlock($('#main'), catalogEmu, () => renderGame());
     $('#deleteBtn')?.addEventListener('click', () => modal({
       title: t('detail.deleteTitle'),
       body: `<p>${esc(t('detail.deleteText'))}</p>`,
@@ -776,13 +841,53 @@
     $('#emuCommand')?.addEventListener('change', (e) => call(rc.launcher.choose, system.id, 'custom', e.target.value));
   }
 
+  /** Bloc d'un émulateur du catalogue : emplacement, téléchargement, ligne de commande. */
+  function emulatorBlock(emu, { compact = false } = {}) {
+    const status = emu.path
+      ? `<div class="good">${esc(t('emulator.found', { path: emu.path }))}</div>`
+      : `<div class="bad">${esc(t('emulator.notFound'))}</div><div class="muted">${esc(t('emulator.defaultLocation', { path: emu.defaultLocation }))}</div>`;
+    const args = emu.direct || emu.customArgs
+      ? `<label class="muted">${esc(t(compact ? 'emulator.argsShort' : 'emulator.args'))}<input type="text" data-emu-args="${esc(emu.id)}" value="${esc(emu.customArgs)}" placeholder="${esc(emu.defaultArgs)}"></label>`
+      : `<div class="muted">${esc(t('emulator.manual', { name: emu.name }))}</div>`;
+    return `<div class="emu-block" data-emu="${esc(emu.id)}">
+      ${compact ? '' : status}
+      <div class="emu-actions">
+        ${emu.path ? `<button class="btn" data-emu-launch>${icon('open', 18)} ${esc(t('emulator.launch', { name: emu.name }))}</button>` : `<button class="btn primary" data-emu-download>${icon('cloud', 18)} ${esc(t('emulator.download', { name: emu.name }))}</button>`}
+        <button class="btn" data-emu-browse>${icon('folder', 18)} ${esc(t('emulator.browse'))}</button>
+        ${emu.path ? `<button class="btn ghost" data-emu-download>${esc(t('emulator.website'))}</button>` : `<button class="btn ghost" data-emu-detect>${icon('search', 18)} ${esc(t('emulator.detect'))}</button>`}
+      </div>
+      ${args}
+    </div>`;
+  }
+
+  function bindEmulatorBlock(root, emu, refresh) {
+    const block = $(`[data-emu="${emu.id}"]`, root);
+    if (!block) return;
+    for (const b of $$('[data-emu-download]', block)) b.onclick = () => rc.shell.openExternal(emu.url);
+    $('[data-emu-browse]', block).onclick = () => locateEmulator(emu);
+    $('[data-emu-detect]', block)?.addEventListener('click', (e) => detectEmulators(e.currentTarget));
+    $('[data-emu-launch]', block)?.addEventListener('click', async () => {
+      try {
+        await call(rc.emulators.launch, emu.id);
+      } catch (err) {
+        toast(err.message, { type: 'error' });
+      }
+    });
+    $('[data-emu-args]', block)?.addEventListener('change', async (e) => {
+      await call(rc.emulators.setArgs, emu.id, e.target.value);
+      refresh();
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Paramètres
   // ---------------------------------------------------------------------------
 
   async function renderSettings() {
     const s = S.settings;
-    const version = await call(rc.app.version);
+    const [version, emulators] = await Promise.all([call(rc.app.version), call(rc.emulators.list)]);
+    // Nom des systèmes du serveur quand ils existent, sinon l'identifiant court.
+    const systemLabel = (id) => S.systems.find((x) => x.shortname === id || x.id === id)?.name;
     setTopbar({ title: t('settings.title') });
     const langs = [['system', t('settings.system')], ['fr', 'Français'], ['en', 'English']];
     $('#main').innerHTML = `<div class="page"><div class="settings">
@@ -802,6 +907,16 @@
       <h3>${esc(t('settings.retroarch'))}</h3>
       <label>${esc(t('settings.retroarchPath'))}<span class="line"><input type="text" id="retroarchPath" value="${esc(s.retroarchPath)}" placeholder="C:\\RetroArch-Win64\\retroarch.exe"><button class="btn" id="raBrowse">${esc(t('settings.browse'))}</button></span></label>
       <p class="muted">${esc(t('settings.retroarchHint'))}</p>
+
+      <h3>${esc(t('settings.emulators'))}</h3>
+      <p class="muted">${esc(t('settings.emulatorsHint'))}</p>
+      <div class="line"><button class="btn" id="detectBtn">${icon('search', 18)} ${esc(t('emulator.detect'))}</button></div>
+      <div class="emu-list">${emulators.map((e) => `<div class="emu-item">
+        <div class="emu-head"><strong>${esc(e.name)}</strong>
+          <span class="${e.path ? 'good' : 'muted'}">${esc(e.path || t('emulator.notFound'))}</span></div>
+        <div class="muted small">${esc(t('settings.emulatorSystems', { list: e.systems.map((id, i) => systemLabel(id) || e.systemNames[i]).join(', ') }))}${e.direct ? '' : ` · ${esc(t('emulator.noDirect'))}`}</div>
+        ${emulatorBlock(e, { compact: true })}
+      </div>`).join('')}</div>
 
       <div class="line" style="margin-top:14px"><button class="btn primary" id="saveBtn">${esc(t('app.save'))}</button></div>
       <p class="muted">${esc(t('settings.version', { v: version }))}</p>
@@ -835,6 +950,8 @@
       const dir = await call(rc.dialog.pickFolder);
       if (dir) $('#biosDir').value = dir;
     };
+    $('#detectBtn').onclick = (e) => detectEmulators(e.currentTarget);
+    for (const e of emulators) bindEmulatorBlock($('#main'), e, () => renderSettings());
     $('#raBrowse').onclick = async () => {
       const file = await call(rc.dialog.pickFile, [{ name: t('settings.exe'), extensions: ['exe'] }]);
       if (file) $('#retroarchPath').value = file;

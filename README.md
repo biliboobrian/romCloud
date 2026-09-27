@@ -110,13 +110,41 @@ Utilisation à la télécommande :
 
 ### Application Windows
 
-**RomCloud pour Windows** reprend l’application Android sur PC : systèmes, jeux en carrousel ou en liste, filtres, recherche globale (logo de la console sur les cartes), fiche du jeu, téléchargement à la demande avec reprise, cache hors ligne, français / anglais.
+**RomCloud pour Windows** reprend l’application Android sur PC : systèmes, jeux en carrousel ou en liste, filtres, recherche globale (logo de la console sur les cartes), fiche du jeu, téléchargement à la demande avec reprise, cache hors ligne, BIOS, français / anglais.
 
 - **Installation** : `RomCloud-Windows-<version>-x64.exe` (installeur) ou `RomCloud-Windows-<version>-portable.exe` (sans installation) depuis la [dernière Release](https://github.com/biliboobrian/romCloud/releases/latest). L’application n’étant pas signée, Windows SmartScreen peut afficher « Windows a protégé votre ordinateur » : *Informations complémentaires → Exécuter quand même*.
-- **Paramètres** : adresse du serveur et clé d’API, dossier des ROMs (par défaut `DocumentsRomCloud`), chemin de `retroarch.exe`, langue.
-- **Lancement des jeux** :
-  - **RetroArch pour Windows** : le cœur est repris des modèles d’émulateurs du système (ex. `mupen64plus_next` pour la N64) et le jeu est lancé avec `retroarch.exe -L <dossier de RetroArch>cores<cœur>_libretro.dll "<jeu>"`. Installez les cœurs dans RetroArch : *Mise à jour en ligne → Télécharger des cœurs* ; le guide *Configurer RetroArch* indique ce qui manque ;
-  - **commande personnalisée** par système (fiche du jeu → Émulateur), `{file}` étant le chemin du jeu, ex. `"C:EmulateursDolphinDolphin.exe" -b -e "{file}"` ;
+- **Paramètres** : adresse du serveur et clé d’API, dossier des ROMs (par défaut `Documents\RomCloud`), dossier des BIOS, chemin de `retroarch.exe`, émulateurs, langue.
+- **Lancement des jeux** (choix par système dans la fiche du jeu → *Émulateur*) :
+  - **RetroArch pour Windows** : le cœur est repris des modèles d’émulateurs du système (ex. `mupen64plus_next` pour la N64) et le jeu est lancé avec `retroarch.exe -L <dossier de RetroArch>\cores\<cœur>_libretro.dll "<jeu>"`. Installez les cœurs dans RetroArch : *Mise à jour en ligne → Télécharger des cœurs* ; le guide *Configurer RetroArch* indique ce qui manque ;
+  - **émulateurs les plus connus**, proposés selon le système avec un lien de téléchargement, leur emplacement par défaut et la ligne de commande qui lance le jeu directement (modifiable) :
+
+    | Émulateur | Systèmes | Lancement |
+    |---|---|---|
+    | DuckStation | PlayStation | `-batch -fullscreen {file}` |
+    | PCSX2 | PlayStation 2 | `-batch -fullscreen -- {file}` |
+    | RPCS3 | PlayStation 3 | `--no-gui {file}` |
+    | PPSSPP | PSP | `--fullscreen {file}` |
+    | Vita3K | PS Vita | émulateur ouvert seul (jeux à installer dans Vita3K) |
+    | Dolphin | GameCube, Wii | `-b -e {file}` |
+    | Cemu | Wii U | `-f -g {file}` |
+    | Project64 | Nintendo 64 | `{file}` |
+    | melonDS | DS | `{file}` |
+    | Azahar | 3DS | `{file}` |
+    | mGBA | Game Boy / Color / Advance | `-f {file}` |
+    | Snes9x | Super Nintendo | `{file}` |
+    | Mesen | NES, SNES, Game Boy, PC Engine, Master System, Game Gear, WonderSwan | `{file}` |
+    | ares | Nintendo 64, NES, SNES, Mega Drive, PC Engine… | `--fullscreen {file}` |
+    | Flycast, Redream | Dreamcast (Flycast : Naomi, Atomiswave) | `{file}` |
+    | Mednafen | Saturn, PlayStation, PC Engine, Lynx, Virtual Boy… | `{file}` |
+    | Supermodel | Sega Model 3 | `{file}` |
+    | MAME | Arcade | `-rompath {dir} {basename}` |
+    | xemu | Xbox | `-full-screen -dvd_path {file}` |
+    | Xenia Canary | Xbox 360 | `{file}` |
+    | Stella | Atari 2600 | `{file}` |
+    | ScummVM | ScummVM | `-p {dir} --auto-detect` |
+
+    RomCloud cherche les exécutables dans les dossiers habituels (`Program Files`, `%LOCALAPPDATA%\Programs`, Bureau, Téléchargements, `scoop\apps`, `C:\Emulators`, `C:\Emulateurs`, `D:\Games`…) ; sinon, *Indiquer l’emplacement…*. Si l’émulateur est absent au lancement, RomCloud propose de le télécharger ou de le localiser. Quand un lancement direct n’est pas possible, RomCloud ouvre l’émulateur seul et indique le fichier du jeu à charger (copie du chemin, affichage dans l’Explorateur). Le bouton *Ouvrir <émulateur>* lance l’émulateur sans jeu (configuration, manettes…). La liste complète est dans *Paramètres → Émulateurs* ;
+  - **commande personnalisée** par système, `{file}` étant le chemin du jeu, ex. `"C:\Emulateurs\Dolphin\Dolphin.exe" -b -e "{file}"` ;
   - **programme Windows par défaut** associé au type de fichier.
 
 ### Premier lancement de l’app
@@ -149,7 +177,7 @@ L’interface est disponible en **français** et en **anglais** : menu de langue
 4. **Image du système** : dans *Réglages* du système, *Choisir une image* (PNG, JPEG, WebP ou GIF, 10 Mo max.) — logo ou photo de la console, affichée sur la carte du système dans l’application.
 5. **Émulateurs d’un système** : dans *Réglages → Émulateurs*, retirez les modèles inutiles ou ajoutez ceux d’un autre système (du serveur ou du catalogue Daijishou). Utile pour un système créé à la main (onglet *Personnalisé*).
 6. **Doublons** (bouton dans la vue d’un système) : liste les **fichiers identiques** (même contenu sous plusieurs noms, vérifié par MD5 — les copies sont pré-cochées) et les **jeux en plusieurs versions** (régions, révisions : à cocher soi-même). Dans chaque groupe, RomCloud propose le fichier à conserver : sans marque de copie « (2) », pas de démo/bêta/dump défectueux, région préférée (`SCRAPE_REGIONS`), révision la plus récente, puis déjà scrapé. Les fichiers de plus de `HASH_MAX_MB` ne sont comparés que par leur titre.
-7. **BIOS** (bouton dans la vue d’un système) : liste les BIOS **attendus par les cœurs RetroArch** des émulateurs du système (fiches [libretro-core-info](https://github.com/libretro/libretro-core-info) : chemin, requis ou facultatif, MD5 de référence) et les fichiers envoyés, avec contrôle du MD5. Glissez les fichiers via *Ajouter des BIOS* : un fichier nommé comme un BIOS attendu est rangé dans le bon sous-dossier (ex. `dc_boot.bin` → `dc/dc_boot.bin`), ou utilisez *Envoyer…* sur la ligne d’un BIOS. Les fichiers sont stockés dans `DATA_DIR/bios/<système>/`. Les applications proposent ensuite de les télécharger avec le jeu.
+7. **BIOS** (bouton dans la vue d’un système) : liste les BIOS **attendus par les cœurs RetroArch** des émulateurs du système (fiches [libretro-core-info](https://github.com/libretro/libretro-core-info) : chemin, requis ou facultatif, MD5 de référence) et les fichiers envoyés, avec contrôle du MD5. Glissez les fichiers via *Ajouter des BIOS* : un fichier nommé comme un BIOS attendu est rangé dans le bon sous-dossier (ex. `dc_boot.bin` → `dc/dc_boot.bin`), ou utilisez *Envoyer…* sur la ligne d’un BIOS. Les MD5 de référence viennent de ces fiches ; d’autres révisions valides d’un même BIOS sont acceptées via [`server/bios-md5.json`](server/bios-md5.json), complétable sans reconstruire l’image par un fichier `DATA_DIR/bios-md5.json` de même format (`{ "scph5501.bin": ["924e39…"] }`). Un MD5 inattendu n’est qu’un avertissement. Les fichiers sont stockés dans `DATA_DIR/bios/<système>/`. Les applications proposent ensuite de les télécharger avec le jeu.
 8. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
 
 ### Configuration (`.env`)
