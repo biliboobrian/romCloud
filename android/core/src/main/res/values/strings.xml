@@ -193,6 +193,7 @@
     <string name="ra_config_file">Configuration file used by this template:</string>
     <string name="ra_open">Open RetroArch</string>
     <string name="action_failed">Action failed</string>
+    <string name="ra_dont_show_again">Don’t show this guide automatically again</string>
 
     <!-- Erreurs -->
     <string name="err_invalid_folder">Invalid folder</string>

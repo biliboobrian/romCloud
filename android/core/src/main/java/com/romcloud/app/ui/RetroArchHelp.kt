@@ -11,10 +11,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -28,7 +34,13 @@ import com.romcloud.core.R
 
 /** Guide de configuration de RetroArch, adapté au modèle choisi et à l'installation détectée. */
 @Composable
-fun RetroArchHelpDialog(info: RetroArchInfo, onDismiss: () -> Unit, onMessage: (String) -> Unit) {
+fun RetroArchHelpDialog(
+    info: RetroArchInfo,
+    onDismiss: () -> Unit,
+    onMessage: (String) -> Unit,
+    /** Si fourni (ouverture automatique après un téléchargement), affiche la case « ne plus afficher ». */
+    onDontShowAgainChange: ((Boolean) -> Unit)? = null,
+) {
     val activity = LocalContext.current as Activity
     val launcher = (activity.application as RomCloudApp).launcher
     val actionFailed = stringResource(R.string.action_failed)
@@ -98,6 +110,17 @@ fun RetroArchHelpDialog(info: RetroArchInfo, onDismiss: () -> Unit, onMessage: (
                     info.configFile?.let {
                         Text(stringResource(R.string.ra_config_file), style = MaterialTheme.typography.bodySmall)
                         Code(it)
+                    }
+                }
+
+                if (onDontShowAgainChange != null) {
+                    var dontShowAgain by remember { mutableStateOf(false) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = dontShowAgain, onCheckedChange = {
+                            dontShowAgain = it
+                            onDontShowAgainChange(it)
+                        })
+                        Text(stringResource(R.string.ra_dont_show_again))
                     }
                 }
             }

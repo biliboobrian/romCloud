@@ -63,6 +63,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.romcloud.app.data.DownloadState
+import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.data.Game
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
@@ -84,6 +85,8 @@ fun GamesScreen(
     var searching by rememberSaveable { mutableStateOf(false) }
     var askDownload by remember { mutableStateOf<Game?>(null) }
     var askCancel by remember { mutableStateOf<Game?>(null) }
+    // Guide RetroArch ouvert après confirmation d'un téléchargement (jeu, guide, lancer ensuite ?)
+    var postDownloadHelp by remember { mutableStateOf<Triple<Game, RetroArchInfo, Boolean>?>(null) }
     // Paysage : les filtres passent dans la barre du haut pour libérer une ligne.
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val filters = @Composable {
@@ -255,9 +258,12 @@ fun GamesScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (launchAfter) autoLaunch += game.id else autoLaunch -= game.id
+                    val help = viewModel.retroArchHelpFor(game)
+                    // Avec le guide ouvert, le lancement attend sa fermeture (voir plus bas).
+                    if (launchAfter && help == null) autoLaunch += game.id else autoLaunch -= game.id
                     viewModel.download(game)
                     askDownload = null
+                    if (help != null) postDownloadHelp = Triple(game, help, launchAfter)
                 }) { Text(stringResource(R.string.action_download)) }
             },
             dismissButton = {
@@ -266,6 +272,25 @@ fun GamesScreen(
                     TextButton(onClick = { askDownload = null }) { Text(stringResource(R.string.action_cancel)) }
                 }
             },
+        )
+    }
+
+    postDownloadHelp?.let { (game, info, launchAfter) ->
+        RetroArchHelpDialog(
+            info = info,
+            onDismiss = {
+                postDownloadHelp = null
+                if (launchAfter) {
+                    // Déjà téléchargé : on lance ; sinon lancement automatique à la fin du téléchargement.
+                    if (statusOf(game) == LocalStatus.Downloaded) {
+                        viewModel.play(activity, game)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                    } else {
+                        autoLaunch += game.id
+                    }
+                }
+            },
+            onMessage = { scope.launch { snackbar.showSnackbar(it) } },
+            onDontShowAgainChange = { viewModel.setRetroArchHelpDismissed(info.packageName, it) },
         )
     }
 

@@ -170,6 +170,19 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
 
     fun cancel(game: Game) = app.downloader.cancel(game.id)
 
+    /**
+     * Guide RetroArch à montrer quand l'utilisateur confirme le téléchargement de ce jeu :
+     * seulement si l'émulateur sélectionné est RetroArch et que le guide n'a pas été masqué.
+     */
+    fun retroArchHelpFor(game: Game): RetroArchInfo? {
+        val system = _state.value.system ?: return null
+        val player = app.launcher.selectedPlayer(system, game.fileName) ?: return null
+        return app.launcher.retroArchInfo(player)?.takeUnless { app.settings.isRetroArchHelpDismissed(it.packageName) }
+    }
+
+    fun setRetroArchHelpDismissed(packageName: String, dismissed: Boolean) =
+        app.settings.setRetroArchHelpDismissed(packageName, dismissed)
+
     fun play(activity: Activity, game: Game): String? {
         val system = _state.value.system ?: return I18n.get(R.string.err_system_not_found)
         return app.play(activity, system, game)
