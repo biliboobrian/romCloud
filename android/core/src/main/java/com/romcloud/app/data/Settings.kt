@@ -79,6 +79,12 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("retroArchQuitOnExit", true)
         set(value) = prefs.edit().putBoolean("retroArchQuitOnExit", value).apply()
 
+    /** Guide « Configurer RetroArch » masqué après confirmation d'un téléchargement, pour ce paquet. */
+    fun isRetroArchHelpDismissed(packageName: String) = prefs.getBoolean("retroArchHelp.$packageName", false)
+
+    fun setRetroArchHelpDismissed(packageName: String, dismissed: Boolean) =
+        prefs.edit().putBoolean("retroArchHelp.$packageName", dismissed).apply()
+
     /** Avertissement « fermez l'émulateur avant de jouer » masqué pour ce paquet. */
     fun isCloseWarningDismissed(packageName: String) = prefs.getBoolean("closeWarning.$packageName", false)
 

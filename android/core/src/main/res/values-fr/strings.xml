@@ -187,6 +187,7 @@
     <string name="ra_config_file">Fichier de configuration utilisé par ce modèle :</string>
     <string name="ra_open">Ouvrir RetroArch</string>
     <string name="action_failed">Action impossible</string>
+    <string name="ra_dont_show_again">Ne plus afficher ce guide automatiquement</string>
 
     <!-- Erreurs -->
     <string name="err_invalid_folder">Dossier invalide</string>
