@@ -60,6 +60,19 @@ db.exec(`
     added_at   TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (system_id, path)
   );
+
+  -- APK des émulateurs Android, stockés dans data/apks/<paquet>.apk (un par paquet).
+  CREATE TABLE IF NOT EXISTS apks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    package_name  TEXT NOT NULL UNIQUE,
+    label         TEXT NOT NULL,
+    version_name  TEXT,
+    version_code  INTEGER,
+    size          INTEGER NOT NULL,
+    md5           TEXT,
+    file_name     TEXT,
+    added_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Migrations légères pour les bases créées par une version antérieure.

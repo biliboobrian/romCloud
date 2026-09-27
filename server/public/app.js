@@ -123,6 +123,7 @@ function refreshTexts() {
   if (state.editingGame && $('#gameDialog').open) fillGameDialog(state.editingGame);
   if ($('#dupDialog').open) openDuplicates();
   if ($('#biosDialog').open) openBios();
+  if ($('#apksDialog').open) openApks();
   guard(async () => {
     await loadSystems();
     await refreshJobs();
@@ -797,6 +798,133 @@ function uploadBios(files, target) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// APK des émulateurs Android
+// ---------------------------------------------------------------------------
+
+async function openApks() {
+  if (!$('#apksDialog').open) {
+    $('#apksContent').innerHTML = `<p class="muted">${escapeHtml(t('apks.loading'))}</p>`;
+    $('#apksDialog').showModal();
+  }
+  await guard(async () => {
+    const [emulators, list] = await Promise.all([api('/apks/emulators'), api('/apks')]);
+    renderApks(emulators, list);
+  });
+}
+
+function renderApks(emulators, list) {
+  const box = $('#apksContent');
+  box.innerHTML = '';
+  const byId = new Map(list.map((a) => [a.id, a]));
+  const section = (title, hint, rows) => {
+    const h = document.createElement('h4');
+    h.textContent = title;
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = hint;
+    const group = document.createElement('div');
+    group.className = 'dup-group';
+    group.append(...rows);
+    box.append(h, p, group);
+  };
+  const version = (a) => [a.versionName && `v${a.versionName}`, formatSize(a.size)].filter(Boolean).join(' · ');
+
+  if (emulators.length) {
+    section(t('apks.used'), t('apks.usedHint'), emulators.map((e) => {
+      const apk = e.apkId != null ? byId.get(e.apkId) : null;
+      const row = document.createElement('div');
+      row.className = 'dup-row bios-row';
+      const store = `https://play.google.com/store/apps/details?id=${encodeURIComponent(e.packageName)}`;
+      row.innerHTML = `<span class="bios-state ${apk ? 'ok' : 'missing'}">${apk ? '✓' : '–'}</span>
+        <span class="name"><strong>${escapeHtml(e.names.join(' / '))}</strong> <code>${escapeHtml(e.packageName)}</code><br>
+          <span class="muted">${escapeHtml(e.systems.map((s) => s.name).join(', '))}</span></span>
+        ${apk ? `<span class="tag ok">${escapeHtml(t('apks.onServer', { version: version(apk) }))}</span>` : ''}
+        <a class="btn small" href="${store}" target="_blank" rel="noopener">${escapeHtml(t('apks.playStore'))}</a>`;
+      if (!apk) {
+        const label = document.createElement('label');
+        label.className = 'btn small';
+        label.innerHTML = `<span>${escapeHtml(t('apks.send'))}</span><input type="file" accept=".apk" hidden>`;
+        $('input', label).onchange = (ev) => {
+          if (ev.target.files[0]) uploadApks([ev.target.files[0]], e.packageName);
+        };
+        row.append(label);
+      }
+      return row;
+    }));
+  }
+
+  if (list.length) {
+    section(t('apks.files'), t('apks.filesHint'), list.map((a) => {
+      const row = document.createElement('div');
+      row.className = 'dup-row bios-row';
+      row.innerHTML = `<span class="name"><strong>${escapeHtml(a.label)}</strong> <code>${escapeHtml(a.packageName)}</code><br>
+          <span class="muted">${escapeHtml([version(a), a.versionCode != null && t('apks.versionCode', { code: a.versionCode }), a.fileName].filter(Boolean).join(' · '))}</span></span>
+        <button class="btn small" data-rename>${escapeHtml(t('apks.rename'))}</button>
+        <a class="btn small" href="${withKey(`/api/apks/${a.id}/file`)}" download>${escapeHtml(t('bios.download'))}</a>
+        <button class="btn small danger" data-delete>${escapeHtml(t('bios.delete'))}</button>`;
+      $('[data-rename]', row).onclick = () => guard(async () => {
+        const label = prompt(t('apks.renamePrompt'), a.label);
+        if (!label || label.trim() === a.label) return;
+        await api(`/apks/${a.id}`, { method: 'PUT', body: { label } });
+        await openApks();
+      });
+      $('[data-delete]', row).onclick = () => guard(async () => {
+        if (!confirm(t('apks.confirmDelete', { label: a.label }))) return;
+        await api(`/apks/${a.id}`, { method: 'DELETE' });
+        await openApks();
+      });
+      return row;
+    }));
+  }
+  if (!emulators.length && !list.length) {
+    const p = document.createElement('p');
+    p.textContent = t('apks.empty');
+    box.append(p);
+  }
+}
+
+/** Envoie des APK (avec progression : un APK d'émulateur pèse souvent plus de 100 Mo). */
+function uploadApks(files, expectedPackage) {
+  if (!files.length) return;
+  const row = document.createElement('div');
+  row.className = 'upload-row';
+  const total = files.reduce((n, f) => n + f.size, 0);
+  row.innerHTML = `<span>${escapeHtml(t('upload.files', { n: files.length, size: formatSize(total) }))}</span><progress max="1" value="0"></progress><span class="pct">0 %</span>`;
+  $('#apksUpload').append(row);
+  const form = new FormData();
+  for (const f of files) form.append('files', f, f.name);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/apks');
+  xhr.setRequestHeader('Accept-Language', getLanguage());
+  const key = apiKey();
+  if (key) xhr.setRequestHeader('Authorization', `Bearer ${key}`);
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    $('progress', row).value = e.loaded / e.total;
+    $('.pct', row).textContent = `${Math.round((e.loaded / e.total) * 100)} %`;
+  };
+  xhr.onload = async () => {
+    row.remove();
+    let data = {};
+    try {
+      data = JSON.parse(xhr.responseText);
+    } catch {
+      /* ignore */
+    }
+    if (xhr.status >= 300) return toast(data.error || t('upload.failed', { status: xhr.status }), 'error');
+    const other = expectedPackage && data.find((a) => a.packageName !== expectedPackage);
+    if (other) toast(t('apks.otherPackage', { got: other.packageName, expected: expectedPackage }), 'error');
+    else toast(t('apks.uploaded', { list: data.map((a) => `${a.label} ${a.versionName || ''}`.trim()).join(', ') }));
+    await openApks();
+  };
+  xhr.onerror = () => {
+    row.remove();
+    toast(t('upload.interrupted'), 'error');
+  };
+  xhr.send(form);
+}
+
 async function scrapeSystem() {
   const s = state.current;
   const onlyMissing = confirm(t('scrape.onlyMissing'));
@@ -911,6 +1039,11 @@ function bindEvents() {
   $('#dupSysBtn').onclick = openDuplicates;
   $('#dupDeleteBtn').onclick = deleteDuplicates;
   $('#biosSysBtn').onclick = openBios;
+  $('#apksBtn').onclick = openApks;
+  $('#apksInput').onchange = (e) => {
+    uploadApks([...e.target.files]);
+    e.target.value = '';
+  };
   $('#biosInput').onchange = (e) => {
     uploadBios([...e.target.files]);
     e.target.value = '';

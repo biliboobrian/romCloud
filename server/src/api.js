@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import multer from 'multer';
+import { addApk, apkFilePath, deleteApk, emulatorPackages, listApks, requireApk, updateApk } from './apks.js';
 import { addBiosFiles, biosFilePath, deleteBios, requireBios, systemBios } from './bios.js';
 import { config, screenscraperEnabled } from './config.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
@@ -171,6 +172,56 @@ api.get('/bios/:id/file', (req, res, next) => {
 api.delete('/bios/:id', (req, res) => {
   deleteBios(req.params.id);
   res.status(204).end();
+});
+
+// ---- APK des émulateurs Android ----
+api.get('/apks', (req, res) => res.json(listApks()));
+
+// Émulateurs utilisés par les systèmes (paquets des modèles), avec l'APK disponible le cas échéant.
+api.get('/apks/emulators', (req, res) => res.json(emulatorPackages()));
+
+const apkUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dir = path.join(config.dataDir, 'apks', '.upload');
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => cb(null, crypto.randomUUID()),
+  }),
+  limits: { fileSize: config.maxUploadMb * 1024 * 1024 },
+});
+
+// Envoi d'APK (champ « files ») : paquet et version lus dans le manifeste de chaque APK.
+api.post(
+  '/apks',
+  apkUpload.array('files'),
+  h(async (req, res) => {
+    const files = req.files || [];
+    try {
+      if (!files.length) throw new HttpError(400, 'errors.noFiles');
+      const saved = [];
+      for (const f of files) saved.push(await addApk(f.path, Buffer.from(f.originalname, 'latin1').toString('utf8')));
+      res.status(201).json(saved);
+    } finally {
+      for (const f of files) fs.rmSync(f.path, { force: true });
+    }
+  }),
+);
+
+api.put('/apks/:id', (req, res) => res.json(updateApk(req.params.id, req.body || {})));
+
+api.delete('/apks/:id', (req, res) => {
+  deleteApk(req.params.id);
+  res.status(204).end();
+});
+
+api.get('/apks/:id/file', (req, res, next) => {
+  const row = requireApk(req.params.id);
+  res.type('application/vnd.android.package-archive');
+  res.download(apkFilePath(row), `${row.package_name}-${row.version_name || row.version_code}.apk`, { dotfiles: 'allow' }, (err) => {
+    if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
+  });
 });
 
 api.post('/systems/:id/scan', (req, res) => res.json(scanSystem(req.params.id)));

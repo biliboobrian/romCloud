@@ -12,6 +12,7 @@
     <h1>RomCloud</h1>
     <div class="topbar-right">
       <span id="scraperState" class="pill"></span>
+      <button class="btn ghost" id="apksBtn" data-i18n="app.apks"></button>
       <button class="btn ghost" id="jobsBtn"><span data-i18n="app.jobs"></span> <span id="jobsCount" class="count hidden">0</span></button>
       <select id="langSelect" class="lang-select" data-i18n-title="app.language" data-i18n-aria-label="app.language"></select>
       <button class="btn ghost" id="keyBtn" data-i18n-title="app.apiKey">🔑</button>
@@ -206,6 +207,26 @@
     <div class="dup-foot">
       <span class="muted" id="dupSelection"></span>
       <button class="btn danger" id="dupDeleteBtn" disabled data-i18n="dup.deleteSelection"></button>
+    </div>
+  </dialog>
+
+  <!-- APK des émulateurs Android -->
+  <dialog id="apksDialog" class="dialog wide">
+    <form method="dialog" class="dialog-head">
+      <h3 data-i18n="apks.title"></h3>
+      <button class="icon-btn" data-i18n-aria-label="app.close">✕</button>
+    </form>
+    <div class="dup-body">
+      <p class="muted" data-i18n="apks.intro"></p>
+      <div id="apksUpload" class="uploads"></div>
+      <div id="apksContent"></div>
+    </div>
+    <div class="dup-foot">
+      <span class="muted" data-i18n="apks.addHint"></span>
+      <label class="btn primary">
+        <span data-i18n="apks.add"></span>
+        <input type="file" id="apksInput" accept=".apk" multiple hidden>
+      </label>
     </div>
   </dialog>
 
