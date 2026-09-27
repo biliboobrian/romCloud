@@ -62,6 +62,17 @@ data class BiosFile(
 @Serializable
 data class BiosList(val files: List<BiosFile> = emptyList())
 
+/** APK d'un émulateur Android disponible sur le serveur (un par paquet). */
+@Serializable
+data class EmulatorApk(
+    val id: Long,
+    val packageName: String,
+    val label: String,
+    val versionName: String? = null,
+    val versionCode: Long? = null,
+    val size: Long,
+)
+
 @Serializable
 data class Game(
     val id: Long,

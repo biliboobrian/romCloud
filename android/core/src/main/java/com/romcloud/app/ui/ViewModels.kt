@@ -14,6 +14,7 @@ import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.LaunchException
+import com.romcloud.app.launch.MissingEmulator
 import com.romcloud.app.launch.MissingEmulatorException
 import com.romcloud.app.launch.RetroArchInfo
 import kotlinx.coroutines.Dispatchers
@@ -342,15 +343,14 @@ class GameDetailViewModel(
         }
     }
 
-    /** Ouvre la fiche Play Store de l'émulateur ; renvoie un message d'erreur ou null. */
-    fun installPlayer(activity: Activity, player: Player): String? {
+    /**
+     * Propose d'installer l'émulateur (APK du serveur RomCloud s'il existe, ou Play Store) ;
+     * renvoie un message d'erreur ou null.
+     */
+    fun installPlayer(player: Player): String? {
         val pkg = app.launcher.packageOf(player) ?: return I18n.get(R.string.err_unknown_package)
-        return try {
-            app.launcher.openStore(activity, pkg)
-            null
-        } catch (e: LaunchException) {
-            e.message
-        }
+        app.missingEmulator.value = MissingEmulator(pkg, player.name)
+        return null
     }
 
     fun selectPlayer(player: Player) {
