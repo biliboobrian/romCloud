@@ -88,7 +88,37 @@ async function fetchCoreInfo(core) {
   return null;
 }
 
-/** BIOS attendus pour un système, fusionnés entre ses cœurs (obligatoire si un cœur l'exige). */
+/**
+ * MD5 acceptés en plus de ceux de libretro (autres révisions d'un même BIOS), par nom de fichier :
+ * bios-md5.json fourni avec le serveur, complété par DATA_DIR/bios-md5.json s'il existe.
+ * Format : { "scph5501.bin": ["924e39…"], … } (les clés commençant par « _ » sont ignorées).
+ */
+export function extraMd5() {
+  const extra = {};
+  for (const file of [path.join(config.rootDir, 'bios-md5.json'), path.join(config.dataDir, 'bios-md5.json')]) {
+    let json;
+    try {
+      json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      continue; // absent ou illisible
+    }
+    for (const [name, list] of Object.entries(json)) {
+      if (name.startsWith('_')) continue;
+      const hashes = (Array.isArray(list) ? list : [list]).map((h) => String(h).toLowerCase()).filter((h) => /^[0-9a-f]{32}$/.test(h));
+      extra[name.toLowerCase()] = [...new Set([...(extra[name.toLowerCase()] || []), ...hashes])];
+    }
+  }
+  return extra;
+}
+
+/** MD5 acceptés pour un chemin de BIOS : ceux des cœurs puis ceux de bios-md5.json. */
+const acceptedMd5 = (biosPath, fromCores, extra) =>
+  [...new Set([...fromCores, ...(extra[path.posix.basename(biosPath).toLowerCase()] || [])])];
+
+/**
+ * BIOS attendus pour un système, fusionnés entre ses cœurs (obligatoire si un cœur l'exige).
+ * `md5` : référence libretro ; `md5s` : toutes les empreintes acceptées.
+ */
 export async function expectedBios(system) {
   const byPath = new Map();
   const cores = coresOfSystem(system);
@@ -99,14 +129,18 @@ export async function expectedBios(system) {
     available++;
     for (const f of info.firmware) {
       const key = f.path.toLowerCase();
-      const entry = byPath.get(key) || { ...f, cores: [] };
+      const entry = byPath.get(key) || { ...f, md5s: [], cores: [] };
       entry.required ||= f.required;
       entry.md5 ||= f.md5;
+      if (f.md5 && !entry.md5s.includes(f.md5)) entry.md5s.push(f.md5);
       entry.cores.push(core);
       byPath.set(key, entry);
     }
   }
-  const list = [...byPath.values()].sort((a, b) => b.required - a.required || a.path.localeCompare(b.path));
+  const extra = extraMd5();
+  const list = [...byPath.values()]
+    .map((e) => ({ ...e, md5s: acceptedMd5(e.path, e.md5s, extra) }))
+    .sort((a, b) => b.required - a.required || a.path.localeCompare(b.path));
   return { cores, coreInfoAvailable: available > 0, expected: list };
 }
 
@@ -142,12 +176,14 @@ export async function systemBios(systemId, { catalog: withCatalog = true } = {})
     return { ...e, fileId: file?.id ?? null, present: Boolean(file) };
   });
   const expectedByPath = new Map(catalog.expected.map((e) => [e.path.toLowerCase(), e]));
+  const extra = extraMd5();
   return {
     cores: catalog.cores,
     coreInfoAvailable: catalog.coreInfoAvailable,
     files: files.map((f) => {
       const ref = expectedByPath.get(f.path.toLowerCase());
-      const md5Status = !ref?.md5 ? 'unknown' : ref.md5 === f.md5 ? 'ok' : 'mismatch';
+      const accepted = ref?.md5s ?? acceptedMd5(f.path, [], extra);
+      const md5Status = !accepted.length ? 'unknown' : accepted.includes(f.md5) ? 'ok' : 'mismatch';
       return { ...f, description: ref?.description ?? null, required: ref?.required ?? false, md5Status };
     }),
     expected,

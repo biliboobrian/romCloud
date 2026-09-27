@@ -735,7 +735,7 @@ function renderBios(res) {
       const row = document.createElement('div');
       row.className = 'dup-row bios-row';
       const tag = `<span class="tag${e.required ? ' req' : ''}">${escapeHtml(t(e.required ? 'bios.required' : 'bios.optional'))}</span>`;
-      const details = [biosDescription(e), e.md5 && `md5 ${e.md5}`].filter(Boolean).join(' · ');
+      const details = [biosDescription(e), e.md5s?.length && `md5 ${e.md5s.join(' / ')}`].filter(Boolean).join(' · ');
       row.innerHTML = `<span class="bios-state ${e.present ? 'ok' : 'missing'}">${e.present ? '✓' : '✗'}</span>
         <span class="name"><code>${escapeHtml(e.path)}</code><br><span class="muted">${escapeHtml(details)}</span></span>
         ${tag}`;
