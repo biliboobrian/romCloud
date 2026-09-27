@@ -112,7 +112,9 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
                 viewModel = vm,
                 storageWarning = storageWarning,
                 imageUrl = { app.api.systemImageUrl(it) },
+                mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
                 onOpenSystem = { nav.navigate("games/$it") },
+                onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
                 onOpenSettings = { nav.navigate("settings") },
             )
         }

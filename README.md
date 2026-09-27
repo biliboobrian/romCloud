@@ -170,6 +170,7 @@ Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <API_KEY>` (
 | GET | `/api/systems/:id/duplicates` | Groupes `identical` / `similar` avec le fichier proposé (`keepId`) |
 | POST | `/api/systems/:id/duplicates/delete` | `{ "ids": [12, 15] }` : supprime fichiers, fiches et images |
 | POST | `/api/systems/:id/scan` · `/api/scan` | Synchroniser avec les dossiers |
+| GET | `/api/search?q=mots&limit=300` | Recherche dans tous les systèmes (chaque mot dans le titre ou le nom de fichier) |
 | GET | `/api/systems/:id/games` | Liste des jeux (`?q=` recherche) |
 | POST | `/api/systems/:id/games` | Envoi multipart `files[]` (`?scrape=1`) |
 | GET/PUT/DELETE | `/api/games/:id` | Fiche d'un jeu |
@@ -234,6 +235,7 @@ Les Releases sont celles qu’Obtainium surveille (voir [Installation](#applicat
 
 - **Premier lancement** : saisir l'adresse du serveur (`http://192.168.x.x:8080`) et la clé d'API, *Tester la connexion*, puis autoriser **l'accès à tous les fichiers** : les ROMs sont écrites dans un dossier partagé (`/storage/emulated/0/RomCloud/<système>/` par défaut) pour que les émulateurs puissent les lire.
 - **Systèmes** : cartes avec l’image configurée sur le serveur.
+- **Recherche globale** (loupe sur l’écran des systèmes, bouton *Rechercher* sur TV) : cherche dans les jeux de **tous les systèmes** ; résultats en cartes avec l’indicateur de téléchargement et le **logo de la console en bas à droite** (image du système, sinon son nom court). Un résultat ouvre la fiche du jeu. Hors ligne, la recherche porte sur les listes déjà ouvertes.
 - **Liste des jeux** : deux affichages au choix (bouton en haut à droite, choix mémorisé) :
   - **liste** : jaquette, titre, année, genre, taille ;
   - **carrousel** façon Netflix : bannière du jeu mis en avant (capture en fond, boutons *Jouer* / *Télécharger* et *Infos*), puis rangées défilant horizontalement — *Téléchargés*, *Ajoutés récemment* (au-delà de 20 jeux), puis une rangée par genre. Chaque carte porte le bouton **ⓘ** (fiche du jeu et choix de l’émulateur). Pendant une recherche, les résultats s’affichent en grille.

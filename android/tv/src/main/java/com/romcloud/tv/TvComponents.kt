@@ -61,6 +61,8 @@ fun TvGameCard(
     onLongClick: () -> Unit,
     onFocused: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Élément en bas à droite de la jaquette (ex. logo de la console dans les résultats de recherche). */
+    badge: (@Composable () -> Unit)? = null,
 ) {
     Column(modifier) {
         Card(
@@ -92,6 +94,9 @@ fun TvGameCard(
                         .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)),
                 ) {
                     DownloadIndicator(status, size = 34.dp)
+                }
+                if (badge != null) {
+                    Box(Modifier.align(Alignment.BottomEnd).padding(8.dp)) { badge() }
                 }
                 if (status is LocalStatus.Downloading) {
                     LinearProgressIndicator(

@@ -14,15 +14,19 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -37,8 +41,13 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.romcloud.app.data.DownloadState
+import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
+import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.SystemBadge
 import com.romcloud.app.ui.SystemsViewModel
+import com.romcloud.app.ui.pluralString
 import com.romcloud.core.R
 
 @Composable
@@ -46,27 +55,63 @@ fun TvSystemsScreen(
     viewModel: SystemsViewModel,
     storageWarning: Boolean,
     imageUrl: (GameSystem) -> String?,
+    mediaUrl: (Game, String) -> String?,
     onOpenSystem: (String) -> Unit,
+    onOpenGame: (systemId: String, gameId: Long) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val search by viewModel.search.collectAsStateWithLifecycle()
+    var searchDialog by remember { mutableStateOf(false) }
     // Au retour d'un système, le focus revient sur la carte d'où l'on venait.
     var lastFocused by rememberSaveable { mutableIntStateOf(0) }
     val restoreFocus = remember { FocusRequester() }
     val settingsFocus = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
 
-    LaunchedEffect(state.systems.size) {
-        if (state.systems.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(state.systems.size, search.active) {
+        if (state.systems.isEmpty() || search.active) return@LaunchedEffect
         val index = lastFocused.coerceIn(0, state.systems.lastIndex)
         gridState.scrollToItem(index)
         runCatching { restoreFocus.requestFocus() }
+    }
+
+    if (searchDialog) {
+        SearchDialog(
+            initial = search.query,
+            onSearch = {
+                viewModel.setQuery(it, debounce = false)
+                searchDialog = false
+            },
+            onDismiss = { searchDialog = false },
+        )
     }
 
     Column(Modifier.fillMaxSize().padding(TvSafePadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("RomCloud", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
+            if (search.active) {
+                // Recherche en cours : modifier ou effacer
+                Button(onClick = { searchDialog = true }) {
+                    Icon(Icons.Filled.Search, null, modifier = IconSize)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.search_query, search.query))
+                }
+                Spacer(Modifier.width(SmallGap))
+                Button(onClick = { viewModel.setQuery("") }) {
+                    Icon(Icons.Filled.Close, null, modifier = IconSize)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.clear_search))
+                }
+            } else {
+                Button(onClick = { searchDialog = true }) {
+                    Icon(Icons.Filled.Search, null, modifier = IconSize)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.action_search))
+                }
+            }
+            Spacer(Modifier.width(SmallGap))
             Button(onClick = viewModel::refresh) {
                 Icon(Icons.Filled.Refresh, null, modifier = IconSize)
                 Spacer(Modifier.width(8.dp))
@@ -86,6 +131,7 @@ fun TvSystemsScreen(
             TvBanner(stringResource(R.string.banner_offline_full))
         }
         when {
+            search.active -> TvSearchResults(viewModel, search, imageUrl, mediaUrl, onOpenGame)
             state.systems.isEmpty() && state.loading -> Message(stringResource(R.string.loading))
             state.systems.isEmpty() && state.error != null -> {
                 Message(stringResource(R.string.server_unreachable_tv, state.error.orEmpty()))
@@ -124,5 +170,72 @@ fun Message(text: String) {
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** Résultats de la recherche globale : cartes de jeux avec le logo de leur console. */
+@Composable
+private fun TvSearchResults(
+    viewModel: SystemsViewModel,
+    search: SystemsViewModel.SearchState,
+    imageUrl: (GameSystem) -> String?,
+    mediaUrl: (Game, String) -> String?,
+    onOpenGame: (systemId: String, gameId: Long) -> Unit,
+) {
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    // Au retour d'une fiche de jeu, le focus revient sur le résultat choisi.
+    var lastFocused by rememberSaveable { mutableIntStateOf(0) }
+    val restoreFocus = remember { FocusRequester() }
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(search.results) {
+        if (search.results.isEmpty()) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { restoreFocus.requestFocus() }
+    }
+
+    fun statusOf(game: Game): LocalStatus = when (val d = downloads[game.id]) {
+        is DownloadState.Running -> LocalStatus.Downloading(d)
+        is DownloadState.Failed -> LocalStatus.Error(d.message)
+        null -> if (game.id in search.downloaded) LocalStatus.Downloaded else LocalStatus.Remote
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (search.offline) TvBanner(stringResource(R.string.search_offline))
+        when {
+            search.results.isEmpty() && search.loading -> Message(stringResource(R.string.loading))
+            search.results.isEmpty() && search.error != null -> Message(stringResource(R.string.error_with, search.error.orEmpty()))
+            search.results.isEmpty() -> Message(stringResource(R.string.search_no_results, search.query))
+            else -> {
+                Text(
+                    pluralString(R.plurals.search_results, search.results.size, search.results.size, search.query),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LazyVerticalGrid(
+                    state = gridState,
+                    columns = GridCells.Adaptive(PosterWidth),
+                    contentPadding = PaddingValues(vertical = 12.dp, horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    itemsIndexed(search.results, key = { _, g -> g.id }) { index, game ->
+                        val system = viewModel.system(game.systemId)
+                        TvGameCard(
+                            game = game,
+                            coverUrl = mediaUrl(game, "boxart"),
+                            status = statusOf(game),
+                            onClick = { onOpenGame(game.systemId, game.id) },
+                            onLongClick = { onOpenGame(game.systemId, game.id) },
+                            onFocused = { lastFocused = index },
+                            modifier = if (index == lastFocused.coerceAtMost(search.results.lastIndex)) {
+                                Modifier.focusRequester(restoreFocus)
+                            } else Modifier,
+                            badge = { SystemBadge(system, system?.let(imageUrl), height = 26.dp) },
+                        )
+                    }
+                }
+            }
+        }
     }
 }

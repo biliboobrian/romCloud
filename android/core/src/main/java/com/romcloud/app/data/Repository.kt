@@ -66,6 +66,26 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
         gamesMemory[systemId]?.find { it.id == gameId }
             ?: runCatching { games(systemId) }.getOrNull()?.data?.find { it.id == gameId }
 
+    /**
+     * Recherche dans tous les systèmes. Hors ligne : recherche dans les listes de jeux déjà
+     * mises en cache (systèmes ouverts au moins une fois), avec la même règle que le serveur.
+     */
+    suspend fun search(query: String): Loaded<List<Game>> {
+        try {
+            return Loaded(api.json.decodeFromString(gameListSerializer, api.searchRaw(query)), offline = false)
+        } catch (e: IOException) {
+            val words = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+            val cached = withContext(Dispatchers.IO) {
+                File(cacheDir, "api-cache").listFiles { f -> f.name.startsWith("games-") }.orEmpty()
+                    .flatMap { f -> runCatching { api.json.decodeFromString(gameListSerializer, f.readText()) }.getOrDefault(emptyList()) }
+            }
+            val results = cached
+                .filter { g -> words.all { w -> g.title.lowercase().contains(w) || g.fileName.lowercase().contains(w) } }
+                .sortedBy { it.title.lowercase() }
+            return Loaded(results, offline = true, error = e.message)
+        }
+    }
+
     fun clearMemory() {
         systemsMemory.clear()
         gamesMemory.clear()

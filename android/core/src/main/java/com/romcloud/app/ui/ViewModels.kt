@@ -16,6 +16,8 @@ import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulatorException
 import com.romcloud.app.launch.RetroArchInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,11 +62,32 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
         val error: String? = null,
     )
 
+    /** Recherche globale (tous les systèmes). */
+    data class SearchState(
+        val query: String = "",
+        val loading: Boolean = false,
+        val results: List<Game> = emptyList(),
+        val downloaded: Set<Long> = emptySet(),
+        val offline: Boolean = false,
+        val error: String? = null,
+    ) {
+        val active: Boolean get() = query.isNotBlank()
+    }
+
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
+    private val _search = MutableStateFlow(SearchState())
+    val search: StateFlow<SearchState> = _search.asStateFlow()
+
+    val downloads = app.downloader.states
+    private var searchJob: Job? = null
+
     init {
         refresh()
+        viewModelScope.launch {
+            app.downloader.events.collect { if (it is DownloadEvent.Completed) refreshSearchLocal() }
+        }
     }
 
     fun refresh() {
@@ -76,7 +99,56 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
             } catch (e: Exception) {
                 _state.value.copy(loading = false, error = e.message ?: I18n.get(R.string.err_connection))
             }
+            if (_search.value.active) runSearch(_search.value.query, debounce = false)
         }
+    }
+
+    fun system(id: String): GameSystem? = _state.value.systems.find { it.id == id }
+
+    /** Met à jour la recherche ; la requête part après une courte pause de saisie. */
+    fun setQuery(query: String, debounce: Boolean = true) {
+        _search.update { it.copy(query = query) }
+        if (query.isBlank()) {
+            searchJob?.cancel()
+            _search.value = SearchState()
+            return
+        }
+        runSearch(query, debounce)
+    }
+
+    private fun runSearch(query: String, debounce: Boolean) {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            if (debounce) delay(350)
+            _search.update { it.copy(loading = true) }
+            _search.value = try {
+                val loaded = app.repository.search(query.trim())
+                SearchState(
+                    query = query,
+                    results = loaded.data,
+                    downloaded = downloadedAmong(loaded.data),
+                    offline = loaded.offline,
+                    error = loaded.error,
+                )
+            } catch (e: Exception) {
+                _search.value.copy(loading = false, error = e.message ?: I18n.get(R.string.err_connection))
+            }
+        }
+    }
+
+    /** Recalcule les jeux présents sur l'appareil (retour dans l'app, fin de téléchargement). */
+    fun refreshSearchLocal() {
+        val current = _search.value
+        if (!current.active) return
+        viewModelScope.launch {
+            val ids = downloadedAmong(current.results)
+            _search.update { it.copy(downloaded = ids) }
+        }
+    }
+
+    private suspend fun downloadedAmong(games: List<Game>): Set<Long> = withContext(Dispatchers.IO) {
+        val systems = _state.value.systems.associateBy { it.id }
+        games.filter { g -> systems[g.systemId]?.let { app.library.isDownloaded(it, g) } == true }.map { it.id }.toSet()
     }
 }
 

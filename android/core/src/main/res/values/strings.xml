@@ -160,6 +160,14 @@
     <string name="clear_search">Clear the search</string>
     <string name="search_query">“%1$s”</string>
     <string name="choose_emulator">Choose the emulator</string>
+    <string name="search_all_hint">Search all games…</string>
+    <string name="search_all_title">Search all systems</string>
+    <string name="search_no_results">No game found for “%1$s”</string>
+    <string name="search_offline">Offline — search limited to the lists already opened.</string>
+    <plurals name="search_results">
+        <item quantity="one">%1$d result for “%2$s”</item>
+        <item quantity="other">%1$d results for “%2$s”</item>
+    </plurals>
 
     <!-- Fenêtres de lancement -->
     <string name="missing_emulator_title">Emulator not installed</string>
