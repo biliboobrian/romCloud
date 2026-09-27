@@ -158,7 +158,8 @@ fun EmulatorPickerDialog(
         title = { Text(stringResource(R.string.choose_emulator)) },
         text = {
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                items(players, key = { it.first.uniqueId }) { (player, installed) ->
+                // Pas de clé : l'identifiant d'un modèle n'est pas forcément unique (voir GameSystem.withUniquePlayerIds).
+                items(players) { (player, installed) ->
                     val selected = player.uniqueId == selectedId
                     ListItem(
                         selected = selected,
