@@ -73,7 +73,7 @@ Le conteneur s’exécute avec l’utilisateur `node` (uid 1000) : le dossier mo
 [Obtainium](https://github.com/ImranR98/Obtainium) installe l’APK depuis les [Releases GitHub](https://github.com/biliboobrian/romCloud/releases) et vous prévient à chaque nouvelle version.
 
 1. Installez Obtainium depuis ses [Releases](https://github.com/ImranR98/Obtainium/releases/latest) ou [F-Droid](https://f-droid.org/packages/dev.imranr.obtainium.fdroid/).
-2. Dans Obtainium : **Ajouter une application**, collez l’URL `https://github.com/biliboobrian/romCloud`, puis **Ajouter**.
+2. Dans Obtainium : **Ajouter une application**, collez l’URL `https://github.com/biliboobrian/romCloud`, et dans **Filtrer les APK par expression régulière** saisissez `RomCloud-\d` (chaque Release contient aussi l’APK TV), puis **Ajouter**.
 3. Appuyez sur **Installer** (autorisez Obtainium à installer des applications si Android le demande).
 
 Les mises à jour apparaissent ensuite dans Obtainium dès qu’une nouvelle Release est publiée.
@@ -85,6 +85,28 @@ Téléchargez `RomCloud-<version>.apk` depuis la [dernière Release](https://git
 Android 8 minimum. Les APK sont signés avec la clé RomCloud — empreinte SHA-256 du certificat :
 `3d7da376fa94f95e0c7d46b26638961c9a818c6f2170c04a6dd8cec9d371d559`
 (vérifiable avec `apksigner verify --print-certs RomCloud-<version>.apk`).
+
+### Application Android TV
+
+**RomCloud TV** (`RomCloud-TV-<version>.apk`, paquet `com.romcloud.app.tv`) est une application distincte, pensée pour la télécommande : elle apparaît dans le lanceur Android TV / Google TV avec sa bannière. Même serveur, même version, même clé de signature que l’application téléphone ; les deux peuvent être installées côte à côte.
+
+Installation sur le téléviseur :
+- **Obtainium** (installé sur le téléviseur) : même URL que ci-dessus, avec le filtre `RomCloud-TV` ;
+- ou l’application **Downloader** (AFTVnews) : saisissez l’adresse de l’APK TV de la [dernière Release](https://github.com/biliboobrian/romCloud/releases/latest) ;
+- ou depuis un ordinateur : `adb connect <ip-du-téléviseur>` puis `adb install RomCloud-TV-<version>.apk`.
+
+Accès aux fichiers : beaucoup de téléviseurs n’ont pas l’écran « Accès à tous les fichiers ». RomCloud TV l’ouvre s’il existe, sinon il affiche la commande à exécuter une fois depuis un ordinateur (débogage ADB activé dans les Options pour les développeurs) :
+
+```bash
+adb shell appops set --uid com.romcloud.app.tv MANAGE_EXTERNAL_STORAGE allow
+```
+
+Utilisation à la télécommande :
+- **Systèmes** : grille de cartes (image configurée sur le serveur) ; *Actualiser* et *Paramètres* en haut.
+- **Jeux** : l’arrière-plan et le haut de l’écran présentent le jeu sélectionné (capture, titre, infos, description, état) ; dessous, les filtres *Tous / Téléchargés / À télécharger*, *Rechercher*, puis les rangées *Téléchargés*, *Ajoutés récemment* et par genre.
+- **OK** : joue un jeu téléchargé, sinon propose *Télécharger et jouer* / *Télécharger* ; **appui long sur OK** : fiche du jeu.
+- **Fiche du jeu** : Jouer / Télécharger / Annuler, choix de l’émulateur, *Configurer RetroArch* (même guide que sur téléphone), *Supprimer du téléviseur*.
+- Le focus revient sur le dernier élément choisi au retour d’un écran ou d’une partie.
 
 ### Premier lancement de l’app
 
@@ -112,7 +134,8 @@ Avec Docker : voir [Installation](#serveur--docker-hub). Pour compiler l’image
 3. **Scraper** : bouton *Scraper les jeux* (toute la liste, en tâche de fond) ou depuis la fiche d'un jeu (ScreenScraper / Libretro au choix). Titre, description, date, genre, éditeur, jaquette et capture sont enregistrés sur le serveur et renvoyés à l'application.
 4. **Image du système** : dans *Réglages* du système, *Choisir une image* (PNG, JPEG, WebP ou GIF, 10 Mo max.) — logo ou photo de la console, affichée sur la carte du système dans l’application.
 5. **Émulateurs d’un système** : dans *Réglages → Émulateurs*, retirez les modèles inutiles ou ajoutez ceux d’un autre système (du serveur ou du catalogue Daijishou). Utile pour un système créé à la main (onglet *Personnalisé*).
-6. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
+6. **Doublons** (bouton dans la vue d’un système) : liste les **fichiers identiques** (même contenu sous plusieurs noms, vérifié par MD5 — les copies sont pré-cochées) et les **jeux en plusieurs versions** (régions, révisions : à cocher soi-même). Dans chaque groupe, RomCloud propose le fichier à conserver : sans marque de copie « (2) », pas de démo/bêta/dump défectueux, région préférée (`SCRAPE_REGIONS`), révision la plus récente, puis déjà scrapé. Les fichiers de plus de `HASH_MAX_MB` ne sont comparés que par leur titre.
+7. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
 
 ### Configuration (`.env`)
 
@@ -140,6 +163,8 @@ Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <API_KEY>` (
 | GET | `/api/daijishou/platforms` | Catalogue Daijishou |
 | POST | `/api/daijishou/import` | `{ "filenames": ["SuperNintendoEntertainmentSystem.json"] }` |
 | GET/PUT/DELETE | `/api/systems/:id/image` | Image du système (PUT : corps binaire, `Content-Type: image/png`…) |
+| GET | `/api/systems/:id/duplicates` | Groupes `identical` / `similar` avec le fichier proposé (`keepId`) |
+| POST | `/api/systems/:id/duplicates/delete` | `{ "ids": [12, 15] }` : supprime fichiers, fiches et images |
 | POST | `/api/systems/:id/scan` · `/api/scan` | Synchroniser avec les dossiers |
 | GET | `/api/systems/:id/games` | Liste des jeux (`?q=` recherche) |
 | POST | `/api/systems/:id/games` | Envoi multipart `files[]` (`?scrape=1`) |
@@ -154,7 +179,13 @@ Tests : `npm test`.
 
 ## 2. Application Android (`android/`)
 
-Kotlin + Jetpack Compose, minSdk 26 (Android 8), targetSdk 36 (Android 16).
+Kotlin + Jetpack Compose, minSdk 26 (Android 8), targetSdk 36 (Android 16). Trois modules Gradle :
+
+| Module | Contenu |
+|---|---|
+| `core` | Code partagé : API du serveur, cache hors ligne, téléchargements (service de premier plan), lancement des émulateurs (modèles `am start`, chemins SAF RetroArch…), réglages, ViewModels, fenêtres communes |
+| `app` | Application téléphone / tablette (`com.romcloud.app`) |
+| `tv` | Application Android TV (`com.romcloud.app.tv`), interface [tv-material](https://developer.android.com/jetpack/androidx/releases/tv) pour la télécommande |
 
 ### Compiler l'APK
 
@@ -162,8 +193,9 @@ Ouvrir `android/` dans Android Studio, ou en ligne de commande (JDK 17 à 21) :
 
 ```bash
 cd android
-./gradlew assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
-./gradlew assembleRelease    # app/build/outputs/apk/release/app-release.apk
+./gradlew :app:assembleRelease   # app/build/outputs/apk/release/app-release.apk (téléphone)
+./gradlew :tv:assembleRelease    # tv/build/outputs/apk/release/tv-release.apk (Android TV)
+./gradlew :core:testDebugUnitTest
 ```
 
 L’app cible Android 16 (API 36) et s’installe à partir d’Android 8 (API 26).
@@ -183,8 +215,8 @@ Sans clé configurée, l’APK release est signé avec la clé de debug.
 
 Le workflow [`.github/workflows/android.yml`](.github/workflows/android.yml) :
 
-- à chaque push sur `main` touchant `android/` : tests unitaires + APK release signé, téléchargeable dans l’onglet **Actions** (artifact `RomCloud-0.0.<n°>-<commit>`) ;
-- sur un tag `v*` : même chose + **Release GitHub** avec l’APK attaché :
+- à chaque push sur `main` touchant `android/` : tests unitaires + APK release signés (téléphone et TV), téléchargeable dans l’onglet **Actions** (artifact `RomCloud-0.0.<n°>-<commit>`) ;
+- sur un tag `v*` : même chose + **Release GitHub** avec les deux APK (`RomCloud-<version>.apk` et `RomCloud-TV-<version>.apk`) :
 
   ```bash
   git tag v1.1.0 && git push origin v1.1.0

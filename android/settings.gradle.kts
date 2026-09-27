@@ -17,4 +17,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "RomCloud"
+include(":core")
 include(":app")
+include(":tv")
