@@ -17,28 +17,31 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.RetroArchInfo
+import com.romcloud.core.R
 
 /** Guide de configuration de RetroArch, adapté au modèle choisi et à l'installation détectée. */
 @Composable
 fun RetroArchHelpDialog(info: RetroArchInfo, onDismiss: () -> Unit, onMessage: (String) -> Unit) {
     val activity = LocalContext.current as Activity
     val launcher = (activity.application as RomCloudApp).launcher
+    val actionFailed = stringResource(R.string.action_failed)
 
     fun run(action: () -> Unit) = try {
         action()
     } catch (e: LaunchException) {
-        onMessage(e.message ?: "Action impossible")
+        onMessage(e.message ?: actionFailed)
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Configurer RetroArch") },
+        title = { Text(stringResource(R.string.configure_retroarch)) },
         text = {
             Column(
                 Modifier
@@ -46,96 +49,65 @@ fun RetroArchHelpDialog(info: RetroArchInfo, onDismiss: () -> Unit, onMessage: (
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                val origin = when {
-                    !info.installed -> "non installé"
-                    info.fromPlayStore -> "version Play Store"
-                    else -> "installé hors Play Store"
-                }
+                val origin = stringResource(
+                    when {
+                        !info.installed -> R.string.ra_not_installed
+                        info.fromPlayStore -> R.string.ra_play_store
+                        else -> R.string.ra_other_source
+                    },
+                )
                 Text(
                     "${info.packageName} — $origin",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
-                HelpStep(1, "Installer le bon cœur") {
+                HelpStep(1, stringResource(R.string.ra_step1)) {
                     if (info.core != null) {
-                        Text("Ce modèle utilise le cœur :")
+                        Text(stringResource(R.string.ra_core_intro))
                         Code(info.core)
-                        Text(
-                            "Dans RetroArch : Menu principal → Charger un cœur → Télécharger un cœur, puis choisissez ce cœur. " +
-                                "Le nom doit correspondre exactement ; sinon, choisissez un autre modèle RetroArch dans la liste des émulateurs.",
-                        )
+                        Text(stringResource(R.string.ra_core_how))
                     } else {
-                        Text("Ce modèle ne précise pas de cœur : RetroArch utilisera celui associé à ce type de fichier.")
+                        Text(stringResource(R.string.ra_core_none))
                     }
                 }
 
-                HelpStep(2, "Autoriser l’accès aux ROMs") {
+                HelpStep(2, stringResource(R.string.ra_step2)) {
                     if (info.usesSaf) {
-                        Text(
-                            "La version Play Store de RetroArch ne lit que les dossiers que vous lui autorisez. " +
-                                "Dans RetroArch : Charger du contenu → ajoutez un dossier, sélectionnez le dossier des ROMs de RomCloud, " +
-                                "puis « Utiliser ce dossier » → « Autoriser » :",
-                        )
+                        Text(stringResource(R.string.ra_saf_how))
                         Code(info.romsDir)
-                        Text(
-                            "Autorisez ce dossier lui-même, pas seulement un dossier parent. " +
-                                "RomCloud transmet alors les ROMs à RetroArch sous forme de chemin « saf:// ».",
-                        )
+                        Text(stringResource(R.string.ra_saf_note))
                     } else {
-                        Text(
-                            "RetroArch doit pouvoir lire les fichiers de RomCloud : Paramètres Android → Applications → RetroArch → " +
-                                "Autorisations → Fichiers → « Autoriser la gestion de tous les fichiers ». Dossier des ROMs :",
-                        )
+                        Text(stringResource(R.string.ra_path_how))
                         Code(info.romsDir)
                     }
                     Text(
-                        "Mode réglable dans les Paramètres de RomCloud → « Accès aux ROMs pour RetroArch ».",
+                        stringResource(R.string.ra_mode_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
-                HelpStep(3, "Fermer RetroArch avant de jouer") {
-                    if (info.mustCloseManually) {
-                        Text(
-                            "RetroArch ne peut pas démarrer un jeu s’il est encore ouvert en arrière-plan (écran noir), " +
-                                "et depuis Android 14 RomCloud ne peut plus le fermer lui-même. " +
-                                "Avant de lancer un jeu, utilisez « Forcer l’arrêt » ci-dessous si RetroArch a été ouvert.",
-                        )
-                    } else {
-                        Text("RomCloud ferme automatiquement RetroArch avant chaque lancement.")
-                    }
-                    Text(
-                        if (info.quitOnExit) {
-                            "« Fermer RetroArch en quittant le jeu » est activé : RetroArch se ferme dès que vous le quittez, " +
-                                "le lancement suivant fonctionne donc sans manipulation. Sauvegardez avant de quitter une partie."
-                        } else {
-                            "Conseil : activez « Fermer RetroArch en quittant le jeu » dans les Paramètres de RomCloud " +
-                                "pour ne plus avoir à forcer l’arrêt."
-                        },
-                    )
+                HelpStep(3, stringResource(R.string.ra_step3)) {
+                    Text(stringResource(if (info.mustCloseManually) R.string.ra_close_manual else R.string.ra_close_auto))
+                    Text(stringResource(if (info.quitOnExit) R.string.ra_quit_on else R.string.ra_quit_off))
                 }
 
-                HelpStep(4, "En cas d’écran noir") {
-                    Text(
-                        "Dans RetroArch : Réglages → Journalisation → activez « Verbosité » et « Journaliser dans un fichier », " +
-                            "relancez le jeu depuis RomCloud puis consultez le journal. « Impossible de lire le fichier de contenu » " +
-                            "indique un problème d’accès au dossier (étape 2) ; une erreur de cœur renvoie à l’étape 1.",
-                    )
+                HelpStep(4, stringResource(R.string.ra_step4)) {
+                    Text(stringResource(R.string.ra_log_how))
                     info.configFile?.let {
-                        Text("Fichier de configuration utilisé par ce modèle :", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.ra_config_file), style = MaterialTheme.typography.bodySmall)
                         Code(it)
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
         dismissButton = {
             if (info.installed) {
                 Row {
-                    TextButton(onClick = { run { launcher.openApp(activity, info.packageName) } }) { Text("Ouvrir RetroArch") }
-                    TextButton(onClick = { run { launcher.openAppSettings(activity, info.packageName) } }) { Text("Forcer l’arrêt") }
+                    TextButton(onClick = { run { launcher.openApp(activity, info.packageName) } }) { Text(stringResource(R.string.ra_open)) }
+                    TextButton(onClick = { run { launcher.openAppSettings(activity, info.packageName) } }) { Text(stringResource(R.string.action_force_stop)) }
                 }
             }
         },

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,7 +25,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
@@ -37,6 +37,8 @@ import com.romcloud.app.data.GameSystem
 import com.romcloud.app.ui.DownloadIndicator
 import com.romcloud.app.ui.LocalStatus
 import com.romcloud.app.ui.formatSize
+import com.romcloud.app.ui.pluralString
+import com.romcloud.core.R
 
 private val CardShape = RoundedCornerShape(10.dp)
 
@@ -171,7 +173,7 @@ fun TvSystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Unit, mod
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             Text(system.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                "${system.gameCount} jeu${if (system.gameCount > 1) "x" else ""} · ${formatSize(system.totalSize)}",
+                pluralString(R.plurals.games_count, system.gameCount, system.gameCount) + " · " + formatSize(system.totalSize),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

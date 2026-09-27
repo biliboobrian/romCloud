@@ -1,6 +1,7 @@
 package com.romcloud.app.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -52,9 +54,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
+import com.romcloud.core.R
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,9 +88,9 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
         scope.launch {
             testResult = try {
                 val info = app.api.testConnection(url, key)
-                true to "Connecté à ${info.name} ${info.version}"
+                true to context.getString(R.string.connected_to, info.name, info.version)
             } catch (e: Exception) {
-                false to (e.message ?: "Connexion impossible")
+                false to (e.message ?: context.getString(R.string.connection_failed))
             }
             testing = false
         }
@@ -95,9 +99,9 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Paramètres") },
+                title = { Text(stringResource(R.string.action_settings)) },
                 navigationIcon = {
-                    if (canGoBack) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") }
+                    if (canGoBack) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) }
                 },
             )
         },
@@ -110,10 +114,10 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Serveur RomCloud", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_server), style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = url, onValueChange = { url = it },
-                label = { Text("Adresse du serveur") },
+                label = { Text(stringResource(R.string.server_address)) },
                 placeholder = { Text("http://192.168.1.10:8080") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -121,7 +125,7 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
             )
             OutlinedTextField(
                 value = key, onValueChange = { key = it },
-                label = { Text("Clé d’API (API_KEY du serveur)") },
+                label = { Text(stringResource(R.string.api_key_label)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
@@ -129,20 +133,20 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = ::test, enabled = url.isNotBlank() && !testing) {
                     if (testing) CircularProgressIndicator(Modifier.padding(end = 8.dp).size(16.dp), strokeWidth = 2.dp)
-                    Text("Tester la connexion")
+                    Text(stringResource(R.string.test_connection))
                 }
             }
             testResult?.let { (ok, msg) ->
                 Text(msg, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
             }
 
-            Text("Affichage", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_display), style = MaterialTheme.typography.titleMedium)
             val fullscreen by app.settings.fullscreen.collectAsStateWithLifecycle()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Plein écran", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.fullscreen), style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Masque la barre d’état et les boutons de navigation. Glissez depuis le bord de l’écran pour les afficher.",
+                        stringResource(R.string.fullscreen_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -150,14 +154,16 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                 Switch(checked = fullscreen, onCheckedChange = app.settings::setFullscreen)
             }
 
-            Text("Émulateurs", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.titleMedium)
+            LanguageSelector(app)
+
+            Text(stringResource(R.string.settings_emulators), style = MaterialTheme.typography.titleMedium)
             var quitOnExit by remember { mutableStateOf(app.settings.retroArchQuitOnExit) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Fermer RetroArch en quittant le jeu", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.quit_on_exit), style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Recommandé : évite l’écran noir au lancement suivant. Quitter RetroArch en cours de partie " +
-                            "(bouton Accueil, applications récentes) ferme alors le jeu — sauvegardez avant.",
+                        stringResource(R.string.quit_on_exit_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -170,7 +176,7 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
 
             var safMode by remember { mutableStateOf(app.settings.retroArchSafMode) }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Accès aux ROMs pour RetroArch", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.retroarch_access), style = MaterialTheme.typography.bodyLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RetroArchSafMode.entries.forEach { mode ->
                         FilterChip(
@@ -179,45 +185,41 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                                 safMode = mode
                                 app.settings.retroArchSafMode = mode
                             },
-                            label = { Text(mode.label) },
+                            label = { Text(stringResource(mode.label)) },
                         )
                     }
                 }
                 Text(
-                    "La version Play Store de RetroArch ne peut lire le dossier des ROMs qu’en SAF : dans RetroArch, " +
-                        "« Charger du contenu », ajoutez le dossier des ROMs de RomCloud (ci-dessous) et autorisez l’accès. " +
-                        "Automatique : SAF si RetroArch vient du Play Store, chemin classique sinon.",
+                    stringResource(R.string.retroarch_access_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            Text("Stockage des ROMs", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_storage), style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = dir, onValueChange = { dir = it },
-                label = { Text("Dossier local") },
-                supportingText = { Text("Un sous-dossier par système y est créé (ex. …/snes/).") },
+                label = { Text(stringResource(R.string.local_folder)) },
+                supportingText = { Text(stringResource(R.string.local_folder_hint)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { dir = Settings.defaultRomsDir() }) { Text("Dossier par défaut") }
+                TextButton(onClick = { dir = Settings.defaultRomsDir() }) { Text(stringResource(R.string.default_folder)) }
                 TextButton(onClick = {
                     dir = context.getExternalFilesDir("roms")?.absolutePath ?: dir
-                }) { Text("Dossier privé de l’app") }
+                }) { Text(stringResource(R.string.private_folder)) }
             }
 
             Card {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        if (hasPermission) "✓ Accès à tous les fichiers autorisé" else "Accès aux fichiers non autorisé",
+                        stringResource(if (hasPermission) R.string.all_files_granted else R.string.all_files_denied),
                         style = MaterialTheme.typography.titleSmall,
                         color = if (hasPermission) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                     )
                     Text(
-                        "Les émulateurs (RetroArch, etc.) doivent pouvoir lire les ROMs : elles sont donc enregistrées dans " +
-                            "un dossier partagé, ce qui nécessite l’autorisation « Accès à tous les fichiers ». " +
-                            "Le dossier privé de l’app ne la nécessite pas, mais la plupart des émulateurs ne pourront pas le lire.",
+                        stringResource(R.string.storage_hint),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (!hasPermission) {
@@ -233,7 +235,7 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                             } else {
                                 legacyPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                             }
-                        }) { Text("Autoriser") }
+                        }) { Text(stringResource(R.string.action_allow)) }
                     }
                 }
             }
@@ -246,7 +248,33 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                 },
                 enabled = url.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Enregistrer") }
+            ) { Text(stringResource(R.string.action_save)) }
+        }
+    }
+}
+
+/** Langue de l'application : Système / Français / English (appliquée immédiatement). */
+@Composable
+private fun LanguageSelector(app: RomCloudApp) {
+    val activity = LocalContext.current as Activity
+    val current = remember { app.settings.language }
+    val options = listOf(
+        AppLanguage.SYSTEM to stringResource(R.string.language_system),
+        "fr" to stringResource(R.string.language_fr),
+        "en" to stringResource(R.string.language_en),
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { (code, label) ->
+            FilterChip(
+                selected = current == code,
+                onClick = {
+                    if (code != current) {
+                        app.settings.language = code
+                        activity.recreate()
+                    }
+                },
+                label = { Text(label) },
+            )
         }
     }
 }

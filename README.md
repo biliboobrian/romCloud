@@ -129,6 +129,9 @@ Avec Docker : voir [Installation](#serveur--docker-hub). Pour compiler l’image
 
 ### Utilisation de l'interface web
 
+L’interface est disponible en **français** et en **anglais** : menu de langue en haut à droite (langue du navigateur par défaut, choix mémorisé). Les messages de l’API (erreurs, libellés des tâches, erreurs de scraping) sont renvoyés dans la langue demandée par le client (`Accept-Language`).
+
+
 1. **Ajouter un système** → onglet *Catalogue Daijishou* : cochez les plateformes (SNES, PSX, GBA…) et importez-les. Le catalogue est complété par des plateformes fournies par RomCloud, marquées « RomCloud » (dossier [`server/platforms/`](server/platforms/), même format) : **Amstrad GX4000** (cartouches `.cpr`, cœur RetroArch `cap32`), distincte de l’Amstrad CPC. Elles arrivent avec leurs émulateurs, le filtre d'extensions, le nom Libretro et l'identifiant ScreenScraper. L'onglet *Personnalisé* permet de créer un système à la main.
 2. **Ajouter des ROMs** : glisser-déposer dans la page (case « scraper automatiquement » cochée par défaut), ou copier les fichiers dans `data/roms/<dossier du système>/` puis cliquer sur **Rescanner**.
 3. **Scraper** : bouton *Scraper les jeux* (toute la liste, en tâche de fond) ou depuis la fiche d'un jeu (ScreenScraper / Libretro au choix). Titre, description, date, genre, éditeur, jaquette et capture sont enregistrés sur le serveur et renvoyés à l'application.
@@ -144,6 +147,7 @@ Avec Docker : voir [Installation](#serveur--docker-hub). Pour compiler l’image
 | `PORT` | Port HTTP (8080 par défaut) |
 | `DATA_DIR` | Base SQLite, ROMs et médias (`./data`) |
 | `ROMS_DIR` | Dossier des ROMs, relatif à `DATA_DIR` ou absolu (ex. un NAS monté) |
+| `DEFAULT_LANGUAGE` | Langue par défaut du serveur (`fr` ou `en`, `en` par défaut) : journal et clients qui n’envoient pas d’en-tête `Accept-Language` |
 | `API_KEY` | Clé exigée par l'API et l'interface web. **À définir** si le serveur est accessible au-delà de votre réseau local. |
 | `SCREENSCRAPER_DEV_ID` / `_DEV_PASSWORD` | Identifiants **développeur** ScreenScraper (à demander sur le forum screenscraper.fr). Sans eux, seul Libretro est utilisé. |
 | `SCREENSCRAPER_USER` / `_PASSWORD` | Votre compte ScreenScraper (facultatif, augmente les quotas) |
@@ -242,6 +246,7 @@ Les Releases sont celles qu’Obtainium surveille (voir [Installation](#applicat
 - **Appui sur un jeu** : s'il n'est pas téléchargé, une fenêtre demande de le télécharger d'abord (option « Lancer le jeu une fois téléchargé ») ; s'il l'est, il se lance directement. **Appui long / ⓘ** : fiche détaillée (description, capture, choix de l'émulateur, suppression locale).
 - Téléchargements en arrière-plan avec notification, reprise automatique d'un fichier partiel (`.part`).
 - **Hors ligne** : les listes sont mises en cache ; les jeux déjà téléchargés restent jouables.
+- **Langue** : *Paramètres → Langue* : Système, Français ou English (téléphone et TV), appliquée immédiatement. Les messages du serveur suivent la langue choisie.
 - **Lancement** : les modèles Daijishou sont interprétés (`-n`, `-a`, `-d`, `-t`, `-c`, `-e/--es`, `--ez`, `--ei`, `--esa`, `-f`, `--activity-*`…) avec les placeholders `{file.path}`, `{file.uri}` (via FileProvider), `{file.mime}`. Pour un système sans modèle, le sélecteur « Ouvrir avec » d'Android est proposé.
 
 ## Limites connues

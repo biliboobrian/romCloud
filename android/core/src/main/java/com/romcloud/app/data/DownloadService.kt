@@ -13,6 +13,8 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.I18n
+import com.romcloud.core.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,7 +35,7 @@ class DownloadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val downloader = (application as RomCloudApp).downloader
-        startInForeground(buildNotification("Préparation du téléchargement…", 0, true))
+        startInForeground(buildNotification(I18n.get(R.string.notif_preparing), 0, true))
         if (!started) {
             started = true
             scope.launch {
@@ -47,7 +49,7 @@ class DownloadService : Service() {
                     val bytes = running.sumOf { it.bytes }
                     val total = running.sumOf { it.total }
                     val percent = if (total > 0) (bytes * 100 / total).toInt() else 0
-                    val text = if (running.size == 1) running[0].title else "${running.size} jeux en cours"
+                    val text = if (running.size == 1) running[0].title else I18n.get(R.string.notif_games_running, running.size)
                     notify(buildNotification(text, percent, total <= 0))
                 }
             }
@@ -75,7 +77,7 @@ class DownloadService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Téléchargement de ROM")
+            .setContentTitle(I18n.get(R.string.notif_title))
             .setContentText(text)
             .setProgress(100, percent, indeterminate)
             .setOngoing(true)
@@ -94,7 +96,7 @@ class DownloadService : Service() {
         private const val NOTIFICATION_ID = 42
 
         fun createChannel(context: Context) {
-            val channel = NotificationChannel(CHANNEL_ID, "Téléchargements", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(CHANNEL_ID, I18n.get(R.string.notif_channel), NotificationManager.IMPORTANCE_LOW)
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }

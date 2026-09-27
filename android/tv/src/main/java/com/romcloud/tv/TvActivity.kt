@@ -1,5 +1,6 @@
 package com.romcloud.tv
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -29,6 +30,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
+import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.ui.GameDetailViewModel
 import com.romcloud.app.ui.GamesViewModel
@@ -37,6 +39,11 @@ import com.romcloud.app.ui.SystemsViewModel
 import kotlinx.coroutines.launch
 
 class TvActivity : ComponentActivity() {
+
+    /** Langue choisie dans les Paramètres (indépendante de celle du système). */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguage.wrap(newBase))
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as RomCloudApp

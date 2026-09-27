@@ -22,12 +22,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ListItem
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
 import com.romcloud.app.ui.formatSize
+import com.romcloud.core.R
 
 /** Donne le focus à l'élément dès l'ouverture de la fenêtre (utilisation à la télécommande). */
 @Composable
@@ -48,27 +50,27 @@ fun DownloadDialog(
     val focus = rememberInitialFocus()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Télécharger « ${game.title} » ?") },
+        title = { Text(stringResource(R.string.tv_download_title, game.title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Ce jeu n’est pas encore sur le téléviseur : il doit être téléchargé avant de pouvoir y jouer.")
+                Text(stringResource(R.string.tv_download_text))
                 Text(
                     "${game.fileName} · ${formatSize(game.size)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                error?.let { Text("Dernier essai : $it", color = MaterialTheme.colorScheme.error) }
+                error?.let { Text(stringResource(R.string.download_last_error, it), color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             TextButton(onClick = { onDownload(true) }, modifier = Modifier.focusRequester(focus)) {
-                Text("Télécharger et jouer")
+                Text(stringResource(R.string.tv_download_and_play))
             }
-            TextButton(onClick = { onDownload(false) }) { Text("Télécharger") }
+            TextButton(onClick = { onDownload(false) }) { Text(stringResource(R.string.action_download)) }
         },
         dismissButton = {
-            TextButton(onClick = onDetails) { Text("Fiche du jeu") }
-            TextButton(onClick = onDismiss) { Text("Annuler") }
+            TextButton(onClick = onDetails) { Text(stringResource(R.string.tv_game_details)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
         },
     )
 }
@@ -78,11 +80,11 @@ fun CancelDownloadDialog(game: Game, onConfirm: () -> Unit, onDismiss: () -> Uni
     val focus = rememberInitialFocus()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Téléchargement en cours") },
-        text = { Text("« ${game.title} » est en cours de téléchargement. Voulez-vous l’annuler ?") },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("Annuler le téléchargement") } },
+        title = { Text(stringResource(R.string.downloading_title)) },
+        text = { Text(stringResource(R.string.downloading_text, game.title)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.cancel_download)) } },
         dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) { Text("Continuer") }
+            TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) { Text(stringResource(R.string.action_continue)) }
         },
     )
 }
@@ -93,20 +95,20 @@ fun SearchDialog(initial: String, onSearch: (String) -> Unit, onDismiss: () -> U
     val focus = rememberInitialFocus()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rechercher un jeu") },
+        title = { Text(stringResource(R.string.search_title)) },
         text = {
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
                 singleLine = true,
-                placeholder = { Text("Titre ou nom de fichier") },
+                placeholder = { Text(stringResource(R.string.search_placeholder)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { onSearch(text.trim()) }),
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
         },
-        confirmButton = { TextButton(onClick = { onSearch(text.trim()) }) { Text("Rechercher") } },
-        dismissButton = { TextButton(onClick = { onSearch("") }) { Text("Effacer la recherche") } },
+        confirmButton = { TextButton(onClick = { onSearch(text.trim()) }) { Text(stringResource(R.string.action_search)) } },
+        dismissButton = { TextButton(onClick = { onSearch("") }) { Text(stringResource(R.string.clear_search)) } },
     )
 }
 
@@ -121,7 +123,7 @@ fun EmulatorPickerDialog(
     val focus = rememberInitialFocus()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Choisir l’émulateur") },
+        title = { Text(stringResource(R.string.choose_emulator)) },
         text = {
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
                 items(players, key = { it.first.uniqueId }) { (player, installed) ->
@@ -131,7 +133,7 @@ fun EmulatorPickerDialog(
                         onClick = { onSelect(player) },
                         headlineContent = { androidx.tv.material3.Text(player.name) },
                         supportingContent = if (!installed) {
-                            { androidx.tv.material3.Text("non installé") }
+                            { androidx.tv.material3.Text(stringResource(R.string.not_installed)) }
                         } else null,
                         modifier = if (selected || (selectedId == null && player == players.first().first)) {
                             Modifier.focusRequester(focus)
@@ -140,7 +142,7 @@ fun EmulatorPickerDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
     )
 }
 
@@ -153,7 +155,7 @@ fun ConfirmDialog(title: String, text: String, confirm: String, onConfirm: () ->
         text = { Text(text) },
         confirmButton = { TextButton(onClick = onConfirm) { Text(confirm) } },
         dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) { Text("Annuler") }
+            TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) { Text(stringResource(R.string.action_cancel)) }
         },
     )
 }

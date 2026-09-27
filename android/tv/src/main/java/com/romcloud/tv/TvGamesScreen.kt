@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,9 +54,11 @@ import com.romcloud.app.ui.DownloadedGreen
 import com.romcloud.app.ui.GameFilter
 import com.romcloud.app.ui.GamesViewModel
 import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.RowLabels
 import com.romcloud.app.ui.carouselRows
 import com.romcloud.app.ui.formatSize
 import com.romcloud.app.ui.pickFeatured
+import com.romcloud.core.R
 
 @Composable
 fun TvGamesScreen(
@@ -96,9 +99,16 @@ fun TvGamesScreen(
     }
 
     val games = state.visibleGames
-    val rows = remember(games, state.downloaded, state.query) {
-        if (state.query.isBlank()) carouselRows(games, state.downloaded)
-        else listOf(CarouselRow("Résultats pour « ${state.query} »", games))
+    val labels = RowLabels(
+        downloaded = stringResource(R.string.row_downloaded),
+        recent = stringResource(R.string.row_recent),
+        other = stringResource(R.string.row_other),
+        all = stringResource(R.string.row_all),
+    )
+    val resultsTitle = stringResource(R.string.row_results, state.query)
+    val rows = remember(games, state.downloaded, state.query, labels) {
+        if (state.query.isBlank()) carouselRows(games, state.downloaded, labels)
+        else listOf(CarouselRow(resultsTitle, games))
     }
     val featured = games.find { it.id == focusedGameId } ?: remember(games, state.downloaded) {
         pickFeatured(games, state.downloaded)
@@ -124,18 +134,23 @@ fun TvGamesScreen(
                     modifier = Modifier.weight(1f),
                 )
                 GameFilter.entries.forEach { f ->
-                    FilterChip(selected = state.filter == f, onClick = { viewModel.setFilter(f) }) { Text(f.label) }
+                    FilterChip(selected = state.filter == f, onClick = { viewModel.setFilter(f) }) { Text(stringResource(f.label)) }
                 }
                 FilterChip(
                     selected = state.query.isNotBlank(),
                     onClick = { searching = true },
                     leadingIcon = { Icon(Icons.Filled.Search, null, modifier = IconSize) },
-                ) { Text(if (state.query.isBlank()) "Rechercher" else "« ${state.query} »") }
+                ) {
+                    Text(
+                        if (state.query.isBlank()) stringResource(R.string.action_search)
+                        else stringResource(R.string.search_query, state.query),
+                    )
+                }
                 FilterChip(
                     selected = false,
                     onClick = viewModel::refresh,
                     leadingIcon = { Icon(Icons.Filled.Refresh, null, modifier = IconSize) },
-                ) { Text("Actualiser") }
+                ) { Text(stringResource(R.string.action_refresh)) }
             }
 
             GameHero(
@@ -145,9 +160,9 @@ fun TvGamesScreen(
             )
 
             when {
-                state.games.isEmpty() && state.loading -> Message("Chargement…")
-                state.games.isEmpty() && state.error != null -> Message("Erreur : ${state.error}")
-                games.isEmpty() -> Message("Aucun jeu")
+                state.games.isEmpty() && state.loading -> Message(stringResource(R.string.loading))
+                state.games.isEmpty() && state.error != null -> Message(stringResource(R.string.error_with, state.error.orEmpty()))
+                games.isEmpty() -> Message(stringResource(R.string.no_games))
                 else -> GameRows(
                     rows = rows,
                     mediaUrl = mediaUrl,
@@ -217,20 +232,20 @@ private fun GameHero(game: Game?, status: LocalStatus?, modifier: Modifier = Mod
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            listOfNotNull(game.year, game.genre, game.players?.let { "$it joueur(s)" }, formatSize(game.size)).joinToString("  ·  "),
+            listOfNotNull(game.year, game.genre, game.players?.let { stringResource(R.string.players_count, it) }, formatSize(game.size)).joinToString("  ·  "),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         when (status) {
-            LocalStatus.Downloaded -> Text("✓ Prêt à jouer — OK pour lancer", color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
+            LocalStatus.Downloaded -> Text(stringResource(R.string.tv_ready), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
             is LocalStatus.Downloading -> Text(
-                "Téléchargement… ${(status.state.progress * 100).toInt()} %",
+                stringResource(R.string.tv_downloading_percent, (status.state.progress * 100).toInt()),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelLarge,
             )
-            is LocalStatus.Error -> Text("Échec du téléchargement : ${status.message}", color = MaterialTheme.colorScheme.error)
+            is LocalStatus.Error -> Text(stringResource(R.string.download_failed, status.message), color = MaterialTheme.colorScheme.error)
             else -> Text(
-                "À télécharger — OK pour télécharger · appui long : fiche du jeu",
+                stringResource(R.string.tv_to_download),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -277,7 +292,7 @@ private fun GameRows(
         itemsIndexed(rows, key = { _, row -> row.title }) { _, row ->
             Column(Modifier.padding(top = 14.dp)) {
                 Text(
-                    "${row.title}  ·  ${row.games.size}",
+                    stringResource(R.string.row_title, row.title, row.games.size),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 48.dp, vertical = 6.dp),

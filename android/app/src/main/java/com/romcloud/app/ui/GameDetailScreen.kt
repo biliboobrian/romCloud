@@ -3,8 +3,8 @@ package com.romcloud.app.ui
 import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -55,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,8 +67,8 @@ import coil.compose.AsyncImage
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
+import com.romcloud.core.R
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,14 +93,14 @@ fun GameDetailScreen(
         topBar = {
             TopAppBar(
                 title = { Text(state.system?.name ?: "") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") } },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) } },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         val game = state.game
         if (game == null) {
-            Column(Modifier.padding(padding)) { Centered(if (state.loading) "Chargement…" else "Jeu introuvable") }
+            Column(Modifier.padding(padding)) { Centered(stringResource(if (state.loading) R.string.loading else R.string.game_not_found)) }
             return@Scaffold
         }
         Column(
@@ -116,12 +117,12 @@ fun GameDetailScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(game.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                     listOfNotNull(
-                        game.releaseDate?.let { "Sortie : $it" },
+                        game.releaseDate?.let { stringResource(R.string.meta_release, it) },
                         game.genre,
-                        game.developer?.let { "Développeur : $it" },
-                        game.publisher?.let { "Éditeur : $it" },
-                        game.players?.let { "Joueurs : $it" },
-                        game.rating?.let { String.format(Locale.FRANCE, "Note : %.1f / 5", it) },
+                        game.developer?.let { stringResource(R.string.meta_developer, it) },
+                        game.publisher?.let { stringResource(R.string.meta_publisher, it) },
+                        game.players?.let { stringResource(R.string.meta_players, it) },
+                        game.rating?.let { stringResource(R.string.meta_rating, it) },
                     ).forEach {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -134,18 +135,18 @@ fun GameDetailScreen(
                     LinearProgressIndicator(progress = { d.progress }, modifier = Modifier.fillMaxWidth())
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Téléchargement… ${formatSize(d.bytes)} / ${formatSize(d.total)}",
+                            stringResource(R.string.downloading_progress, formatSize(d.bytes), formatSize(d.total)),
                             style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = viewModel::cancel) { Text("Annuler") }
+                        TextButton(onClick = viewModel::cancel) { Text(stringResource(R.string.action_cancel)) }
                     }
                 }
                 else -> {
                     if (d is DownloadState.Failed) {
-                        Text("Échec du téléchargement : ${d.message}", color = MaterialTheme.colorScheme.error)
+                        Text(stringResource(R.string.download_failed, d.message), color = MaterialTheme.colorScheme.error)
                     }
                     if (state.downloaded) {
-                        Text("✓ Disponible sur l’appareil", color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
+                        Text(stringResource(R.string.available_on_device), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Button(
                                 onClick = { viewModel.play(activity)?.let { scope.launch { snackbar.showSnackbar(it) } } },
@@ -153,20 +154,23 @@ fun GameDetailScreen(
                             ) {
                                 Icon(Icons.Filled.PlayArrow, null)
                                 Spacer(Modifier.width(8.dp))
-                                Text("Jouer")
+                                Text(stringResource(R.string.action_play))
                             }
                             OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.height(52.dp)) {
-                                Icon(Icons.Filled.Delete, "Supprimer de l’appareil")
+                                Icon(Icons.Filled.Delete, stringResource(R.string.delete_from_device))
                             }
                         }
                     } else {
                         Button(onClick = viewModel::download, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                             Icon(Icons.Filled.CloudDownload, null)
                             Spacer(Modifier.width(8.dp))
-                            Text(if (d is DownloadState.Failed) "Réessayer" else "Télécharger (${formatSize(game.size)})")
+                            Text(
+                                if (d is DownloadState.Failed) stringResource(R.string.action_retry)
+                                else stringResource(R.string.download_with_size, formatSize(game.size)),
+                            )
                         }
                         Text(
-                            "Le jeu doit être téléchargé avant de pouvoir y jouer.",
+                            stringResource(R.string.must_download),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -196,7 +200,7 @@ fun GameDetailScreen(
 
             mediaUrl(game, "screenshot")?.let { url ->
                 AsyncImage(
-                    model = url, contentDescription = "Capture d’écran", contentScale = ContentScale.FillWidth,
+                    model = url, contentDescription = stringResource(R.string.screenshot), contentScale = ContentScale.FillWidth,
                     modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
                 )
             }
@@ -211,10 +215,12 @@ fun GameDetailScreen(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Supprimer de l’appareil ?") },
-            text = { Text("Le fichier local sera supprimé pour libérer de l’espace. Le jeu reste disponible sur le serveur.") },
-            confirmButton = { TextButton(onClick = { viewModel.deleteLocal(); confirmDelete = false }) { Text("Supprimer") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Annuler") } },
+            title = { Text(stringResource(R.string.delete_device_title)) },
+            text = { Text(stringResource(R.string.delete_device_text)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.deleteLocal(); confirmDelete = false }) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 }
@@ -225,7 +231,7 @@ private fun LaunchCommand(command: String) {
     var expanded by remember { mutableStateOf(false) }
     Column {
         TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
-            Text(if (expanded) "Masquer la commande de lancement" else "Voir la commande de lancement")
+            Text(stringResource(if (expanded) R.string.launch_command_hide else R.string.launch_command_show))
         }
         if (expanded) {
             SelectionContainer {
@@ -253,7 +259,7 @@ private fun PlayerSelector(
 ) {
     if (state.players.isEmpty()) {
         Text(
-            "Aucun modèle d’émulateur pour ce système : le jeu sera ouvert avec le sélecteur d’applications Android.",
+            stringResource(R.string.no_emulator_template),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         return
@@ -271,9 +277,9 @@ private fun PlayerSelector(
                 value = selected?.name ?: "",
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Émulateur") },
+                label = { Text(stringResource(R.string.emulator)) },
                 supportingText = if (!installed) {
-                    { Text("Cet émulateur n’est pas installé", color = MaterialTheme.colorScheme.error) }
+                    { Text(stringResource(R.string.emulator_not_installed), color = MaterialTheme.colorScheme.error) }
                 } else null,
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
                 modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
@@ -285,7 +291,7 @@ private fun PlayerSelector(
                             Column {
                                 Text(player.name)
                                 if (!isInstalled) {
-                                    Text("non installé", style = MaterialTheme.typography.labelSmall,
+                                    Text(stringResource(R.string.not_installed), style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
@@ -303,7 +309,7 @@ private fun PlayerSelector(
         }
         if (onInfo != null) {
             IconButton(onClick = onInfo) {
-                Icon(Icons.Filled.Info, "Configurer RetroArch", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Filled.Info, stringResource(R.string.configure_retroarch), tint = MaterialTheme.colorScheme.primary)
             }
         }
     }
@@ -311,7 +317,7 @@ private fun PlayerSelector(
         OutlinedButton(onClick = { onInstall(selected) }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Shop, null)
             Spacer(Modifier.width(8.dp))
-            Text("Installer depuis le Play Store")
+            Text(stringResource(R.string.install_from_play_store))
         }
     }
 }

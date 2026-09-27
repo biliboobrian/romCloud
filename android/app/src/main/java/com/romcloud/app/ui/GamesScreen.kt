@@ -22,9 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -63,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
+import com.romcloud.core.R
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,7 +91,7 @@ fun GamesScreen(
             FilterChip(
                 selected = state.filter == f,
                 onClick = { viewModel.setFilter(f) },
-                label = { Text(f.label) },
+                label = { Text(stringResource(f.label)) },
             )
         }
     }
@@ -118,14 +120,14 @@ fun GamesScreen(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) }
                 },
                 title = {
                     if (searching) {
                         TextField(
                             value = state.query,
                             onValueChange = viewModel::setQuery,
-                            placeholder = { Text("Rechercher…") },
+                            placeholder = { Text(stringResource(R.string.search_hint)) },
                             singleLine = true,
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -137,7 +139,8 @@ fun GamesScreen(
                         Column {
                             Text(state.system?.name ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "${state.games.size} jeux · ${state.downloaded.size} téléchargé(s)",
+                                pluralString(R.plurals.games_count, state.games.size, state.games.size) + " · " +
+                                    stringResource(R.string.downloaded_count, state.downloaded.size),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -151,14 +154,14 @@ fun GamesScreen(
                         }
                     }
                     IconButton(onClick = viewModel::toggleView) {
-                        if (state.grid) Icon(Icons.AutoMirrored.Filled.ViewList, "Affichage en liste")
-                        else Icon(Icons.Filled.ViewCarousel, "Affichage en carrousel")
+                        if (state.grid) Icon(Icons.AutoMirrored.Filled.ViewList, stringResource(R.string.view_list))
+                        else Icon(Icons.Filled.ViewCarousel, stringResource(R.string.view_carousel))
                     }
                     IconButton(onClick = {
                         if (searching) viewModel.setQuery("")
                         searching = !searching
                     }) {
-                        Icon(if (searching) Icons.Filled.Close else Icons.Filled.Search, "Rechercher")
+                        Icon(if (searching) Icons.Filled.Close else Icons.Filled.Search, stringResource(R.string.action_search))
                     }
                 },
             )
@@ -166,7 +169,7 @@ fun GamesScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (state.offline) Banner("Hors ligne — liste en cache.")
+            if (state.offline) Banner(stringResource(R.string.banner_offline))
             if (!landscape) {
                 Row(
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -182,9 +185,10 @@ fun GamesScreen(
             ) {
                 val games = state.visibleGames
                 when {
-                    state.games.isEmpty() && state.loading -> Centered("Chargement…")
-                    state.games.isEmpty() && state.error != null -> Centered("Erreur : ${state.error}", "Réessayer", viewModel::refresh)
-                    games.isEmpty() -> Centered("Aucun jeu")
+                    state.games.isEmpty() && state.loading -> Centered(stringResource(R.string.loading))
+                    state.games.isEmpty() && state.error != null ->
+                        Centered(stringResource(R.string.error_with, state.error.orEmpty()), stringResource(R.string.action_retry), viewModel::refresh)
+                    games.isEmpty() -> Centered(stringResource(R.string.no_games))
                     // Carrousel façon Netflix ; pendant une recherche, résultats en grille.
                     state.grid && state.query.isBlank() -> GamesCarousel(
                         games = games,
@@ -232,20 +236,20 @@ fun GamesScreen(
         var launchAfter by remember { mutableStateOf(true) }
         AlertDialog(
             onDismissRequest = { askDownload = null },
-            title = { Text("Télécharger le jeu ?") },
+            title = { Text(stringResource(R.string.download_title)) },
             text = {
                 Column {
-                    Text("« ${game.title} » n’est pas encore sur cet appareil. Il doit être téléchargé avant de pouvoir y jouer.")
+                    Text(stringResource(R.string.download_text, game.title))
                     Spacer(Modifier.padding(4.dp))
                     Text("${game.fileName} · ${formatSize(game.size)}", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     (statusOf(game) as? LocalStatus.Error)?.let {
-                        Text("Dernier essai : ${it.message}", color = MaterialTheme.colorScheme.error,
+                        Text(stringResource(R.string.download_last_error, it.message), color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = launchAfter, onCheckedChange = { launchAfter = it })
-                        Text("Lancer le jeu une fois téléchargé")
+                        Text(stringResource(R.string.download_launch_after))
                     }
                 }
             },
@@ -254,12 +258,12 @@ fun GamesScreen(
                     if (launchAfter) autoLaunch += game.id else autoLaunch -= game.id
                     viewModel.download(game)
                     askDownload = null
-                }) { Text("Télécharger") }
+                }) { Text(stringResource(R.string.action_download)) }
             },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { askDownload = null; onOpenGame(game.id) }) { Text("Détails") }
-                    TextButton(onClick = { askDownload = null }) { Text("Annuler") }
+                    TextButton(onClick = { askDownload = null; onOpenGame(game.id) }) { Text(stringResource(R.string.action_details)) }
+                    TextButton(onClick = { askDownload = null }) { Text(stringResource(R.string.action_cancel)) }
                 }
             },
         )
@@ -268,14 +272,14 @@ fun GamesScreen(
     askCancel?.let { game ->
         AlertDialog(
             onDismissRequest = { askCancel = null },
-            title = { Text("Téléchargement en cours") },
-            text = { Text("« ${game.title} » est en cours de téléchargement. Voulez-vous l’annuler ?") },
+            title = { Text(stringResource(R.string.downloading_title)) },
+            text = { Text(stringResource(R.string.downloading_text, game.title)) },
             confirmButton = {
                 TextButton(onClick = { viewModel.cancel(game); autoLaunch -= game.id; askCancel = null }) {
-                    Text("Annuler le téléchargement")
+                    Text(stringResource(R.string.cancel_download))
                 }
             },
-            dismissButton = { TextButton(onClick = { askCancel = null }) { Text("Continuer") } },
+            dismissButton = { TextButton(onClick = { askCancel = null }) { Text(stringResource(R.string.action_continue)) } },
         )
     }
 }
@@ -305,14 +309,14 @@ private fun GameRow(
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (status is LocalStatus.Downloading) {
                 Text(
-                    "${formatSize(status.state.bytes)} / ${formatSize(status.state.total)}",
+                    stringResource(R.string.bytes_progress, formatSize(status.state.bytes), formatSize(status.state.total)),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
                 )
             }
         }
         DownloadIndicator(status)
         IconButton(onClick = onDetails) {
-            Icon(Icons.Filled.Info, "Détails", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+            Icon(Icons.Filled.Info, stringResource(R.string.action_details), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
         }
     }
 }

@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.romcloud.app.data.Game
+import com.romcloud.core.R
 
 @Composable
 fun GamesCarousel(
@@ -59,7 +61,13 @@ fun GamesCarousel(
     onClick: (Game) -> Unit,
     onDetails: (Game) -> Unit,
 ) {
-    val rows = remember(games, downloaded) { carouselRows(games, downloaded) }
+    val labels = RowLabels(
+        downloaded = stringResource(R.string.row_downloaded),
+        recent = stringResource(R.string.row_recent),
+        other = stringResource(R.string.row_other),
+        all = stringResource(R.string.row_all),
+    )
+    val rows = remember(games, downloaded, labels) { carouselRows(games, downloaded, labels) }
     val featured = remember(games, downloaded) { pickFeatured(games, downloaded) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -78,7 +86,7 @@ fun GamesCarousel(
         items(rows, key = { "row:" + it.title }) { row ->
             Column(Modifier.padding(top = 16.dp)) {
                 Text(
-                    "${row.title}  ·  ${row.games.size}",
+                    stringResource(R.string.row_title, row.title, row.games.size),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -169,21 +177,21 @@ private fun HeroBanner(
                         LocalStatus.Downloaded -> Button(onClick = onPrimary) {
                             Icon(Icons.Filled.PlayArrow, null)
                             Spacer(Modifier.width(6.dp))
-                            Text("Jouer")
+                            Text(stringResource(R.string.action_play))
                         }
                         is LocalStatus.Downloading -> OutlinedButton(onClick = onPrimary) {
-                            Text("${(status.state.progress * 100).toInt()} %")
+                            Text(stringResource(R.string.percent, (status.state.progress * 100).toInt()))
                         }
                         else -> Button(onClick = onPrimary) {
                             Icon(Icons.Filled.CloudDownload, null)
                             Spacer(Modifier.width(6.dp))
-                            Text("Télécharger")
+                            Text(stringResource(R.string.action_download))
                         }
                     }
                     OutlinedButton(onClick = onDetails) {
                         Icon(Icons.Filled.Info, null)
                         Spacer(Modifier.width(6.dp))
-                        Text("Infos")
+                        Text(stringResource(R.string.action_info))
                     }
                 }
             }
@@ -243,7 +251,7 @@ fun GameCard(
             OverlayCircle(Modifier.align(Alignment.TopEnd)) { DownloadIndicator(status) }
             OverlayCircle(Modifier.align(Alignment.TopStart)) {
                 IconButton(onClick = onDetails, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Filled.Info, "Détails et émulateur", modifier = Modifier.size(22.dp))
+                    Icon(Icons.Filled.Info, stringResource(R.string.details_and_emulator), modifier = Modifier.size(22.dp))
                 }
             }
             if (status is LocalStatus.Downloading) {
