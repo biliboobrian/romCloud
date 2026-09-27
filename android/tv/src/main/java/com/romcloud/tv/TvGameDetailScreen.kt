@@ -38,6 +38,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -56,7 +57,7 @@ import com.romcloud.app.ui.DownloadedGreen
 import com.romcloud.app.ui.GameDetailViewModel
 import com.romcloud.app.ui.RetroArchHelpDialog
 import com.romcloud.app.ui.formatSize
-import java.util.Locale
+import com.romcloud.core.R
 
 @Composable
 fun TvGameDetailScreen(
@@ -79,7 +80,7 @@ fun TvGameDetailScreen(
 
     val game = state.game
     if (game == null) {
-        Message(if (state.loading) "Chargement…" else "Jeu introuvable")
+        Message(stringResource(if (state.loading) R.string.loading else R.string.game_not_found))
         return
     }
     val download = downloads[game.id]
@@ -119,8 +120,8 @@ fun TvGameDetailScreen(
                         game.releaseDate,
                         game.genre,
                         game.developer,
-                        game.players?.let { "$it joueur(s)" },
-                        game.rating?.let { String.format(Locale.FRANCE, "%.1f/5", it) },
+                        game.players?.let { stringResource(R.string.players_count, it) },
+                        game.rating?.let { stringResource(R.string.rating_short, it) },
                         formatSize(game.size),
                     ).joinToString("  ·  "),
                     style = MaterialTheme.typography.bodyMedium,
@@ -131,13 +132,13 @@ fun TvGameDetailScreen(
                 when {
                     download is DownloadState.Running -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         LinearProgressIndicator(progress = { download.progress }, modifier = Modifier.fillMaxWidth(0.7f))
-                        Text("Téléchargement… ${formatSize(download.bytes)} / ${formatSize(download.total)}")
+                        Text(stringResource(R.string.downloading_progress, formatSize(download.bytes), formatSize(download.total)))
                     }
                     download is DownloadState.Failed ->
-                        Text("Échec du téléchargement : ${download.message}", color = MaterialTheme.colorScheme.error)
-                    state.downloaded -> Text("✓ Sur le téléviseur", color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
+                        Text(stringResource(R.string.download_failed, download.message), color = MaterialTheme.colorScheme.error)
+                    state.downloaded -> Text(stringResource(R.string.tv_on_tv), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
                     else -> Text(
-                        "Doit être téléchargé avant de pouvoir y jouer.",
+                        stringResource(R.string.tv_must_download),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -148,18 +149,19 @@ fun TvGameDetailScreen(
                     val primary = Modifier.focusRequester(primaryFocus)
                     when {
                         download is DownloadState.Running ->
-                            ActionButton("Annuler (${(download.progress * 100).toInt()} %)", Icons.Filled.Close, primary) { viewModel.cancel() }
+                            ActionButton(stringResource(R.string.tv_cancel_percent, (download.progress * 100).toInt()), Icons.Filled.Close, primary) { viewModel.cancel() }
                         state.downloaded -> {
-                            ActionButton("Jouer", Icons.Filled.PlayArrow, primary) { viewModel.play(activity)?.let(onMessage) }
+                            ActionButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, primary) { viewModel.play(activity)?.let(onMessage) }
                         }
                         else -> ActionButton(
-                            if (download is DownloadState.Failed) "Réessayer" else "Télécharger (${formatSize(game.size)})",
+                            if (download is DownloadState.Failed) stringResource(R.string.action_retry)
+                            else stringResource(R.string.download_with_size, formatSize(game.size)),
                             Icons.Filled.CloudDownload,
                             primary,
                         ) { viewModel.download() }
                     }
                     if (state.players.isNotEmpty()) {
-                        SecondaryButton("Émulateur : ${state.selectedPlayer?.name ?: "—"}", Icons.Filled.SportsEsports) {
+                        SecondaryButton(stringResource(R.string.tv_emulator_value, state.selectedPlayer?.name ?: "—"), Icons.Filled.SportsEsports) {
                             pickEmulator = true
                         }
                     }
@@ -168,20 +170,20 @@ fun TvGameDetailScreen(
                     val selected = state.selectedPlayer
                     val installed = state.players.find { it.first.uniqueId == selected?.uniqueId }?.second ?: true
                     if (selected != null && !installed) {
-                        SecondaryButton("Installer l’émulateur", Icons.Filled.Shop) {
+                        SecondaryButton(stringResource(R.string.tv_install_emulator), Icons.Filled.Shop) {
                             viewModel.installPlayer(activity, selected)?.let(onMessage)
                         }
                     }
                     if (state.retroArchInfo != null) {
-                        SecondaryButton("Configurer RetroArch", Icons.Filled.Info) { showRetroArchHelp = true }
+                        SecondaryButton(stringResource(R.string.configure_retroarch), Icons.Filled.Info) { showRetroArchHelp = true }
                     }
                     if (state.downloaded && download !is DownloadState.Running) {
-                        SecondaryButton("Supprimer du téléviseur", Icons.Filled.Delete) { confirmDelete = true }
+                        SecondaryButton(stringResource(R.string.tv_delete_from_tv), Icons.Filled.Delete) { confirmDelete = true }
                     }
                 }
                 if (state.players.isEmpty()) {
                     Text(
-                        "Aucun émulateur défini pour ce système : ajoutez-en depuis l’interface web du serveur.",
+                        stringResource(R.string.tv_no_emulator),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -214,9 +216,9 @@ fun TvGameDetailScreen(
     }
     if (confirmDelete) {
         ConfirmDialog(
-            title = "Supprimer du téléviseur ?",
-            text = "Le fichier sera supprimé pour libérer de l’espace. Le jeu reste disponible sur le serveur.",
-            confirm = "Supprimer",
+            title = stringResource(R.string.tv_delete_title),
+            text = stringResource(R.string.tv_delete_text),
+            confirm = stringResource(R.string.action_delete),
             onConfirm = {
                 viewModel.deleteLocal()
                 confirmDelete = false

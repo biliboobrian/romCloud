@@ -31,12 +31,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.romcloud.app.data.GameSystem
+import com.romcloud.core.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,18 +56,18 @@ fun SystemsScreen(
             TopAppBar(
                 title = { Text("RomCloud") },
                 actions = {
-                    IconButton(onClick = viewModel::refresh) { Icon(Icons.Filled.Refresh, "Actualiser") }
-                    IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, "Paramètres") }
+                    IconButton(onClick = viewModel::refresh) { Icon(Icons.Filled.Refresh, stringResource(R.string.action_refresh)) }
+                    IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.action_settings)) }
                 },
             )
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (storageWarning) {
-                Banner("Autorisez l’accès aux fichiers dans les paramètres pour pouvoir télécharger des ROMs.", error = true)
+                Banner(stringResource(R.string.banner_storage), error = true)
             }
             if (state.offline) {
-                Banner("Hors ligne — liste en cache. Seuls les jeux déjà téléchargés peuvent être lancés.")
+                Banner(stringResource(R.string.banner_offline_full))
             }
             PullToRefreshBox(
                 isRefreshing = state.loading && state.systems.isNotEmpty(),
@@ -73,12 +75,12 @@ fun SystemsScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when {
-                    state.systems.isEmpty() && state.loading -> Centered("Chargement…")
+                    state.systems.isEmpty() && state.loading -> Centered(stringResource(R.string.loading))
                     state.systems.isEmpty() && state.error != null -> Centered(
-                        "Impossible de joindre le serveur :\n${state.error}",
-                        action = "Paramètres", onAction = onOpenSettings,
+                        stringResource(R.string.server_unreachable, state.error.orEmpty()),
+                        action = stringResource(R.string.action_settings), onAction = onOpenSettings,
                     )
-                    state.systems.isEmpty() -> Centered("Aucun système sur le serveur.\nAjoutez-en depuis l’interface web.")
+                    state.systems.isEmpty() -> Centered(stringResource(R.string.no_systems))
                     else -> LazyVerticalGrid(
                         columns = GridCells.Adaptive(160.dp),
                         contentPadding = PaddingValues(16.dp),
@@ -106,7 +108,7 @@ fun SystemsScreen(
                                     Text(system.name, style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold, minLines = 2, maxLines = 2)
                                     Text(
-                                        "${system.gameCount} jeu${if (system.gameCount > 1) "x" else ""} · ${formatSize(system.totalSize)}",
+                                        pluralString(R.plurals.games_count, system.gameCount, system.gameCount) + " · " + formatSize(system.totalSize),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )

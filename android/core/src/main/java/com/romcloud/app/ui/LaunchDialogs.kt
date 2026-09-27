@@ -22,9 +22,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.I18n
+import com.romcloud.core.R
 import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.launch.LaunchException
 import kotlinx.coroutines.launch
@@ -55,8 +58,8 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                     } else {
                         launch {
                             val result = snackbar.showSnackbar(
-                                "« ${event.game.title} » est téléchargé",
-                                actionLabel = "Jouer",
+                                I18n.get(R.string.downloaded_snackbar, event.game.title),
+                                actionLabel = I18n.get(R.string.action_play),
                                 duration = SnackbarDuration.Long,
                             )
                             if (result == SnackbarResult.ActionPerformed) {
@@ -67,7 +70,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                 }
                 is DownloadEvent.Failed -> {
                     app.autoLaunch.remove(event.game.id)
-                    launch { snackbar.showSnackbar("Échec du téléchargement de « ${event.game.title} » : ${event.message}") }
+                    launch { snackbar.showSnackbar(I18n.get(R.string.download_failed_game, event.game.title, event.message)) }
                 }
             }
         }
@@ -77,14 +80,17 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
     val missing by app.missingEmulator.collectAsStateWithLifecycle()
     missing?.let { emulator ->
         val scope = rememberCoroutineScope()
+        val unavailable = stringResource(R.string.play_store_unavailable)
         AlertDialog(
             onDismissRequest = { app.missingEmulator.value = null },
-            title = { Text("Émulateur non installé") },
+            title = { Text(stringResource(R.string.missing_emulator_title)) },
             text = {
                 Text(
-                    "Pour lancer ce jeu, installez l’émulateur « ${emulator.playerName ?: emulator.packageName} » " +
-                        "(${emulator.packageName}).\n\nVoulez-vous ouvrir sa page sur le Google Play Store ?\n\n" +
-                        "Vous pouvez aussi choisir un autre émulateur dans la fiche du jeu.",
+                    stringResource(
+                        R.string.missing_emulator_text,
+                        emulator.playerName ?: emulator.packageName,
+                        emulator.packageName,
+                    ),
                 )
             },
             confirmButton = {
@@ -93,11 +99,13 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                     try {
                         app.launcher.openStore(activity, emulator.packageName)
                     } catch (e: LaunchException) {
-                        scope.launch { snackbar.showSnackbar(e.message ?: "Play Store indisponible") }
+                        scope.launch { snackbar.showSnackbar(e.message ?: unavailable) }
                     }
-                }) { Text("Ouvrir le Play Store") }
+                }) { Text(stringResource(R.string.action_open_play_store)) }
             },
-            dismissButton = { TextButton(onClick = { app.missingEmulator.value = null }) { Text("Annuler") } },
+            dismissButton = {
+                TextButton(onClick = { app.missingEmulator.value = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
         )
     }
 
@@ -105,6 +113,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
     val closePrompt by app.closeEmulatorPrompt.collectAsStateWithLifecycle()
     closePrompt?.let { prompt ->
         val scope = rememberCoroutineScope()
+        val settingsUnavailable = stringResource(R.string.settings_unavailable)
         var dontShowAgain by remember(prompt) { mutableStateOf(false) }
         fun dismiss() {
             if (dontShowAgain) app.settings.setCloseWarningDismissed(prompt.packageName, true)
@@ -112,18 +121,13 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         }
         AlertDialog(
             onDismissRequest = { app.closeEmulatorPrompt.value = null },
-            title = { Text("Fermez d’abord l’émulateur") },
+            title = { Text(stringResource(R.string.close_emulator_title)) },
             text = {
                 Column {
-                    Text(
-                        "Si « ${prompt.playerName} » est encore ouvert en arrière-plan, le jeu restera sur un écran noir. " +
-                            "Depuis Android 14, RomCloud ne peut plus le fermer lui-même.\n\n" +
-                            "Choisissez « Forcer l’arrêt » ci-dessous, puis « Forcer l’arrêt » dans la page qui s’ouvre, " +
-                            "revenez ici et choisissez « Lancer ». Si l’émulateur est déjà fermé, choisissez directement « Lancer ».",
-                    )
+                    Text(stringResource(R.string.close_emulator_text, prompt.playerName))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = dontShowAgain, onCheckedChange = { dontShowAgain = it })
-                        Text("Ne plus afficher pour cet émulateur")
+                        Text(stringResource(R.string.dont_show_again))
                     }
                 }
             },
@@ -132,16 +136,16 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                     dismiss()
                     app.play(activity, prompt.system, prompt.game, emulatorClosed = true)
                         ?.let { scope.launch { snackbar.showSnackbar(it) } }
-                }) { Text("Lancer") }
+                }) { Text(stringResource(R.string.action_launch)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     try {
                         app.launcher.openAppSettings(activity, prompt.packageName)
                     } catch (e: LaunchException) {
-                        scope.launch { snackbar.showSnackbar(e.message ?: "Paramètres indisponibles") }
+                        scope.launch { snackbar.showSnackbar(e.message ?: settingsUnavailable) }
                     }
-                }) { Text("Forcer l’arrêt") }
+                }) { Text(stringResource(R.string.action_force_stop)) }
             },
         )
     }

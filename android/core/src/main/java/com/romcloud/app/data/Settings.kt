@@ -2,6 +2,9 @@ package com.romcloud.app.data
 
 import android.content.Context
 import android.os.Environment
+import androidx.annotation.StringRes
+import com.romcloud.app.AppLanguage
+import com.romcloud.core.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,10 +18,20 @@ data class ServerConfig(
     val isConfigured: Boolean get() = serverUrl.isNotBlank()
 }
 
-enum class RetroArchSafMode(val label: String) { AUTO("Automatique"), SAF("SAF"), PATH("Chemin classique") }
+enum class RetroArchSafMode(@StringRes val label: Int) {
+    AUTO(R.string.saf_auto),
+    SAF(R.string.saf_saf),
+    PATH(R.string.saf_path),
+}
 
 class Settings(context: Context) {
+    private val appContext = context.applicationContext
     private val prefs = context.getSharedPreferences("romcloud", Context.MODE_PRIVATE)
+
+    /** Langue de l'application : [AppLanguage.SYSTEM], « fr » ou « en » (appliquée en recréant l'écran). */
+    var language: String
+        get() = AppLanguage.stored(appContext)
+        set(value) = AppLanguage.store(appContext, value)
 
     private val _config = MutableStateFlow(read())
     val config: StateFlow<ServerConfig> = _config.asStateFlow()

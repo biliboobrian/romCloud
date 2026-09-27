@@ -1,6 +1,9 @@
 package com.romcloud.app.ui
 
 import android.app.Activity
+import androidx.annotation.StringRes
+import com.romcloud.app.I18n
+import com.romcloud.core.R
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.romcloud.app.RomCloudApp
@@ -71,7 +74,7 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
                 val loaded = app.repository.systems()
                 UiState(loading = false, systems = loaded.data, offline = loaded.offline, error = loaded.error)
             } catch (e: Exception) {
-                _state.value.copy(loading = false, error = e.message ?: "Erreur de connexion")
+                _state.value.copy(loading = false, error = e.message ?: I18n.get(R.string.err_connection))
             }
         }
     }
@@ -79,7 +82,11 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
 
 // ---------------------------------------------------------------------------
 
-enum class GameFilter(val label: String) { ALL("Tous"), DOWNLOADED("Téléchargés"), REMOTE("À télécharger") }
+enum class GameFilter(@StringRes val label: Int) {
+    ALL(R.string.filter_all),
+    DOWNLOADED(R.string.filter_downloaded),
+    REMOTE(R.string.filter_remote),
+}
 
 class GamesViewModel(private val app: RomCloudApp, private val systemId: String) : ViewModel() {
 
@@ -131,7 +138,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
                 }
                 refreshLocal()
             } catch (e: Exception) {
-                _state.update { it.copy(loading = false, error = e.message ?: "Erreur de connexion") }
+                _state.update { it.copy(loading = false, error = e.message ?: I18n.get(R.string.err_connection)) }
             }
         }
     }
@@ -164,7 +171,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
     fun cancel(game: Game) = app.downloader.cancel(game.id)
 
     fun play(activity: Activity, game: Game): String? {
-        val system = _state.value.system ?: return "Système introuvable"
+        val system = _state.value.system ?: return I18n.get(R.string.err_system_not_found)
         return app.play(activity, system, game)
     }
 }
@@ -232,7 +239,7 @@ class GameDetailViewModel(
 
     /** Ouvre la fiche Play Store de l'émulateur ; renvoie un message d'erreur ou null. */
     fun installPlayer(activity: Activity, player: Player): String? {
-        val pkg = app.launcher.packageOf(player) ?: return "Paquet de l’émulateur inconnu"
+        val pkg = app.launcher.packageOf(player) ?: return I18n.get(R.string.err_unknown_package)
         return try {
             app.launcher.openStore(activity, pkg)
             null
@@ -269,8 +276,8 @@ class GameDetailViewModel(
 
     fun play(activity: Activity): String? {
         val s = _state.value
-        val system = s.system ?: return "Système introuvable"
-        val game = s.game ?: return "Jeu introuvable"
+        val system = s.system ?: return I18n.get(R.string.err_system_not_found)
+        val game = s.game ?: return I18n.get(R.string.game_not_found)
         return app.play(activity, system, game)
     }
 }

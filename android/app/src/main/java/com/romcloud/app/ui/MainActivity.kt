@@ -1,5 +1,6 @@
 package com.romcloud.app.ui
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -32,11 +33,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.ui.theme.RomCloudTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    /** Langue choisie dans les Paramètres (indépendante de celle du système). */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguage.wrap(newBase))
+    }
 
     private val app get() = application as RomCloudApp
 

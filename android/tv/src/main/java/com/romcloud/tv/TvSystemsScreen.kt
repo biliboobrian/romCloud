@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.ui.SystemsViewModel
+import com.romcloud.core.R
 
 @Composable
 fun TvSystemsScreen(
@@ -68,28 +70,28 @@ fun TvSystemsScreen(
             Button(onClick = viewModel::refresh) {
                 Icon(Icons.Filled.Refresh, null, modifier = IconSize)
                 Spacer(Modifier.width(8.dp))
-                Text("Actualiser")
+                Text(stringResource(R.string.action_refresh))
             }
             Spacer(Modifier.width(SmallGap))
             Button(onClick = onOpenSettings, modifier = Modifier.focusRequester(settingsFocus)) {
                 Icon(Icons.Filled.Settings, null, modifier = IconSize)
                 Spacer(Modifier.width(8.dp))
-                Text("Paramètres")
+                Text(stringResource(R.string.action_settings))
             }
         }
         if (storageWarning) {
-            TvBanner("Autorisez l’accès aux fichiers (Paramètres) pour pouvoir télécharger des ROMs.", error = true)
+            TvBanner(stringResource(R.string.banner_storage), error = true)
         }
         if (state.offline) {
-            TvBanner("Hors ligne : liste en cache. Seuls les jeux déjà téléchargés peuvent être lancés.")
+            TvBanner(stringResource(R.string.banner_offline_full))
         }
         when {
-            state.systems.isEmpty() && state.loading -> Message("Chargement…")
+            state.systems.isEmpty() && state.loading -> Message(stringResource(R.string.loading))
             state.systems.isEmpty() && state.error != null -> {
-                Message("Impossible de joindre le serveur :\n${state.error}\n\nVérifiez l’adresse dans les Paramètres.")
+                Message(stringResource(R.string.server_unreachable_tv, state.error.orEmpty()))
                 LaunchedEffect(Unit) { runCatching { settingsFocus.requestFocus() } }
             }
-            state.systems.isEmpty() -> Message("Aucun système sur le serveur.\nAjoutez-en depuis l’interface web.")
+            state.systems.isEmpty() -> Message(stringResource(R.string.no_systems))
             else -> LazyVerticalGrid(
                 state = gridState,
                 columns = GridCells.Adaptive(250.dp),

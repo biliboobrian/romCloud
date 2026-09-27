@@ -1,5 +1,7 @@
 package com.romcloud.app.launch
 
+import com.romcloud.app.I18n
+import com.romcloud.core.R
 import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -20,7 +22,7 @@ open class LaunchException(message: String) : Exception(message)
 
 /** L'émulateur requis n'est pas installé : on propose de l'installer depuis le Play Store. */
 class MissingEmulatorException(val emulator: MissingEmulator) :
-    LaunchException("Émulateur non installé : ${emulator.packageName}")
+    LaunchException(I18n.get(R.string.err_emulator_not_installed, emulator.packageName))
 
 data class MissingEmulator(val packageName: String, val playerName: String?)
 
@@ -96,7 +98,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
                 // essaie l'intent suivant
             }
         }
-        throw LaunchException("Impossible d’ouvrir le Play Store")
+        throw LaunchException(I18n.get(R.string.err_open_play_store))
     }
 
     /**
@@ -104,13 +106,13 @@ class GameLauncher(private val context: Context, private val settings: Settings)
      * ouvre le sélecteur d'applications Android.
      */
     fun launch(activityContext: Context, system: GameSystem, file: File, player: Player?) {
-        if (!file.isFile) throw LaunchException("Fichier introuvable : ${file.absolutePath}")
+        if (!file.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, file.absolutePath))
         val uri = fileUri(file)
 
         if (player == null) {
             val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mimeOf(file))
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            start(activityContext, Intent.createChooser(view, "Ouvrir ${file.name} avec…"), null)
+            start(activityContext, Intent.createChooser(view, I18n.get(R.string.chooser_open_with, file.name)), null)
             return
         }
 
@@ -192,7 +194,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
     /** Ouvre RetroArch (pour installer un cœur, autoriser un dossier…). */
     fun openApp(activityContext: Context, packageName: String) {
         val intent = context.packageManager.getLaunchIntentForPackage(packageName)
-            ?: throw LaunchException("Impossible d’ouvrir $packageName")
+            ?: throw LaunchException(I18n.get(R.string.err_cannot_open, packageName))
         activityContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
@@ -242,7 +244,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { activityContext.startActivity(intent) }
-            .onFailure { throw LaunchException("Impossible d’ouvrir les paramètres de $packageName") }
+            .onFailure { throw LaunchException(I18n.get(R.string.err_cannot_open_settings, packageName)) }
     }
 
     private fun start(activityContext: Context, intent: Intent, player: Player?) {
@@ -255,9 +257,9 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         } catch (e: ActivityNotFoundException) {
             val pkg = intent.component?.packageName
             if (pkg != null) throw MissingEmulatorException(MissingEmulator(pkg, player?.name))
-            throw LaunchException("Aucune application ne peut ouvrir ce fichier")
+            throw LaunchException(I18n.get(R.string.err_no_app))
         } catch (e: SecurityException) {
-            throw LaunchException("Lancement refusé par l’émulateur : ${e.message}")
+            throw LaunchException(I18n.get(R.string.err_launch_refused, e.message.orEmpty()))
         }
     }
 }

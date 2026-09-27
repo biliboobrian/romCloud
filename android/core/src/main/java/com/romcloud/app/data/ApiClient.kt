@@ -1,5 +1,7 @@
 package com.romcloud.app.data
 
+import com.romcloud.app.I18n
+import com.romcloud.core.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -19,17 +21,19 @@ class ApiClient(private val settings: Settings) {
 
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
-    /** Ajoute la clé d'API aux requêtes destinées au serveur configuré (y compris les images Coil). */
+    /**
+     * Requêtes destinées au serveur configuré (y compris les images Coil) : clé d'API et langue
+     * de l'application (le serveur renvoie ses messages d'erreur dans cette langue).
+     */
     private val authInterceptor = Interceptor { chain ->
         val config = settings.config.value
         val request = chain.request()
         val base = config.serverUrl.toHttpUrlOrNull()
         val sameServer = base != null && request.url.host == base.host && request.url.port == base.port
-        if (sameServer && config.apiKey.isNotEmpty()) {
-            chain.proceed(request.newBuilder().header("Authorization", "Bearer ${config.apiKey}").build())
-        } else {
-            chain.proceed(request)
-        }
+        if (!sameServer) return@Interceptor chain.proceed(request)
+        val builder = request.newBuilder().header("Accept-Language", I18n.language())
+        if (config.apiKey.isNotEmpty()) builder.header("Authorization", "Bearer ${config.apiKey}")
+        chain.proceed(builder.build())
     }
 
     val http: OkHttpClient = OkHttpClient.Builder()
@@ -40,7 +44,7 @@ class ApiClient(private val settings: Settings) {
 
     private fun baseUrl(): String {
         val url = settings.config.value.serverUrl
-        if (url.isBlank()) throw ApiException("Aucun serveur configuré")
+        if (url.isBlank()) throw ApiException(I18n.get(R.string.err_no_server))
         return url
     }
 
@@ -73,9 +77,9 @@ class ApiClient(private val settings: Settings) {
             json.parseToJsonElement(body).jsonObject["error"]?.jsonPrimitive?.content
         }.getOrNull()
         return when {
-            response.code == 401 -> "Clé d’API invalide ou manquante"
+            response.code == 401 && serverMessage == null -> I18n.get(R.string.err_api_key)
             serverMessage != null -> serverMessage
-            else -> "Erreur serveur ${response.code}"
+            else -> I18n.get(R.string.err_server, response.code)
         }
     }
 
@@ -84,10 +88,11 @@ class ApiClient(private val settings: Settings) {
     /** Teste une adresse et une clé sans modifier les paramètres enregistrés. */
     suspend fun testConnection(serverUrl: String, apiKey: String): ServerInfo = withContext(Dispatchers.IO) {
         val base = Settings.normalizeUrl(serverUrl)
-        if (base.toHttpUrlOrNull() == null) throw ApiException("Adresse invalide")
+        if (base.toHttpUrlOrNull() == null) throw ApiException(I18n.get(R.string.err_invalid_address))
         val client = http.newBuilder().apply { interceptors().clear() }.build()
         fun call(path: String): String {
             val request = Request.Builder().url(base + path).apply {
+                header("Accept-Language", I18n.language())
                 if (apiKey.isNotBlank()) header("Authorization", "Bearer ${apiKey.trim()}")
             }.build()
             return client.newCall(request).execute().use { response ->

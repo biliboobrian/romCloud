@@ -1,5 +1,6 @@
 package com.romcloud.app.ui
 
+import androidx.annotation.PluralsRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -14,26 +15,35 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.romcloud.app.I18n
 import com.romcloud.app.data.DownloadState
+import com.romcloud.core.R
 import java.util.Locale
 
 // Éléments communs aux applications téléphone et TV.
 
 val DownloadedGreen = Color(0xFF2EB872)
 
+/** Pluriel traduit (ex. « 1 game » / « 3 games ») dans la langue de l'écran. */
+@Composable
+fun pluralString(@PluralsRes id: Int, count: Int, vararg args: Any): String =
+    LocalContext.current.resources.getQuantityString(id, count, *args)
+
 fun formatSize(bytes: Long): String {
-    if (bytes <= 0) return "0 o"
-    val units = listOf("o", "Ko", "Mo", "Go", "To")
+    val units = I18n.get(R.string.size_units).split('|')
+    if (bytes <= 0) return "0 ${units[0]}"
     var value = bytes.toDouble()
     var i = 0
     while (value >= 1024 && i < units.lastIndex) {
         value /= 1024
         i++
     }
-    return if (i == 0) "$bytes o" else String.format(Locale.FRANCE, "%.1f %s", value, units[i])
+    return if (i == 0) "$bytes ${units[0]}" else String.format(Locale.getDefault(), "%.1f %s", value, units[i])
 }
 
 /** Statut local d'un jeu, affiché à droite de chaque ligne de la liste. */
@@ -50,11 +60,11 @@ fun DownloadIndicator(status: LocalStatus, modifier: Modifier = Modifier, size: 
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         when (status) {
             LocalStatus.Downloaded -> Icon(
-                Icons.Filled.CheckCircle, contentDescription = "Téléchargé",
+                Icons.Filled.CheckCircle, contentDescription = stringResource(R.string.cd_downloaded),
                 tint = DownloadedGreen, modifier = Modifier.size(icon),
             )
             LocalStatus.Remote -> Icon(
-                Icons.Filled.CloudDownload, contentDescription = "Non téléchargé",
+                Icons.Filled.CloudDownload, contentDescription = stringResource(R.string.cd_not_downloaded),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.size(icon),
             )
             is LocalStatus.Downloading -> {
@@ -66,7 +76,7 @@ fun DownloadIndicator(status: LocalStatus, modifier: Modifier = Modifier, size: 
                 Text("${(status.state.progress * 100).toInt()}", fontSize = 9.sp)
             }
             is LocalStatus.Error -> Icon(
-                Icons.Filled.ErrorOutline, contentDescription = "Échec : ${status.message}",
+                Icons.Filled.ErrorOutline, contentDescription = stringResource(R.string.cd_failed, status.message),
                 tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(icon),
             )
         }

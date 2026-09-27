@@ -2,6 +2,7 @@
 
 package com.romcloud.tv
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -30,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -44,9 +46,11 @@ import androidx.tv.material3.FilterChip
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
+import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
+import com.romcloud.core.R
 import kotlinx.coroutines.launch
 
 @Composable
@@ -99,19 +103,19 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             .padding(TvSafePadding),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Paramètres", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.action_settings), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
 
-        Section("Serveur RomCloud")
+        Section(stringResource(R.string.settings_server))
         OutlinedTextField(
             value = url, onValueChange = { url = it },
-            label = { androidx.compose.material3.Text("Adresse du serveur (ex. 192.168.1.10:8080)") },
+            label = { androidx.compose.material3.Text(stringResource(R.string.server_address_example)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             modifier = Modifier.fillMaxWidth(0.7f).focusRequester(firstField),
         )
         OutlinedTextField(
             value = key, onValueChange = { key = it },
-            label = { androidx.compose.material3.Text("Clé d’API (API_KEY du serveur)") },
+            label = { androidx.compose.material3.Text(stringResource(R.string.api_key_label)) },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(0.7f),
@@ -123,51 +127,53 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
                 scope.launch {
                     testResult = try {
                         val info = app.api.testConnection(url, key)
-                        true to "Connecté à ${info.name} ${info.version}"
+                        true to context.getString(R.string.connected_to, info.name, info.version)
                     } catch (e: Exception) {
-                        false to (e.message ?: "Connexion impossible")
+                        false to (e.message ?: context.getString(R.string.connection_failed))
                     }
                     testing = false
                 }
-            }, enabled = url.isNotBlank() && !testing) { Text(if (testing) "Test en cours…" else "Tester la connexion") }
+            }, enabled = url.isNotBlank() && !testing) { Text(stringResource(if (testing) R.string.testing else R.string.test_connection)) }
         }
         testResult?.let { (ok, msg) ->
             Text(msg, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
         }
 
-        Section("Stockage des ROMs")
+        Section(stringResource(R.string.settings_language))
+        LanguageSelector(app)
+
+        Section(stringResource(R.string.settings_storage))
         OutlinedTextField(
             value = dir, onValueChange = { dir = it },
-            label = { androidx.compose.material3.Text("Dossier local (un sous-dossier par système)") },
+            label = { androidx.compose.material3.Text(stringResource(R.string.local_folder_tv)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(0.7f),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
-            OutlinedButton(onClick = { dir = Settings.defaultRomsDir() }) { Text("Dossier par défaut") }
+            OutlinedButton(onClick = { dir = Settings.defaultRomsDir() }) { Text(stringResource(R.string.default_folder)) }
         }
         Text(
-            if (hasPermission) "✓ Accès à tous les fichiers autorisé" else "Accès aux fichiers non autorisé",
+            stringResource(if (hasPermission) R.string.all_files_granted else R.string.all_files_denied),
             color = if (hasPermission) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.titleSmall,
         )
         Text(
-            "Les émulateurs doivent pouvoir lire les ROMs : elles sont enregistrées dans un dossier partagé, " +
-                "ce qui nécessite l’autorisation « Accès à tous les fichiers ».",
+            stringResource(R.string.storage_hint_tv),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (!hasPermission) {
-            Button(onClick = ::requestPermission) { Text("Autoriser") }
+            Button(onClick = ::requestPermission) { Text(stringResource(R.string.action_allow)) }
         }
         if (showAdbHelp && !hasPermission) {
             Text(
-                "Ce téléviseur ne propose pas l’écran d’autorisation. Depuis un ordinateur connecté au même réseau " +
-                    "(débogage ADB activé dans les Options pour les développeurs du téléviseur), exécutez :",
+                stringResource(R.string.tv_adb_hint),
                 style = MaterialTheme.typography.bodyMedium,
             )
             SelectionContainer {
                 Text(
-                    "adb connect <ip-du-téléviseur>\nadb shell appops set --uid ${context.packageName} MANAGE_EXTERNAL_STORAGE allow",
+                    "adb connect ${stringResource(R.string.tv_ip_placeholder)}\n" +
+                        "adb shell appops set --uid ${context.packageName} MANAGE_EXTERNAL_STORAGE allow",
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -175,27 +181,26 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
         }
 
         Section("RetroArch")
-        Text("Accès aux ROMs pour RetroArch", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.retroarch_access), style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
             RetroArchSafMode.entries.forEach { mode ->
                 FilterChip(selected = safMode == mode, onClick = {
                     safMode = mode
                     app.settings.retroArchSafMode = mode
-                }) { Text(mode.label) }
+                }) { Text(stringResource(mode.label)) }
             }
         }
         Text(
-            "Automatique : chemin « saf:// » si RetroArch vient du Play Store (ajoutez alors le dossier des ROMs " +
-                "dans RetroArch via « Charger du contenu »), chemin classique sinon.",
+            stringResource(R.string.retroarch_access_hint_tv),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         FilterChip(selected = quitOnExit, onClick = {
             quitOnExit = !quitOnExit
             app.settings.retroArchQuitOnExit = quitOnExit
-        }) { Text(if (quitOnExit) "✓ Fermer RetroArch en quittant le jeu" else "Fermer RetroArch en quittant le jeu") }
+        }) { Text(stringResource(if (quitOnExit) R.string.quit_on_exit_on else R.string.quit_on_exit)) }
         Text(
-            "Recommandé : évite l’écran noir au lancement suivant. Sauvegardez avant de quitter une partie.",
+            stringResource(R.string.quit_on_exit_hint_tv),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -208,7 +213,7 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             },
             enabled = url.isNotBlank(),
             modifier = Modifier.padding(top = 12.dp),
-        ) { Text("Enregistrer") }
+        ) { Text(stringResource(R.string.action_save)) }
     }
 }
 
@@ -220,4 +225,29 @@ private fun Section(title: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 12.dp),
     )
+}
+
+/** Langue de l'application : Système / Français / English (appliquée immédiatement). */
+@Composable
+private fun LanguageSelector(app: RomCloudApp) {
+    val activity = LocalContext.current as Activity
+    val current = remember { app.settings.language }
+    val options = listOf(
+        AppLanguage.SYSTEM to stringResource(R.string.language_system),
+        "fr" to stringResource(R.string.language_fr),
+        "en" to stringResource(R.string.language_en),
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
+        options.forEach { (code, label) ->
+            FilterChip(
+                selected = current == code,
+                onClick = {
+                    if (code != current) {
+                        app.settings.language = code
+                        activity.recreate()
+                    }
+                },
+            ) { Text(label) }
+        }
+    }
 }

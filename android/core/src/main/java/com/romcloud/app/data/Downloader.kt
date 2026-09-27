@@ -1,5 +1,7 @@
 package com.romcloud.app.data
 
+import com.romcloud.app.I18n
+import com.romcloud.core.R
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
@@ -92,11 +94,11 @@ class Downloader(
 
     private suspend fun download(system: GameSystem, game: Game) {
         val target = library.fileFor(system, game)
-        val dir = target.parentFile ?: throw IOException("Dossier invalide")
+        val dir = target.parentFile ?: throw IOException(I18n.get(R.string.err_invalid_folder))
         if (!dir.exists() && !dir.mkdirs()) {
             throw IOException(
-                if (library.hasStoragePermission()) "Impossible de créer ${dir.absolutePath}"
-                else "Autorisation d’accès aux fichiers manquante (voir Paramètres)",
+                if (library.hasStoragePermission()) I18n.get(R.string.err_cannot_create, dir.absolutePath)
+                else I18n.get(R.string.err_storage_permission),
             )
         }
         val part = File(dir, "${game.fileName}.part")
@@ -116,11 +118,13 @@ class Downloader(
                 offset = part.length()
             } else {
                 if (!response.isSuccessful) {
-                    throw ApiException(if (response.code == 401) "Clé d’API invalide" else "Erreur serveur ${response.code}")
+                    throw ApiException(
+                        if (response.code == 401) I18n.get(R.string.err_api_key) else I18n.get(R.string.err_server, response.code),
+                    )
                 }
                 val append = response.code == 206 && offset > 0
                 if (!append) offset = 0
-                val body = response.body ?: throw IOException("Réponse vide")
+                val body = response.body ?: throw IOException(I18n.get(R.string.err_empty_response))
                 var bytes = offset
                 var lastUpdate = 0L
                 body.byteStream().use { input ->
@@ -144,9 +148,9 @@ class Downloader(
         }
 
         if (part.length() != game.size) {
-            throw IOException("Taille incorrecte (${part.length()} / ${game.size} octets), réessayez")
+            throw IOException(I18n.get(R.string.err_wrong_size, part.length(), game.size))
         }
         if (target.exists()) target.delete()
-        if (!part.renameTo(target)) throw IOException("Impossible de renommer le fichier téléchargé")
+        if (!part.renameTo(target)) throw IOException(I18n.get(R.string.err_rename))
     }
 }

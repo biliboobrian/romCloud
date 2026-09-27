@@ -45,6 +45,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        I18n.init(this)
         settings = Settings(this)
         api = ApiClient(settings)
         repository = Repository(api, filesDir)

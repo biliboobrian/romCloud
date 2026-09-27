@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Textes des applications RomCloud (téléphone et TV). Anglais par défaut ; français : values-fr. -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Actions -->
+    <string name="action_refresh">Refresh</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_back">Back</string>
+    <string name="action_search">Search</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_close">Close</string>
+    <string name="action_continue">Continue</string>
+    <string name="action_download">Download</string>
+    <string name="action_play">Play</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_details">Details</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_save">Save</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_launch">Launch</string>
+    <string name="action_force_stop">Force stop</string>
+    <string name="action_open_play_store">Open the Play Store</string>
+    <string name="action_info">Info</string>
+
+    <!-- États communs -->
+    <string name="loading">Loading…</string>
+    <string name="banner_storage">Allow file access in the settings to download ROMs.</string>
+    <string name="banner_offline_full">Offline — cached list. Only games already downloaded can be launched.</string>
+    <string name="banner_offline">Offline — cached list.</string>
+    <string name="server_unreachable">Unable to reach the server:\n%1$s</string>
+    <string name="server_unreachable_tv">Unable to reach the server:\n%1$s\n\nCheck the address in the Settings.</string>
+    <string name="no_systems">No system on the server.\nAdd some from the web interface.</string>
+    <plurals name="games_count">
+        <item quantity="one">%1$d game</item>
+        <item quantity="other">%1$d games</item>
+    </plurals>
+    <string name="error_with">Error: %1$s</string>
+    <string name="no_games">No games</string>
+    <string name="cd_downloaded">Downloaded</string>
+    <string name="cd_not_downloaded">Not downloaded</string>
+    <string name="cd_failed">Failed: %1$s</string>
+    <!-- Unités de taille, séparées par | -->
+    <string name="size_units">B|KB|MB|GB|TB</string>
+    <string name="percent">%1$d %%</string>
+    <string name="bytes_progress">%1$s / %2$s</string>
+
+    <!-- Liste des jeux -->
+    <!-- « downloaded » est invariable en anglais. -->
+    <string name="downloaded_count" tools:ignore="PluralsCandidate">%1$d downloaded</string>
+    <string name="view_list">List view</string>
+    <string name="view_carousel">Carousel view</string>
+    <string name="search_hint">Search…</string>
+    <string name="filter_all">All</string>
+    <string name="filter_downloaded">Downloaded</string>
+    <string name="filter_remote">To download</string>
+    <string name="row_downloaded">Downloaded</string>
+    <string name="row_recent">Recently added</string>
+    <string name="row_other">Other</string>
+    <string name="row_all">All games</string>
+    <string name="row_results">Results for “%1$s”</string>
+    <string name="row_title">%1$s  ·  %2$d</string>
+    <string name="details_and_emulator">Details and emulator</string>
+
+    <!-- Téléchargement -->
+    <string name="download_title">Download the game?</string>
+    <string name="download_text">“%1$s” is not on this device yet. It must be downloaded before you can play it.</string>
+    <string name="download_last_error">Last attempt: %1$s</string>
+    <string name="download_launch_after">Launch the game once downloaded</string>
+    <string name="downloading_title">Download in progress</string>
+    <string name="downloading_text">“%1$s” is being downloaded. Do you want to cancel it?</string>
+    <string name="cancel_download">Cancel the download</string>
+    <string name="downloading_progress">Downloading… %1$s / %2$s</string>
+    <string name="download_failed">Download failed: %1$s</string>
+    <string name="download_with_size">Download (%1$s)</string>
+    <string name="downloaded_snackbar">“%1$s” is downloaded</string>
+    <string name="download_failed_game">Download of “%1$s” failed: %2$s</string>
+
+    <!-- Fiche du jeu -->
+    <string name="game_not_found">Game not found</string>
+    <string name="meta_release">Released: %1$s</string>
+    <string name="meta_developer">Developer: %1$s</string>
+    <string name="meta_publisher">Publisher: %1$s</string>
+    <string name="meta_players">Players: %1$s</string>
+    <string name="meta_rating">Rating: %1$.1f / 5</string>
+    <string name="rating_short">%1$.1f/5</string>
+    <string name="players_count">%1$s player(s)</string>
+    <string name="available_on_device">✓ Available on the device</string>
+    <string name="delete_from_device">Delete from the device</string>
+    <string name="must_download">The game must be downloaded before you can play it.</string>
+    <string name="screenshot">Screenshot</string>
+    <string name="delete_device_title">Delete from the device?</string>
+    <string name="delete_device_text">The local file will be deleted to free up space. The game remains available on the server.</string>
+    <string name="launch_command_show">Show the launch command</string>
+    <string name="launch_command_hide">Hide the launch command</string>
+    <string name="no_emulator_template">No emulator template for this system: the game will be opened with the Android app chooser.</string>
+    <string name="emulator">Emulator</string>
+    <string name="emulator_not_installed">This emulator is not installed</string>
+    <string name="not_installed">not installed</string>
+    <string name="configure_retroarch">Configure RetroArch</string>
+    <string name="install_from_play_store">Install from the Play Store</string>
+
+    <!-- Paramètres -->
+    <string name="connected_to">Connected to %1$s %2$s</string>
+    <string name="connection_failed">Connection failed</string>
+    <string name="settings_server">RomCloud server</string>
+    <string name="server_address">Server address</string>
+    <string name="server_address_example">Server address (e.g. 192.168.1.10:8080)</string>
+    <string name="api_key_label">API key (server API_KEY)</string>
+    <string name="test_connection">Test the connection</string>
+    <string name="testing">Testing…</string>
+    <string name="settings_display">Display</string>
+    <string name="fullscreen">Fullscreen</string>
+    <string name="fullscreen_hint">Hides the status bar and navigation buttons. Swipe from the edge of the screen to show them.</string>
+    <string name="settings_language">Language</string>
+    <string name="language_system">System</string>
+    <string name="language_fr" translatable="false">Français</string>
+    <string name="language_en" translatable="false">English</string>
+    <string name="settings_emulators">Emulators</string>
+    <string name="quit_on_exit">Close RetroArch when leaving the game</string>
+    <string name="quit_on_exit_on">✓ Close RetroArch when leaving the game</string>
+    <string name="quit_on_exit_hint">Recommended: avoids a black screen on the next launch. Leaving RetroArch during a game (Home button, recent apps) then closes the game — save first.</string>
+    <string name="quit_on_exit_hint_tv">Recommended: avoids a black screen on the next launch. Save before leaving a game.</string>
+    <string name="retroarch_access">ROM access for RetroArch</string>
+    <string name="retroarch_access_hint">The Play Store version of RetroArch can only read the ROM folder through SAF: in RetroArch, “Load Content”, add the RomCloud ROM folder (below) and allow access. Automatic: SAF if RetroArch comes from the Play Store, classic path otherwise.</string>
+    <string name="retroarch_access_hint_tv">Automatic: “saf://” path if RetroArch comes from the Play Store (then add the ROM folder in RetroArch with “Load Content”), classic path otherwise.</string>
+    <string name="saf_auto">Automatic</string>
+    <string name="saf_saf" translatable="false">SAF</string>
+    <string name="saf_path">Classic path</string>
+    <string name="settings_storage">ROM storage</string>
+    <string name="local_folder">Local folder</string>
+    <string name="local_folder_hint">A subfolder is created for each system (e.g. …/snes/).</string>
+    <string name="local_folder_tv">Local folder (one subfolder per system)</string>
+    <string name="default_folder">Default folder</string>
+    <string name="private_folder">App private folder</string>
+    <string name="all_files_granted">✓ All files access granted</string>
+    <string name="all_files_denied">File access not granted</string>
+    <string name="storage_hint">Emulators (RetroArch, etc.) must be able to read the ROMs: they are therefore stored in a shared folder, which requires the “All files access” permission. The app private folder does not require it, but most emulators will not be able to read it.</string>
+    <string name="storage_hint_tv">Emulators must be able to read the ROMs: they are stored in a shared folder, which requires the “All files access” permission.</string>
+    <string name="tv_adb_hint">This TV does not offer the permission screen. From a computer on the same network (ADB debugging enabled in the TV developer options), run:</string>
+    <string name="tv_ip_placeholder">&lt;tv-ip&gt;</string>
+
+    <!-- TV -->
+    <string name="tv_ready">✓ Ready to play — OK to launch</string>
+    <string name="tv_downloading_percent">Downloading… %1$d %%</string>
+    <string name="tv_to_download">To download — OK to download · long press: game details</string>
+    <string name="tv_on_tv">✓ On the TV</string>
+    <string name="tv_must_download">Must be downloaded before you can play it.</string>
+    <string name="tv_cancel_percent">Cancel (%1$d %%)</string>
+    <string name="tv_emulator_value">Emulator: %1$s</string>
+    <string name="tv_install_emulator">Install the emulator</string>
+    <string name="tv_delete_from_tv">Delete from the TV</string>
+    <string name="tv_no_emulator">No emulator defined for this system: add some from the server web interface.</string>
+    <string name="tv_delete_title">Delete from the TV?</string>
+    <string name="tv_delete_text">The file will be deleted to free up space. The game remains available on the server.</string>
+    <string name="tv_download_title">Download “%1$s”?</string>
+    <string name="tv_download_text">This game is not on the TV yet: it must be downloaded before you can play it.</string>
+    <string name="tv_download_and_play">Download and play</string>
+    <string name="tv_game_details">Game details</string>
+    <string name="search_title">Search a game</string>
+    <string name="search_placeholder">Title or file name</string>
+    <string name="clear_search">Clear the search</string>
+    <string name="search_query">“%1$s”</string>
+    <string name="choose_emulator">Choose the emulator</string>
+
+    <!-- Fenêtres de lancement -->
+    <string name="missing_emulator_title">Emulator not installed</string>
+    <string name="missing_emulator_text">To launch this game, install the emulator “%1$s” (%2$s).\n\nDo you want to open its page on the Google Play Store?\n\nYou can also choose another emulator in the game details.</string>
+    <string name="play_store_unavailable">Play Store unavailable</string>
+    <string name="close_emulator_title">Close the emulator first</string>
+    <string name="close_emulator_text">If “%1$s” is still open in the background, the game will stay on a black screen. Since Android 14, RomCloud can no longer close it by itself.\n\nChoose “Force stop” below, then “Force stop” in the page that opens, come back here and choose “Launch”. If the emulator is already closed, choose “Launch” directly.</string>
+    <string name="dont_show_again">Don’t show again for this emulator</string>
+    <string name="settings_unavailable">Settings unavailable</string>
+
+    <!-- Guide RetroArch -->
+    <string name="ra_not_installed">not installed</string>
+    <string name="ra_play_store">Play Store version</string>
+    <string name="ra_other_source">installed outside the Play Store</string>
+    <string name="ra_step1">Install the right core</string>
+    <string name="ra_core_intro">This template uses the core:</string>
+    <string name="ra_core_how">In RetroArch: Main Menu → Load Core → Download a Core, then choose this core. The name must match exactly; otherwise, choose another RetroArch template in the emulator list.</string>
+    <string name="ra_core_none">This template does not specify a core: RetroArch will use the one associated with this file type.</string>
+    <string name="ra_step2">Allow access to the ROMs</string>
+    <string name="ra_saf_how">The Play Store version of RetroArch only reads the folders you allow. In RetroArch: Load Content → add a folder, select the RomCloud ROM folder, then “Use this folder” → “Allow”:</string>
+    <string name="ra_saf_note">Allow this folder itself, not just a parent folder. RomCloud then passes the ROMs to RetroArch as “saf://” paths.</string>
+    <string name="ra_path_how">RetroArch must be able to read RomCloud files: Android Settings → Apps → RetroArch → Permissions → Files → “Allow management of all files”. ROM folder:</string>
+    <string name="ra_mode_hint">Mode configurable in the RomCloud Settings → “ROM access for RetroArch”.</string>
+    <string name="ra_step3">Close RetroArch before playing</string>
+    <string name="ra_close_manual">RetroArch cannot start a game while it is still open in the background (black screen), and since Android 14 RomCloud can no longer close it by itself. Before launching a game, use “Force stop” below if RetroArch has been opened.</string>
+    <string name="ra_close_auto">RomCloud closes RetroArch automatically before each launch.</string>
+    <string name="ra_quit_on">“Close RetroArch when leaving the game” is enabled: RetroArch closes as soon as you leave it, so the next launch works without any action. Save before leaving a game.</string>
+    <string name="ra_quit_off">Tip: enable “Close RetroArch when leaving the game” in the RomCloud Settings so you no longer have to force stop.</string>
+    <string name="ra_step4">If the screen stays black</string>
+    <string name="ra_log_how">In RetroArch: Settings → Logging → enable “Logging Verbosity” and “Log to File”, launch the game again from RomCloud, then check the log. “Could not read content file” points to a folder access problem (step 2); a core error points to step 1.</string>
+    <string name="ra_config_file">Configuration file used by this template:</string>
+    <string name="ra_open">Open RetroArch</string>
+    <string name="action_failed">Action failed</string>
+
+    <!-- Erreurs -->
+    <string name="err_invalid_folder">Invalid folder</string>
+    <string name="err_cannot_create">Unable to create %1$s</string>
+    <string name="err_storage_permission">File access permission missing (see Settings)</string>
+    <string name="err_api_key">Invalid or missing API key</string>
+    <string name="err_server">Server error %1$d</string>
+    <string name="err_empty_response">Empty response</string>
+    <string name="err_wrong_size" tools:ignore="PluralsCandidate">Wrong size (%1$d / %2$d bytes), try again</string>
+    <string name="err_rename">Unable to rename the downloaded file</string>
+    <string name="err_no_server">No server configured</string>
+    <string name="err_invalid_address">Invalid address</string>
+    <string name="err_connection">Connection error</string>
+    <string name="err_system_not_found">System not found</string>
+    <string name="err_unknown_package">Unknown emulator package</string>
+    <string name="err_emulator_not_installed">Emulator not installed: %1$s</string>
+    <string name="err_open_play_store">Unable to open the Play Store</string>
+    <string name="err_file_not_found">File not found: %1$s</string>
+    <string name="err_cannot_open">Unable to open %1$s</string>
+    <string name="err_cannot_open_settings">Unable to open the settings of %1$s</string>
+    <string name="err_no_app">No app can open this file</string>
+    <string name="err_launch_refused">Launch refused by the emulator: %1$s</string>
+    <string name="chooser_open_with">Open %1$s with…</string>
+
+    <!-- Notifications -->
+    <string name="notif_channel">Downloads</string>
+    <string name="notif_title">ROM download</string>
+    <string name="notif_preparing">Preparing the download…</string>
+    <!-- Affiché seulement pour 2 téléchargements ou plus. -->
+    <string name="notif_games_running" tools:ignore="PluralsCandidate">%1$d games in progress</string>
+</resources>
