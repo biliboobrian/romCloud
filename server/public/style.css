@@ -194,6 +194,16 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .media-slot img:not([src]), .media-slot img[src=""] { visibility: hidden; }
 .game-edit .form { flex: 1; min-width: 0; }
 
+.dup-body { padding: 12px 18px; max-height: 65vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.dup-body h4 { margin: 8px 0 0; font-size: 14px; }
+.dup-group { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.dup-group-head { padding: 8px 12px; background: var(--surface-2); font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.dup-row { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--border); font-size: 13px; cursor: pointer; }
+.dup-row input { width: auto; }
+.dup-row .name { flex: 1; min-width: 0; word-break: break-all; }
+.dup-row .keep { color: var(--ok); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.dup-row.marked .name { text-decoration: line-through; color: var(--muted); }
+.dup-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--border); }
 .jobs { padding: 12px 18px 18px; display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; }
 .job { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .job-head { display: flex; justify-content: space-between; gap: 8px; }

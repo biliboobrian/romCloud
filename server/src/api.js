@@ -4,6 +4,7 @@ import path from 'node:path';
 import express from 'express';
 import multer from 'multer';
 import { config, screenscraperEnabled } from './config.js';
+import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { HttpError } from './http-error.js';
 import { cancelJob, enqueueScrape, listJobs } from './jobs.js';
 import {
@@ -101,6 +102,12 @@ api.put(
 );
 
 api.delete('/systems/:id/image', (req, res) => res.json(deleteSystemImage(req.params.id)));
+
+api.get('/systems/:id/duplicates', h(async (req, res) => res.json(await systemDuplicates(req.params.id))));
+
+api.post('/systems/:id/duplicates/delete', (req, res) => {
+  res.json(deleteGamesOfSystem(req.params.id, (req.body && req.body.ids) || []));
+});
 
 api.post('/systems/:id/scan', (req, res) => res.json(scanSystem(req.params.id)));
 
