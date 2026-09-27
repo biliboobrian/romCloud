@@ -63,6 +63,24 @@ export function listGames(systemId, { q } = {}) {
   return db.prepare(sql).all(...params).map(rowToGame);
 }
 
+/**
+ * Recherche dans tous les systèmes : chaque mot doit apparaître dans le titre ou le nom de
+ * fichier (insensible à la casse). Résultats triés par titre, limités à `limit`.
+ */
+export function searchGames(query, { limit = 300 } = {}) {
+  const words = String(query || '').trim().split(/\s+/).filter(Boolean).slice(0, 8);
+  if (!words.length) return [];
+  // « % » et « _ » saisis sont cherchés tels quels (échappés avec « ! »).
+  const like = (w) => `%${w.replace(/[!%_]/g, (c) => `!${c}`)}%`;
+  const where = words.map(() => "(title LIKE ? ESCAPE '!' OR file_name LIKE ? ESCAPE '!')").join(' AND ');
+  const params = words.flatMap((w) => [like(w), like(w)]);
+  const max = Math.min(Math.max(Number(limit) || 300, 1), 1000);
+  return db
+    .prepare(`SELECT * FROM games WHERE ${where} ORDER BY title COLLATE NOCASE, file_name LIMIT ${max}`)
+    .all(...params)
+    .map(rowToGame);
+}
+
 export function getGameRow(id) {
   return db.prepare('SELECT * FROM games WHERE id = ?').get(Number(id));
 }

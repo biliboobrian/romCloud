@@ -19,6 +19,7 @@ import {
   safeFileName,
   scanAll,
   scanSystem,
+  searchGames,
   updateGame,
 } from './library.js';
 import { SCRAPE_SOURCES, saveCustomMedia, scrapeGame } from './scraper/index.js';
@@ -145,6 +146,9 @@ api.post(
 );
 
 // ---- Jeux ----
+// Recherche globale (tous les systèmes) : ?q=mots&limit=300
+api.get('/search', (req, res) => res.json(searchGames(req.query.q, { limit: req.query.limit })));
+
 api.get('/systems/:id/games', (req, res) => res.json(listGames(req.params.id, { q: req.query.q })));
 
 const upload = multer({
