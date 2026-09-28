@@ -121,7 +121,7 @@ fun TvGamesScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        Backdrop(featured?.let { mediaUrl(it, "screenshot") ?: mediaUrl(it, "boxart") })
+        Backdrop(featured?.let { mediaUrl(it, "screenshot") ?: mediaUrl(it, "boxart") }, alignment = Alignment.TopCenter)
 
         Column(Modifier.fillMaxSize()) {
             // Barre du haut : nom du système à gauche, filtres et actions à droite.
@@ -162,7 +162,7 @@ fun TvGamesScreen(
             GameHero(
                 game = featured,
                 status = featured?.let(::statusOf),
-                modifier = Modifier.padding(start = 48.dp, end = 48.dp, top = 8.dp).height(190.dp),
+                modifier = Modifier.padding(start = 48.dp, end = 48.dp, top = 4.dp).height(150.dp),
             )
 
             when {
@@ -264,13 +264,13 @@ fun TvGamesScreen(
 /** Zone du haut : informations du jeu sélectionné. */
 @Composable
 private fun GameHero(game: Game?, status: LocalStatus?, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth(0.6f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier.fillMaxWidth(0.6f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (game == null) return@Column
         Text(
             game.title,
             style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Bold,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
@@ -293,7 +293,7 @@ private fun GameHero(game: Game?, status: LocalStatus?, modifier: Modifier = Mod
             )
         }
         game.description?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -332,7 +332,7 @@ private fun GameRows(
         modifier = Modifier.fillMaxSize(),
     ) {
         itemsIndexed(rows, key = { _, row -> row.title }) { _, row ->
-            Column(Modifier.padding(top = 14.dp)) {
+            Column(Modifier.padding(top = 8.dp)) {
                 Text(
                     stringResource(R.string.row_title, row.title, row.games.size),
                     style = MaterialTheme.typography.titleMedium,

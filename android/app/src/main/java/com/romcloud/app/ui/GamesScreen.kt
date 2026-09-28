@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -41,7 +43,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,8 +58,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -123,9 +130,19 @@ fun GamesScreen(
         }
     }
 
+    // Paysage, carrousel : l'image de la bannière monte sous la barre du haut,
+    // transparente tant que les rangées n'ont pas défilé dessous.
+    val immersive = landscape && state.grid && state.query.isBlank() && !state.offline && state.visibleGames.isNotEmpty()
+    val topBarScroll = TopAppBarDefaults.pinnedScrollBehavior()
+    val pullState = rememberPullToRefreshState()
+
     Scaffold(
+        modifier = if (immersive) Modifier.nestedScroll(topBarScroll.nestedScrollConnection) else Modifier,
         topBar = {
             TopAppBar(
+                colors = if (immersive) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                else TopAppBarDefaults.topAppBarColors(),
+                scrollBehavior = if (immersive) topBarScroll else null,
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) }
                 },
@@ -175,7 +192,18 @@ fun GamesScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
+        val layoutDirection = LocalLayoutDirection.current
+        val topInset = if (immersive) padding.calculateTopPadding() else 0.dp
+        val contentPadding = if (immersive) {
+            PaddingValues(
+                start = padding.calculateStartPadding(layoutDirection),
+                end = padding.calculateEndPadding(layoutDirection),
+                bottom = padding.calculateBottomPadding(),
+            )
+        } else {
+            padding
+        }
+        Column(Modifier.padding(contentPadding).fillMaxSize()) {
             if (state.offline) Banner(stringResource(R.string.banner_offline))
             if (!landscape) {
                 Row(
@@ -189,6 +217,14 @@ fun GamesScreen(
                 isRefreshing = state.loading && state.games.isNotEmpty(),
                 onRefresh = viewModel::refresh,
                 modifier = Modifier.fillMaxSize(),
+                state = pullState,
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = pullState,
+                        isRefreshing = state.loading && state.games.isNotEmpty(),
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset),
+                    )
+                },
             ) {
                 val games = state.visibleGames
                 when {
@@ -204,6 +240,8 @@ fun GamesScreen(
                         statusOf = ::statusOf,
                         onClick = ::onClick,
                         onDetails = { onOpenGame(it.id) },
+                        topInset = topInset,
+                        compact = landscape,
                     )
                     state.grid -> LazyVerticalGrid(
                         columns = GridCells.Adaptive(116.dp),
