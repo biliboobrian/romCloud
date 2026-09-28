@@ -201,9 +201,12 @@ fun TvBanner(text: String, modifier: Modifier = Modifier, error: Boolean = false
     )
 }
 
-/** Image plein écran en arrière-plan, assombrie vers la gauche et le bas pour la lisibilité. */
+/**
+ * Image plein écran en arrière-plan, assombrie vers la gauche et le bas pour la lisibilité.
+ * [alignment] choisit la partie gardée au recadrage (le haut quand le bas est caché par les rangées).
+ */
 @Composable
-fun Backdrop(url: String?) {
+fun Backdrop(url: String?, alignment: Alignment = Alignment.Center) {
     if (url == null) return
     val bg = MaterialTheme.colorScheme.background
     Box(Modifier.fillMaxSize()) {
@@ -211,6 +214,7 @@ fun Backdrop(url: String?) {
             model = url,
             contentDescription = null,
             contentScale = ContentScale.Crop,
+            alignment = alignment,
             alpha = 0.55f,
             modifier = Modifier.fillMaxSize(),
         )

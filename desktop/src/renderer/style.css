@@ -138,6 +138,17 @@ main { flex: 1; overflow-y: auto; position: relative; overflow-anchor: none; }
 .hero h2 { font-size: 34px; }
 .hero .desc { color: var(--text); opacity: 0.9; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .hero .actions { display: flex; gap: 10px; margin-top: 8px; }
+/* Carrousel : l'image monte sous la barre du haut, translucide tant que les rangées n'ont pas défilé dessous. */
+body.immersive .topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 10; border-bottom-color: transparent;
+  background: linear-gradient(180deg, rgba(17, 19, 24, 0.85), rgba(17, 19, 24, 0.35));
+  transition: background-color 0.15s, border-color 0.15s;
+}
+body.immersive .topbar.scrolled { background: var(--surface); border-bottom-color: var(--border); }
+body.immersive .backdrop { height: 400px; }
+body.immersive .hero { height: 272px; padding-top: 72px; }
+body.immersive .hero .cover-lg { width: 132px; }
+body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .row { position: relative; padding: 14px 0 4px; }
 .row h3 { font-size: 17px; padding: 0 28px 8px; }
 .row h3 .count { color: var(--muted); font-weight: 400; }

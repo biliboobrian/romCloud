@@ -60,6 +60,10 @@ fun GamesCarousel(
     statusOf: (Game) -> LocalStatus,
     onClick: (Game) -> Unit,
     onDetails: (Game) -> Unit,
+    /** Hauteur de la barre du haut dessinée par-dessus : l'image de la bannière passe dessous. */
+    topInset: Dp = 0.dp,
+    /** Paysage : bannière réduite pour remonter les rangées. */
+    compact: Boolean = false,
 ) {
     val labels = RowLabels(
         downloaded = stringResource(R.string.row_downloaded),
@@ -80,11 +84,13 @@ fun GamesCarousel(
                     status = statusOf(game),
                     onPrimary = { onClick(game) },
                     onDetails = { onDetails(game) },
+                    topInset = topInset,
+                    compact = compact,
                 )
             }
         }
         items(rows, key = { "row:" + it.title }) { row ->
-            Column(Modifier.padding(top = 16.dp)) {
+            Column(Modifier.padding(top = if (compact) 8.dp else 16.dp)) {
                 Text(
                     stringResource(R.string.row_title, row.title, row.games.size),
                     style = MaterialTheme.typography.titleMedium,
@@ -120,37 +126,42 @@ private fun HeroBanner(
     status: LocalStatus,
     onPrimary: () -> Unit,
     onDetails: () -> Unit,
+    topInset: Dp,
+    compact: Boolean,
 ) {
     val background = MaterialTheme.colorScheme.background
     Box(
         Modifier
             .fillMaxWidth()
-            .height(300.dp),
+            .height(topInset + if (compact) 140.dp else 300.dp),
     ) {
         if (backgroundUrl != null) {
             AsyncImage(
                 model = backgroundUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                // Bannière basse : on garde le haut de l'image plutôt que son centre.
+                alignment = if (compact) Alignment.TopCenter else Alignment.Center,
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        // Dégradé vers le fond pour la lisibilité du texte et la transition avec les rangées.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to background.copy(alpha = 0.15f),
-                        0.55f to background.copy(alpha = 0.7f),
-                        1f to background,
-                    ),
-                ),
-        )
+        // Dégradé vers le fond pour la lisibilité du texte et la transition avec les rangées ;
+        // assombri en haut quand la barre du haut est dessinée par-dessus l'image.
+        val stops = if (topInset > 0.dp) {
+            arrayOf(
+                0f to background.copy(alpha = 0.6f),
+                0.3f to background.copy(alpha = 0.2f),
+                0.6f to background.copy(alpha = 0.7f),
+                1f to background,
+            )
+        } else {
+            arrayOf(0f to background.copy(alpha = 0.15f), 0.55f to background.copy(alpha = 0.7f), 1f to background)
+        }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(*stops)))
         Row(
             Modifier
                 .align(Alignment.BottomStart)
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = if (compact) 10.dp else 16.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
             if (coverUrl != null) {
@@ -159,7 +170,7 @@ private fun HeroBanner(
                     contentDescription = game.title,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .width(96.dp)
+                        .width(if (compact) 72.dp else 96.dp)
                         .aspectRatio(3f / 4f)
                         .clip(RoundedCornerShape(8.dp)),
                 )
@@ -168,7 +179,7 @@ private fun HeroBanner(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     game.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis,
                 )
                 val meta = listOfNotNull(game.year, game.mainGenre, formatSize(game.size)).joinToString(" · ")
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

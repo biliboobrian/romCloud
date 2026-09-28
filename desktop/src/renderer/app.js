@@ -157,6 +157,7 @@
     $('#modalRoot').innerHTML = '';
     $('#banners').innerHTML = '';
     $('#backBtn').classList.toggle('hidden', S.route.name === 'systems');
+    document.body.classList.remove('immersive');
     $('#main').scrollTop = 0;
     ({ systems: renderSystems, games: renderGames, game: renderGame, settings: renderSettings })[S.route.name]();
   }
@@ -430,6 +431,8 @@
     if (S.games.offline) banner(t('app.offline'));
     $('#subtitle').textContent = t('games.subtitle', { n: S.games.list.length, d: S.games.downloaded.size });
     const games = visibleGames();
+    // Carrousel sans bandeau : l'image de fond monte sous la barre du haut.
+    document.body.classList.toggle('immersive', games.length > 0 && S.settings.view !== 'list' && !S.games.offline);
     if (!games.length) {
       const text = S.games.loading ? t('app.loading') : S.games.error || t('games.none');
       main.innerHTML = `<div class="centered"><p>${esc(text)}</p></div>`;
@@ -1017,6 +1020,11 @@
   window.addEventListener('focus', async () => {
     await refreshDownloaded();
     if (S.route.name === 'games') renderGamesBody();
+  });
+
+  // Barre du haut opaque dès que le contenu défile dessous (mode immersif).
+  $('#main').addEventListener('scroll', (e) => {
+    $('.topbar').classList.toggle('scrolled', e.target.scrollTop > 8);
   });
 
   (async function init() {
