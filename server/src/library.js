@@ -19,7 +19,12 @@ export function acceptsFileName(system, name) {
 
 export function titleFromFileName(fileName) {
   const base = fileName.replace(/\.[^.]+$/, '');
-  const cleaned = base.replace(/\s*[([][^)\]]*[)\]]/g, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  const cleaned = base
+    .replace(/\s*[([][^)\]]*[)\]]/g, '')
+    .replace(/_/g, ' ')
+    .replace(/\s+v\d+(?:\.\d+)*\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return cleaned || base;
 }
 
