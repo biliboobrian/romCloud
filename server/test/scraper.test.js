@@ -8,7 +8,7 @@ process.env.SCREENSCRAPER_DEV_ID = 'dev';
 process.env.SCREENSCRAPER_DEV_PASSWORD = 'pw';
 
 const { scrapeScreenScraper, QuotaError } = await import('../src/scraper/screenscraper.js');
-const { libretroName } = await import('../src/scraper/libretro.js');
+const { libretroName, normalize, titleFromLibretroName } = await import('../src/scraper/libretro.js');
 const { titleFromFileName } = await import('../src/library.js');
 
 const sample = {
@@ -80,4 +80,15 @@ test('Noms de fichiers', () => {
   assert.equal(libretroName('Q*bert: The Game'), 'Q_bert_ The Game');
   assert.equal(titleFromFileName('Super Mario World (USA) [!].sfc'), 'Super Mario World');
   assert.equal(titleFromFileName('Zelda_no_Densetsu.nes'), 'Zelda no Densetsu');
+  assert.equal(titleFromFileName('Bomberman Online v1.004 (2001)(Sega)(NTSC)(US)[!].zip'), 'Bomberman Online');
+  assert.equal(
+    normalize('Bomberman Online v1.004 (2001)(Sega)(NTSC)(US)[!].zip'),
+    normalize('Bomberman Online (USA)'),
+  );
+  assert.equal(titleFromLibretroName('Bomberman Online (USA)'), 'Bomberman Online');
+  assert.equal(
+    titleFromLibretroName('Legend of Zelda, The - A Link to the Past (USA)'),
+    'The Legend of Zelda - A Link to the Past',
+  );
+  assert.equal(titleFromLibretroName('Q_bert_ The Game (USA)'), 'Q_bert: The Game');
 });

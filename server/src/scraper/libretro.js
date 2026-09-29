@@ -11,10 +11,12 @@ export function libretroName(name) {
   return name.replace(/[&*/:`<>?\\|"]/g, '_');
 }
 
-function normalize(name) {
+export function normalize(name) {
   return name
     .replace(/\.[a-z0-9]+$/i, '')
     .replace(/\s*[([][^)\]]*[)\]]/g, '')
+    // Version à la TOSEC : "Bomberman Online v1.004 (2001)(Sega)…"
+    .replace(/\s+v\d+(?:\.\d+)*\s*$/i, '')
     .toLowerCase()
     .replace(/^the\s+|,\s*the\b/g, '')
     .replace(/[^a-z0-9]+/g, '');
@@ -26,6 +28,17 @@ function regionScore(name) {
   const lower = name.toLowerCase();
   const i = REGION_PRIORITY.findIndex((r) => lower.includes(`(${r}`) || lower.includes(`, ${r}`));
   return i === -1 ? REGION_PRIORITY.length : i;
+}
+
+/** Titre lisible depuis un nom Libretro : "Legend of Zelda, The - A Link to the Past (USA)". */
+export function titleFromLibretroName(name) {
+  const title = name
+    .replace(/\s*[([][^)\]]*[)\]]/g, '')
+    .replace(/_ /g, ': ')
+    .replace(/^(.+?), (The|A|An)\b/, '$2 $1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return title || null;
 }
 
 async function listing(system, type) {
@@ -71,6 +84,7 @@ export async function scrapeLibretro({ system, fileName }) {
   const title = box ? null : await findImage(system.libretroName, 'Named_Titles', fileName);
   if (!box && !snap && !title) return null;
   return {
+    title: titleFromLibretroName((box ?? snap ?? title).matched),
     media: {
       boxart: box?.url ?? title?.url ?? snap?.url,
       screenshot: snap?.url ?? title?.url,

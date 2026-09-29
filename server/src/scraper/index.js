@@ -73,6 +73,7 @@ export async function scrapeGame(gameId, source = 'auto') {
       const lr = await scrapeLibretro({ system, fileName: row.file_name });
       if (lr) {
         meta = meta || { media: {} };
+        meta.title ||= lr.title;
         meta.media.boxart ||= lr.media.boxart;
         meta.media.screenshot ||= lr.media.screenshot;
         usedSources.push('libretro');
