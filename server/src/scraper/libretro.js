@@ -4,7 +4,12 @@ import { I18nError } from '../i18n.js';
 // gratuit et sans compte, fournit jaquette, capture et écran-titre (pas de texte).
 
 const BASE = 'https://thumbnails.libretro.com';
+const DB = 'https://raw.githubusercontent.com/libretro/libretro-database/master';
+// Emplacements possibles de la DAT d'un système, selon sa provenance (No-Intro, Redump, arcade…).
+const DAT_DIRS = ['metadat/no-intro', 'metadat/redump', 'dat', 'metadat/fbneo-split', 'metadat/mame'];
+const CACHE_MS = 6 * 3600_000;
 const listingCache = new Map(); // "<system>/<type>" -> { at, names: string[] }
+const datCache = new Map(); // "<system>" -> { at, index: { byRom, byCrc } }
 
 /** Règle de nommage Libretro : ces caractères sont remplacés par "_". */
 export function libretroName(name) {
@@ -20,6 +25,12 @@ export function normalize(name) {
     .toLowerCase()
     .replace(/^the\s+|,\s*the\b/g, '')
     .replace(/[^a-z0-9]+/g, '');
+}
+
+/** Chaque titre d'un nom à titres multiples ("Titre JP ~ Titre US"), normalisé. */
+function alternateTitles(name) {
+  const base = name.replace(/\.[a-z0-9]+$/i, '').replace(/\s*[([][^)\]]*[)\]]/g, '');
+  return base.split(' ~ ').map(normalize).filter(Boolean);
 }
 
 const REGION_PRIORITY = ['france', 'europe', 'world', 'usa', 'japan'];
@@ -44,7 +55,7 @@ export function titleFromLibretroName(name) {
 async function listing(system, type) {
   const key = `${system}/${type}`;
   const cached = listingCache.get(key);
-  if (cached && Date.now() - cached.at < 6 * 3600_000) return cached.names;
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.names;
   const res = await fetch(`${BASE}/${encodeURIComponent(system)}/${type}/`);
   if (!res.ok) return [];
   const html = await res.text();
@@ -53,20 +64,63 @@ async function listing(system, type) {
   return names;
 }
 
+/**
+ * Index d'une DAT Libretro : nom de ROM sans extension ("2020bb" -> "2020 Super Baseball (set 1)")
+ * et CRC32 ("6F5C315D" -> "Rayman 2 (USA) (En,Fr,De,Es,It)").
+ */
+export function parseDat(text) {
+  const byRom = new Map();
+  const byCrc = new Map();
+  let game = null;
+  for (const line of text.split('\n')) {
+    if (/^game \(/.test(line)) game = null;
+    const name = line.match(/^\s+name "(.+)"\s*$/);
+    if (name && !game) game = name[1];
+    const rom = line.match(/^\s+rom \( name (?:"([^"]+)"|(\S+))/);
+    if (rom && game) {
+      const key = (rom[1] ?? rom[2]).replace(/\.[^.]+$/, '').toLowerCase();
+      if (!byRom.has(key)) byRom.set(key, game);
+      const crc = line.match(/ crc ([0-9a-f]{8})\b/i);
+      if (crc && !byCrc.has(crc[1].toUpperCase())) byCrc.set(crc[1].toUpperCase(), game);
+    }
+  }
+  return { byRom, byCrc };
+}
+
+async function datIndex(system) {
+  const cached = datCache.get(system);
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.index;
+  let index = { byRom: new Map(), byCrc: new Map() };
+  for (const dir of DAT_DIRS) {
+    const res = await fetch(`${DB}/${dir}/${encodeURIComponent(system)}.dat`);
+    if (!res.ok) continue;
+    index = parseDat(await res.text());
+    break;
+  }
+  datCache.set(system, { at: Date.now(), index });
+  return index;
+}
+
 async function exists(url) {
   const res = await fetch(url, { method: 'HEAD' });
   return res.ok;
 }
 
-async function findImage(system, type, fileName) {
-  const exact = libretroName(fileName.replace(/\.[^.]+$/, ''));
+async function findImage(system, type, baseName) {
+  const exact = libretroName(baseName);
   const exactUrl = `${BASE}/${encodeURIComponent(system)}/${type}/${encodeURIComponent(exact)}.png`;
   if (await exists(exactUrl)) return { url: exactUrl, matched: exact };
 
   // Pas de correspondance exacte : recherche approximative sur le titre sans les tags.
-  const wanted = normalize(fileName);
+  const wanted = normalize(baseName);
   if (!wanted) return null;
-  const candidates = (await listing(system, type)).filter((n) => normalize(n) === wanted);
+  const names = await listing(system, type);
+  let candidates = names.filter((n) => normalize(n) === wanted);
+  if (!candidates.length) {
+    // Titres alternatifs No-Intro : "Bare Knuckle ~ Streets of Rage (World)" -> "Streets of Rage (World)".
+    const parts = new Set(alternateTitles(baseName));
+    candidates = names.filter((n) => alternateTitles(n).some((p) => parts.has(p)));
+  }
   if (!candidates.length) return null;
   candidates.sort((a, b) => regionScore(a) - regionScore(b) || a.length - b.length);
   const best = candidates[0];
@@ -76,13 +130,31 @@ async function findImage(system, type, fileName) {
 /**
  * @returns {Promise<null | { title?: string, media: { boxart?: string, screenshot?: string } }>}
  */
-export async function scrapeLibretro({ system, fileName }) {
-  if (!system.libretroName) throw new I18nError('scrape.libretroNotConfigured');
-  const box = await findImage(system.libretroName, 'Named_Boxarts', fileName);
-  const snap = await findImage(system.libretroName, 'Named_Snaps', fileName);
+async function findImages(system, baseName) {
+  const box = await findImage(system, 'Named_Boxarts', baseName);
+  const snap = await findImage(system, 'Named_Snaps', baseName);
   // Écran-titre : couverture de repli quand la base n'a pas de jaquette (ex. Amstrad - GX4000).
-  const title = box ? null : await findImage(system.libretroName, 'Named_Titles', fileName);
-  if (!box && !snap && !title) return null;
+  const title = box ? null : await findImage(system, 'Named_Titles', baseName);
+  return box || snap || title ? { box, snap, title } : null;
+}
+
+export async function scrapeLibretro({ system, fileName, crc32 }) {
+  if (!system.libretroName) throw new I18nError('scrape.libretroNotConfigured');
+  const baseName = fileName.replace(/\.[^.]+$/, '');
+  let found = await findImages(system.libretroName, baseName);
+  // Numéro de release en tête ("0202 - Kirby - Power Paintbrush (E)") : on réessaie sans. Seulement en
+  // repli, car certains titres commencent par un nombre ("1943 - The Battle of Midway").
+  const unnumbered = baseName.replace(/^\d+\s+-\s+/, '');
+  if (!found && unnumbered !== baseName) found = await findImages(system.libretroName, unnumbered);
+  if (!found) {
+    // Nom introuvable : la DAT du système donne le titre à partir du CRC (ROM renommée ou nom
+    // No-Intro obsolète), ou du nom court façon MAME ("2020bb.zip").
+    const { byRom, byCrc } = await datIndex(system.libretroName);
+    const gameName = (crc32 && byCrc.get(crc32.toUpperCase())) || byRom.get(baseName.toLowerCase());
+    if (gameName) found = await findImages(system.libretroName, gameName);
+  }
+  if (!found) return null;
+  const { box, snap, title } = found;
   return {
     title: titleFromLibretroName((box ?? snap ?? title).matched),
     media: {
