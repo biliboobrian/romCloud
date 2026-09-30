@@ -18,6 +18,11 @@ data class Player(
     val acceptedFilenameRegex: String? = null,
     val amStartArguments: String,
     val killPackageProcesses: Boolean = false,
+    /**
+     * Cœur libretro exécuté par l'émulateur intégré (LibretroDroid), ex. « snes9x ».
+     * Renseigné seulement pour les émulateurs ajoutés par RomCloud (voir LibretroPlayers).
+     */
+    val libretroCore: String? = null,
 )
 
 @Serializable

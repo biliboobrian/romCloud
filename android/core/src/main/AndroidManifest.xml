@@ -28,7 +28,20 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 
+    <!-- Émulateur intégré LibretroDroid (OpenGL ES 2 minimum, manette facultative). -->
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+
     <application>
+        <!-- Processus séparé : un cœur libretro ne se charge qu'une fois par processus. -->
+        <activity
+            android:name="com.romcloud.app.libretro.LibretroActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density"
+            android:exported="false"
+            android:process=":libretro"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen" />
+
         <service
             android:name="com.romcloud.app.data.DownloadService"
             android:exported="false"

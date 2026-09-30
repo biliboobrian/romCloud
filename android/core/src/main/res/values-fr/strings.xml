@@ -250,4 +250,29 @@
     <string name="action_open_settings">Ouvrir les paramètres</string>
     <string name="apk_install_failed">Échec de l’installation de %1$s : %2$s</string>
     <string name="apk_no_installer">Aucun installateur d’applications sur cet appareil</string>
+
+    <!-- Émulateur intégré (LibretroDroid) -->
+    <string name="libretro_describe">Émulateur intégré (LibretroDroid)\nCœur : %1$s (%2$s)\nROM : %3$s</string>
+    <string name="libretro_core_installed">installé</string>
+    <string name="libretro_core_on_demand">téléchargé au premier lancement</string>
+    <string name="libretro_downloading_core">Téléchargement du cœur %1$s…</string>
+    <string name="libretro_preparing">Préparation du jeu…</string>
+    <string name="core_not_found">Le cœur %1$s n’est pas disponible pour %2$s sur le buildbot libretro.</string>
+    <string name="core_unsupported_abi">Le processeur de cet appareil n’est pas pris en charge par les cœurs libretro.</string>
+    <string name="core_invalid_archive">Archive invalide pour le cœur %1$s.</string>
+    <string name="libretro_error_core">Le cœur %1$s ne peut pas être chargé sur cet appareil.</string>
+    <string name="libretro_error_game">Le jeu n’a pas pu démarrer (fichier non pris en charge ou BIOS manquant ?).</string>
+    <string name="libretro_error_gl">L’affichage de cet appareil (OpenGL ES) n’est pas compatible avec ce cœur.</string>
+    <string name="libretro_error_generic">L’émulateur s’est arrêté de façon inattendue.</string>
+    <string name="libretro_menu_resume">Reprendre</string>
+    <string name="libretro_menu_save_state">Sauvegarder l’état</string>
+    <string name="libretro_menu_load_state">Charger l’état</string>
+    <string name="libretro_menu_reset">Redémarrer le jeu</string>
+    <string name="libretro_menu_show_touchpad">Afficher la manette tactile</string>
+    <string name="libretro_menu_hide_touchpad">Masquer la manette tactile</string>
+    <string name="libretro_menu_quit">Quitter</string>
+    <string name="libretro_state_saved">État sauvegardé</string>
+    <string name="libretro_state_loaded">État chargé</string>
+    <string name="libretro_no_state">Aucun état sauvegardé pour ce jeu</string>
+    <string name="libretro_state_error">Impossible de sauvegarder ou de charger l’état</string>
 </resources>

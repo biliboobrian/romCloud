@@ -6,3 +6,6 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 -keep,includedescriptorclasses class com.romcloud.app.**$$serializer { *; }
+
+# LibretroDroid : classes appelées depuis le code natif (JNI).
+-keep class com.swordfish.libretrodroid.** { *; }

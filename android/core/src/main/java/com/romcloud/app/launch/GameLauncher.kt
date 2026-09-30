@@ -16,6 +16,8 @@ import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
 import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
+import com.romcloud.app.libretro.LibretroActivity
+import com.romcloud.app.libretro.LibretroCores
 import java.io.File
 
 open class LaunchException(message: String) : Exception(message)
@@ -107,6 +109,15 @@ class GameLauncher(private val context: Context, private val settings: Settings)
      */
     fun launch(activityContext: Context, system: GameSystem, file: File, player: Player?) {
         if (!file.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, file.absolutePath))
+
+        // Émulateur intégré : le cœur est téléchargé si besoin par l'activité de jeu elle-même.
+        player?.libretroCore?.let { core ->
+            val intent = LibretroActivity.intent(activityContext, core, file, settings.config.value.biosDir)
+            if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            activityContext.startActivity(intent)
+            return
+        }
+
         val uri = fileUri(file)
 
         if (player == null) {
@@ -153,6 +164,10 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
     /** Commande de lancement avec les valeurs réelles, pour vérifier cœur et chemin de la ROM. */
     fun describe(player: Player, file: File): String {
+        player.libretroCore?.let { core ->
+            val status = if (LibretroCores(context).installed(core) != null) R.string.libretro_core_installed else R.string.libretro_core_on_demand
+            return I18n.get(R.string.libretro_describe, core, I18n.get(status), file.absolutePath)
+        }
         val values = runCatching { placeholders(file, packageOf(player)) }
             .getOrElse { mapOf("file.path" to file.absolutePath) }
         val lines = player.amStartArguments.lines()
@@ -173,11 +188,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         return RetroArchInfo(
             packageName = pkg,
             installed = installed,
-            core = AmStartParser.stringExtra(player.amStartArguments, "LIBRETRO")
-                ?.substringAfterLast('/')
-                ?.removeSuffix(".so")
-                ?.removeSuffix("_android")
-                ?.removeSuffix("_libretro"),
+            core = LibretroPlayers.coreOf(player),
             configFile = AmStartParser.stringExtra(player.amStartArguments, "CONFIGFILE"),
             fromPlayStore = fromPlayStore,
             usesSaf = when (settings.retroArchSafMode) {
