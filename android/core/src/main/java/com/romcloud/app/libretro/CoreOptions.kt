@@ -28,6 +28,43 @@ internal data class CoreOption(val key: String, val label: String, val values: L
     }
 }
 
+/** Groupe d'options affiché sous un même titre ; [title] null = options générales. */
+internal data class CoreOptionGroup(val title: String?, val options: List<CoreOption>)
+
+internal object CoreOptionGroups {
+
+    private val SEPARATORS = Regex("[_-]")
+
+    /**
+     * Répartit les options par type d'après leur clé : le préfixe commun à toutes (nom du cœur,
+     * « beetle_psx_hw_ ») est retiré, puis le mot suivant sert de groupe (« gpu », « cpu »…).
+     * Un mot porté par une seule option, ou une clé sans mot suivant, va dans les options générales,
+     * affichées en premier ; les autres groupes suivent par ordre alphabétique.
+     */
+    fun group(options: List<CoreOption>): List<CoreOptionGroup> {
+        val tokens = options.associateWith { it.key.lowercase().split(SEPARATORS).filter(String::isNotEmpty) }
+        val common = if (options.size < 2) 0 else commonPrefixSize(tokens.values.toList())
+        val typeOf = tokens.mapValues { (_, t) -> t.getOrNull(common)?.takeIf { t.size > common + 1 } }
+        val counts = typeOf.values.filterNotNull().groupingBy { it }.eachCount()
+        return options
+            .groupBy { option -> typeOf[option]?.takeIf { (counts[it] ?: 0) >= 2 } }
+            .map { (type, list) -> CoreOptionGroup(type?.let(::title), list.sortedBy { it.label.lowercase() }) }
+            .sortedWith(compareBy({ it.title != null }, { it.title }))
+    }
+
+    /** Nombre de mots communs à toutes les clés, en laissant au moins un mot à chacune. */
+    private fun commonPrefixSize(keys: List<List<String>>): Int {
+        val max = keys.minOf { it.size } - 1
+        var n = 0
+        while (n < max && keys.all { it[n] == keys[0][n] }) n++
+        return n
+    }
+
+    /** « gpu » -> « GPU », « video » -> « Video ». */
+    private fun title(type: String) =
+        if (type.length <= 3) type.uppercase() else type.replaceFirstChar { it.uppercase() }
+}
+
 /**
  * Options de cœur choisies par l'utilisateur, mémorisées par système (clé libretro -> valeur) :
  * réappliquées au lancement suivant d'un jeu du même système.

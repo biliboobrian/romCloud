@@ -19,8 +19,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.RadioButton
@@ -53,6 +58,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -97,6 +103,15 @@ class LibretroActivity : ComponentActivity() {
     /** Écran « Options du cœur » du menu (null = fermé) et option dont on choisit la valeur. */
     private var options by mutableStateOf<List<CoreOption>?>(null)
     private var editing by mutableStateOf<CoreOption?>(null)
+    /** Groupes d'options repliés (gardés en revenant du choix d'une valeur). */
+    private var collapsed by mutableStateOf(emptySet<String>())
+    /** Configuration de manette en cours (depuis le menu). */
+    private var mappingSession by mutableStateOf<MappingSession?>(null)
+
+    private val gamepadMappings by lazy { GamepadMappings(this) }
+    /** Boutons RetroPad enfoncés par joueur, et ceux enfoncés par une gâchette analogique. */
+    private val heldButtons = HashMap<Int, MutableSet<Int>>()
+    private val axisButtons = HashMap<Int, MutableSet<Int>>()
 
     private var retroView: GLRetroView? = null
     /** Premier image affichée : le cœur et le jeu sont chargés (sauvegardes possibles). */
@@ -135,6 +150,7 @@ class LibretroActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this) {
             when {
                 phase != Phase.Running -> finish()
+                mappingSession != null -> mappingSession = null
                 editing != null -> editing = null
                 options != null -> options = null
                 menuOpen -> closeMenu()
@@ -224,6 +240,7 @@ class LibretroActivity : ComponentActivity() {
 
     private fun openMenu() {
         if (menuOpen) return
+        releaseButtons()
         menuOpen = true
         retroView?.apply {
             audioEnabled = false
@@ -235,6 +252,7 @@ class LibretroActivity : ComponentActivity() {
         menuOpen = false
         options = null
         editing = null
+        mappingSession = null
         retroView?.apply {
             onResume()
             audioEnabled = true
@@ -328,20 +346,71 @@ class LibretroActivity : ComponentActivity() {
 
     // ---- Manettes physiques et télécommande ----
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    /**
+     * Envoie un bouton RetroPad en ignorant les répétitions (touche maintenue, gâchette analogique).
+     * Start + Select ensemble ouvrent le menu (manettes sans touche Retour, comme la DualShock 3).
+     */
+    private fun sendButton(action: Int, retroKey: Int, port: Int) {
+        val view = retroView ?: return
+        val keys = heldButtons.getOrPut(port) { mutableSetOf() }
+        when (action) {
+            KeyEvent.ACTION_DOWN -> if (!keys.add(retroKey)) return
+            KeyEvent.ACTION_UP -> if (!keys.remove(retroKey)) return
+            else -> return
+        }
+        view.sendKeyEvent(action, retroKey, port)
+        if (KeyEvent.KEYCODE_BUTTON_START in keys && KeyEvent.KEYCODE_BUTTON_SELECT in keys) openMenu()
+    }
+
+    /** Relâche tous les boutons enfoncés (ouverture du menu : pas de touche bloquée au retour). */
+    private fun releaseButtons() {
         val view = retroView
-        if (view == null || phase != Phase.Running || menuOpen) return super.dispatchKeyEvent(event)
-        if (event.keyCode in GamepadInput.MENU_KEYS) {
+        heldButtons.forEach { (port, keys) -> keys.forEach { view?.sendKeyEvent(KeyEvent.ACTION_UP, it, port) } }
+        heldButtons.clear()
+        axisButtons.clear()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        mappingSession?.let { session ->
+            return session.onKey(event) || super.dispatchKeyEvent(event)
+        }
+        val view = retroView
+        if (view == null || phase != Phase.Running) return super.dispatchKeyEvent(event)
+        val mapping = event.device?.let(gamepadMappings::get)
+        if (menuOpen) return super.dispatchKeyEvent(mapping?.let { menuNavigation(event, it) } ?: event)
+
+        val key = if (mapping != null) mapping.retroKey(event.keyCode) else GamepadInput.retroKey(event.keyCode)
+        if (key == null) {
+            if (event.keyCode !in GamepadInput.MENU_KEYS) return super.dispatchKeyEvent(event)
             if (event.action == KeyEvent.ACTION_UP) openMenu()
             return true
         }
-        val key = GamepadInput.retroKey(event.keyCode) ?: return super.dispatchKeyEvent(event)
-        if (event.repeatCount == 0) view.sendKeyEvent(event.action, key, GamepadInput.port(event))
+        sendButton(event.action, key, GamepadInput.port(event))
         if (showTouchPad && event.isFromSource(InputDevice.SOURCE_GAMEPAD)) showTouchPad = false
         return true
     }
 
+    /**
+     * Manette configurée, dans le menu : ses boutons reprennent leur rôle de navigation
+     * (croix = déplacement, bouton du bas = valider, bouton de droite = retour).
+     */
+    private fun menuNavigation(event: KeyEvent, mapping: GamepadMapping): KeyEvent? {
+        val nav = when (val key = mapping.keys[event.keyCode]) {
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> key
+            KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_DPAD_CENTER
+            KeyEvent.KEYCODE_BUTTON_A -> KeyEvent.KEYCODE_BACK
+            else -> return null
+        }
+        return KeyEvent(
+            event.downTime, event.eventTime, event.action, nav, event.repeatCount,
+            event.metaState, event.deviceId, event.scanCode, event.flags, event.source,
+        )
+    }
+
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        mappingSession?.let { session ->
+            return session.onMotion(event) || super.dispatchGenericMotionEvent(event)
+        }
         val view = retroView
         if (view == null || phase != Phase.Running || menuOpen ||
             !event.isFromSource(InputDevice.SOURCE_JOYSTICK) || event.action != MotionEvent.ACTION_MOVE
@@ -349,9 +418,34 @@ class LibretroActivity : ComponentActivity() {
             return super.dispatchGenericMotionEvent(event)
         }
         val port = ((event.device?.controllerNumber ?: 0) - 1).coerceAtLeast(0)
+        val mapping = event.device?.let(gamepadMappings::get)
+        fun axis(axis: Int?, invert: Boolean, default: Int) =
+            event.getAxisValue(axis ?: default) * if (axis != null && invert) -1f else 1f
+
         view.sendMotionEvent(GLRetroView.MOTION_SOURCE_DPAD, event.getAxisValue(MotionEvent.AXIS_HAT_X), event.getAxisValue(MotionEvent.AXIS_HAT_Y), port)
         view.sendMotionEvent(GLRetroView.MOTION_SOURCE_ANALOG_LEFT, event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_Y), port)
-        view.sendMotionEvent(GLRetroView.MOTION_SOURCE_ANALOG_RIGHT, event.getAxisValue(MotionEvent.AXIS_Z), event.getAxisValue(MotionEvent.AXIS_RZ), port)
+        view.sendMotionEvent(
+            GLRetroView.MOTION_SOURCE_ANALOG_RIGHT,
+            axis(mapping?.rightStickX, mapping?.invertRightX == true, MotionEvent.AXIS_Z),
+            axis(mapping?.rightStickY, mapping?.invertRightY == true, MotionEvent.AXIS_RZ),
+            port,
+        )
+
+        // Gâchettes analogiques -> L2 / R2 (celles de la configuration, sinon les axes standard d'Android).
+        // Seul ce qu'un axe a enfoncé est relâché par cet axe (pas un bouton tenu par une touche).
+        val byAxis = axisButtons.getOrPut(port) { mutableSetOf() }
+        fun axisButton(retroKey: Int, pressed: Boolean) {
+            if (pressed && byAxis.add(retroKey)) sendButton(KeyEvent.ACTION_DOWN, retroKey, port)
+            if (!pressed && byAxis.remove(retroKey)) sendButton(KeyEvent.ACTION_UP, retroKey, port)
+        }
+        mapping?.axes?.forEach { axisButton(it.retroKey, it.isPressed(event.getAxisValue(it.axis))) }
+        fun trigger(retroKey: Int, vararg axes: Int) {
+            if (mapping != null && (retroKey in mapping.keys.values || mapping.axes.any { it.retroKey == retroKey })) return
+            axisButton(retroKey, axes.maxOf { event.getAxisValue(it) } > 0.5f)
+        }
+        trigger(KeyEvent.KEYCODE_BUTTON_L2, MotionEvent.AXIS_LTRIGGER, MotionEvent.AXIS_BRAKE)
+        trigger(KeyEvent.KEYCODE_BUTTON_R2, MotionEvent.AXIS_RTRIGGER, MotionEvent.AXIS_GAS)
+
         showTouchPad = false
         return true
     }
@@ -379,7 +473,10 @@ class LibretroActivity : ComponentActivity() {
                 Phase.Running -> {
                     val opts = options
                     val edited = editing
-                    if (menuOpen && edited != null) {
+                    val session = mappingSession
+                    if (menuOpen && session != null) {
+                        MappingScreen(session)
+                    } else if (menuOpen && edited != null) {
                         ValuePicker(edited)
                     } else if (menuOpen && opts != null) {
                         OptionsScreen(opts)
@@ -432,7 +529,61 @@ class LibretroActivity : ComponentActivity() {
                         closeMenu()
                     }
                 }
+                MenuButton(stringResource(R.string.libretro_menu_gamepad)) {
+                    mappingSession = MappingSession(gamepadMappings) { message ->
+                        toast = getString(message)
+                        mappingSession = null
+                    }
+                }
                 MenuButton(stringResource(R.string.libretro_menu_quit), ::finish)
+                Text(
+                    stringResource(R.string.libretro_menu_combo_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun MappingScreen(session: MappingSession) {
+        Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
+            Centered {
+                Text(stringResource(R.string.pad_config_title), style = MaterialTheme.typography.titleMedium)
+                val name = session.deviceName
+                val step = session.step
+                if (name == null) {
+                    Text(stringResource(R.string.pad_config_press_any), textAlign = TextAlign.Center)
+                } else {
+                    Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (step != null) {
+                        Text(
+                            stringResource(R.string.pad_config_step, session.stepIndex + 1, MappingStep.entries.size),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Text(
+                            stringResource(step.label),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            stringResource(if (step.stick) R.string.pad_config_hint_stick else R.string.pad_config_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    session.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (name != null) {
+                        TextButton(onClick = session::skip) { Text(stringResource(R.string.action_skip)) }
+                        TextButton(onClick = session::resetDevice) { Text(stringResource(R.string.pad_config_default)) }
+                    }
+                    FocusedButton(stringResource(R.string.action_cancel), { mappingSession = null })
+                }
             }
         }
     }
@@ -440,6 +591,8 @@ class LibretroActivity : ComponentActivity() {
     @Composable
     private fun OptionsScreen(list: List<CoreOption>) {
         val focus = remember { FocusRequester() }
+        val groups = remember(list) { CoreOptionGroups.group(list) }
+        val generalTitle = stringResource(R.string.libretro_options_general)
         Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 Modifier.fillMaxSize().safeDrawingPadding(),
@@ -466,25 +619,50 @@ class LibretroActivity : ComponentActivity() {
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
-                items(list, key = { it.key }) { option ->
-                    ListItem(
-                        headlineContent = { Text(option.label) },
-                        supportingContent = { Text(option.key, style = MaterialTheme.typography.labelSmall) },
-                        trailingContent = {
-                            // Valeur modifiée : mise en évidence.
-                            Text(
-                                option.value,
-                                color = if (option.value == option.default) MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.primary,
+                groups.forEach { group ->
+                    val title = group.title ?: generalTitle
+                    val isCollapsed = title in collapsed
+                    if (groups.size > 1) {
+                        item(key = "group:$title") {
+                            ListItem(
+                                headlineContent = {
+                                    Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                                },
+                                trailingContent = {
+                                    Icon(if (isCollapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess, contentDescription = null)
+                                },
+                                supportingContent = { Text(pluralStringResource(R.plurals.libretro_options_count, group.options.size, group.options.size)) },
+                                colors = ListItemDefaults.colors(containerColor = Color.White.copy(alpha = 0.06f)),
+                                modifier = Modifier.padding(top = 8.dp).clickable {
+                                    collapsed = if (isCollapsed) collapsed - title else collapsed + title
+                                },
                             )
-                        },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        modifier = Modifier.clickable(enabled = option.values.size > 1) { editing = option },
-                    )
+                        }
+                    }
+                    if (!isCollapsed) OptionItems(group.options)
                 }
             }
         }
         LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    }
+
+    private fun LazyListScope.OptionItems(list: List<CoreOption>) {
+        items(list, key = { it.key }) { option ->
+            ListItem(
+                headlineContent = { Text(option.label) },
+                supportingContent = { Text(option.key, style = MaterialTheme.typography.labelSmall) },
+                trailingContent = {
+                    // Valeur modifiée : mise en évidence.
+                    Text(
+                        option.value,
+                        color = if (option.value == option.default) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.primary,
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier.clickable(enabled = option.values.size > 1) { editing = option },
+            )
+        }
     }
 
     @Composable

@@ -40,9 +40,15 @@ internal object GamepadInput {
     /** Joueur (port libretro) correspondant à la manette : 0 pour la première ou une télécommande. */
     fun port(event: KeyEvent): Int = ((event.device?.controllerNumber ?: 0) - 1).coerceAtLeast(0)
 
+    /** Manette physique (boutons de manette ou axes de joystick) : pas une télécommande ni un clavier. */
+    fun isGamepad(device: InputDevice): Boolean =
+        !device.isVirtual && (
+            (device.sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+                (device.sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+            )
+
     /** Une manette physique est-elle branchée ? (sinon la manette tactile est affichée) */
     fun hasGamepad(): Boolean = InputDevice.getDeviceIds().any { id ->
-        val device = InputDevice.getDevice(id) ?: return@any false
-        !device.isVirtual && (device.sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+        InputDevice.getDevice(id)?.let(::isGamepad) == true
     }
 }
