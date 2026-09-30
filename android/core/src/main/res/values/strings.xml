@@ -257,4 +257,29 @@
     <string name="action_open_settings">Open the settings</string>
     <string name="apk_install_failed">Installation of %1$s failed: %2$s</string>
     <string name="apk_no_installer">No app installer available on this device</string>
+
+    <!-- Émulateur intégré (LibretroDroid) -->
+    <string name="libretro_describe">Built-in emulator (LibretroDroid)\nCore: %1$s (%2$s)\nROM: %3$s</string>
+    <string name="libretro_core_installed">installed</string>
+    <string name="libretro_core_on_demand">downloaded on first launch</string>
+    <string name="libretro_downloading_core">Downloading the %1$s core…</string>
+    <string name="libretro_preparing">Preparing the game…</string>
+    <string name="core_not_found">The %1$s core is not available for %2$s on the libretro buildbot.</string>
+    <string name="core_unsupported_abi">This device’s processor is not supported by libretro cores.</string>
+    <string name="core_invalid_archive">Invalid archive for the %1$s core.</string>
+    <string name="libretro_error_core">The %1$s core cannot be loaded on this device.</string>
+    <string name="libretro_error_game">The game could not be started (unsupported file or missing BIOS?).</string>
+    <string name="libretro_error_gl">This device’s graphics (OpenGL ES) are not compatible with this core.</string>
+    <string name="libretro_error_generic">The emulator stopped unexpectedly.</string>
+    <string name="libretro_menu_resume">Resume</string>
+    <string name="libretro_menu_save_state">Save state</string>
+    <string name="libretro_menu_load_state">Load state</string>
+    <string name="libretro_menu_reset">Restart the game</string>
+    <string name="libretro_menu_show_touchpad">Show the touch controls</string>
+    <string name="libretro_menu_hide_touchpad">Hide the touch controls</string>
+    <string name="libretro_menu_quit">Quit</string>
+    <string name="libretro_state_saved">State saved</string>
+    <string name="libretro_state_loaded">State loaded</string>
+    <string name="libretro_no_state">No saved state for this game</string>
+    <string name="libretro_state_error">The state could not be saved or loaded</string>
 </resources>

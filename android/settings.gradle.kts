@@ -13,6 +13,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // LibretroDroid (émulateur intégré utilisant les cœurs libretro).
+        maven("https://jitpack.io") {
+            content { includeGroup("com.github.Swordfish90") }
+        }
     }
 }
 

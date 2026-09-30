@@ -1,5 +1,6 @@
 package com.romcloud.app.data
 
+import com.romcloud.app.launch.LibretroPlayers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
@@ -44,7 +45,8 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
 
     suspend fun systems(): Loaded<List<GameSystem>> {
         val loaded = loadWithCache("systems.json", api::systemsRaw) {
-            api.json.decodeFromString(systemListSerializer, it).map(GameSystem::withUniquePlayerIds)
+            api.json.decodeFromString(systemListSerializer, it)
+                .map { system -> LibretroPlayers.addTo(system.withUniquePlayerIds()) }
         }
         systemsMemory.clear()
         loaded.data.forEach { systemsMemory[it.id] = it }
