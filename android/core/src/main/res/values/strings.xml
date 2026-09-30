@@ -282,4 +282,11 @@
     <string name="libretro_state_loaded">State loaded</string>
     <string name="libretro_no_state">No saved state for this game</string>
     <string name="libretro_state_error">The state could not be saved or loaded</string>
+    <string name="libretro_menu_core_options">Core options</string>
+    <string name="libretro_options_title">Options of the %1$s core</string>
+    <string name="libretro_options_hint">Saved for this system and applied to its next games. Some options only take effect after restarting the game.</string>
+    <string name="libretro_options_none">This core has no options.</string>
+    <string name="libretro_options_reset">Reset</string>
+    <string name="libretro_options_reset_done">Default options restored</string>
+    <string name="libretro_options_default">Default</string>
 </resources>

@@ -112,7 +112,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
         // Émulateur intégré : le cœur est téléchargé si besoin par l'activité de jeu elle-même.
         player?.libretroCore?.let { core ->
-            val intent = LibretroActivity.intent(activityContext, core, file, settings.config.value.biosDir)
+            val intent = LibretroActivity.intent(activityContext, system.id, core, file, settings.config.value.biosDir)
             if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             activityContext.startActivity(intent)
             return
