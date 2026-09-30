@@ -4,6 +4,12 @@ package com.romcloud.tv
 
 import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -161,6 +167,7 @@ fun TvGamesScreen(
 
             GameHero(
                 game = featured,
+                coverUrl = featured?.let { mediaUrl(it, "boxart") },
                 status = featured?.let(::statusOf),
                 modifier = Modifier.padding(start = 48.dp, end = 48.dp, top = 4.dp).height(150.dp),
             )
@@ -261,11 +268,26 @@ fun TvGamesScreen(
     }
 }
 
-/** Zone du haut : informations du jeu sélectionné. */
+/** Zone du haut : jaquette et informations du jeu sélectionné (description à côté de la jaquette). */
 @Composable
-private fun GameHero(game: Game?, status: LocalStatus?, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth(0.6f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (game == null) return@Column
+private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        if (game == null) return@Row
+        if (coverUrl != null) {
+            AsyncImage(
+                model = coverUrl,
+                contentDescription = game.title,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxHeight().aspectRatio(3f / 4f).clip(RoundedCornerShape(8.dp)),
+            )
+        }
+        GameHeroText(game, status)
+    }
+}
+
+@Composable
+private fun GameHeroText(game: Game, status: LocalStatus?) {
+    Column(Modifier.fillMaxWidth(0.7f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             game.title,
             style = MaterialTheme.typography.displaySmall,

@@ -183,6 +183,7 @@ private fun HeroBanner(
                 )
                 val meta = listOfNotNull(game.year, game.mainGenre, formatSize(game.size)).joinToString(" · ")
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!compact) game.description?.let { HeroDescription(it, maxLines = 3) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     when (status) {
                         LocalStatus.Downloaded -> Button(onClick = onPrimary) {
@@ -206,8 +207,26 @@ private fun HeroBanner(
                     }
                 }
             }
+            // Paysage : bannière basse mais large, la description occupe une colonne à droite.
+            if (compact) {
+                game.description?.let {
+                    Spacer(Modifier.width(16.dp))
+                    HeroDescription(it, maxLines = 5, modifier = Modifier.weight(1f))
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun HeroDescription(text: String, maxLines: Int, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
+    )
 }
 
 /**
