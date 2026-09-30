@@ -121,6 +121,8 @@ class LibretroActivity : ComponentActivity() {
     private val core by lazy { intent.getStringExtra(EXTRA_CORE).orEmpty() }
     private val systemId by lazy { intent.getStringExtra(EXTRA_SYSTEM).orEmpty() }
     private val optionsStore by lazy { CoreOptionsStore(this) }
+    /** Disposition de la manette tactile propre à la console. */
+    private val padLayout by lazy { PadLayouts.forGame(systemId, core) }
     private val rom by lazy { File(intent.getStringExtra(EXTRA_ROM).orEmpty()) }
     private val isTv by lazy { packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
     private val sramFile by lazy { File(filesDir, "libretro/saves/$core/${rom.nameWithoutExtension}.srm") }
@@ -484,7 +486,12 @@ class LibretroActivity : ComponentActivity() {
                         PauseMenu()
                     } else if (showTouchPad) {
                         TouchGamepad(
+                            layout = padLayout,
                             onKey = { action, key -> retroView?.sendKeyEvent(action, key, 0) },
+                            onAnalog = { right, x, y ->
+                                val source = if (right) GLRetroView.MOTION_SOURCE_ANALOG_RIGHT else GLRetroView.MOTION_SOURCE_ANALOG_LEFT
+                                retroView?.sendMotionEvent(source, x, y, 0)
+                            },
                             onMenu = ::openMenu,
                         )
                     } else if (!isTv) {

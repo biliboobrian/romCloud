@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,19 +46,33 @@ private val Outline = Color.White.copy(alpha = 0.5f)
 private val Label = Color.White.copy(alpha = 0.8f)
 
 /**
- * Manette tactile superposée au jeu (téléphones sans manette physique). [onKey] reçoit
- * (KeyEvent.ACTION_DOWN / ACTION_UP, code RetroPad) ; les codes sont déjà au format RetroPad.
+ * Manette tactile superposée au jeu (téléphones sans manette physique), disposée selon la
+ * console ([layout]). [onKey] reçoit (KeyEvent.ACTION_DOWN / ACTION_UP, code RetroPad) ;
+ * [onAnalog] reçoit la position d'un stick (true = stick droit), de -1 à 1.
  */
 @Composable
-internal fun TouchGamepad(onKey: (Int, Int) -> Unit, onMenu: () -> Unit) {
+internal fun TouchGamepad(
+    layout: PadLayout,
+    onKey: (Int, Int) -> Unit,
+    onAnalog: (right: Boolean, x: Float, y: Float) -> Unit,
+    onMenu: () -> Unit,
+) {
+    // Boutons C de la Nintendo 64 enfoncés : leur somme donne la position du stick droit.
+    var rightStick by remember(layout) { mutableStateOf(emptySet<PadButton>()) }
+    fun pressRightStick(button: PadButton, pressed: Boolean) {
+        rightStick = if (pressed) rightStick + button else rightStick - button
+        val x = rightStick.sumOf { it.rightStick!!.x.toDouble() }.toFloat().coerceIn(-1f, 1f)
+        val y = rightStick.sumOf { it.rightStick!!.y.toDouble() }.toFloat().coerceIn(-1f, 1f)
+        onAnalog(true, x, y)
+    }
+    val shoulderShape = RoundedCornerShape(10.dp)
+
     Box(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp)) {
         Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PadButton("L2", KeyEvent.KEYCODE_BUTTON_L2, onKey, width = 64.dp, height = 36.dp, shape = RoundedCornerShape(10.dp))
-            PadButton("L", KeyEvent.KEYCODE_BUTTON_L1, onKey, width = 84.dp, height = 36.dp, shape = RoundedCornerShape(10.dp))
+            layout.left.forEach { TouchButton(it.label, onKey.forKey(it.key), width = it.width, height = 36.dp, shape = shoulderShape) }
         }
         Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PadButton("R", KeyEvent.KEYCODE_BUTTON_R1, onKey, width = 84.dp, height = 36.dp, shape = RoundedCornerShape(10.dp))
-            PadButton("R2", KeyEvent.KEYCODE_BUTTON_R2, onKey, width = 64.dp, height = 36.dp, shape = RoundedCornerShape(10.dp))
+            layout.right.forEach { TouchButton(it.label, onKey.forKey(it.key), width = it.width, height = 36.dp, shape = shoulderShape) }
         }
         Box(
             Modifier.align(Alignment.TopCenter).size(44.dp).background(Idle, CircleShape)
@@ -64,55 +80,111 @@ internal fun TouchGamepad(onKey: (Int, Int) -> Unit, onMenu: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Default.Menu, contentDescription = null, tint = Label) }
 
-        DPad(onKey, Modifier.align(Alignment.BottomStart))
+        if (layout.stick) {
+            TouchStick({ x, y -> onAnalog(false, x, y) }, Modifier.align(Alignment.BottomStart))
+        } else {
+            DPad(onKey, Modifier.align(Alignment.BottomStart))
+        }
 
-        Box(Modifier.align(Alignment.BottomEnd).size(170.dp)) {
-            // Disposition Super Nintendo : X en haut, A à droite, B en bas, Y à gauche.
-            PadButton("X", KeyEvent.KEYCODE_BUTTON_X, onKey, Modifier.align(Alignment.TopCenter))
-            PadButton("A", KeyEvent.KEYCODE_BUTTON_A, onKey, Modifier.align(Alignment.CenterEnd))
-            PadButton("B", KeyEvent.KEYCODE_BUTTON_B, onKey, Modifier.align(Alignment.BottomCenter))
-            PadButton("Y", KeyEvent.KEYCODE_BUTTON_Y, onKey, Modifier.align(Alignment.CenterStart))
+        Box(Modifier.align(Alignment.BottomEnd).size(layout.width, layout.height)) {
+            layout.buttons.forEach { button ->
+                TouchButton(
+                    button.label,
+                    onPress = if (button.rightStick != null) {
+                        { pressed -> pressRightStick(button, pressed) }
+                    } else {
+                        onKey.forKey(button.key)
+                    },
+                    modifier = Modifier.offset(button.x, button.y),
+                    width = button.size,
+                    height = button.size,
+                    color = button.color,
+                )
+            }
         }
 
         Row(Modifier.align(Alignment.BottomCenter), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            PadButton("SELECT", KeyEvent.KEYCODE_BUTTON_SELECT, onKey, width = 76.dp, height = 30.dp, shape = RoundedCornerShape(15.dp))
-            PadButton("START", KeyEvent.KEYCODE_BUTTON_START, onKey, width = 76.dp, height = 30.dp, shape = RoundedCornerShape(15.dp))
+            val pill = RoundedCornerShape(15.dp)
+            layout.select?.let { TouchButton(it, onKey.forKey(KeyEvent.KEYCODE_BUTTON_SELECT), width = 76.dp, height = 30.dp, shape = pill) }
+            layout.start?.let { TouchButton(it, onKey.forKey(KeyEvent.KEYCODE_BUTTON_START), width = 76.dp, height = 30.dp, shape = pill) }
         }
     }
 }
 
+/** Appui / relâchement d'un bouton -> évènement de touche RetroPad. */
+private fun ((Int, Int) -> Unit).forKey(keyCode: Int): (Boolean) -> Unit =
+    { pressed -> this(if (pressed) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP, keyCode) }
+
 @Composable
-private fun PadButton(
+private fun TouchButton(
     label: String,
-    keyCode: Int,
-    onKey: (Int, Int) -> Unit,
+    onPress: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = 58.dp,
     height: Dp = 58.dp,
     shape: Shape = CircleShape,
+    color: Color = Label,
 ) {
     var pressed by remember { mutableStateOf(false) }
+    // Détection d'appui jamais relancée (sinon un bouton tenu pendant une recomposition resterait enfoncé).
+    val currentOnPress by rememberUpdatedState(onPress)
     Box(
         modifier
             .size(width, height)
             .background(if (pressed) Pressed else Idle, shape)
             .border(1.dp, Outline, shape)
-            .pointerInput(keyCode) {
+            .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     pressed = true
-                    onKey(KeyEvent.ACTION_DOWN, keyCode)
+                    currentOnPress(true)
                     // Relâché quand tous les doigts posés sur le bouton sont levés.
                     do {
                         val event = awaitPointerEvent()
                     } while (event.changes.any { it.pressed })
                     pressed = false
-                    onKey(KeyEvent.ACTION_UP, keyCode)
+                    currentOnPress(false)
                 }
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Label, fontSize = if (label.length > 2) 11.sp else 18.sp)
+        Text(label, color = color, fontSize = if (label.length > 2) 11.sp else 18.sp)
+    }
+}
+
+/** Stick analogique : position du doigt par rapport au centre, ramenée dans le cercle (-1 à 1). */
+@Composable
+private fun TouchStick(onMove: (Float, Float) -> Unit, modifier: Modifier = Modifier) {
+    var knob by remember { mutableStateOf(Offset.Zero) }
+    Canvas(
+        modifier
+            .size(160.dp)
+            .pointerInput(Unit) {
+                val radius = size.width / 2f
+                fun move(position: Offset) {
+                    val v = (position - Offset(radius, size.height / 2f)) / radius
+                    val length = v.getDistance()
+                    knob = if (length > 1f) v / length else v
+                    onMove(knob.x, knob.y)
+                }
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    move(down.position)
+                    while (true) {
+                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) break
+                        move(change.position)
+                    }
+                    knob = Offset.Zero
+                    onMove(0f, 0f)
+                }
+            },
+    ) {
+        val r = size.minDimension / 2
+        val c = Offset(size.width / 2, size.height / 2)
+        drawCircle(Idle, r, c)
+        drawCircle(Outline, r, c, style = Stroke(1.dp.toPx()))
+        drawCircle(Pressed, r * 0.4f, c + knob * (r * 0.6f))
     }
 }
 
