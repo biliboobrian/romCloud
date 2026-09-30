@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { screenscraperEnabled } from '../config.js';
+import { config, screenscraperEnabled } from '../config.js';
 import { I18nError } from '../i18n.js';
 import { db } from '../db.js';
 import { ensureHashes, gameMediaDir, getGameRow, requireGameRow, rowToGame } from '../library.js';
 import { requireSystem } from '../systems.js';
 import { scrapeLibretro } from './libretro.js';
 import { scrapeScreenScraper } from './screenscraper.js';
+import { scrapeWikipedia } from './wikipedia.js';
 
 export { QuotaError } from './screenscraper.js';
 
@@ -78,6 +79,23 @@ export async function scrapeGame(gameId, source = 'auto') {
         meta.media.boxart ||= lr.media.boxart;
         meta.media.screenshot ||= lr.media.screenshot;
         usedSources.push('libretro');
+      }
+    } catch (err) {
+      errors.push(err.message);
+    }
+  }
+
+  // Pas de résumé (source Libretro, ou jeu sans synopsis sur ScreenScraper) : Wikipedia.
+  if (meta && !meta.description && !row.description && source !== 'screenscraper') {
+    try {
+      const description = await scrapeWikipedia({
+        title: meta.title || row.title,
+        system: system.name,
+        languages: config.screenscraper.languages,
+      });
+      if (description) {
+        meta.description = description;
+        usedSources.push('wikipedia');
       }
     } catch (err) {
       errors.push(err.message);
