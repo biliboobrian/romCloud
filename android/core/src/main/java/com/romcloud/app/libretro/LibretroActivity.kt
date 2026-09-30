@@ -14,6 +14,17 @@ import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,6 +65,7 @@ import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
 import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.libretrodroid.GLRetroViewData
+import com.swordfish.libretrodroid.Variable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -82,6 +94,9 @@ class LibretroActivity : ComponentActivity() {
     private var menuOpen by mutableStateOf(false)
     private var showTouchPad by mutableStateOf(false)
     private var toast by mutableStateOf<String?>(null)
+    /** Écran « Options du cœur » du menu (null = fermé) et option dont on choisit la valeur. */
+    private var options by mutableStateOf<List<CoreOption>?>(null)
+    private var editing by mutableStateOf<CoreOption?>(null)
 
     private var retroView: GLRetroView? = null
     /** Premier image affichée : le cœur et le jeu sont chargés (sauvegardes possibles). */
@@ -89,6 +104,8 @@ class LibretroActivity : ComponentActivity() {
     private lateinit var container: FrameLayout
 
     private val core by lazy { intent.getStringExtra(EXTRA_CORE).orEmpty() }
+    private val systemId by lazy { intent.getStringExtra(EXTRA_SYSTEM).orEmpty() }
+    private val optionsStore by lazy { CoreOptionsStore(this) }
     private val rom by lazy { File(intent.getStringExtra(EXTRA_ROM).orEmpty()) }
     private val isTv by lazy { packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
     private val sramFile by lazy { File(filesDir, "libretro/saves/$core/${rom.nameWithoutExtension}.srm") }
@@ -118,6 +135,8 @@ class LibretroActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this) {
             when {
                 phase != Phase.Running -> finish()
+                editing != null -> editing = null
+                options != null -> options = null
                 menuOpen -> closeMenu()
                 else -> openMenu()
             }
@@ -165,6 +184,8 @@ class LibretroActivity : ComponentActivity() {
             systemDirectory = intent.getStringExtra(EXTRA_SYSTEM_DIR) ?: filesDir.absolutePath
             savesDirectory = sramFile.parentFile!!.apply { mkdirs() }.absolutePath
             saveRAMState = sram
+            // Dernières options choisies pour ce système (les autres gardent la valeur par défaut du cœur).
+            variables = optionsStore.load(systemId).map { (key, value) -> Variable(key, value) }.toTypedArray()
             preferLowLatencyAudio = true
         }
         val view = GLRetroView(this, data).apply { isFocusable = false }
@@ -212,6 +233,8 @@ class LibretroActivity : ComponentActivity() {
 
     private fun closeMenu() {
         menuOpen = false
+        options = null
+        editing = null
         retroView?.apply {
             onResume()
             audioEnabled = true
@@ -271,6 +294,33 @@ class LibretroActivity : ComponentActivity() {
         closeMenu()
     }
 
+    // ---- Options du cœur (émulation en pause : lues et modifiées hors du thread d'émulation) ----
+
+    private fun openOptions() {
+        options = readOptions()
+    }
+
+    private fun readOptions(): List<CoreOption> =
+        retroView?.getVariables().orEmpty()
+            .mapNotNull { v -> v.key?.let { CoreOption.parse(it, v.description, v.value.orEmpty()) } }
+            .sortedBy { it.label.lowercase() }
+
+    private fun setOption(option: CoreOption, value: String) {
+        retroView?.updateVariables(Variable(option.key, value))
+        optionsStore.set(systemId, option.key, value)
+        editing = null
+        options = readOptions()
+    }
+
+    /** Revient aux valeurs par défaut du cœur et oublie les options mémorisées du système. */
+    private fun resetOptions() {
+        optionsStore.clear(systemId)
+        val changed = options.orEmpty().filter { it.value != it.default }
+        retroView?.updateVariables(*changed.map { Variable(it.key, it.default) }.toTypedArray())
+        options = readOptions()
+        toast = getString(R.string.libretro_options_reset_done)
+    }
+
     private fun reset() {
         retroView?.reset(false)
         closeMenu()
@@ -327,7 +377,13 @@ class LibretroActivity : ComponentActivity() {
                     FocusedButton(stringResource(R.string.action_close), ::finish)
                 }
                 Phase.Running -> {
-                    if (menuOpen) {
+                    val opts = options
+                    val edited = editing
+                    if (menuOpen && edited != null) {
+                        ValuePicker(edited)
+                    } else if (menuOpen && opts != null) {
+                        OptionsScreen(opts)
+                    } else if (menuOpen) {
                         PauseMenu()
                     } else if (showTouchPad) {
                         TouchGamepad(
@@ -366,6 +422,7 @@ class LibretroActivity : ComponentActivity() {
                     MenuButton(stringResource(R.string.libretro_menu_save_state), ::saveState)
                     MenuButton(stringResource(R.string.libretro_menu_load_state), ::loadState)
                     MenuButton(stringResource(R.string.libretro_menu_reset), ::reset)
+                    MenuButton(stringResource(R.string.libretro_menu_core_options), ::openOptions)
                 }
                 if (!isTv) {
                     MenuButton(
@@ -378,6 +435,90 @@ class LibretroActivity : ComponentActivity() {
                 MenuButton(stringResource(R.string.libretro_menu_quit), ::finish)
             }
         }
+    }
+
+    @Composable
+    private fun OptionsScreen(list: List<CoreOption>) {
+        val focus = remember { FocusRequester() }
+        Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                Modifier.fillMaxSize().safeDrawingPadding(),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            ) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(onClick = { options = null }, modifier = Modifier.focusRequester(focus)) {
+                            Text(stringResource(R.string.action_back))
+                        }
+                        Text(
+                            stringResource(R.string.libretro_options_title, core),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        )
+                        if (list.isNotEmpty()) {
+                            TextButton(onClick = ::resetOptions) { Text(stringResource(R.string.libretro_options_reset)) }
+                        }
+                    }
+                    Text(
+                        stringResource(if (list.isEmpty()) R.string.libretro_options_none else R.string.libretro_options_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+                items(list, key = { it.key }) { option ->
+                    ListItem(
+                        headlineContent = { Text(option.label) },
+                        supportingContent = { Text(option.key, style = MaterialTheme.typography.labelSmall) },
+                        trailingContent = {
+                            // Valeur modifiée : mise en évidence.
+                            Text(
+                                option.value,
+                                color = if (option.value == option.default) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable(enabled = option.values.size > 1) { editing = option },
+                    )
+                }
+            }
+        }
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    }
+
+    @Composable
+    private fun ValuePicker(option: CoreOption) {
+        val focus = remember { FocusRequester() }
+        val current = option.values.indexOf(option.value).coerceAtLeast(0)
+        Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                Modifier.fillMaxSize().safeDrawingPadding(),
+                state = rememberLazyListState(initialFirstVisibleItemIndex = current),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            ) {
+                item {
+                    Text(option.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
+                }
+                items(option.values) { value ->
+                    val selected = value == option.value
+                    ListItem(
+                        headlineContent = { Text(value) },
+                        leadingContent = { RadioButton(selected = selected, onClick = null) },
+                        supportingContent = if (value == option.default) {
+                            { Text(stringResource(R.string.libretro_options_default), style = MaterialTheme.typography.labelSmall) }
+                        } else {
+                            null
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier
+                            .then(if (selected) Modifier.focusRequester(focus) else Modifier)
+                            .clickable { setOption(option, value) },
+                    )
+                }
+            }
+        }
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     }
 
     @Composable
@@ -408,10 +549,15 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_CORE = "core"
         private const val EXTRA_ROM = "rom"
         private const val EXTRA_SYSTEM_DIR = "systemDir"
+        private const val EXTRA_SYSTEM = "system"
 
-        /** [systemDir] : dossier des BIOS (dossier « system » libretro). */
-        fun intent(context: Context, core: String, rom: File, systemDir: String): Intent =
+        /**
+         * [systemId] : système du jeu (options du cœur mémorisées par système) ;
+         * [systemDir] : dossier des BIOS (dossier « system » libretro).
+         */
+        fun intent(context: Context, systemId: String, core: String, rom: File, systemDir: String): Intent =
             Intent(context, LibretroActivity::class.java)
+                .putExtra(EXTRA_SYSTEM, systemId)
                 .putExtra(EXTRA_CORE, core)
                 .putExtra(EXTRA_ROM, rom.absolutePath)
                 .putExtra(EXTRA_SYSTEM_DIR, systemDir)

@@ -275,4 +275,11 @@
     <string name="libretro_state_loaded">État chargé</string>
     <string name="libretro_no_state">Aucun état sauvegardé pour ce jeu</string>
     <string name="libretro_state_error">Impossible de sauvegarder ou de charger l’état</string>
+    <string name="libretro_menu_core_options">Options du cœur</string>
+    <string name="libretro_options_title">Options du cœur %1$s</string>
+    <string name="libretro_options_hint">Mémorisées pour ce système et appliquées à ses prochains jeux. Certaines options ne s’appliquent qu’après avoir redémarré le jeu.</string>
+    <string name="libretro_options_none">Ce cœur n’a pas d’options.</string>
+    <string name="libretro_options_reset">Réinitialiser</string>
+    <string name="libretro_options_reset_done">Options par défaut rétablies</string>
+    <string name="libretro_options_default">Par défaut</string>
 </resources>
