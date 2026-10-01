@@ -542,6 +542,8 @@
   }
 
   async function play(system, game) {
+    // Lancement plus long que d'habitude (cœur du moteur intégré à télécharger) : message d'attente.
+    const waiting = setTimeout(() => toast(t('emu.preparing')), 700);
     try {
       const result = await call(rc.launcher.play, system, game);
       if (result?.manual) showManualLaunch(result);
@@ -554,6 +556,8 @@
       } else {
         toast(err.message, { type: 'error' });
       }
+    } finally {
+      clearTimeout(waiting);
     }
   }
 
@@ -761,6 +765,7 @@
     const shot = mediaUrl(game, 'screenshot');
     const selected = emu.options.find((o) => o.id === emu.selected);
     const optionLabel = (o) => {
+      if (o.kind === 'builtin') return t(o.installed ? 'emu.builtin' : 'emu.builtinPending', { core: o.core });
       if (o.kind === 'retroarch') return t('emu.retroarch', { core: o.core });
       if (o.kind === 'emulator') return o.installed ? o.name : t('emu.notInstalled', { name: o.name });
       return t(`emu.${o.kind}`);

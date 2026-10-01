@@ -1,4 +1,5 @@
 // Lancement des jeux sous Windows.
+//  - moteur intégré (romcloud-player.exe) : mêmes cœurs que RetroArch, téléchargés à la demande ;
 //  - RetroArch : « retroarch.exe -L <cœur> <jeu> », le cœur étant repris des modèles
 //    d'émulateurs Daijishou du système (extra LIBRETRO des modèles Android) ;
 //  - émulateurs du catalogue (Dolphin, PCSX2, DuckStation…) : ligne de commande connue, ou
@@ -14,6 +15,7 @@ const library = require('./library');
 const catalog = require('./catalog');
 const { AppError } = require('./api');
 const { tokenize, coreOf, cores } = require('./emulators');
+const builtin = require('./builtin');
 
 // ---------------------------------------------------------------------------
 // Émulateurs du catalogue : emplacement sur le PC et ligne de commande
@@ -109,7 +111,10 @@ async function launchEmulator(id) {
 /** Choix proposés pour un système, et choix courant. */
 function options(system) {
   ensureDetected();
+  const builtinOk = builtin.available();
   const list = [
+    // Moteur intégré en premier : mêmes cœurs que RetroArch, rien à installer.
+    ...(builtinOk ? cores(system).map((core) => ({ id: `builtin:${core}`, kind: 'builtin', core, installed: builtin.coreInstalled(core) })) : []),
     ...cores(system).map((core) => ({ id: `retroarch:${core}`, kind: 'retroarch', core })),
     ...catalog.forSystem(system).map((emu) => ({
       id: `emu:${emu.id}`,
@@ -122,10 +127,12 @@ function options(system) {
     { id: 'default', kind: 'default' },
   ];
   const saved = settings.load().emulators[system.id];
-  // Par défaut : RetroArch s'il est installé, sinon un émulateur du catalogue présent sur le PC,
-  // sinon le premier cœur RetroArch ou émulateur proposé, sinon le programme Windows associé.
+  // Par défaut : moteur intégré, sinon RetroArch s'il est installé, sinon un émulateur du catalogue
+  // présent sur le PC, sinon le premier cœur RetroArch ou émulateur proposé, sinon le programme
+  // Windows associé.
   const retroarchOk = Boolean(settings.load().retroarchPath) && fs.existsSync(settings.load().retroarchPath);
-  const fallback = (retroarchOk && list.find((o) => o.kind === 'retroarch'))
+  const fallback = list.find((o) => o.kind === 'builtin')
+    || (retroarchOk && list.find((o) => o.kind === 'retroarch'))
     || list.find((o) => o.kind === 'emulator' && o.installed)
     || list.find((o) => o.kind === 'retroarch' || o.kind === 'emulator')
     || list.find((o) => o.kind === 'default');
@@ -153,6 +160,10 @@ function prepare(system, game) {
   if (!library.isDownloaded(system, game)) throw new AppError('errors.notDownloaded', { file });
   const { options: list, selected, command } = options(system);
   const option = list.find((o) => o.id === selected);
+  if (option.kind === 'builtin') {
+    // Le cœur est téléchargé au lancement s'il est absent (voir play).
+    return { builtin: true, core: option.core, file, exe: builtin.playerPath(), args: ['--core', `${option.core}_libretro.dll`, '--rom', file] };
+  }
   if (option.kind === 'retroarch') {
     const exe = settings.load().retroarchPath;
     if (!exe || !fs.existsSync(exe)) throw new AppError('errors.retroarchMissing');
@@ -212,6 +223,10 @@ function check(system) {
  */
 async function play(system, game) {
   const plan = prepare(system, game);
+  if (plan.builtin) {
+    await builtin.launch(system, game, plan.file, plan.core);
+    return { manual: false };
+  }
   if (plan.open) {
     const error = await shell.openPath(plan.open);
     if (error) throw new AppError('errors.noDefaultApp', { detail: error });
