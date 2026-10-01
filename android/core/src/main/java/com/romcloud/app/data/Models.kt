@@ -76,6 +76,8 @@ data class EmulatorApk(
     val versionName: String? = null,
     val versionCode: Long? = null,
     val size: Long,
+    /** Adresse de téléchargement hors serveur RomCloud (mise à jour de l'application). */
+    val url: String? = null,
 )
 
 @Serializable

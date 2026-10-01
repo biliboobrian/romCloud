@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.LinearProgressIndicator
@@ -164,7 +165,15 @@ fun TvGameDetailScreen(
                         download is DownloadState.Running ->
                             ActionButton(stringResource(R.string.tv_cancel_percent, (download.progress * 100).toInt()), Icons.Filled.Close, primary) { viewModel.cancel() }
                         state.downloaded -> {
-                            ActionButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, primary) { viewModel.play(activity)?.let(onMessage) }
+                            // Partie sauvegardée dans l'émulateur intégré : « Reprendre » d'abord, puis « Jouer ».
+                            if (state.canResume) {
+                                ActionButton(stringResource(R.string.action_resume_game), Icons.Filled.PlayArrow, primary) {
+                                    viewModel.play(activity, resume = true)?.let(onMessage)
+                                }
+                                SecondaryButton(stringResource(R.string.action_play), Icons.Filled.Replay) { viewModel.play(activity)?.let(onMessage) }
+                            } else {
+                                ActionButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, primary) { viewModel.play(activity)?.let(onMessage) }
+                            }
                             if (state.missingBios.isNotEmpty()) {
                                 SecondaryButton(stringResource(R.string.action_download_bios), Icons.Filled.CloudDownload) { viewModel.downloadBios() }
                             }

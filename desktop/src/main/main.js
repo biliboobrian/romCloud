@@ -6,6 +6,9 @@ const api = require('./api');
 const library = require('./library');
 const downloads = require('./downloads');
 const launcher = require('./launcher');
+const { createUpdater } = require('./updater');
+
+const updater = createUpdater({ app });
 
 let win = null;
 
@@ -66,7 +69,8 @@ handle('downloads:dismiss', (gameId) => downloads.dismissError(gameId));
 handle('downloads:states', () => downloads.states());
 handle('launcher:options', (system) => launcher.options(system));
 handle('launcher:choose', (systemId, option, command) => launcher.choose(systemId, option, command));
-handle('launcher:play', (system, game) => launcher.play(system, game));
+handle('launcher:play', (system, game, options) => launcher.play(system, game, options));
+handle('launcher:resumable', (system, game) => launcher.resumable(system, game));
 handle('launcher:check', (system) => launcher.check(system));
 handle('launcher:describe', (system, game) => launcher.describe(system, game));
 handle('emulators:list', () => launcher.listEmulators());
@@ -85,6 +89,9 @@ handle('dialog:pickFolder', async () => {
 handle('shell:showItem', (file) => shell.showItemInFolder(file));
 handle('shell:openExternal', (url) => shell.openExternal(url));
 handle('app:version', () => app.getVersion());
+// Mise à jour : vérifiée au chargement de l'interface ; installation sur confirmation.
+handle('update:check', () => updater.check());
+handle('update:install', () => updater.install((bytes, total) => win?.webContents.send('update:progress', { bytes, total })));
 
 downloads.onUpdate((gameId, state, event) => {
   win?.webContents.send('downloads:update', { gameId, state, event });
@@ -100,6 +107,9 @@ if (!app.requestSingleInstanceLock()) {
       win.focus();
     }
   });
-  app.whenReady().then(createWindow);
+  app.whenReady().then(() => {
+    updater.cleanup();
+    createWindow();
+  });
   app.on('window-all-closed', () => app.quit());
 }

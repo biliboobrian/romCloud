@@ -38,8 +38,11 @@ function safeEntryPath(dir, name) {
   return path.join(dir, ...parts);
 }
 
-/** Arguments de romcloud-player.exe. */
-function playerArgs({ dll, rom, systemDir, saveDir, stateDir, optionsFile, title, language, windowed }) {
+/**
+ * Arguments de romcloud-player.exe. `stateName` : nom de l'état de sauvegarde (celui du jeu, même
+ * si la ROM passée est extraite d'un .zip) ; `resume` : reprend la partie à cet état.
+ */
+function playerArgs({ dll, rom, systemDir, saveDir, stateDir, stateName, optionsFile, title, language, windowed, resume }) {
   const args = [
     '--core', dll,
     '--rom', rom,
@@ -50,7 +53,9 @@ function playerArgs({ dll, rom, systemDir, saveDir, stateDir, optionsFile, title
     '--title', title,
     '--lang', language,
   ];
+  if (stateName) args.push('--state-name', stateName);
   if (windowed) args.push('--windowed');
+  if (resume) args.push('--resume');
   return args;
 }
 

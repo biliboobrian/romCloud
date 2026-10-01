@@ -25,7 +25,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Installation d'un émulateur depuis un APK du serveur : téléchargement dans le cache de
+ * Installation d'un émulateur depuis un APK du serveur (ou d'une mise à jour de RomCloud depuis
+ * GitHub, [EmulatorApk.url]) : téléchargement dans le cache de
  * l'application (avec reprise), puis ouverture de l'installateur d'Android. Android demande
  * d'autoriser RomCloud à installer des applications (« sources inconnues ») la première fois.
  */
@@ -72,13 +73,13 @@ class ApkInstaller(
         if (job?.isActive == true) return
         job = scope.launch(Dispatchers.IO) {
             try {
-                val file = File(dir, "${apk.packageName}-${apk.versionCode ?: apk.id}.apk")
+                val file = File(dir, "${apk.packageName}-${apk.versionCode ?: apk.versionName ?: apk.id}.apk")
                 // Anciennes versions du même paquet : inutiles.
                 dir.listFiles { f -> f.name.startsWith("${apk.packageName}-") && !f.name.startsWith(file.name) }
                     ?.forEach { it.delete() }
                 if (!(file.isFile && file.length() == apk.size)) {
                     _progress.value = Progress(apk, 0)
-                    fetchFile(api, api.apkFileUrl(apk), file, apk.size, { _progress.value = Progress(apk, it) }) {
+                    fetchFile(api, apk.url ?: api.apkFileUrl(apk), file, apk.size, { _progress.value = Progress(apk, it) }) {
                         I18n.get(R.string.err_cannot_create, it.absolutePath)
                     }
                 }

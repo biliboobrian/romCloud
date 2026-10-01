@@ -149,6 +149,26 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         )
     }
 
+    // Mise à jour de RomCloud : vérifiée au chargement de l'application, installée par ApkInstaller.
+    LaunchedEffect(Unit) { app.updater.check() }
+    val update by app.updater.available.collectAsStateWithLifecycle()
+    update?.let { u ->
+        AlertDialog(
+            onDismissRequest = app.updater::dismiss,
+            title = { Text(stringResource(R.string.update_title)) },
+            text = { Text(stringResource(R.string.update_text, u.version, u.installed, formatSize(u.apk.size))) },
+            confirmButton = {
+                TextButton(onClick = {
+                    app.updater.dismiss()
+                    app.apkInstaller.install(activity, u.apk)
+                }) { Text(stringResource(R.string.action_update)) }
+            },
+            dismissButton = {
+                TextButton(onClick = app.updater::dismiss) { Text(stringResource(R.string.action_later)) }
+            },
+        )
+    }
+
     // Installation d'un APK du serveur : erreurs, autorisation « sources inconnues », progression.
     LaunchedEffect(Unit) {
         app.apkInstaller.errors.collect { launch { snackbar.showSnackbar(it) } }

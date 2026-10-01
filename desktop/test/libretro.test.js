@@ -88,3 +88,11 @@ test('arguments du moteur intégré', () => {
   assert.equal(args[args.indexOf('--title') + 1], 'Super Mario World');
   assert.ok(!args.includes('--windowed'));
 });
+
+test('arguments du moteur intégré : reprise de la partie', () => {
+  const base = { dll: 'C.dll', rom: 'R:\\cache\\jeu.bin', systemDir: 'B', saveDir: 'S', stateDir: 'T', optionsFile: 'O', title: 'Jeu', language: 'fr' };
+  const args = libretro.playerArgs({ ...base, stateName: 'Jeu (Europe)', resume: true });
+  assert.equal(args[args.indexOf('--state-name') + 1], 'Jeu (Europe)');
+  assert.ok(args.includes('--resume'));
+  assert.ok(!libretro.playerArgs(base).includes('--resume'));
+});

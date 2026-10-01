@@ -141,6 +141,31 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
       g.options.declare(static_cast<const retro_variable*>(data));
       return true;
 
+    // Options v1 / v2 : libellés des valeurs, valeur par défaut, traductions et catégories (onglets).
+    case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
+      *static_cast<unsigned*>(data) = 2;
+      return true;
+
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS:
+      g.options.declare(static_cast<const retro_core_option_definition*>(data), nullptr);
+      return true;
+
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL: {
+      const auto* intl = static_cast<const retro_core_options_intl*>(data);
+      g.options.declare(intl->us, intl->local);
+      return true;
+    }
+
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2:
+      g.options.declare(static_cast<const retro_core_options_v2*>(data), nullptr);
+      return true;
+
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
+      const auto* intl = static_cast<const retro_core_options_v2_intl*>(data);
+      g.options.declare(intl->us, intl->local);
+      return true;
+    }
+
     case RETRO_ENVIRONMENT_GET_VARIABLE: {
       auto* var = static_cast<retro_variable*>(data);
       var->value = var->key ? g.options.get(var->key) : nullptr;

@@ -1,12 +1,13 @@
 // BIOS des systèmes : fichiers envoyés sur le serveur (data/bios/<id du système>/<chemin>)
 // et BIOS attendus, lus dans les fiches des cœurs RetroArch des modèles d'émulateurs
 // (https://github.com/libretro/libretro-core-info : firmwareN_path / _desc / _opt, MD5 dans « notes »).
+// Un BIOS dont l'empreinte (MD5 ou SHA1) est connue n'est accepté que s'il y correspond.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 import { db } from './db.js';
 import { HttpError } from './http-error.js';
-import { hashFile } from './library.js';
 import { requireSystem } from './systems.js';
 
 const CORE_INFO_URL = process.env.LIBRETRO_CORE_INFO_URL
@@ -89,13 +90,19 @@ async function fetchCoreInfo(core) {
 }
 
 /**
- * MD5 acceptés en plus de ceux de libretro (autres révisions d'un même BIOS), par nom de fichier :
- * bios-md5.json fourni avec le serveur, complété par DATA_DIR/bios-md5.json s'il existe.
- * Format : { "scph5501.bin": ["924e39…"], … } (les clés commençant par « _ » sont ignorées).
+ * Empreintes acceptées en plus de celles de libretro, par nom de fichier : bios-hashes.json fourni
+ * avec le serveur, complété par DATA_DIR/bios-hashes.json (ou l'ancien DATA_DIR/bios-md5.json).
+ * Format : { "scph5501.bin": ["490f66…", "0555c6…"], … } : 32 caractères hexadécimaux pour un MD5,
+ * 40 pour un SHA1 (les clés commençant par « _ » sont ignorées).
  */
-export function extraMd5() {
+export function extraHashes() {
   const extra = {};
-  for (const file of [path.join(config.rootDir, 'bios-md5.json'), path.join(config.dataDir, 'bios-md5.json')]) {
+  const files = [
+    path.join(config.rootDir, 'bios-hashes.json'),
+    path.join(config.dataDir, 'bios-hashes.json'),
+    path.join(config.dataDir, 'bios-md5.json'),
+  ];
+  for (const file of files) {
     let json;
     try {
       json = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -104,20 +111,42 @@ export function extraMd5() {
     }
     for (const [name, list] of Object.entries(json)) {
       if (name.startsWith('_')) continue;
-      const hashes = (Array.isArray(list) ? list : [list]).map((h) => String(h).toLowerCase()).filter((h) => /^[0-9a-f]{32}$/.test(h));
-      extra[name.toLowerCase()] = [...new Set([...(extra[name.toLowerCase()] || []), ...hashes])];
+      const entry = (extra[name.toLowerCase()] ||= { md5s: [], sha1s: [] });
+      for (const hash of (Array.isArray(list) ? list : [list]).map((h) => String(h).toLowerCase())) {
+        const kind = /^[0-9a-f]{32}$/.test(hash) ? entry.md5s : /^[0-9a-f]{40}$/.test(hash) ? entry.sha1s : null;
+        if (kind && !kind.includes(hash)) kind.push(hash);
+      }
     }
   }
   return extra;
 }
 
-/** MD5 acceptés pour un chemin de BIOS : ceux des cœurs puis ceux de bios-md5.json. */
-const acceptedMd5 = (biosPath, fromCores, extra) =>
-  [...new Set([...fromCores, ...(extra[path.posix.basename(biosPath).toLowerCase()] || [])])];
+/** Empreintes acceptées pour un chemin de BIOS : MD5 des cœurs, puis empreintes de bios-hashes.json. */
+function acceptedHashes(biosPath, md5sFromCores, extra) {
+  const more = extra[path.posix.basename(biosPath).toLowerCase()] || { md5s: [], sha1s: [] };
+  return { md5s: [...new Set([...md5sFromCores, ...more.md5s])], sha1s: more.sha1s };
+}
+
+/** « ok », « mismatch », ou « unknown » quand aucune empreinte n'est connue pour ce BIOS. */
+function hashStatus(file, ref) {
+  if (!ref.md5s.length && !ref.sha1s.length) return 'unknown';
+  return ref.md5s.includes(file.md5) || ref.sha1s.includes(file.sha1) ? 'ok' : 'mismatch';
+}
+
+/** MD5 et SHA1 d'un fichier, en un seul passage. */
+async function hashBios(file) {
+  const md5 = crypto.createHash('md5');
+  const sha1 = crypto.createHash('sha1');
+  for await (const chunk of fs.createReadStream(file, { highWaterMark: 1 << 20 })) {
+    md5.update(chunk);
+    sha1.update(chunk);
+  }
+  return { md5: md5.digest('hex'), sha1: sha1.digest('hex') };
+}
 
 /**
  * BIOS attendus pour un système, fusionnés entre ses cœurs (obligatoire si un cœur l'exige).
- * `md5` : référence libretro ; `md5s` : toutes les empreintes acceptées.
+ * `md5` : référence libretro ; `md5s` / `sha1s` : toutes les empreintes acceptées.
  */
 export async function expectedBios(system) {
   const byPath = new Map();
@@ -137,9 +166,9 @@ export async function expectedBios(system) {
       byPath.set(key, entry);
     }
   }
-  const extra = extraMd5();
+  const extra = extraHashes();
   const list = [...byPath.values()]
-    .map((e) => ({ ...e, md5s: acceptedMd5(e.path, e.md5s, extra) }))
+    .map((e) => ({ ...e, ...acceptedHashes(e.path, e.md5s, extra) }))
     .sort((a, b) => b.required - a.required || a.path.localeCompare(b.path));
   return { cores, coreInfoAvailable: available > 0, expected: list };
 }
@@ -158,16 +187,23 @@ export function safeBiosPath(input) {
   return parts.join('/');
 }
 
-const rowToBios = (r) => ({ id: r.id, systemId: r.system_id, path: r.path, size: r.size, md5: r.md5, addedAt: r.added_at });
+const rowToBios = (r) => ({ id: r.id, systemId: r.system_id, path: r.path, size: r.size, md5: r.md5, sha1: r.sha1, addedAt: r.added_at });
 
 export function listBiosRows(systemId) {
   return db.prepare('SELECT * FROM bios WHERE system_id = ? ORDER BY path').all(systemId).map(rowToBios);
 }
 
-/** BIOS d'un système : fichiers présents (avec contrôle MD5) et BIOS attendus par ses cœurs. */
+/** BIOS d'un système : fichiers présents (avec contrôle des empreintes) et BIOS attendus par ses cœurs. */
 export async function systemBios(systemId, { catalog: withCatalog = true } = {}) {
   const system = requireSystem(systemId);
   const files = listBiosRows(system.id);
+  // Fichiers envoyés avant l'enregistrement du SHA1 : calculé une fois.
+  for (const f of files.filter((row) => !row.sha1)) {
+    const file = path.join(biosDir(system), ...f.path.split('/'));
+    if (!fs.existsSync(file)) continue;
+    f.sha1 = (await hashBios(file)).sha1;
+    db.prepare('UPDATE bios SET sha1 = ? WHERE id = ?').run(f.sha1, f.id);
+  }
   // Sans catalogue (applications) : uniquement les fichiers présents, sans requête vers libretro.
   const catalog = withCatalog ? await expectedBios(system) : { cores: [], coreInfoAvailable: false, expected: [] };
   const byPath = new Map(files.map((f) => [f.path.toLowerCase(), f]));
@@ -176,15 +212,14 @@ export async function systemBios(systemId, { catalog: withCatalog = true } = {})
     return { ...e, fileId: file?.id ?? null, present: Boolean(file) };
   });
   const expectedByPath = new Map(catalog.expected.map((e) => [e.path.toLowerCase(), e]));
-  const extra = extraMd5();
+  const extra = extraHashes();
   return {
     cores: catalog.cores,
     coreInfoAvailable: catalog.coreInfoAvailable,
     files: files.map((f) => {
       const ref = expectedByPath.get(f.path.toLowerCase());
-      const accepted = ref?.md5s ?? acceptedMd5(f.path, [], extra);
-      const md5Status = !accepted.length ? 'unknown' : accepted.includes(f.md5) ? 'ok' : 'mismatch';
-      return { ...f, description: ref?.description ?? null, required: ref?.required ?? false, md5Status };
+      const accepted = ref ?? acceptedHashes(f.path, [], extra);
+      return { ...f, description: ref?.description ?? null, required: ref?.required ?? false, hashStatus: hashStatus(f, accepted) };
     }),
     expected,
   };
@@ -193,25 +228,43 @@ export async function systemBios(systemId, { catalog: withCatalog = true } = {})
 /**
  * Enregistre des fichiers envoyés. Chemin : `targetPath` si fourni (un seul fichier), sinon le
  * chemin attendu dont le nom correspond (« dc_boot.bin » -> « dc/dc_boot.bin »), sinon le nom du fichier.
+ * Un BIOS dont les empreintes sont connues doit y correspondre : sinon tout l'envoi est refusé.
  */
 export async function addBiosFiles(systemId, uploads, targetPath) {
   const system = requireSystem(systemId);
   const { expected } = await expectedBios(system);
-  const byName = new Map(expected.map((e) => [path.posix.basename(e.path).toLowerCase(), e.path]));
-  const saved = [];
+  const byName = new Map(expected.map((e) => [path.posix.basename(e.path).toLowerCase(), e]));
+  const byPath = new Map(expected.map((e) => [e.path.toLowerCase(), e]));
+  const extra = extraHashes();
+  const checked = [];
   for (const upload of uploads) {
     const name = path.basename(upload.originalName);
-    const relative = safeBiosPath(targetPath && uploads.length === 1 ? targetPath : byName.get(name.toLowerCase()) || name);
+    const relative = safeBiosPath(targetPath && uploads.length === 1 ? targetPath : byName.get(name.toLowerCase())?.path || name);
+    const hashes = await hashBios(upload.tempPath);
+    const ref = byPath.get(relative.toLowerCase()) ?? acceptedHashes(relative, [], extra);
+    if (hashStatus(hashes, ref) === 'mismatch') {
+      throw new HttpError(422, 'errors.biosHashMismatch', {
+        name,
+        path: relative,
+        md5: hashes.md5,
+        sha1: hashes.sha1,
+        expected: [...ref.md5s.map((h) => `MD5 ${h}`), ...ref.sha1s.map((h) => `SHA1 ${h}`)].join(', '),
+      });
+    }
+    checked.push({ upload, relative, ...hashes });
+  }
+  const saved = [];
+  for (const { upload, relative, md5, sha1 } of checked) {
     const dest = path.join(biosDir(system), ...relative.split('/'));
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.rmSync(dest, { force: true });
     fs.renameSync(upload.tempPath, dest);
-    const { md5 } = await hashFile(dest);
     const size = fs.statSync(dest).size;
     db.prepare(
-      `INSERT INTO bios (system_id, path, size, md5) VALUES (?, ?, ?, ?)
-       ON CONFLICT(system_id, path) DO UPDATE SET size = excluded.size, md5 = excluded.md5, added_at = datetime('now')`,
-    ).run(system.id, relative, size, md5);
+      `INSERT INTO bios (system_id, path, size, md5, sha1) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(system_id, path) DO UPDATE SET size = excluded.size, md5 = excluded.md5, sha1 = excluded.sha1,
+         added_at = datetime('now')`,
+    ).run(system.id, relative, size, md5, sha1);
     saved.push(relative);
   }
   return saved;

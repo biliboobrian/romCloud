@@ -33,7 +33,13 @@ import kotlinx.coroutines.withContext
  * s'il doit être fermé d'abord (Android 14+), l'avertissement correspondant est affiché
  * (le lancement reprend avec [emulatorClosed] = true).
  */
-fun RomCloudApp.play(activity: Activity, system: GameSystem, game: Game, emulatorClosed: Boolean = false): String? {
+fun RomCloudApp.play(
+    activity: Activity,
+    system: GameSystem,
+    game: Game,
+    emulatorClosed: Boolean = false,
+    resume: Boolean = false,
+): String? {
     val file = library.fileFor(system, game)
     val player = launcher.selectedPlayer(system, game.fileName)
     if (!emulatorClosed) {
@@ -43,7 +49,7 @@ fun RomCloudApp.play(activity: Activity, system: GameSystem, game: Game, emulato
         }
     }
     return try {
-        launcher.launch(activity, system, file, player)
+        launcher.launch(activity, system, file, player, resume)
         null
     } catch (e: MissingEmulatorException) {
         missingEmulator.value = e.emulator
@@ -297,6 +303,8 @@ class GameDetailViewModel(
         val retroArchInfo: RetroArchInfo? = null,
         val bios: List<BiosFile> = emptyList(),
         val missingBios: List<BiosFile> = emptyList(),
+        /** Partie sauvegardée dans l'émulateur intégré : « Reprendre » avant « Jouer ». */
+        val canResume: Boolean = false,
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -329,6 +337,7 @@ class GameDetailViewModel(
             val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(s.bios) }
             val selected = app.launcher.selectedPlayer(system, game.fileName)
             val file = app.library.fileFor(system, game)
+            val canResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(file, selected) }
             _state.update {
                 it.copy(
                     downloaded = downloaded,
@@ -338,6 +347,7 @@ class GameDetailViewModel(
                     launchCommand = selected?.let { p -> app.launcher.describe(p, file) },
                     retroArchInfo = selected?.let(app.launcher::retroArchInfo),
                     missingBios = missingBios,
+                    canResume = canResume,
                 )
             }
         }
@@ -389,10 +399,11 @@ class GameDetailViewModel(
         }
     }
 
-    fun play(activity: Activity): String? {
+    /** [resume] : reprend la partie sauvegardée dans l'émulateur intégré. */
+    fun play(activity: Activity, resume: Boolean = false): String? {
         val s = _state.value
         val system = s.system ?: return I18n.get(R.string.err_system_not_found)
         val game = s.game ?: return I18n.get(R.string.game_not_found)
-        return app.play(activity, system, game)
+        return app.play(activity, system, game, resume = resume)
     }
 }

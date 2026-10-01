@@ -57,6 +57,7 @@ db.exec(`
     path       TEXT NOT NULL,
     size       INTEGER NOT NULL,
     md5        TEXT,
+    sha1       TEXT,
     added_at   TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (system_id, path)
   );
@@ -78,6 +79,8 @@ db.exec(`
 // Migrations légères pour les bases créées par une version antérieure.
 const systemColumns = db.prepare('PRAGMA table_info(systems)').all().map((c) => c.name);
 if (!systemColumns.includes('image')) db.exec('ALTER TABLE systems ADD COLUMN image TEXT');
+const biosColumns = db.prepare('PRAGMA table_info(bios)').all().map((c) => c.name);
+if (!biosColumns.includes('sha1')) db.exec('ALTER TABLE bios ADD COLUMN sha1 TEXT');
 
 /** Exécute fn dans une transaction. */
 export function transaction(fn) {
