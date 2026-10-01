@@ -144,6 +144,7 @@ bool Player::loadGame(std::string& error) {
     return false;
   }
   g.api.get_system_av_info(&g.av);
+  selectControllers(Input::kPorts);
   logf("Image %ux%u (max %ux%u), %.3f images/s, audio %.1f Hz", g.av.geometry.base_width, g.av.geometry.base_height,
        g.av.geometry.max_width, g.av.geometry.max_height, g.av.timing.fps, g.av.timing.sample_rate);
   return true;
@@ -337,11 +338,14 @@ void Player::runFrame() {
 }
 
 void Player::present() {
-  // Surimpression aux proportions de la fenêtre (360 lignes, texte à l'échelle de l'écran).
+  // Surimpression aux proportions de la fenêtre (360 lignes, texte à l'échelle de l'écran) ;
+  // options du cœur sur 540 lignes : texte 1,5 fois plus petit et plus d'options visibles.
   int winW = 16, winH = 9;
   SDL_GL_GetDrawableSize(video_.window(), &winW, &winH);
-  int canvasWidth = std::clamp(winH > 0 ? (int)std::lround(360.0 * winW / winH) : 640, 440, 1280);
-  if (canvasWidth != overlay_.width()) overlay_.resize(canvasWidth, 360);
+  const int canvasHeight = menu_.inOptions() ? 540 : 360;
+  int canvasWidth = std::clamp(winH > 0 ? (int)std::lround((double)canvasHeight * winW / winH) : canvasHeight * 16 / 9,
+                               canvasHeight * 11 / 9, canvasHeight * 32 / 9);
+  if (canvasWidth != overlay_.width() || canvasHeight != overlay_.height()) overlay_.resize(canvasWidth, canvasHeight);
   bool showToast = SDL_GetTicks() < toastUntil_;
   if (!showToast && g.messageFrames > 0) {
     toast_ = g.message;

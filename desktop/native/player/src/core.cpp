@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 
 #include "audio.h"
 #include "input.h"
@@ -294,8 +295,23 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
       return true;
     }
 
+    case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
+      // Types de manette proposés par le cœur pour chaque port (journal de diagnostic).
+      const auto* info = static_cast<const retro_controller_info*>(data);
+      g.controllerTypes.clear();
+      for (unsigned port = 0; info[port].types; port++) {
+        std::vector<unsigned> types;
+        for (unsigned i = 0; i < info[port].num_types; i++) {
+          types.push_back(info[port].types[i].id);
+          if (trace) logf("[controller] port %u : %s (0x%x)", port, info[port].types[i].desc ? info[port].types[i].desc : "?",
+                          info[port].types[i].id);
+        }
+        g.controllerTypes.push_back(types);
+      }
+      return true;
+    }
+
     case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
-    case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
     case RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO:
     case RETRO_ENVIRONMENT_SET_MEMORY_MAPS:
     case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS:
@@ -331,7 +347,34 @@ static void RETRO_CALLCONV inputPoll() {
 }
 
 static int16_t RETRO_CALLCONV inputState(unsigned port, unsigned device, unsigned index, unsigned id) {
+  // Diagnostic : chaque entrée interrogée par le cœur, une seule fois.
+  static const bool trace = getenv("ROMCLOUD_TRACE") != nullptr;
+  if (trace) {
+    static std::set<unsigned long long> seen;
+    unsigned long long key = ((unsigned long long)port << 48) | ((unsigned long long)device << 32) | (index << 16) | id;
+    if (seen.insert(key).second) logf("[input] port %u device 0x%x index %u id %u", port, device, index, id);
+  }
   return g.input ? g.input->state(port, device, index, id) : 0;
+}
+
+/**
+ * Manette de chaque port : le premier type du cœur qui est une manette (« Amstrad Joystick »,
+ * sous-type de RETRO_DEVICE_JOYPAD), sinon la manette libretro standard, comme RetroArch.
+ * Sans ce choix, certains cœurs (cap32) n'interrogent aucune touche de jeu.
+ */
+void selectControllers(unsigned ports) {
+  for (unsigned port = 0; port < ports; port++) {
+    unsigned device = RETRO_DEVICE_JOYPAD;
+    if (port < g.controllerTypes.size()) {
+      for (unsigned type : g.controllerTypes[port]) {
+        if ((type & RETRO_DEVICE_MASK) == RETRO_DEVICE_JOYPAD) {
+          device = type;
+          break;
+        }
+      }
+    }
+    g.api.set_controller_port_device(port, device);
+  }
 }
 
 void initCore() {

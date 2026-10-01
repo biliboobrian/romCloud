@@ -27,6 +27,8 @@ class Menu {
   void open();
   void close() { open_ = false; }
   bool isOpen() const { return open_; }
+  /** Écran des options du cœur affiché (dessiné en plus petit : nombreuses lignes). */
+  bool inOptions() const { return open_ && screen_ == Screen::Options; }
   /** Écran des options du cœur, premier onglet. */
   void openOptions();
 

@@ -56,6 +56,8 @@ struct Session {
 
   bool hasDiskControl = false;
   retro_disk_control_callback disk{};
+  // Types de manette proposés par le cœur pour chaque port (SET_CONTROLLER_INFO).
+  std::vector<std::vector<unsigned>> controllerTypes;
 
   bool hasFrameTime = false;
   retro_frame_time_callback frameTime{};
@@ -77,4 +79,6 @@ extern Session g;
 bool loadCore(const std::string& dllPath, std::string& error);
 /** Branche les callbacks et appelle retro_init. */
 void initCore();
+/** Choisit la manette de chaque port (après le chargement du jeu). */
+void selectControllers(unsigned ports);
 void unloadCore();
