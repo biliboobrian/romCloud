@@ -39,6 +39,7 @@ db.exec(`
     rating         REAL,
     boxart         TEXT,
     screenshot     TEXT,
+    details        TEXT,
     scrape_status  TEXT NOT NULL DEFAULT 'none',
     scrape_source  TEXT,
     scrape_error   TEXT,
@@ -79,6 +80,8 @@ db.exec(`
 // Migrations légères pour les bases créées par une version antérieure.
 const systemColumns = db.prepare('PRAGMA table_info(systems)').all().map((c) => c.name);
 if (!systemColumns.includes('image')) db.exec('ALTER TABLE systems ADD COLUMN image TEXT');
+const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
+if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
 const biosColumns = db.prepare('PRAGMA table_info(bios)').all().map((c) => c.name);
 if (!biosColumns.includes('sha1')) db.exec('ALTER TABLE bios ADD COLUMN sha1 TEXT');
 

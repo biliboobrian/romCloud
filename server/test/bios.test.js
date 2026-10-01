@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 const dataDir = path.join(os.tmpdir(), `romcloud-bios-test-${process.pid}`);
 process.env.DATA_DIR = dataDir;
@@ -21,6 +22,15 @@ const INFOS = {
     'firmware1_path = "dc/dc_flash.bin"',
     'firmware1_opt = "true"',
     'notes = "(!) dc_boot.bin (md5): e10c53c2f8b90bab96ead2d368858623|(!) dc_flash.bin (md5): 0a93f7940c455905bea6e392dfde92a4"',
+  ].join('\n'),
+  pcsx2: [
+    'firmware_count = 2',
+    'firmware0_desc = "\'pcsx2/bios\' folder (any valid PS2 BIOS dump, e.g. scph39001.bin)"',
+    'firmware0_path = "pcsx2/bios"',
+    'firmware0_opt = "false"',
+    'firmware1_desc = "pcsx2/resources/GameIndex.yaml (Game Database)"',
+    'firmware1_path = "pcsx2/resources/GameIndex.yaml"',
+    'firmware1_opt = "true"',
   ].join('\n'),
   mednafen_psx_hw: [
     'firmware_count = 1',
@@ -42,6 +52,7 @@ process.env.LIBRETRO_CORE_INFO_URL = `http://127.0.0.1:${server.address().port}/
 
 const bios = await import('../src/bios.js');
 const { createSystem, getSystem } = await import('../src/systems.js');
+const { db } = await import('../src/db.js');
 
 after(() => {
   server.close();
@@ -65,8 +76,11 @@ test('fiche de cœur : BIOS, caractère obligatoire et MD5', () => {
     description: 'dc/dc_boot.bin (Dreamcast BIOS)',
     required: false,
     md5: 'e10c53c2f8b90bab96ead2d368858623',
+    folder: false,
   });
   assert.equal(bios.parseCoreInfo(INFOS.mednafen_psx_hw).firmware[0].required, true);
+  const ps2 = bios.parseCoreInfo(INFOS.pcsx2).firmware;
+  assert.deepEqual(ps2.map((f) => [f.path, f.folder]), [['pcsx2/bios', true], ['pcsx2/resources/GameIndex.yaml', false]]);
   assert.deepEqual(bios.parseCoreInfo('display_name = "x"').firmware, []);
 });
 
@@ -142,4 +156,74 @@ test('BIOS attendus, envoi, contrôle MD5, téléchargement et suppression', asy
   assert.equal(fs.existsSync(file), false);
   assert.equal(getSystem('dc').biosCount, 2);
   assert.throws(() => bios.requireBios(boot.id));
+});
+
+/** Archive .zip minimale (fichiers stockés sans compression). */
+function makeZip(files) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [name, content] of files) {
+    const data = Buffer.from(content);
+    const nameBuf = Buffer.from(name);
+    const crc = zlib.crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, nameBuf, data);
+    centrals.push(central, nameBuf);
+    offset += 30 + nameBuf.length + data.length;
+  }
+  const dir = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(dir.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, dir, eocd]);
+}
+
+test('dossier attendu (PCSX2) : .zip extrait dans le dossier, ancien .zip réparé', async () => {
+  createSystem({ id: 'ps2', name: 'PlayStation 2', players: [retroarch('pcsx2')] });
+  const upload = (name, content) => {
+    const temp = path.join(dataDir, `upload-${crypto.randomUUID()}`);
+    fs.writeFileSync(temp, content);
+    return { tempPath: temp, originalName: name };
+  };
+  // Archive du dossier lui-même (« bios/… ») : ce niveau est retiré.
+  const saved = await bios.addBiosFiles('ps2', [upload('bios.zip', makeZip([['bios/scph39001.bin', 'BIOS'], ['bios/scph70004.bin', 'BIOS2']]))], 'pcsx2/bios');
+  assert.deepEqual(saved, ['pcsx2/bios/scph39001.bin', 'pcsx2/bios/scph70004.bin']);
+  let state = await bios.systemBios('ps2');
+  const folder = state.expected.find((e) => e.path === 'pcsx2/bios');
+  assert.equal(folder.present, true);
+  assert.equal(folder.fileCount, 2);
+  assert.equal(fs.readFileSync(path.join(dataDir, 'bios', 'ps2', 'pcsx2', 'bios', 'scph39001.bin'), 'utf8'), 'BIOS');
+
+  // Fichier seul envoyé pour le dossier : rangé dedans sous son nom.
+  assert.deepEqual(await bios.addBiosFiles('ps2', [upload('scph10000.bin', 'B3')], 'pcsx2/bios'), ['pcsx2/bios/scph10000.bin']);
+
+  // Ancien envoi : .zip enregistré tel quel sous « pcsx2/resources » -> extrait au prochain affichage.
+  const legacy = path.join(dataDir, 'bios', 'ps2', 'pcsx2', 'resources');
+  fs.writeFileSync(legacy, makeZip([['shaders/a.glsl', 'void main(){}'], ['GameIndex.yaml', 'x: 1']]));
+  db.prepare("INSERT INTO bios (system_id, path, size, md5) VALUES ('ps2', 'pcsx2/resources', 1, 'x')").run();
+  state = await bios.systemBios('ps2', { catalog: false });
+  assert.deepEqual(state.files.map((f) => f.path), [
+    'pcsx2/bios/scph10000.bin',
+    'pcsx2/bios/scph39001.bin',
+    'pcsx2/bios/scph70004.bin',
+    'pcsx2/resources/GameIndex.yaml',
+    'pcsx2/resources/shaders/a.glsl',
+  ]);
+  assert.equal(fs.readFileSync(path.join(legacy, 'shaders', 'a.glsl'), 'utf8'), 'void main(){}');
 });

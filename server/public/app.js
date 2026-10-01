@@ -736,15 +736,16 @@ function renderBios(res) {
       const row = document.createElement('div');
       row.className = 'dup-row bios-row';
       const tag = `<span class="tag${e.required ? ' req' : ''}">${escapeHtml(t(e.required ? 'bios.required' : 'bios.optional'))}</span>`;
-      const details = [biosDescription(e), e.md5s?.length && `md5 ${e.md5s.join(' / ')}`, e.sha1s?.length && `sha1 ${e.sha1s.join(' / ')}`]
+      const details = [e.folder && t('bios.folder', { n: e.fileCount || 0 }), biosDescription(e), e.md5s?.length && `md5 ${e.md5s.join(' / ')}`, e.sha1s?.length && `sha1 ${e.sha1s.join(' / ')}`]
         .filter(Boolean).join(' · ');
       row.innerHTML = `<span class="bios-state ${e.present ? 'ok' : 'missing'}">${e.present ? '✓' : '✗'}</span>
         <span class="name"><code>${escapeHtml(e.path)}</code><br><span class="muted">${escapeHtml(details)}</span></span>
         ${tag}`;
-      if (!e.present) {
+      // Dossier (« pcsx2/bios ») : un .zip de son contenu, extrait sur le serveur ; toujours proposé.
+      if (!e.present || e.folder) {
         const label = document.createElement('label');
         label.className = 'btn small';
-        label.innerHTML = `<span>${escapeHtml(t('bios.send'))}</span><input type="file" hidden>`;
+        label.innerHTML = `<span>${escapeHtml(t(e.folder ? 'bios.sendZip' : 'bios.send'))}</span><input type="file" hidden>`;
         $('input', label).onchange = (ev) => {
           if (ev.target.files[0]) uploadBios([ev.target.files[0]], e.path);
         };

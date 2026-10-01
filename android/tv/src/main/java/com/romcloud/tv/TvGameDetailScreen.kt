@@ -1,5 +1,10 @@
 package com.romcloud.tv
 
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import com.romcloud.app.ui.GameFact
+import com.romcloud.app.ui.gameFacts
 import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -216,11 +221,7 @@ fun TvGameDetailScreen(
                 game.description?.let {
                     Text(it, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth(0.9f))
                 }
-                Text(
-                    game.fileName,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                TvGameInfo(gameFacts(game))
             }
         }
     }
@@ -268,5 +269,38 @@ private fun SecondaryButton(label: String, icon: ImageVector, onClick: () -> Uni
         Icon(icon, null, modifier = IconSize)
         Spacer(Modifier.width(8.dp))
         Text(label)
+    }
+}
+
+/**
+ * Informations détaillées du jeu. Chaque ligne peut recevoir le focus : la télécommande descend
+ * ainsi jusqu'en bas de la fiche (le texte seul ne ferait pas défiler la page).
+ */
+@Composable
+private fun TvGameInfo(facts: List<GameFact>) {
+    if (facts.isEmpty()) return
+    Column(Modifier.fillMaxWidth(0.9f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(stringResource(R.string.info_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+        for (fact in facts) {
+            var focused by remember { mutableStateOf(false) }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(if (focused) Color.White.copy(alpha = 0.1f) else Color.Transparent, RoundedCornerShape(6.dp))
+                    .onFocusChanged { focused = it.isFocused }
+                    .focusable()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    fact.label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(220.dp),
+                )
+                // Pas de navigateur sur la plupart des téléviseurs : l'adresse complète est affichée.
+                Text(fact.url ?: fact.value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            }
+        }
     }
 }

@@ -181,6 +181,11 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .detail .error { color: var(--danger); }
 .detail .emu { background: rgba(26, 29, 36, 0.8); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
 .detail .desc { line-height: 1.6; user-select: text; }
+.detail .info h3 { margin: 8px 0; font-size: 16px; }
+.detail .info dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 0; user-select: text; }
+.detail .info dt { color: var(--muted); }
+.detail .info dd { margin: 0; white-space: pre-line; word-break: break-word; }
+.detail .info a { color: var(--accent); }
 .detail .shot { max-width: 640px; border-radius: var(--radius); }
 .bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; max-width: 520px; }
 .bar > div { height: 100%; background: var(--accent); }

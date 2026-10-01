@@ -3,9 +3,12 @@ import path from 'node:path';
 import { config, screenscraperEnabled } from '../config.js';
 import { I18nError } from '../i18n.js';
 import { db } from '../db.js';
-import { ensureHashes, gameMediaDir, getGameRow, requireGameRow, rowToGame } from '../library.js';
+import { ensureHashes, gameFilePath, gameMediaDir, getGameRow, requireGameRow, rowToGame } from '../library.js';
 import { requireSystem } from '../systems.js';
-import { scrapeLibretro } from './libretro.js';
+import { mergeDetails, parseStoredDetails } from './details.js';
+import { libretroMetadata, scrapeLibretro, titleFromLibretroName } from './libretro.js';
+import { zipEntries, zipMainEntry } from './rom-identity.js';
+import { findArcadeGame, isArcadeSystem } from './arcade.js';
 import { scrapeScreenScraper } from './screenscraper.js';
 import { scrapeWikipedia } from './wikipedia.js';
 
@@ -48,11 +51,26 @@ export async function scrapeGame(gameId, source = 'auto') {
   let meta = null;
   let usedSources = [];
   const errors = [];
+  // Jeu d'arcade renommé (« fatal fury.zip ») : retrouvé par les CRC des fichiers de l'archive,
+  // puis cherché sous son nom court (« fatfury1.zip »).
+  let arcade = null;
+  if (isArcadeSystem(system) && /\.zip$/i.test(row.file_name)) {
+    try {
+      arcade = await findArcadeGame(zipEntries(gameFilePath(row)));
+    } catch (err) {
+      errors.push(err.message);
+    }
+  }
+  const lookupName = arcade ? `${arcade.name}.zip` : row.file_name;
+  // Autre jeu zippé : les bases connaissent la ROM de l'archive (nom, taille, CRC), pas le .zip.
+  const inner = arcade ? null : zipMainEntry(gameFilePath(row));
 
   if (useSS) {
     try {
       row = await ensureHashes(row);
-      meta = await scrapeScreenScraper({
+      if (arcade && lookupName !== row.file_name) meta = await scrapeScreenScraper({ system, fileName: lookupName, size: row.size });
+      if (inner) meta ||= await scrapeScreenScraper({ system, fileName: inner.name, size: inner.size, crc32: inner.crc32 });
+      meta ||= await scrapeScreenScraper({
         system,
         fileName: row.file_name,
         size: row.size,
@@ -72,7 +90,7 @@ export async function scrapeGame(gameId, source = 'auto') {
   if (useLibretro && (!meta || !meta.media.boxart || !meta.media.screenshot)) {
     try {
       row = await ensureHashes(row);
-      const lr = await scrapeLibretro({ system, fileName: row.file_name, crc32: row.crc32 });
+      const lr = await scrapeLibretro({ system, fileName: lookupName, crc32: arcade ? null : inner?.crc32 || row.crc32 });
       if (lr) {
         meta = meta || { media: {} };
         meta.title ||= lr.title;
@@ -85,17 +103,49 @@ export async function scrapeGame(gameId, source = 'auto') {
     }
   }
 
-  // Pas de résumé (source Libretro, ou jeu sans synopsis sur ScreenScraper) : Wikipedia.
-  if (meta && !meta.description && !row.description && source !== 'screenscraper') {
+  // Fiches libretro-database (CRC, nom ou numéro de série) : complètent développeur, éditeur,
+  // genre, date, joueurs et les informations détaillées (série, ESRB, vibrations…).
+  if (useLibretro && system.libretroName && source !== 'screenscraper') {
     try {
-      const description = await scrapeWikipedia({
+      row = await ensureHashes(row);
+      const lm = await libretroMetadata({ system, fileName: lookupName, crc32: arcade ? null : inner?.crc32 || row.crc32 });
+      if (lm) {
+        meta ||= { media: {} }; // jeu sans image chez libretro, mais présent dans ses fiches
+        meta.title ||= lm.title;
+        for (const key of ['developer', 'publisher', 'genre', 'releaseDate', 'players']) meta[key] ||= lm[key];
+        meta.details = mergeDetails(meta.details, lm.details);
+        if (!usedSources.includes('libretro')) usedSources.push('libretro');
+      }
+    } catch (err) {
+      errors.push(err.message);
+    }
+  }
+
+  // Jeu d'arcade identifié : titre, année et fabricant de la DAT FinalBurn Neo si rien de mieux.
+  if (arcade) {
+    meta ||= { media: {} };
+    meta.title ||= titleFromLibretroName(arcade.description.split(' / ')[0]);
+    if (/^\d{4}$/.test(arcade.year || '')) meta.releaseDate ||= arcade.year;
+    meta.publisher ||= arcade.manufacturer;
+    meta.details = mergeDetails(meta.details, { arcadeSet: arcade.name, arcadeParent: arcade.cloneOf });
+    if (!usedSources.includes('fbneo')) usedSources.push('fbneo');
+  }
+
+  // Pas de résumé (source Libretro, ou jeu sans synopsis sur ScreenScraper) : Wikipedia, dont
+  // l'article est aussi ajouté aux liens.
+  if (meta && source !== 'screenscraper') {
+    try {
+      const wiki = await scrapeWikipedia({
         title: meta.title || row.title,
         system: system.name,
         languages: config.screenscraper.languages,
       });
-      if (description) {
-        meta.description = description;
-        usedSources.push('wikipedia');
+      if (wiki) {
+        if (!meta.description && !row.description) {
+          meta.description = wiki.text;
+          usedSources.push('wikipedia');
+        }
+        meta.details = mergeDetails(meta.details, { links: [{ label: 'Wikipedia', url: wiki.url }] });
       }
     } catch (err) {
       errors.push(err.message);
@@ -124,6 +174,7 @@ export async function scrapeGame(gameId, source = 'auto') {
        rating = COALESCE(?, rating),
        boxart = COALESCE(?, boxart),
        screenshot = COALESCE(?, screenshot),
+       details = ?,
        updated_at = datetime('now')
      WHERE id = ?`,
   ).run(
@@ -137,6 +188,8 @@ export async function scrapeGame(gameId, source = 'auto') {
     meta.rating ?? null,
     boxart,
     screenshot,
+    // Nouvelles informations d'abord, complétées par celles d'un scraping précédent.
+    JSON.stringify(mergeDetails(meta.details, parseStoredDetails(row.details))),
     row.id,
   );
   markStatus(row.id, 'ok', usedSources.join('+'), errors[0] || null);

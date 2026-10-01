@@ -23,6 +23,11 @@ internal suspend fun fetchFile(
     cannotCreate: (File) -> String,
 ) {
     val dir = target.parentFile ?: throw IOException(I18n.get(R.string.err_invalid_folder))
+    // Un fichier porte le nom d'un des dossiers à créer (ancien BIOS « pcsx2/bios » envoyé sous
+    // forme de .zip, devenu un dossier) : il est d'abord supprimé.
+    var existing: File? = dir
+    while (existing != null && !existing.exists()) existing = existing.parentFile
+    if (existing != null && existing.isFile) existing.delete()
     if (!dir.exists() && !dir.mkdirs()) {
         throw IOException(cannotCreate(dir))
     }

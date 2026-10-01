@@ -330,4 +330,26 @@
     <string name="pad_r3">R3 (press the right stick)</string>
     <string name="pad_right_stick_x">Right stick: push it to the right</string>
     <string name="pad_right_stick_y">Right stick: push it down</string>
+    <string name="info_title">Information</string>
+    <string name="info_other_titles">Other titles</string>
+    <string name="info_release_dates">Releases</string>
+    <string name="info_regions">Regions</string>
+    <string name="info_languages">Languages</string>
+    <string name="info_series">Series</string>
+    <string name="info_modes">Game modes</string>
+    <string name="info_themes">Themes</string>
+    <string name="info_age_ratings">Age rating</string>
+    <string name="info_serial">Serial number</string>
+    <string name="info_rom_flags">ROM version</string>
+    <string name="info_resolution">Resolution</string>
+    <string name="info_rotation">Screen rotation</string>
+    <string name="info_controls">Controls</string>
+    <string name="info_features">Controller</string>
+    <string name="info_rumble">Rumble</string>
+    <string name="info_analog">Analog stick</string>
+    <string name="info_file">File</string>
+    <string name="info_size">Size</string>
+    <string name="region_world">World</string>
+    <string name="info_arcade_set">MAME / FBNeo set</string>
+    <string name="info_arcade_clone">clone of %1$s</string>
 </resources>

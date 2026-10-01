@@ -32,8 +32,9 @@ export function matchArticle(results, title) {
 }
 
 /**
- * Résumé Wikipedia du jeu, dans la première des [languages] qui a un article correspondant ;
- * null si aucun. [system] (« Super Nintendo ») affine la recherche.
+ * Résumé Wikipedia du jeu et adresse de l'article ({ text, url }), dans la première des
+ * [languages] qui a un article correspondant ; null si aucun. [system] (« Super Nintendo »)
+ * affine la recherche.
  */
 export async function scrapeWikipedia({ title, system, languages }) {
   for (const lang of languages) {
@@ -50,7 +51,8 @@ export async function scrapeWikipedia({ title, system, languages }) {
     if (!text || summary.type === 'disambiguation') continue;
     // Homonymes (film, personnage…) : le résumé doit parler d'un jeu.
     if (!conf.game.test(`${summary.description || ''} ${text}`)) continue;
-    return text;
+    const url = summary.content_urls?.desktop?.page || `${api}/wiki/${encodeURIComponent(page.replace(/ /g, '_'))}`;
+    return { text, url };
   }
   return null;
 }

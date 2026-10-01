@@ -1,5 +1,7 @@
 package com.romcloud.app.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalUriHandler
 import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -233,6 +235,8 @@ fun GameDetailScreen(
 
             game.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
+            GameInfoSection(gameFacts(game))
+
             mediaUrl(game, "screenshot")?.let { url ->
                 AsyncImage(
                     model = url, contentDescription = stringResource(R.string.screenshot), contentScale = ContentScale.FillWidth,
@@ -241,7 +245,8 @@ fun GameDetailScreen(
             }
 
             Text(
-                "${game.fileName} · ${formatSize(game.size)}" + (state.localPath?.let { "\n$it" } ?: ""),
+                // Nom et taille du fichier : dans les informations ; ici, l'emplacement sur l'appareil.
+                state.localPath ?: game.fileName,
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -353,6 +358,37 @@ private fun PlayerSelector(
             Icon(Icons.Filled.Shop, null)
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.install_from_play_store))
+        }
+    }
+}
+
+/** Informations détaillées du jeu : libellé et valeur ; les liens s'ouvrent dans le navigateur. */
+@Composable
+private fun GameInfoSection(facts: List<GameFact>) {
+    if (facts.isEmpty()) return
+    val uriHandler = LocalUriHandler.current
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(stringResource(R.string.info_title), style = MaterialTheme.typography.titleMedium)
+        for (fact in facts) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    fact.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(130.dp),
+                )
+                val url = fact.url
+                if (url != null) {
+                    Text(
+                        fact.value,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f).clickable { runCatching { uriHandler.openUri(url) } },
+                    )
+                } else {
+                    Text(fact.value, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                }
+            }
         }
     }
 }

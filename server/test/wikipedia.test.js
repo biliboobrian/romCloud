@@ -25,8 +25,10 @@ test('résumé dans la première langue qui a un article sur un jeu', async () =
     }
     return { ok: false };
   };
-  const text = await scrapeWikipedia({ title: 'Streets of Rage', system: 'Mega Drive', languages: ['fr', 'en'] });
-  assert.equal(text, 'Streets of Rage is a 1991 beat \'em up game.');
+  const wiki = await scrapeWikipedia({ title: 'Streets of Rage', system: 'Mega Drive', languages: ['fr', 'en'] });
+  assert.equal(wiki.text, 'Streets of Rage is a 1991 beat \'em up game.');
+  // Adresse de l'article (sans content_urls dans la réponse : construite depuis le titre).
+  assert.equal(wiki.url, 'https://en.wikipedia.org/wiki/Streets_of_Rage_(video_game)');
   assert.match(calls[0], /srsearch=Streets%20of%20Rage%20jeu%20vid%C3%A9o%20Mega%20Drive/);
 });
 

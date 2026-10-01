@@ -1,15 +1,21 @@
 import { I18nError } from '../i18n.js';
+import { compactDetails } from './details.js';
 
 // Scraper basé sur les miniatures Libretro (https://thumbnails.libretro.com) :
 // gratuit et sans compte, fournit jaquette, capture et écran-titre (pas de texte).
+// Les fiches « metadat » de libretro-database complètent par CRC, nom ou numéro de série :
+// développeur, éditeur, genre, date, joueurs, ESRB, série, vibrations, stick analogique.
 
 const BASE = 'https://thumbnails.libretro.com';
 const DB = 'https://raw.githubusercontent.com/libretro/libretro-database/master';
 // Emplacements possibles de la DAT d'un système, selon sa provenance (No-Intro, Redump, arcade…).
-const DAT_DIRS = ['metadat/no-intro', 'metadat/redump', 'dat', 'metadat/fbneo-split', 'metadat/mame'];
+const DAT_DIRS = ['metadat/no-intro', 'metadat/redump', 'dat', 'metadat/fbneo-split', 'metadat/mame', 'metadat/tosec'];
 const CACHE_MS = 6 * 3600_000;
 const listingCache = new Map(); // "<system>/<type>" -> { at, names: string[] }
-const datCache = new Map(); // "<system>" -> { at, index: { byRom, byCrc } }
+const datCache = new Map(); // "<system>" -> { at, index: { byRom, byCrc, meta } }
+const metaCache = new Map(); // "<system>" -> { at, files: { <fichier>: index } }
+// Fiches metadat/<dossier>/<système>.dat lues pour les informations détaillées.
+const META_FILES = ['developer', 'publisher', 'genre', 'releaseyear', 'releasemonth', 'maxusers', 'esrb', 'franchise', 'serial', 'rumble', 'analog'];
 
 /** Règle de nommage Libretro : ces caractères sont remplacés par "_". */
 export function libretroName(name) {
@@ -87,14 +93,57 @@ export function parseDat(text) {
   return { byRom, byCrc };
 }
 
+/**
+ * Fiches d'une DAT « metadat » (ou de la DAT principale) : champs de chaque jeu, indexés par
+ * nom de jeu en minuscules (« comment » ou « name »), CRC32 et numéro de série.
+ */
+export function parseMetaDat(text) {
+  const index = { byName: new Map(), byCrc: new Map(), bySerial: new Map(), byTitle: new Map() };
+  let entry = null;
+  const flush = () => {
+    if (!entry) return;
+    const serial = entry.serial || entry.fields.serial;
+    if (entry.name && !index.byName.has(entry.name.toLowerCase())) index.byName.set(entry.name.toLowerCase(), entry);
+    // Titre sans les tags : dernier recours (nom de fichier qui ne suit pas la DAT).
+    const title = entry.name && normalize(entry.name);
+    if (title && !index.byTitle.has(title)) index.byTitle.set(title, entry);
+    if (entry.crc && !index.byCrc.has(entry.crc)) index.byCrc.set(entry.crc, entry);
+    if (serial && !index.bySerial.has(serial)) index.bySerial.set(serial, entry);
+  };
+  for (const line of text.split('\n')) {
+    if (/^game \(/.test(line)) {
+      flush();
+      entry = { name: null, crc: null, serial: null, fields: {} };
+      continue;
+    }
+    if (!entry) continue;
+    const rom = line.match(/^\s+rom \((.*)\)\s*$/);
+    if (rom) {
+      entry.crc ||= rom[1].match(/\bcrc ([0-9a-f]{8})\b/i)?.[1].toUpperCase() ?? null;
+      entry.serial ||= rom[1].match(/\bserial "([^"]+)"/)?.[1] ?? null;
+      continue;
+    }
+    const field = line.match(/^\s+(\w+) (?:"(.*)"|(\S+))\s*$/);
+    if (!field) continue;
+    const [, key, quoted, plain] = field;
+    if ((key === 'comment' || key === 'name') && !entry.name) entry.name = quoted ?? plain;
+    else if (!(key in entry.fields)) entry.fields[key] = quoted ?? plain;
+  }
+  flush();
+  return index;
+}
+
+const emptyMeta = () => ({ byName: new Map(), byCrc: new Map(), bySerial: new Map(), byTitle: new Map() });
+
 async function datIndex(system) {
   const cached = datCache.get(system);
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.index;
-  let index = { byRom: new Map(), byCrc: new Map() };
+  let index = { byRom: new Map(), byCrc: new Map(), meta: emptyMeta() };
   for (const dir of DAT_DIRS) {
     const res = await fetch(`${DB}/${dir}/${encodeURIComponent(system)}.dat`);
     if (!res.ok) continue;
-    index = parseDat(await res.text());
+    const text = await res.text();
+    index = { ...parseDat(text), meta: parseMetaDat(text) };
     break;
   }
   datCache.set(system, { at: Date.now(), index });
@@ -162,4 +211,62 @@ export async function scrapeLibretro({ system, fileName, crc32 }) {
       screenshot: snap?.url ?? title?.url,
     },
   };
+}
+
+async function metaFiles(system) {
+  const cached = metaCache.get(system);
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.files;
+  const files = {};
+  await Promise.all(META_FILES.map(async (name) => {
+    try {
+      const res = await fetch(`${DB}/metadat/${name}/${encodeURIComponent(system)}.dat`);
+      files[name] = res.ok ? parseMetaDat(await res.text()) : emptyMeta();
+    } catch {
+      files[name] = emptyMeta();
+    }
+  }));
+  metaCache.set(system, { at: Date.now(), files });
+  return files;
+}
+
+/**
+ * Informations de libretro-database sur le jeu (identifié par CRC32, sinon par son nom de
+ * fichier No-Intro / Redump) ; null si le système n'a pas de nom Libretro ou si rien n'est trouvé.
+ */
+export async function libretroMetadata({ system, fileName, crc32 }) {
+  if (!system.libretroName) return null;
+  const base = fileName.replace(/\.[^.]+$/, '').toLowerCase();
+  const crc = crc32 ? crc32.toUpperCase() : null;
+  const { meta: main } = await datIndex(system.libretroName);
+  const game = (crc && main.byCrc.get(crc)) || main.byName.get(base) || main.byTitle.get(normalize(fileName)) || null;
+  const names = [...new Set([game?.name?.toLowerCase(), base].filter(Boolean))];
+  const serial = game?.serial || game?.fields.serial || null;
+  const files = await metaFiles(system.libretroName);
+  const find = (index) =>
+    (crc && index.byCrc.get(crc)) || names.map((n) => index.byName.get(n)).find(Boolean) || (serial && index.bySerial.get(serial)) || null;
+  const value = (file, key) => find(files[file])?.fields[key] ?? null;
+
+  // Année : fiche « releaseyear », sinon la DAT principale (TOSEC la donne souvent).
+  const releaseYear = value('releaseyear', 'releaseyear') || game?.fields.releaseyear || null;
+  const month = value('releasemonth', 'releasemonth');
+  const users = Number(value('maxusers', 'users'));
+  const esrb = value('esrb', 'esrb_rating');
+  const meta = {
+    title: game?.name ? titleFromLibretroName(game.name) : null,
+    developer: value('developer', 'developer'),
+    publisher: value('publisher', 'publisher'),
+    genre: value('genre', 'genre'),
+    releaseDate: releaseYear ? (month ? `${releaseYear}-${String(month).padStart(2, '0')}` : releaseYear) : null,
+    players: users > 1 ? `1-${users}` : users === 1 ? '1' : null,
+    details: compactDetails({
+      series: value('franchise', 'franchise'),
+      ageRatings: esrb ? [{ type: 'ESRB', text: esrb }] : [],
+      serial: serial || find(files.serial)?.serial || value('serial', 'serial'),
+      regions: game?.fields.region ? [game.fields.region] : [],
+      rumble: value('rumble', 'rumble') === '1' ? true : null,
+      analog: value('analog', 'analog') === '1' ? true : null,
+    }),
+  };
+  const found = Object.entries(meta).some(([k, v]) => (k === 'details' ? Object.keys(v).length : v));
+  return found ? meta : null;
 }
