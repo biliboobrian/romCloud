@@ -234,6 +234,7 @@ class LibretroActivity : ComponentActivity() {
             view.getGLRetroEvents().collect {
                 if (it is GLRetroView.GLRetroEvents.FrameRendered && !gameReady) {
                     gameReady = true
+                    selectControllers(view)
                     if (resume) resumeGame()
                 }
             }
@@ -329,6 +330,20 @@ class LibretroActivity : ComponentActivity() {
             getString(R.string.libretro_state_saved)
         }.getOrElse { getString(R.string.libretro_state_error) }
         closeMenu()
+    }
+
+    /**
+     * Manette de chaque port : le premier type proposé par le cœur qui est une manette
+     * (« Amstrad Joystick », sous-type de RETRO_DEVICE_JOYPAD), comme RetroArch. Sans ce choix,
+     * certains cœurs (cap32) n'interrogent aucune touche : manette tactile et physique sans effet.
+     */
+    private fun selectControllers(view: GLRetroView) {
+        runCatching {
+            view.getControllers().forEachIndexed { port, types ->
+                types.firstOrNull { (it.id and RETRO_DEVICE_MASK) == RETRO_DEVICE_JOYPAD }
+                    ?.let { view.setControllerType(port, it.id) }
+            }
+        }
     }
 
     /** Au lancement par « Reprendre » : état sauvegardé de la partie. */
@@ -820,6 +835,8 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_SYSTEM_DIR = "systemDir"
         private const val EXTRA_SYSTEM = "system"
         private const val EXTRA_RESUME = "resume"
+        private const val RETRO_DEVICE_JOYPAD = 1
+        private const val RETRO_DEVICE_MASK = 0xff
 
         /** État de sauvegarde d'un jeu pour un cœur (« Sauvegarder l'état », « Sauvegarder et quitter »). */
         fun stateFile(context: Context, core: String, rom: File): File =
