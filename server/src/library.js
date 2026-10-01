@@ -5,6 +5,7 @@ import zlib from 'node:zlib';
 import { config } from './config.js';
 import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
+import { fileNameDetails, mergeDetails, parseStoredDetails } from './scraper/details.js';
 import { listSystems, requireSystem, systemDir } from './systems.js';
 
 // Fichiers ignorés lors du scan : fichiers cachés, envois en cours, métadonnées diverses.
@@ -45,6 +46,8 @@ export function rowToGame(row) {
     genre: row.genre,
     players: row.players,
     rating: row.rating,
+    // Informations détaillées : nom de fichier (régions, langues, révision), puis scraping.
+    details: mergeDetails(parseStoredDetails(row.details), fileNameDetails(row.file_name)),
     hasBoxart: Boolean(row.boxart),
     hasScreenshot: Boolean(row.screenshot),
     scrapeStatus: row.scrape_status,

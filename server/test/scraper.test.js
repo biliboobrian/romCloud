@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
+import zlibModule from 'node:zlib';
 
 process.env.DATA_DIR = path.join(os.tmpdir(), `romcloud-test-${process.pid}`);
 process.env.SCREENSCRAPER_DEV_ID = 'dev';
@@ -168,4 +169,164 @@ test('Libretro : ROM retrouvée par son CRC quand le nom a changé', async () =>
     crc32: '6f5c315d',
   });
   assert.equal(result.title, 'Rayman 2');
+});
+
+test('ScreenScraper : informations détaillées', async () => {
+  const jeu = {
+    ...sample.response.jeu,
+    familles: [{ noms: [{ langue: 'fr', text: 'Super Mario' }] }],
+    modes: [{ noms: [{ langue: 'fr', text: '1 joueur' }] }, { noms: [{ langue: 'fr', text: 'Coopératif' }] }],
+    classifications: [{ type: 'PEGI', text: '3' }, { type: 'ESRB', text: 'E' }],
+    resolution: '256x224',
+    rotation: '0',
+    rom: { romserial: 'SNSP-MW', beta: '0', proto: '1', regions: { regions_fr: ['Europe'] }, langues: { langues_fr: ['Anglais', 'Français'] } },
+  };
+  mockFetch(200, { response: { jeu } });
+  const { details } = await scrapeScreenScraper({ system: {}, fileName: 'x.sfc', size: 1 });
+  assert.deepEqual(details.otherTitles, [{ region: 'jp', text: 'Super Mario World: Super Mario Bros. 4' }]);
+  assert.deepEqual(details.releaseDates, [{ region: 'eu', text: '1992-04-11' }]);
+  assert.equal(details.series, 'Super Mario');
+  assert.deepEqual(details.modes, ['1 joueur', 'Coopératif']);
+  assert.deepEqual(details.ageRatings, [{ type: 'PEGI', text: '3' }, { type: 'ESRB', text: 'E' }]);
+  assert.deepEqual(details.regions, ['Europe']);
+  assert.deepEqual(details.languages, ['Anglais', 'Français']);
+  assert.equal(details.serial, 'SNSP-MW');
+  assert.deepEqual(details.romFlags, ['Proto']);
+  assert.equal(details.resolution, '256x224');
+  assert.equal(details.rotation, undefined); // 0° : rien à signaler
+  assert.equal(details.links[0].url, 'https://www.screenscraper.fr/gameinfos.php?gameid=3');
+});
+
+const { fileNameDetails, mergeDetails } = await import('../src/scraper/details.js');
+const { parseMetaDat } = await import('../src/scraper/libretro.js');
+
+test('informations tirées du nom de fichier', () => {
+  assert.deepEqual(fileNameDetails('Gran Turismo (Europe) (En,Fr,De,Es,It).chd'), {
+    regions: ['Europe'],
+    languages: ['En', 'Fr', 'De', 'Es', 'It'],
+  });
+  assert.deepEqual(fileNameDetails('Final Fantasy VII (USA) (Disc 2) (Rev 1).chd'), { regions: ['USA'], romFlags: ['Disc 2', 'Rev 1'] });
+  assert.deepEqual(fileNameDetails('Mother 3 (Japan) [T+Eng1.3].gba'), { regions: ['Japan'], romFlags: ['Translation Eng'] });
+  assert.deepEqual(fileNameDetails('Tetris.gb'), {});
+});
+
+test('fusion des informations : la première source prime, liens cumulés', () => {
+  const merged = mergeDetails(
+    { serial: 'A', links: [{ label: 'ScreenScraper', url: 'u1' }], modes: [] },
+    { serial: 'B', modes: ['Solo'], links: [{ label: 'Wikipedia', url: 'u2' }, { label: 'ScreenScraper', url: 'u1' }] },
+  );
+  assert.deepEqual(merged, { serial: 'A', links: [{ label: 'ScreenScraper', url: 'u1' }, { label: 'Wikipedia', url: 'u2' }], modes: ['Solo'] });
+});
+
+test('fiches metadat libretro : par nom, CRC et numéro de série', () => {
+  const index = parseMetaDat([
+    'clrmamepro (',
+    '\tname "Sony - PlayStation"',
+    ')',
+    '',
+    'game (',
+    '\tcomment "Ape Escape (France)"',
+    '\trumble 1',
+    '\trom ( serial "SCES-02028" )',
+    ')',
+    'game (',
+    '\tname "Gran Turismo (Europe) (En,Fr,De,Es,It)"',
+    '\tregion "Europe"',
+    '\tserial "SCES-00984"',
+    '\trom ( name "Gran Turismo.bin" size 1 crc 392ab7b5 md5 x )',
+    ')',
+  ].join('\n'));
+  assert.equal(index.bySerial.get('SCES-02028').fields.rumble, '1');
+  assert.equal(index.byName.get('ape escape (france)').fields.rumble, '1');
+  const gt = index.byCrc.get('392AB7B5');
+  assert.equal(gt.name, 'Gran Turismo (Europe) (En,Fr,De,Es,It)');
+  assert.equal(gt.fields.region, 'Europe');
+  assert.equal(index.bySerial.get('SCES-00984'), gt);
+});
+
+const { zipEntries, zipMainEntry } = await import('../src/scraper/rom-identity.js');
+
+/** Archive .zip minimale (fichiers stockés sans compression). */
+function makeZip(files) {
+  const zlib = zlibModule;
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [name, content] of files) {
+    const data = Buffer.from(content);
+    const nameBuf = Buffer.from(name);
+    const crc = zlib.crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, nameBuf, data);
+    centrals.push(central, nameBuf);
+    offset += 30 + nameBuf.length + data.length;
+  }
+  const dir = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(dir.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, dir, eocd]);
+}
+
+test('ROM d\'une archive .zip : nom, taille et CRC lus sans décompression', async () => {
+  const fs = await import('node:fs');
+  const dir = path.join(os.tmpdir(), `romcloud-zip-${process.pid}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "Baba's Palace (Dragon).zip");
+  fs.writeFileSync(file, makeZip([['lisez-moi.txt', 'notes notes notes notes notes'], ['roms/Baba.cpr', 'CPR-DATA'], ['vide/', '']]));
+  assert.equal(zipEntries(file).length, 2);
+  assert.deepEqual(zipMainEntry(file), { name: 'Baba.cpr', size: 8, crc32: (await import('node:zlib')).crc32(Buffer.from('CPR-DATA')).toString(16).padStart(8, '0') });
+  assert.equal(zipMainEntry(path.join(dir, 'absent.zip')), null);
+  assert.equal(zipMainEntry(path.join(dir, 'jeu.sfc')), null);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('ScreenScraper : système créé à la main, identifiant pris d\'après son nom court', async () => {
+  const calls = mockFetch(404, 'non trouvé');
+  await scrapeScreenScraper({ system: { id: 'gx4000', shortname: 'gx4000', screenscraperId: null }, fileName: 'Baba.cpr', size: 8 });
+  assert.equal(new URL(calls[0]).searchParams.get('systemeid'), '87');
+});
+
+const { identifyArcade, isArcadeSystem, parseArcadeXml } = await import('../src/scraper/arcade.js');
+
+test('jeu d\'arcade renommé : retrouvé par les CRC des fichiers de l\'archive', () => {
+  const index = parseArcadeXml([
+    '<game name="fatfury1" romof="neogeo">',
+    '\t<description>Fatal Fury - King of Fighters / Garou Densetsu &amp; co</description>',
+    '\t<year>1992</year>',
+    '\t<manufacturer>SNK</manufacturer>',
+    '\t<rom name="033-p1.p1" size="524288" crc="47ebdc2f"/>',
+    '\t<rom name="033-s1.s1" size="131072" crc="3c3bdf8c"/>',
+    '\t<rom name="sp-s2.sp1" merge="sp-s2.sp1" size="131072" crc="9036d879"/>',
+    '</game>',
+    '<game name="fatfury1b" cloneof="fatfury1" romof="fatfury1">',
+    '\t<description>Fatal Fury (bootleg)</description>',
+    '\t<rom name="033-p1.p1" size="524288" crc="47ebdc2f"/>',
+    '\t<rom name="033-s1.s1" size="131072" crc="3c3bdf8c"/>',
+    '\t<rom name="boot.bin" size="16" crc="12345678"/>',
+    '</game>',
+  ].join('\n'));
+  const game = identifyArcade([{ crc32: '47EBDC2F' }, { crc32: '3c3bdf8c' }], index);
+  assert.equal(game.name, 'fatfury1'); // le jeu exact plutôt que le clone qui ajoute une ROM
+  assert.equal(game.description, 'Fatal Fury - King of Fighters / Garou Densetsu & co');
+  assert.equal(game.year, '1992');
+  // Seul le BIOS partagé (« merge ») correspond : rien.
+  assert.equal(identifyArcade([{ crc32: '9036d879' }, { crc32: 'aaaaaaaa' }], index), null);
+  assert.equal(isArcadeSystem({ libretroName: 'SNK - Neo Geo' }), true);
+  assert.equal(isArcadeSystem({ libretroName: 'Nintendo - Game Boy', shortname: 'gb' }), false);
 });

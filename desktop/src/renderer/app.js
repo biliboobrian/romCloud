@@ -742,6 +742,46 @@
     go({ name: 'game', systemId, gameId });
   }
 
+  /** Informations détaillées du jeu (scraping, nom de fichier) : [libellé, valeur, lien ?]. */
+  function gameFacts(game) {
+    const d = game.details || {};
+    const region = (code) => (!code ? null : code.toLowerCase() === 'wor' ? t('info.world') : code.toUpperCase());
+    const byRegion = (list) => (list || []).map((e) => (region(e.region) ? `${region(e.region)} : ${e.text}` : e.text)).join('\n');
+    const list = (v) => (v || []).join(', ');
+    const facts = [
+      [t('info.otherTitles'), byRegion(d.otherTitles)],
+      [t('info.releaseDates'), byRegion(d.releaseDates)],
+      [t('info.regions'), list(d.regions)],
+      [t('info.languages'), list(d.languages)],
+      [t('info.series'), d.series],
+      [t('info.modes'), list(d.modes)],
+      [t('info.themes'), list(d.themes)],
+      [t('info.ageRatings'), (d.ageRatings || []).map((r) => [r.type, r.text].filter(Boolean).join(' ')).join(', ')],
+      [t('info.serial'), d.serial],
+      [t('info.romFlags'), list(d.romFlags)],
+      [t('info.arcadeSet'), [d.arcadeSet, d.arcadeParent && `(${t('info.arcadeClone', { name: d.arcadeParent })})`].filter(Boolean).join(' ')],
+      [t('info.resolution'), d.resolution],
+      [t('info.rotation'), d.rotation],
+      [t('info.controls'), d.controls],
+      [t('info.features'), [d.rumble && t('info.rumble'), d.analog && t('info.analog')].filter(Boolean).join(', ')],
+      [t('info.file'), game.fileName],
+      [t('info.size'), formatSize(game.size)],
+      ['CRC32', game.crc32 && game.crc32.toUpperCase()],
+      ['MD5', game.md5],
+      ...(d.links || []).map((l) => [l.label, l.url.replace(/^https?:\/\//, '').split('/')[0], l.url]),
+    ];
+    return facts.filter(([, value]) => value);
+  }
+
+  function gameInfoHtml(game) {
+    const facts = gameFacts(game);
+    if (!facts.length) return '';
+    const rows = facts.map(([label, value, url]) => `<dt>${esc(label)}</dt><dd>${url
+      ? `<a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(value)}</a>`
+      : esc(value)}</dd>`).join('');
+    return `<div class="info"><h3>${esc(t('info.title'))}</h3><dl>${rows}</dl></div>`;
+  }
+
   async function renderGame() {
     const { systemId, gameId } = S.route;
     const system = systemById(systemId);
@@ -822,6 +862,7 @@
             ${command ? `<div class="muted small">${esc(t('emulator.command'))}</div><div class="mono">${esc(command)}</div>` : ''}
           </div>
           ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
+          ${gameInfoHtml(game)}
           ${shot ? `<img class="shot" src="${esc(shot)}" alt="">` : ''}
           <div class="mono muted">${esc(localPath)}</div>
         </div>

@@ -3,6 +3,8 @@
 // (SCREENSCRAPER_USER / SCREENSCRAPER_PASSWORD) est facultatif mais augmente les quotas.
 import { config } from '../config.js';
 import { I18nError } from '../i18n.js';
+import { compactDetails } from './details.js';
+import { SCREENSCRAPER_SYSTEM_IDS } from '../screenscraper-systems.js';
 
 const API = 'https://api.screenscraper.fr/api2/jeuInfos.php';
 
@@ -32,17 +34,66 @@ function pickMedia(medias, types, regions) {
   return null;
 }
 
+/** Valeur texte : chaîne, ou objet { text } selon les champs de l'API. */
+const textOf = (v) => (v == null ? null : typeof v === 'object' ? (v.text ?? null) : String(v)) || null;
+
+/** Libellés traduits d'une liste (genres, modes, familles…) dans la langue préférée. */
+const labelsOf = (list, languages) =>
+  [...new Set((Array.isArray(list) ? list : []).map((g) => pickText(g.noms, 'langue', languages)).filter(Boolean))];
+
+/** Valeurs par région / langue, dédoublonnées : [{ region, text }]. */
+const byRegion = (list) => {
+  const out = [];
+  for (const e of Array.isArray(list) ? list : []) {
+    if (e?.text && !out.some((o) => o.region === e.region && o.text === e.text)) out.push({ region: e.region || null, text: e.text });
+  }
+  return out;
+};
+
+/** Liste d'une ROM (`regions_fr`, `langues_en`…) dans la première langue disponible. */
+function romList(obj, prefix, languages) {
+  if (!obj || typeof obj !== 'object') return [];
+  for (const lang of [...languages, 'en', 'shortname']) {
+    const list = obj[`${prefix}_${lang}`];
+    if (Array.isArray(list) && list.length) return list;
+  }
+  return [];
+}
+
+/** Informations détaillées (voir details.js). */
+function parseDetails(jeu, title) {
+  const { languages } = config.screenscraper;
+  const rom = jeu.rom && typeof jeu.rom === 'object' ? jeu.rom : {};
+  const flags = { beta: 'Beta', demo: 'Demo', proto: 'Proto', hack: 'Hack', trad: 'Translation', unl: 'Unl' };
+  return compactDetails({
+    otherTitles: byRegion(jeu.noms).filter((n) => n.text !== title),
+    releaseDates: byRegion(jeu.dates),
+    series: labelsOf(jeu.familles, languages).join(', '),
+    modes: labelsOf(jeu.modes, languages),
+    themes: labelsOf(jeu.themes, languages),
+    ageRatings: (Array.isArray(jeu.classifications) ? jeu.classifications : [])
+      .filter((c) => c?.text)
+      .map((c) => ({ type: c.type || null, text: c.text })),
+    regions: romList(rom.regions, 'regions', languages),
+    languages: romList(rom.langues, 'langues', languages),
+    serial: textOf(rom.romserial),
+    romFlags: Object.entries(flags).filter(([k]) => String(rom[k]) === '1').map(([, v]) => v),
+    resolution: textOf(jeu.resolution),
+    rotation: textOf(jeu.rotation) && textOf(jeu.rotation) !== '0' ? `${textOf(jeu.rotation)}°` : null,
+    controls: textOf(jeu.controles),
+    links: [{ label: 'ScreenScraper', url: `https://www.screenscraper.fr/gameinfos.php?gameid=${encodeURIComponent(jeu.id)}` }],
+  });
+}
+
 function parseGame(jeu) {
   const { languages, regions } = config.screenscraper;
   const medias = Array.isArray(jeu.medias) ? jeu.medias : [];
-  const genres = (jeu.genres || [])
-    .map((g) => pickText(g.noms, 'langue', languages))
-    .filter(Boolean)
-    .slice(0, 3);
+  const genres = labelsOf(jeu.genres, languages).slice(0, 3);
   const date = pickText(jeu.dates, 'region', regions);
   const note = jeu.note?.text ? Number(jeu.note.text) : null;
+  const title = pickText(jeu.noms, 'region', regions);
   return {
-    title: pickText(jeu.noms, 'region', regions),
+    title,
     description: pickText(jeu.synopsis, 'langue', languages),
     releaseDate: date,
     developer: jeu.developpeur?.text ?? null,
@@ -55,6 +106,7 @@ function parseGame(jeu) {
       boxart: pickMedia(medias, ['box-2D', 'box-3D', 'wheel'], regions),
       screenshot: pickMedia(medias, ['ss', 'sstitle'], regions),
     },
+    details: parseDetails(jeu, title),
   };
 }
 
@@ -76,7 +128,9 @@ export async function scrapeScreenScraper({ system, fileName, size, crc32, md5 }
   });
   if (s.user) params.set('ssid', s.user);
   if (s.password) params.set('sspassword', s.password);
-  if (system.screenscraperId) params.set('systemeid', String(system.screenscraperId));
+  // Système sans identifiant (créé à la main) : celui de la plateforme de même nom court s'il est connu.
+  const systemId = system.screenscraperId || SCREENSCRAPER_SYSTEM_IDS[system.shortname] || SCREENSCRAPER_SYSTEM_IDS[system.id];
+  if (systemId) params.set('systemeid', String(systemId));
   if (crc32) params.set('crc', crc32.toUpperCase());
   if (md5) params.set('md5', md5);
 

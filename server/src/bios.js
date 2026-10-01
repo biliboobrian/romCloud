@@ -9,6 +9,7 @@ import { config } from './config.js';
 import { db } from './db.js';
 import { HttpError } from './http-error.js';
 import { requireSystem } from './systems.js';
+import { readZipEntries, readZipEntry } from './zip.js';
 
 const CORE_INFO_URL = process.env.LIBRETRO_CORE_INFO_URL
   || 'https://raw.githubusercontent.com/libretro/libretro-core-info/master/';
@@ -48,13 +49,17 @@ export function parseCoreInfo(text) {
   const count = Number(values.firmware_count || 0);
   const firmware = [];
   for (let i = 0; i < count; i++) {
-    const biosPath = values[`firmware${i}_path`];
-    if (!biosPath) continue;
+    const rawPath = values[`firmware${i}_path`];
+    if (!rawPath) continue;
+    const biosPath = rawPath.replace(/\/+$/, '');
+    const description = values[`firmware${i}_desc`] || biosPath;
     firmware.push({
       path: biosPath,
-      description: values[`firmware${i}_desc`] || biosPath,
+      description,
       required: values[`firmware${i}_opt`] === 'false',
       md5: md5ByName[path.posix.basename(biosPath).toLowerCase()] || null,
+      // Dossier attendu (« 'pcsx2/bios' folder ») : rempli par l'envoi d'un .zip de son contenu.
+      folder: rawPath.endsWith('/') || (/\bfolder\b/i.test(description) && !path.posix.extname(biosPath)),
     });
   }
   return { name: values.display_name || null, firmware };
@@ -160,6 +165,7 @@ export async function expectedBios(system) {
       const key = f.path.toLowerCase();
       const entry = byPath.get(key) || { ...f, md5s: [], cores: [] };
       entry.required ||= f.required;
+      entry.folder ||= f.folder;
       entry.md5 ||= f.md5;
       if (f.md5 && !entry.md5s.includes(f.md5)) entry.md5s.push(f.md5);
       entry.cores.push(core);
@@ -193,10 +199,104 @@ export function listBiosRows(systemId) {
   return db.prepare('SELECT * FROM bios WHERE system_id = ? ORDER BY path').all(systemId).map(rowToBios);
 }
 
+/** Le fichier est-il une archive .zip (signature « PK\\3\\4 ») ? */
+function isZipFile(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const magic = Buffer.alloc(4);
+    fs.readSync(fd, magic, 0, 4, 0);
+    return magic.readUInt32LE(0) === 0x04034b50;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+/**
+ * Fichiers à extraire d'un .zip envoyé pour le dossier [folder] : chemins dans le dossier
+ * (« bios/scph39001.bin » -> « pcsx2/bios/scph39001.bin » si l'archive contient le dossier
+ * lui-même) et contenu. Limites contre les archives démesurées.
+ */
+function folderZipContent(zipFile, folder) {
+  const entries = readZipEntries(zipFile);
+  if (!entries.length) throw new HttpError(422, 'errors.biosZipUnreadable', { path: folder });
+  const total = entries.reduce((n, e) => n + e.size, 0);
+  if (entries.length > 20000 || total > 4 * 1024 ** 3) throw new HttpError(422, 'errors.biosZipTooLarge', { path: folder });
+  // Archive du dossier lui-même (« bios/… ») : ce premier niveau est retiré.
+  const top = path.posix.basename(folder).toLowerCase();
+  const strip = entries.every((e) => e.name.toLowerCase().startsWith(`${top}/`));
+  return entries.map((e) => ({
+    relative: safeBiosPath(`${folder}/${strip ? e.name.slice(top.length + 1) : e.name}`),
+    data: readZipEntry(zipFile, e),
+  }));
+}
+
+const hashBuffer = (data) => ({
+  md5: crypto.createHash('md5').update(data).digest('hex'),
+  sha1: crypto.createHash('sha1').update(data).digest('hex'),
+});
+
+/** Enregistre un BIOS (fichier ou contenu) et sa ligne en base ; écrase un BIOS de même chemin. */
+function storeBios(system, relative, { tempPath, data }, hashes) {
+  const dest = path.join(biosDir(system), ...relative.split('/'));
+  // Un ancien fichier porte le nom d'un dossier à créer (.zip enregistré tel quel) : retiré.
+  const parts = relative.split('/');
+  for (let i = 1; i < parts.length; i++) {
+    const prefix = parts.slice(0, i).join('/');
+    const blocking = path.join(biosDir(system), ...parts.slice(0, i));
+    if (fs.existsSync(blocking) && fs.statSync(blocking).isFile()) {
+      fs.rmSync(blocking, { force: true });
+      db.prepare('DELETE FROM bios WHERE system_id = ? AND path = ?').run(system.id, prefix);
+    }
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  if (fs.existsSync(dest) && fs.statSync(dest).isDirectory()) fs.rmSync(dest, { recursive: true, force: true });
+  fs.rmSync(dest, { force: true });
+  if (data) fs.writeFileSync(dest, data);
+  else fs.renameSync(tempPath, dest);
+  const size = fs.statSync(dest).size;
+  db.prepare(
+    `INSERT INTO bios (system_id, path, size, md5, sha1) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(system_id, path) DO UPDATE SET size = excluded.size, md5 = excluded.md5, sha1 = excluded.sha1,
+       added_at = datetime('now')`,
+  ).run(system.id, relative, size, hashes.md5, hashes.sha1);
+}
+
+/**
+ * Réparation : .zip enregistré tel quel à la place d'un dossier (« pcsx2/bios », sans extension,
+ * ou dossier attendu par un cœur) : son contenu est extrait dans le dossier.
+ */
+function expandFolderZips(system, files, folders) {
+  let changed = false;
+  for (const f of files) {
+    const file = path.join(biosDir(system), ...f.path.split('/'));
+    const folder = folders.has(f.path.toLowerCase()) || !path.posix.extname(f.path);
+    if (!folder || !fs.existsSync(file) || !isZipFile(file)) continue;
+    try {
+      const content = folderZipContent(file, f.path);
+      const zipCopy = `${file}.zip-${process.pid}`;
+      fs.renameSync(file, zipCopy);
+      db.prepare('DELETE FROM bios WHERE id = ?').run(f.id);
+      for (const item of content) storeBios(system, item.relative, { data: item.data }, hashBuffer(item.data));
+      fs.rmSync(zipCopy, { force: true });
+      changed = true;
+    } catch {
+      // archive illisible : laissée telle quelle
+    }
+  }
+  return changed;
+}
+
 /** BIOS d'un système : fichiers présents (avec contrôle des empreintes) et BIOS attendus par ses cœurs. */
 export async function systemBios(systemId, { catalog: withCatalog = true } = {}) {
   const system = requireSystem(systemId);
-  const files = listBiosRows(system.id);
+  // Sans catalogue (applications) : uniquement les fichiers présents, sans requête vers libretro.
+  const catalog = withCatalog ? await expectedBios(system) : { cores: [], coreInfoAvailable: false, expected: [] };
+  const folders = new Set(catalog.expected.filter((e) => e.folder).map((e) => e.path.toLowerCase()));
+  let files = listBiosRows(system.id);
+  if (expandFolderZips(system, files, folders)) files = listBiosRows(system.id);
   // Fichiers envoyés avant l'enregistrement du SHA1 : calculé une fois.
   for (const f of files.filter((row) => !row.sha1)) {
     const file = path.join(biosDir(system), ...f.path.split('/'));
@@ -204,12 +304,12 @@ export async function systemBios(systemId, { catalog: withCatalog = true } = {})
     f.sha1 = (await hashBios(file)).sha1;
     db.prepare('UPDATE bios SET sha1 = ? WHERE id = ?').run(f.sha1, f.id);
   }
-  // Sans catalogue (applications) : uniquement les fichiers présents, sans requête vers libretro.
-  const catalog = withCatalog ? await expectedBios(system) : { cores: [], coreInfoAvailable: false, expected: [] };
   const byPath = new Map(files.map((f) => [f.path.toLowerCase(), f]));
   const expected = catalog.expected.map((e) => {
     const file = byPath.get(e.path.toLowerCase());
-    return { ...e, fileId: file?.id ?? null, present: Boolean(file) };
+    // Dossier : présent dès qu'il contient un fichier.
+    const inFolder = e.folder ? files.filter((f) => f.path.toLowerCase().startsWith(`${e.path.toLowerCase()}/`)) : [];
+    return { ...e, fileId: file?.id ?? null, present: Boolean(file) || inFolder.length > 0, fileCount: e.folder ? inFolder.length : undefined };
   });
   const expectedByPath = new Map(catalog.expected.map((e) => [e.path.toLowerCase(), e]));
   const extra = extraHashes();
@@ -228,7 +328,9 @@ export async function systemBios(systemId, { catalog: withCatalog = true } = {})
 /**
  * Enregistre des fichiers envoyés. Chemin : `targetPath` si fourni (un seul fichier), sinon le
  * chemin attendu dont le nom correspond (« dc_boot.bin » -> « dc/dc_boot.bin »), sinon le nom du fichier.
- * Un BIOS dont les empreintes sont connues doit y correspondre : sinon tout l'envoi est refusé.
+ * Pour un dossier attendu (« pcsx2/bios ») : un .zip est extrait dans le dossier, un autre fichier
+ * y est rangé sous son nom. Un BIOS dont les empreintes sont connues doit y correspondre : sinon
+ * tout l'envoi est refusé.
  */
 export async function addBiosFiles(systemId, uploads, targetPath) {
   const system = requireSystem(systemId);
@@ -237,10 +339,7 @@ export async function addBiosFiles(systemId, uploads, targetPath) {
   const byPath = new Map(expected.map((e) => [e.path.toLowerCase(), e]));
   const extra = extraHashes();
   const checked = [];
-  for (const upload of uploads) {
-    const name = path.basename(upload.originalName);
-    const relative = safeBiosPath(targetPath && uploads.length === 1 ? targetPath : byName.get(name.toLowerCase())?.path || name);
-    const hashes = await hashBios(upload.tempPath);
+  const check = (name, relative, hashes, source) => {
     const ref = byPath.get(relative.toLowerCase()) ?? acceptedHashes(relative, [], extra);
     if (hashStatus(hashes, ref) === 'mismatch') {
       throw new HttpError(422, 'errors.biosHashMismatch', {
@@ -251,20 +350,25 @@ export async function addBiosFiles(systemId, uploads, targetPath) {
         expected: [...ref.md5s.map((h) => `MD5 ${h}`), ...ref.sha1s.map((h) => `SHA1 ${h}`)].join(', '),
       });
     }
-    checked.push({ upload, relative, ...hashes });
+    checked.push({ relative, hashes, source });
+  };
+  for (const upload of uploads) {
+    const name = path.basename(upload.originalName);
+    const relative = safeBiosPath(targetPath && uploads.length === 1 ? targetPath : byName.get(name.toLowerCase())?.path || name);
+    const folder = byPath.get(relative.toLowerCase())?.folder;
+    if (folder && /\.zip$/i.test(name)) {
+      // Contenu du dossier : chaque fichier de l'archive devient un BIOS du dossier.
+      for (const item of folderZipContent(upload.tempPath, relative)) check(name, item.relative, hashBuffer(item.data), { data: item.data });
+    } else if (folder) {
+      const inFolder = safeBiosPath(`${relative}/${name}`);
+      check(name, inFolder, await hashBios(upload.tempPath), { tempPath: upload.tempPath });
+    } else {
+      check(name, relative, await hashBios(upload.tempPath), { tempPath: upload.tempPath });
+    }
   }
   const saved = [];
-  for (const { upload, relative, md5, sha1 } of checked) {
-    const dest = path.join(biosDir(system), ...relative.split('/'));
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.rmSync(dest, { force: true });
-    fs.renameSync(upload.tempPath, dest);
-    const size = fs.statSync(dest).size;
-    db.prepare(
-      `INSERT INTO bios (system_id, path, size, md5, sha1) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(system_id, path) DO UPDATE SET size = excluded.size, md5 = excluded.md5, sha1 = excluded.sha1,
-         added_at = datetime('now')`,
-    ).run(system.id, relative, size, md5, sha1);
+  for (const { relative, hashes, source } of checked) {
+    storeBios(system, relative, source, hashes);
     saved.push(relative);
   }
   return saved;

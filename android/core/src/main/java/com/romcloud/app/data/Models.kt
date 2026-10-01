@@ -94,6 +94,9 @@ data class Game(
     val genre: String? = null,
     val players: String? = null,
     val rating: Double? = null,
+    val crc32: String? = null,
+    val md5: String? = null,
+    val details: GameDetails = GameDetails(),
     val hasBoxart: Boolean = false,
     val hasScreenshot: Boolean = false,
     val addedAt: String = "",
@@ -105,6 +108,40 @@ data class Game(
     val mainGenre: String?
         get() = genre?.split(',', '/', ';')?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
 }
+
+/** Valeur propre à une région (« eu », « jp », « wor »…) : titre, date de sortie. */
+@Serializable
+data class RegionText(val region: String? = null, val text: String)
+
+@Serializable
+data class AgeRating(val type: String? = null, val text: String)
+
+@Serializable
+data class GameLink(val label: String, val url: String)
+
+/** Informations détaillées du jeu (scraping, nom de fichier No-Intro / Redump). */
+@Serializable
+data class GameDetails(
+    val otherTitles: List<RegionText> = emptyList(),
+    val releaseDates: List<RegionText> = emptyList(),
+    val regions: List<String> = emptyList(),
+    val languages: List<String> = emptyList(),
+    val series: String? = null,
+    val modes: List<String> = emptyList(),
+    val themes: List<String> = emptyList(),
+    val ageRatings: List<AgeRating> = emptyList(),
+    val serial: String? = null,
+    val romFlags: List<String> = emptyList(),
+    /** Jeu d'arcade : nom court MAME / FinalBurn Neo (« fatfury1 ») et jeu original d'un clone. */
+    val arcadeSet: String? = null,
+    val arcadeParent: String? = null,
+    val resolution: String? = null,
+    val rotation: String? = null,
+    val controls: String? = null,
+    val rumble: Boolean? = null,
+    val analog: Boolean? = null,
+    val links: List<GameLink> = emptyList(),
+)
 
 /** Données chargées, avec indication si elles proviennent du cache hors ligne. */
 data class Loaded<T>(val data: T, val offline: Boolean, val error: String? = null)

@@ -77,8 +77,19 @@ function dismissError(gameId) {
 }
 
 /** Télécharge `url` vers `target` (via « .part », avec reprise) ; `onBytes` reçoit les octets reçus. */
-async function fetchTo(url, target, expectedSize, signal, onBytes) {
+/**
+ * Crée le dossier de `target`. Un fichier qui porte le nom d'un de ses dossiers (ancien BIOS
+ * « pcsx2/bios » envoyé sous forme de .zip, devenu un dossier) est d'abord supprimé.
+ */
+function makeParentDirs(target) {
+  let dir = path.dirname(target);
+  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+  if (fs.existsSync(dir) && fs.statSync(dir).isFile()) fs.rmSync(dir);
   fs.mkdirSync(path.dirname(target), { recursive: true });
+}
+
+async function fetchTo(url, target, expectedSize, signal, onBytes) {
+  makeParentDirs(target);
   const part = `${target}.part`;
   let offset = fs.existsSync(part) ? fs.statSync(part).size : 0;
   if (offset > expectedSize) {
