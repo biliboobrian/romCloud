@@ -1,0 +1,7 @@
+{
+  "_comment": "Empreintes acceptées en plus des MD5 des fiches libretro-core-info, par nom de fichier : MD5 (32 caractères) ou SHA1 (40 caractères). Un BIOS envoyé sous l'un de ces noms est refusé s'il ne correspond à aucune. Complétable sans reconstruire l'image avec DATA_DIR/bios-hashes.json (même format).",
+  "_psx": "BIOS PlayStation v3.0 attendus par Beetle PSX (Japon, Amérique, Europe), qui contrôle le SHA1 : un autre fichier sous ces noms peut laisser l'écran noir.",
+  "scph5500.bin": ["8dd7d5296a650fac7319bce665a6a53c", "b05def971d8ec59f346f2d9ac21fb742e3eb6917"],
+  "scph5501.bin": ["490f666e1afb15b7362b406ed1cea246", "0555c6fae8906f3f09baf5988f00e55f88e9f30b"],
+  "scph5502.bin": ["32736f17079d0b2b7024407c39bd3050", "f6bc2d1f5eb6593de7d089c425ac681d6fffd3f0"]
+}

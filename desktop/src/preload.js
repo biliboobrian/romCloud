@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('romcloud', {
     options: call('launcher:options'),
     choose: call('launcher:choose'),
     play: call('launcher:play'),
+    resumable: call('launcher:resumable'),
     check: call('launcher:check'),
     describe: call('launcher:describe'),
   },
@@ -37,4 +38,9 @@ contextBridge.exposeInMainWorld('romcloud', {
   dialog: { pickFile: call('dialog:pickFile'), pickFolder: call('dialog:pickFolder') },
   shell: { showItem: call('shell:showItem'), openExternal: call('shell:openExternal') },
   app: { version: call('app:version') },
+  update: {
+    check: call('update:check'),
+    install: call('update:install'),
+    onProgress: (fn) => ipcRenderer.on('update:progress', (_e, payload) => fn(payload)),
+  },
 });

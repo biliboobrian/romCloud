@@ -81,8 +81,14 @@ function prepareRom(core, file) {
   return main || file;
 }
 
-/** Lance le jeu dans le moteur intégré (le cœur est téléchargé avant si besoin). */
-async function launch(system, game, file, core) {
+/** État de sauvegarde du jeu dans le moteur (« Sauvegarder et quitter », F2…). */
+const statePath = (core, file) => path.join(root(), 'states', core, `${path.parse(file).name}.state`);
+
+/**
+ * Lance le jeu dans le moteur intégré (le cœur est téléchargé avant si besoin) ; `resume` :
+ * reprend la partie à son état de sauvegarde.
+ */
+async function launch(system, game, file, core, { resume = false } = {}) {
   if (!available()) throw new AppError('errors.playerMissing', { path: playerPath() });
   const dll = await ensureCore(core);
   const rom = prepareRom(core, file);
@@ -93,10 +99,12 @@ async function launch(system, game, file, core) {
     systemDir: settings.biosDir(),
     saveDir: path.join(base, 'saves', core),
     stateDir: path.join(base, 'states', core),
+    stateName: path.parse(file).name,
     optionsFile: path.join(base, 'options', `${safe(system.id)}.cfg`),
     title: game.title || path.parse(file).name,
     language: settings.language(),
     windowed: false,
+    resume,
   });
   fs.mkdirSync(base, { recursive: true });
   const log = fs.openSync(path.join(base, 'player.log'), 'w');
@@ -112,4 +120,4 @@ async function launch(system, game, file, core) {
   });
 }
 
-module.exports = { playerPath, available, coreInstalled, ensureCore, prepareRom, launch };
+module.exports = { playerPath, available, coreInstalled, ensureCore, prepareRom, statePath, launch };

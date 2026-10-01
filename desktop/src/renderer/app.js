@@ -519,15 +519,15 @@
   const biosSize = (list) => formatSize(list.reduce((n, b) => n + b.size, 0));
 
   /** Joue, en proposant d'abord de télécharger les BIOS du système absents du PC. */
-  async function playChecked(system, game) {
+  async function playChecked(system, game, options) {
     const missing = await call(rc.bios.missing, system).catch(() => []);
-    if (!missing.length) return play(system, game);
+    if (!missing.length) return play(system, game, options);
     modal({
       title: t('bios.beforePlayTitle'),
       body: `<p>${esc(t('bios.beforePlayText', { n: missing.length, size: biosSize(missing) }))}</p>`,
       buttons: [
         { label: t('app.cancel'), kind: 'ghost', left: true },
-        { label: t('bios.playAnyway'), onClick: () => play(system, game) },
+        { label: t('bios.playAnyway'), onClick: () => play(system, game, options) },
         {
           label: t('bios.downloadAndPlay'),
           kind: 'primary',
@@ -541,11 +541,12 @@
     });
   }
 
-  async function play(system, game) {
+  /** Lance le jeu ; `options.resume` : reprend la partie sauvegardée (moteur intégré). */
+  async function play(system, game, options) {
     // Lancement plus long que d'habitude (cœur du moteur intégré à télécharger) : message d'attente.
     const waiting = setTimeout(() => toast(t('emu.preparing')), 700);
     try {
-      const result = await call(rc.launcher.play, system, game);
+      const result = await call(rc.launcher.play, system, game, options);
       if (result?.manual) showManualLaunch(result);
     } catch (err) {
       const key = err.info?.key;
@@ -752,12 +753,13 @@
       return;
     }
     const downloaded = new Set(await call(rc.library.downloaded, [system], [game]));
-    const [emu, localPath, missingBios, emulators, command] = await Promise.all([
+    const [emu, localPath, missingBios, emulators, command, resumable] = await Promise.all([
       call(rc.launcher.options, system),
       call(rc.library.path, system, game),
       system.biosCount ? call(rc.bios.missing, system).catch(() => []) : [],
       call(rc.emulators.list),
       call(rc.launcher.describe, system, game),
+      call(rc.launcher.resumable, system, game),
     ]);
     if (S.route.name !== 'game' || S.route.gameId !== gameId) return;
     const st = statusOf(game, downloaded);
@@ -786,7 +788,9 @@
         <p class="muted">${esc(t('download.progress', { bytes: formatSize(st.d.bytes), total: formatSize(st.d.total) }))}</p></div>
         <button class="btn" id="cancelBtn">${icon('close', 18)} ${esc(t('download.cancelPercent', { p: Math.round(st.progress * 100) }))}</button>`;
     } else if (st.kind === 'downloaded') {
-      actions = `<button class="btn primary big" id="playBtn">${icon('play')} ${esc(t('action.play'))}</button>
+      // Partie sauvegardée dans le moteur intégré : « Reprendre » d'abord, puis « Jouer » (nouvelle partie).
+      actions = `${resumable ? `<button class="btn primary big" id="resumeBtn">${icon('play')} ${esc(t('action.resume'))}</button>` : ''}
+        <button class="btn ${resumable ? '' : 'primary '}big" id="playBtn">${icon(resumable ? 'refresh' : 'play')} ${esc(t('action.play'))}</button>
         <button class="btn" id="folderBtn">${icon('folder', 18)} ${esc(t('detail.showInFolder'))}</button>
         <button class="btn danger" id="deleteBtn">${icon('trash', 18)} ${esc(t('detail.delete'))}</button>`;
     } else {
@@ -824,6 +828,7 @@
       </div>
     </div>`;
 
+    $('#resumeBtn')?.addEventListener('click', () => playChecked(system, game, { resume: true }));
     $('#playBtn')?.addEventListener('click', () => playChecked(system, game));
     $('#downloadBtn')?.addEventListener('click', () => startDownload(system, game, false, missingBios));
     $('#biosBtn')?.addEventListener('click', async () => {
@@ -1032,12 +1037,57 @@
     $('.topbar').classList.toggle('scrolled', e.target.scrollTop > 8);
   });
 
+  // ---------------------------------------------------------------------------
+  // Mise à jour de l'application (vérifiée au chargement)
+  // ---------------------------------------------------------------------------
+
+  async function checkUpdate() {
+    const update = await call(rc.update.check).catch(() => null);
+    if (!update) return;
+    modal({
+      title: t('update.title'),
+      body: `<p>${esc(t('update.text', { version: update.version, installed: update.installed }))}</p>
+        <p class="muted">${esc(t(update.portable ? 'update.portable' : 'update.installer', { size: formatSize(update.size) }))}</p>`,
+      buttons: [
+        { label: t('update.later'), kind: 'ghost' },
+        { label: t('update.install'), kind: 'primary', onClick: () => installUpdate(update) },
+      ],
+    });
+  }
+
+  async function installUpdate(update) {
+    const root = modal({
+      title: t('update.downloading', { version: update.version }),
+      body: `<div class="progress update-progress"><div style="width:0%"></div></div>
+        <p class="muted" id="updateBytes">${esc(formatSize(0))} / ${esc(formatSize(update.size))}</p>`,
+      buttons: [],
+    });
+    rc.update.onProgress(({ bytes, total }) => {
+      const bar = $('.progress > div', root);
+      if (bar) bar.style.width = `${Math.round((bytes / total) * 100)}%`;
+      const text = $('#updateBytes', root);
+      if (text) text.textContent = bytes >= total ? t('update.restarting') : `${formatSize(bytes)} / ${formatSize(total)}`;
+    });
+    try {
+      await call(rc.update.install); // RomCloud se ferme puis se relance une fois à jour
+    } catch (err) {
+      root.innerHTML = '';
+      toast(t('update.failed', { error: err.message }), { type: 'error' });
+    }
+  }
+
+  // Retour du jeu (moteur intégré fermé) : la fiche affiche « Reprendre » si la partie a été sauvegardée.
+  window.addEventListener('focus', () => {
+    if (S.route.name === 'game' && !$('#modalRoot').innerHTML) renderGame();
+  });
+
   (async function init() {
     S.settings = await call(rc.settings.get);
     window.I18N.setLanguage(S.settings.effectiveLanguage);
     $('#backBtn').title = t('app.back');
     S.downloads = await call(rc.downloads.states);
     render();
+    checkUpdate();
     if (S.settings.serverUrl) await loadSystems();
   })();
 })();

@@ -1,6 +1,0 @@
-{
-  "_comment": "MD5 acceptés en plus de ceux des fiches libretro-core-info (autres révisions d'un même BIOS), par nom de fichier. Complétable sans reconstruire l'image avec DATA_DIR/bios-md5.json (même format).",
-  "scph5500.bin": ["8dd7d5296a650fac7319bce665a6a53c"],
-  "scph5501.bin": ["924e392ed05558ffdb115408c263dccf"],
-  "scph5502.bin": ["9bb87c6b27f8dc7855e5b4a3fac71334"]
-}

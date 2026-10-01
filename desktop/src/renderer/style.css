@@ -116,6 +116,7 @@ main { flex: 1; overflow-y: auto; position: relative; overflow-anchor: none; }
 .overlay.badge img { position: static; height: 22px; width: auto; max-width: 90px; object-fit: contain; }
 .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0, 0, 0, 0.5); }
 .progress > div { height: 100%; background: var(--accent); width: 0; transition: width 0.2s; }
+.progress.update-progress { position: relative; height: 8px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
 .status-icon.ok { color: var(--ok); }
 .status-icon.remote { color: var(--muted); }
 .status-icon.error { color: var(--danger); }

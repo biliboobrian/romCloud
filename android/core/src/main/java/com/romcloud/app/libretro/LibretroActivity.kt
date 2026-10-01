@@ -14,6 +14,8 @@ import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,14 +23,13 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -56,11 +57,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -105,8 +106,8 @@ class LibretroActivity : ComponentActivity() {
     /** Écran « Options du cœur » du menu (null = fermé) et option dont on choisit la valeur. */
     private var options by mutableStateOf<List<CoreOption>?>(null)
     private var editing by mutableStateOf<CoreOption?>(null)
-    /** Groupes d'options repliés (gardés en revenant du choix d'une valeur). */
-    private var collapsed by mutableStateOf(emptySet<String>())
+    /** Onglet affiché des options (types d'options ; gardé en revenant du choix d'une valeur). */
+    private var optionTab by mutableStateOf(0)
     /** Configuration de manette en cours (depuis le menu). */
     private var mappingSession by mutableStateOf<MappingSession?>(null)
 
@@ -128,7 +129,9 @@ class LibretroActivity : ComponentActivity() {
     private val rom by lazy { File(intent.getStringExtra(EXTRA_ROM).orEmpty()) }
     private val isTv by lazy { packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
     private val sramFile by lazy { File(filesDir, "libretro/saves/$core/${rom.nameWithoutExtension}.srm") }
-    private val stateFile by lazy { File(filesDir, "libretro/states/$core/${rom.nameWithoutExtension}.state") }
+    private val stateFile by lazy { stateFile(this, core, rom) }
+    /** Reprendre la partie : l'état sauvegardé est chargé dès la première image. */
+    private val resume by lazy { intent.getBooleanExtra(EXTRA_RESUME, false) }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLanguage.wrap(newBase))
@@ -220,7 +223,12 @@ class LibretroActivity : ComponentActivity() {
         container.addView(view, 0, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         lifecycleScope.launch { view.getGLRetroErrors().collect(::onRetroError) }
         lifecycleScope.launch {
-            view.getGLRetroEvents().collect { if (it is GLRetroView.GLRetroEvents.FrameRendered) gameReady = true }
+            view.getGLRetroEvents().collect {
+                if (it is GLRetroView.GLRetroEvents.FrameRendered && !gameReady) {
+                    gameReady = true
+                    if (resume) resumeGame()
+                }
+            }
         }
         phase = Phase.Running
         showTouchPad = !isTv && !GamepadInput.hasGamepad()
@@ -315,6 +323,33 @@ class LibretroActivity : ComponentActivity() {
         closeMenu()
     }
 
+    /** Au lancement par « Reprendre » : état sauvegardé de la partie. */
+    private fun resumeGame() {
+        val view = retroView ?: return
+        toast = when {
+            !stateFile.isFile -> getString(R.string.libretro_no_state)
+            runCatching { view.unserializeState(stateFile.readBytes(), false) }.getOrDefault(false) ->
+                getString(R.string.libretro_state_loaded)
+            else -> getString(R.string.libretro_state_error)
+        }
+    }
+
+    /** Enregistre l'état de la partie (repris par « Reprendre » dans la fiche du jeu) puis quitte. */
+    private fun saveAndQuit() {
+        val view = retroView ?: return
+        val saved = runCatching {
+            val bytes = view.serializeState(false)
+            stateFile.parentFile?.mkdirs()
+            stateFile.writeBytes(bytes)
+        }.isSuccess
+        if (saved) {
+            finish()
+        } else {
+            toast = getString(R.string.libretro_state_error)
+            closeMenu()
+        }
+    }
+
     private fun loadState() {
         val view = retroView ?: return
         toast = when {
@@ -329,7 +364,21 @@ class LibretroActivity : ComponentActivity() {
     // ---- Options du cœur (émulation en pause : lues et modifiées hors du thread d'émulation) ----
 
     private fun openOptions() {
+        optionTab = 0
         options = readOptions()
+    }
+
+    /** L1 / R1 sur l'écran des options : onglet précédent / suivant. */
+    private fun switchOptionTab(keyCode: Int, action: Int): Boolean {
+        val direction = when (keyCode) {
+            KeyEvent.KEYCODE_BUTTON_L1 -> -1
+            KeyEvent.KEYCODE_BUTTON_R1 -> 1
+            else -> return false
+        }
+        val tabs = CoreOptionGroups.group(options ?: return false).size
+        if (editing != null || tabs < 2) return false
+        if (action == KeyEvent.ACTION_DOWN) optionTab = (optionTab + direction + tabs) % tabs
+        return true
     }
 
     private fun readOptions(): List<CoreOption> =
@@ -391,7 +440,10 @@ class LibretroActivity : ComponentActivity() {
         val view = retroView
         if (view == null || phase != Phase.Running) return super.dispatchKeyEvent(event)
         val mapping = event.device?.let(gamepadMappings::get)
-        if (menuOpen) return super.dispatchKeyEvent(mapping?.let { menuNavigation(event, it) } ?: event)
+        if (menuOpen) {
+            if (switchOptionTab(mapping?.keys?.get(event.keyCode) ?: event.keyCode, event.action)) return true
+            return super.dispatchKeyEvent(mapping?.let { menuNavigation(event, it) } ?: event)
+        }
 
         val key = if (mapping != null) mapping.retroKey(event.keyCode) else GamepadInput.retroKey(event.keyCode)
         if (key == null) {
@@ -530,7 +582,8 @@ class LibretroActivity : ComponentActivity() {
     private fun PauseMenu() {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
             Column(
-                Modifier.widthIn(max = 320.dp).fillMaxWidth().padding(24.dp),
+                // Défilement : téléphone en paysage, menu plus haut que l'écran.
+                Modifier.widthIn(max = 320.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 FocusedButton(stringResource(R.string.libretro_menu_resume), ::closeMenu, Modifier.fillMaxWidth())
@@ -554,6 +607,7 @@ class LibretroActivity : ComponentActivity() {
                         mappingSession = null
                     }
                 }
+                if (gameReady) MenuButton(stringResource(R.string.libretro_menu_save_quit), ::saveAndQuit)
                 MenuButton(stringResource(R.string.libretro_menu_quit), ::finish)
                 Text(
                     stringResource(R.string.libretro_menu_combo_hint),
@@ -612,53 +666,57 @@ class LibretroActivity : ComponentActivity() {
         val focus = remember { FocusRequester() }
         val groups = remember(list) { CoreOptionGroups.group(list) }
         val generalTitle = stringResource(R.string.libretro_options_general)
+        val tab = optionTab.coerceIn(0, (groups.size - 1).coerceAtLeast(0))
+        // Une liste par onglet : chacun repart du haut.
+        val listState = remember(tab) { LazyListState() }
         Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
-            LazyColumn(
-                Modifier.fillMaxSize().safeDrawingPadding(),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
-            ) {
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        TextButton(onClick = { options = null }, modifier = Modifier.focusRequester(focus)) {
-                            Text(stringResource(R.string.action_back))
-                        }
-                        Text(
-                            stringResource(R.string.libretro_options_title, core),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                        )
-                        if (list.isNotEmpty()) {
-                            TextButton(onClick = ::resetOptions) { Text(stringResource(R.string.libretro_options_reset)) }
-                        }
+            Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp, vertical = 16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { options = null }, modifier = Modifier.focusRequester(focus)) {
+                        Text(stringResource(R.string.action_back))
                     }
                     Text(
-                        stringResource(if (list.isEmpty()) R.string.libretro_options_none else R.string.libretro_options_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp),
+                        stringResource(R.string.libretro_options_title, core),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     )
+                    if (list.isNotEmpty()) {
+                        TextButton(onClick = ::resetOptions) { Text(stringResource(R.string.libretro_options_reset)) }
+                    }
                 }
-                groups.forEach { group ->
-                    val title = group.title ?: generalTitle
-                    val isCollapsed = title in collapsed
-                    if (groups.size > 1) {
-                        item(key = "group:$title") {
-                            ListItem(
-                                headlineContent = {
-                                    Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                                },
-                                trailingContent = {
-                                    Icon(if (isCollapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess, contentDescription = null)
-                                },
-                                supportingContent = { Text(pluralStringResource(R.plurals.libretro_options_count, group.options.size, group.options.size)) },
-                                colors = ListItemDefaults.colors(containerColor = Color.White.copy(alpha = 0.06f)),
-                                modifier = Modifier.padding(top = 8.dp).clickable {
-                                    collapsed = if (isCollapsed) collapsed - title else collapsed + title
-                                },
+                Text(
+                    stringResource(if (list.isEmpty()) R.string.libretro_options_none else R.string.libretro_options_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                if (groups.size > 1) {
+                    ScrollableTabRow(
+                        selectedTabIndex = tab,
+                        edgePadding = 0.dp,
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                    ) {
+                        groups.forEachIndexed { index, group ->
+                            Tab(
+                                selected = index == tab,
+                                onClick = { optionTab = index },
+                                text = { Text("${group.title ?: generalTitle} (${group.options.size})") },
+                                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                // Télécommande et manette : l'onglet qui reçoit le focus s'affiche.
+                                modifier = Modifier.onFocusChanged { if (it.isFocused) optionTab = index },
                             )
                         }
                     }
-                    if (!isCollapsed) OptionItems(group.options)
+                    Text(
+                        stringResource(R.string.libretro_options_tabs_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState) {
+                    OptionItems(groups.getOrNull(tab)?.options.orEmpty())
                 }
             }
         }
@@ -747,16 +805,23 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_ROM = "rom"
         private const val EXTRA_SYSTEM_DIR = "systemDir"
         private const val EXTRA_SYSTEM = "system"
+        private const val EXTRA_RESUME = "resume"
+
+        /** État de sauvegarde d'un jeu pour un cœur (« Sauvegarder l'état », « Sauvegarder et quitter »). */
+        fun stateFile(context: Context, core: String, rom: File): File =
+            File(context.filesDir, "libretro/states/$core/${rom.nameWithoutExtension}.state")
 
         /**
          * [systemId] : système du jeu (options du cœur mémorisées par système) ;
-         * [systemDir] : dossier des BIOS (dossier « system » libretro).
+         * [systemDir] : dossier des BIOS (dossier « system » libretro) ;
+         * [resume] : reprend la partie à son état sauvegardé.
          */
-        fun intent(context: Context, systemId: String, core: String, rom: File, systemDir: String): Intent =
+        fun intent(context: Context, systemId: String, core: String, rom: File, systemDir: String, resume: Boolean = false): Intent =
             Intent(context, LibretroActivity::class.java)
                 .putExtra(EXTRA_SYSTEM, systemId)
                 .putExtra(EXTRA_CORE, core)
                 .putExtra(EXTRA_ROM, rom.absolutePath)
                 .putExtra(EXTRA_SYSTEM_DIR, systemDir)
+                .putExtra(EXTRA_RESUME, resume)
     }
 }

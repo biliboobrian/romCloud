@@ -736,7 +736,8 @@ function renderBios(res) {
       const row = document.createElement('div');
       row.className = 'dup-row bios-row';
       const tag = `<span class="tag${e.required ? ' req' : ''}">${escapeHtml(t(e.required ? 'bios.required' : 'bios.optional'))}</span>`;
-      const details = [biosDescription(e), e.md5s?.length && `md5 ${e.md5s.join(' / ')}`].filter(Boolean).join(' · ');
+      const details = [biosDescription(e), e.md5s?.length && `md5 ${e.md5s.join(' / ')}`, e.sha1s?.length && `sha1 ${e.sha1s.join(' / ')}`]
+        .filter(Boolean).join(' · ');
       row.innerHTML = `<span class="bios-state ${e.present ? 'ok' : 'missing'}">${e.present ? '✓' : '✗'}</span>
         <span class="name"><code>${escapeHtml(e.path)}</code><br><span class="muted">${escapeHtml(details)}</span></span>
         ${tag}`;
@@ -757,9 +758,9 @@ function renderBios(res) {
     section(t('bios.onServer'), t('bios.onServerHint'), res.files.map((f) => {
       const row = document.createElement('div');
       row.className = 'dup-row bios-row';
-      const md5 = { ok: t('bios.md5ok'), mismatch: t('bios.md5mismatch') }[f.md5Status];
-      row.innerHTML = `<span class="name"><code>${escapeHtml(f.path)}</code><br><span class="muted">${formatSize(f.size)} · md5 ${escapeHtml(f.md5 || '?')}${f.description ? ` · ${escapeHtml(biosDescription(f))}` : ''}</span></span>
-        ${md5 ? `<span class="tag ${f.md5Status}">${escapeHtml(md5)}</span>` : ''}
+      const status = { ok: t('bios.hashOk'), mismatch: t('bios.hashMismatch') }[f.hashStatus];
+      row.innerHTML = `<span class="name"><code>${escapeHtml(f.path)}</code><br><span class="muted">${formatSize(f.size)} · md5 ${escapeHtml(f.md5 || '?')} · sha1 ${escapeHtml(f.sha1 || '?')}${f.description ? ` · ${escapeHtml(biosDescription(f))}` : ''}</span></span>
+        ${status ? `<span class="tag ${f.hashStatus}">${escapeHtml(status)}</span>` : ''}
         <a class="btn small" href="${withKey(`/api/bios/${f.id}/file`)}" download>${escapeHtml(t('bios.download'))}</a>
         <button class="btn small danger">${escapeHtml(t('bios.delete'))}</button>`;
       $('button', row).onclick = () => guard(async () => {

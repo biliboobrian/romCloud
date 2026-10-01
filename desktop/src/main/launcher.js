@@ -217,14 +217,25 @@ function check(system) {
   };
 }
 
+/** Partie à reprendre : moteur intégré choisi et état sauvegardé pour ce jeu et ce cœur. */
+function resumable(system, game) {
+  try {
+    const plan = prepare(system, game);
+    return Boolean(plan.builtin) && fs.existsSync(builtin.statePath(plan.core, plan.file));
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Lance le jeu. Renvoie { manual: true, emulator, file } quand l'émulateur a été ouvert seul
- * (l'interface indique alors comment ouvrir le jeu depuis son menu).
+ * Lance le jeu (`resume` : reprend la partie sauvegardée, moteur intégré). Renvoie
+ * { manual: true, emulator, file } quand l'émulateur a été ouvert seul (l'interface indique
+ * alors comment ouvrir le jeu depuis son menu).
  */
-async function play(system, game) {
+async function play(system, game, { resume = false } = {}) {
   const plan = prepare(system, game);
   if (plan.builtin) {
-    await builtin.launch(system, game, plan.file, plan.core);
+    await builtin.launch(system, game, plan.file, plan.core, { resume });
     return { manual: false };
   }
   if (plan.open) {
@@ -237,6 +248,6 @@ async function play(system, game) {
 }
 
 module.exports = {
-  tokenize, coreOf, cores, options, choose, coreDll, prepare, describe, check, play,
+  tokenize, coreOf, cores, options, choose, coreDll, prepare, describe, check, resumable, play,
   listEmulators, detectEmulators, setEmulatorPath, setEmulatorArgs, launchEmulator,
 };

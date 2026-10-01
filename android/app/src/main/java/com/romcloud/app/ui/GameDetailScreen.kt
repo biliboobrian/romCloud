@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -148,13 +149,27 @@ fun GameDetailScreen(
                     if (state.downloaded) {
                         Text(stringResource(R.string.available_on_device), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(
-                                onClick = { viewModel.play(activity)?.let { scope.launch { snackbar.showSnackbar(it) } } },
-                                modifier = Modifier.weight(1f).height(52.dp),
-                            ) {
-                                Icon(Icons.Filled.PlayArrow, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.action_play))
+                            val play = { resume: Boolean ->
+                                viewModel.play(activity, resume)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                            }
+                            // Partie sauvegardée dans l'émulateur intégré : « Reprendre » d'abord, puis « Jouer ».
+                            if (state.canResume) {
+                                Button(onClick = { play(true) }, modifier = Modifier.weight(1f).height(52.dp)) {
+                                    Icon(Icons.Filled.PlayArrow, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.action_resume_game))
+                                }
+                                OutlinedButton(onClick = { play(false) }, modifier = Modifier.weight(1f).height(52.dp)) {
+                                    Icon(Icons.Filled.Replay, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.action_play))
+                                }
+                            } else {
+                                Button(onClick = { play(false) }, modifier = Modifier.weight(1f).height(52.dp)) {
+                                    Icon(Icons.Filled.PlayArrow, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.action_play))
+                                }
                             }
                             OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.height(52.dp)) {
                                 Icon(Icons.Filled.Delete, stringResource(R.string.delete_from_device))

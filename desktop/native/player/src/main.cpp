@@ -2,7 +2,7 @@
 //
 //   romcloud-player --core <cœur.dll> --rom <jeu> [--system-dir <BIOS>] [--save-dir <dossier>]
 //                   [--state-dir <dossier>] [--options <fichier>] [--title <nom>] [--lang fr|en]
-//                   [--windowed]
+//                   [--windowed] [--resume] [--state-name <nom>]
 //
 // Fonctionnement calqué sur LibretroDroid : le cœur est chargé, le jeu démarré, puis une boucle
 // exécute retro_run au rythme de l'audio et affiche chaque image avec OpenGL. Codes de sortie :
@@ -29,11 +29,14 @@ namespace {
 
 struct Args {
   std::string core, rom, systemDir, saveDir, stateDir, options, title, lang = "fr";
+  std::string stateName;  // nom de l'état de sauvegarde (par défaut celui de la ROM)
   bool windowed = false;
+  bool resume = false;  // reprend la partie à l'état sauvegardé
   // Mode d'essai : fenêtre cachée, N images au plus vite, dernière image enregistrée en BMP.
-  std::string testFrames, screenshot, testSeconds;
+  std::string testFrames, screenshot, testSeconds, testOptions;
   bool testWindow = false;  // essai dans une fenêtre visible : affichage et menu capturés
   bool testMenu = false;
+  bool testSaveState = false;  // essai : état enregistré après les N images
 };
 
 Args parseArgs(int argc, char** argv) {
@@ -41,14 +44,17 @@ Args parseArgs(int argc, char** argv) {
   std::map<std::string, std::string*> values = {
       {"--core", &a.core},           {"--rom", &a.rom},         {"--system-dir", &a.systemDir},
       {"--save-dir", &a.saveDir},    {"--state-dir", &a.stateDir}, {"--options", &a.options},
-      {"--title", &a.title},         {"--lang", &a.lang},
+      {"--title", &a.title},         {"--lang", &a.lang},       {"--state-name", &a.stateName},
       {"--test-frames", &a.testFrames}, {"--screenshot", &a.screenshot}, {"--test-seconds", &a.testSeconds},
+      {"--test-options", &a.testOptions},  // essai : écran des options du cœur, onglet N
   };
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
     if (arg == "--windowed") a.windowed = true;
+    else if (arg == "--resume") a.resume = true;
     else if (arg == "--test-window") a.testWindow = true;
     else if (arg == "--test-menu") a.testMenu = true;
+    else if (arg == "--test-save-state") a.testSaveState = true;
     else if (values.count(arg) && i + 1 < argc) *values[arg] = argv[++i];
   }
   return a;
@@ -68,7 +74,9 @@ class Player {
     return suffix == std::string::npos ? name : name.substr(0, suffix);
   }
   std::string sramPath() const { return joinPath(args_.saveDir, baseName(args_.rom) + ".srm"); }
-  std::string statePath() const { return joinPath(args_.stateDir, baseName(args_.rom) + ".state"); }
+  std::string statePath() const {
+    return joinPath(args_.stateDir, (args_.stateName.empty() ? baseName(args_.rom) : args_.stateName) + ".state");
+  }
 
   int fail(const std::string& message);
   bool loadGame(std::string& error);
@@ -220,6 +228,15 @@ void Player::onMenuAction(MenuAction action) {
       closeMenu();
       break;
     case MenuAction::Quit: quit_ = true; break;
+    case MenuAction::SaveQuit:
+      // Quitte seulement si l'état a bien été enregistré.
+      if (saveState()) {
+        quit_ = true;
+      } else {
+        toast(menu_.tr("state_error"));
+        closeMenu();
+      }
+      break;
     case MenuAction::ToggleSmooth:
       video_.setSmooth(!video_.smooth());
       g.options.setSetting("romcloud_smooth", video_.smooth() ? "true" : "false");
@@ -264,6 +281,9 @@ bool Player::handleEvents() {
           case SDLK_RIGHT: nav = Nav::Right; break;
           case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_SPACE: nav = Nav::Confirm; break;
           case SDLK_ESCAPE: case SDLK_BACKSPACE: case SDLK_F1: nav = Nav::Back; break;
+          case SDLK_PAGEUP: nav = Nav::TabPrev; break;
+          case SDLK_PAGEDOWN: nav = Nav::TabNext; break;
+          case SDLK_TAB: nav = (e.key.keysym.mod & KMOD_SHIFT) ? Nav::TabPrev : Nav::TabNext; break;
           default: continue;
         }
         onMenuAction(menu_.handle(nav, menuState()));
@@ -286,6 +306,8 @@ bool Player::handleEvents() {
           case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: nav = Nav::Right; break;
           case SDL_CONTROLLER_BUTTON_A: nav = Nav::Confirm; break;  // bouton du bas
           case SDL_CONTROLLER_BUTTON_B: nav = Nav::Back; break;     // bouton de droite
+          case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: nav = Nav::TabPrev; break;
+          case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: nav = Nav::TabNext; break;
           default: continue;
         }
         onMenuAction(menu_.handle(nav, menuState()));
@@ -373,6 +395,14 @@ int Player::run() {
     return fail(menu_.tr("video_failed") + "\n" + error);
   }
   input_.init();
+  loadSram();  // avant l'état de sauvegarde, qui la contient aussi
+  if (args_.resume) {
+    // Une image d'abord : certains cœurs n'acceptent un état qu'une fois le jeu démarré.
+    runFrame();
+    const char* result = !fileExists(statePath()) ? "no_state" : loadState() ? "state_loaded" : "state_error";
+    logf("Reprise de la partie (%s) : %s", statePath().c_str(), result);
+    toast(menu_.tr(result));
+  }
   if (testFrames) {
     for (int i = 0; i < testFrames; i++) {
       runFrame();
@@ -383,23 +413,27 @@ int Player::run() {
     }
     bool saved = true;
     if (args_.testWindow) {
-      if (args_.testMenu) menu_.open();
+      if (args_.testMenu || !args_.testOptions.empty()) menu_.open();
+      if (!args_.testOptions.empty()) {
+        menu_.openOptions();
+        for (int i = atoi(args_.testOptions.c_str()); i > 0; i--) menu_.handle(Nav::TabNext, menuState());
+      }
       present();  // image affichée (et menu), relue avant l'échange des tampons
       if (!args_.screenshot.empty()) {
         overlay_.clear();
-        if (args_.testMenu) menu_.render(overlay_, menuState());
-        video_.present(args_.testMenu ? overlay_.data() : nullptr, overlay_.width(), overlay_.height(), false);
+        if (menu_.isOpen()) menu_.render(overlay_, menuState());
+        video_.present(menu_.isOpen() ? overlay_.data() : nullptr, overlay_.width(), overlay_.height(), false);
         saved = video_.saveWindow(args_.screenshot);
       }
     } else if (!args_.screenshot.empty()) {
       saved = video_.saveFrame(args_.screenshot);
     }
+    if (args_.testSaveState) logf("Essai : état %s", saveState() ? "enregistré" : "impossible");
     logf("Essai : %d images exécutées, capture %s", testFrames, saved ? "enregistrée" : "impossible");
     shutdown();
     return saved ? 0 : 1;
   }
   audio_.open(g.av.timing.sample_rate);
-  loadSram();
   toast(menu_.tr("menu_hint"));
 
   const double freq = (double)SDL_GetPerformanceFrequency();

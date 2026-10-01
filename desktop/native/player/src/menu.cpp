@@ -24,6 +24,7 @@ static const struct {
     {"disk", "Disque", "Disc"},
     {"smooth", "Lissage de l'image", "Smooth image"},
     {"fullscreen", "Plein écran", "Fullscreen"},
+    {"save_quit", "Sauvegarder et quitter", "Save and quit"},
     {"quit", "Quitter", "Quit"},
     {"yes", "Oui", "Yes"},
     {"no", "Non", "No"},
@@ -33,6 +34,8 @@ static const struct {
      "Saved for this system. Some apply after restarting the game."},
     {"options_none", "Ce cœur n'a pas d'options.", "This core has no options."},
     {"options_reset", "Réinitialiser toutes les options", "Reset all options"},
+    {"options_general", "Général", "General"},
+    {"options_tabs_hint", "LB / RB ou Pg. préc. / Pg. suiv. : onglet", "LB / RB or Page Up / Page Down: tab"},
     {"state_saved", "État sauvegardé", "State saved"},
     {"state_loaded", "État chargé", "State loaded"},
     {"state_error", "Impossible de sauvegarder ou de charger l'état", "The state could not be saved or loaded"},
@@ -60,13 +63,20 @@ void Menu::open() {
   selected_ = 0;
 }
 
-int Menu::itemCount(const MenuState& state) const { return state.diskCount > 1 ? 9 : 8; }
+void Menu::openOptions() {
+  screen_ = Screen::Options;
+  optionTab_ = 0;
+  optionSelected_ = 0;
+  optionScroll_ = 0;
+}
+
+int Menu::itemCount(const MenuState& state) const { return state.diskCount > 1 ? 10 : 9; }
 
 Menu::Item Menu::itemAt(int index, const MenuState& state) const {
   static const Item withDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options,
-                                  Item::Disk, Item::Smooth, Item::Fullscreen, Item::Quit};
+                                  Item::Disk, Item::Smooth, Item::Fullscreen, Item::SaveQuit, Item::Quit};
   static const Item withoutDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset,
-                                     Item::Options, Item::Smooth, Item::Fullscreen, Item::Quit};
+                                     Item::Options, Item::Smooth, Item::Fullscreen, Item::SaveQuit, Item::Quit};
   return state.diskCount > 1 ? withDisk[index] : withoutDisk[index];
 }
 
@@ -81,6 +91,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
       return tr("disk") + " : " + std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
     case Item::Smooth: return tr("smooth") + " : " + tr(state.smooth ? "yes" : "no");
     case Item::Fullscreen: return tr("fullscreen") + " : " + tr(state.fullscreen ? "yes" : "no");
+    case Item::SaveQuit: return tr("save_quit");
     case Item::Quit: return tr("quit");
   }
   return {};
@@ -88,17 +99,29 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
 
 MenuAction Menu::handle(Nav nav, const MenuState& state) {
   if (screen_ == Screen::Options) {
-    int count = (int)g.options.list().size() + 1;  // + « Réinitialiser »
+    const auto groups = g.options.groups();
+    const int tabs = std::max(1, (int)groups.size());
+    optionTab_ = std::min(optionTab_, tabs - 1);
+    const std::vector<size_t> none;
+    const std::vector<size_t>& shown = groups.empty() ? none : groups[(size_t)optionTab_].indices;
+    int count = (int)shown.size() + 1;  // + « Réinitialiser »
+    optionSelected_ = std::min(optionSelected_, count - 1);
     switch (nav) {
       case Nav::Up: optionSelected_ = (optionSelected_ + count - 1) % count; break;
       case Nav::Down: optionSelected_ = (optionSelected_ + 1) % count; break;
+      case Nav::TabPrev:
+      case Nav::TabNext:
+        optionTab_ = (optionTab_ + (nav == Nav::TabPrev ? tabs - 1 : 1)) % tabs;
+        optionSelected_ = 0;
+        optionScroll_ = 0;
+        break;
       case Nav::Left:
       case Nav::Right:
       case Nav::Confirm:
         if (optionSelected_ == 0) {
           if (nav == Nav::Confirm) g.options.resetAll();
         } else {
-          g.options.cycle((size_t)optionSelected_ - 1, nav == Nav::Left ? -1 : 1);
+          g.options.cycle(shown[(size_t)optionSelected_ - 1], nav == Nav::Left ? -1 : 1);
         }
         break;
       case Nav::Back: screen_ = Screen::Main; break;
@@ -113,6 +136,8 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
     case Nav::Up: selected_ = (selected_ + count - 1) % count; return MenuAction::None;
     case Nav::Down: selected_ = (selected_ + 1) % count; return MenuAction::None;
     case Nav::Back: return MenuAction::Resume;
+    case Nav::TabPrev:
+    case Nav::TabNext: return MenuAction::None;
     case Nav::Left:
     case Nav::Right:
       if (item == Item::Disk) return nav == Nav::Left ? MenuAction::DiskPrev : MenuAction::DiskNext;
@@ -126,13 +151,12 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
         case Item::LoadState: return MenuAction::LoadState;
         case Item::Reset: return MenuAction::Reset;
         case Item::Options:
-          screen_ = Screen::Options;
-          optionSelected_ = 0;
-          optionScroll_ = 0;
+          openOptions();
           return MenuAction::None;
         case Item::Disk: return MenuAction::DiskNext;
         case Item::Smooth: return MenuAction::ToggleSmooth;
         case Item::Fullscreen: return MenuAction::ToggleFullscreen;
+        case Item::SaveQuit: return MenuAction::SaveQuit;
         case Item::Quit: return MenuAction::Quit;
       }
   }
@@ -163,15 +187,47 @@ void Menu::render(Canvas& c, const MenuState& state) const {
 
 void Menu::renderOptions(Canvas& c) const {
   const auto& list = g.options.list();
+  const auto groups = g.options.groups();
+  const int tab = std::min(optionTab_, std::max(0, (int)groups.size() - 1));
+  const std::vector<size_t> none;
+  const std::vector<size_t>& shown = groups.empty() ? none : groups[(size_t)tab].indices;
   int y = 20;
   c.text(24, y, tr("options_title") + " — " + core_, 2, kText);
   y += 22;
   c.text(24, y, Canvas::fit(tr(list.empty() ? "options_none" : "options_hint"), 1, c.width() - 48), 1, kMuted);
   y += 18;
 
+  if (groups.size() > 1) {
+    // Barre d'onglets, décalée pour que l'onglet affiché reste visible.
+    std::vector<std::string> labels;
+    std::vector<int> starts;
+    int x = 0;
+    for (const auto& group : groups) {
+      labels.push_back((group.title.empty() ? tr("options_general") : group.title) + " (" +
+                       std::to_string(group.indices.size()) + ")");
+      starts.push_back(x);
+      x += Canvas::measure(labels.back(), 1) + 16;
+    }
+    const int left = 16, right = c.width() - 16;
+    int shift = std::max(0, starts[(size_t)tab] + Canvas::measure(labels[(size_t)tab], 1) + 16 - (right - left));
+    for (size_t i = 0; i < groups.size(); i++) {
+      int tx = left + starts[i] - shift, width = Canvas::measure(labels[i], 1) + 16;
+      if (tx < left || tx + width > right) continue;
+      bool sel = (int)i == tab;
+      if (sel) {
+        c.fill(tx, y - 4, width - 4, 15, kSelection);
+        c.fill(tx, y + 11, width - 4, 2, kAccent);
+      }
+      c.text(tx + 6, y, labels[i], 1, sel ? rgba(255, 255, 255) : kMuted);
+    }
+    y += 16;
+    c.text(24, y, tr("options_tabs_hint"), 1, kMuted);
+    y += 16;
+  }
+
   const int lineHeight = 14;
   int visible = (c.height() - y - 26) / lineHeight;
-  int count = (int)list.size() + 1;
+  int count = (int)shown.size() + 1;
   if (optionSelected_ < optionScroll_) optionScroll_ = optionSelected_;
   if (optionSelected_ >= optionScroll_ + visible) optionScroll_ = optionSelected_ - visible + 1;
 
@@ -181,8 +237,8 @@ void Menu::renderOptions(Canvas& c) const {
     if (row == 0) {
       c.text(24, y, tr("options_reset"), 1, sel ? rgba(255, 255, 255) : kAccent);
     } else {
-      const CoreOption& o = list[(size_t)row - 1];
-      std::string value = "< " + o.value + " >";
+      const CoreOption& o = list[shown[(size_t)row - 1]];
+      std::string value = "< " + o.display() + " >";
       int valueWidth = Canvas::measure(value, 1);
       int right = c.width() - 24;
       c.text(right - valueWidth, y, value, 1, o.value == o.defaultValue() ? kText : kAccent);

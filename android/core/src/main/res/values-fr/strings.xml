@@ -243,6 +243,10 @@
     <!-- APK des émulateurs -->
     <string name="apk_available">Disponible sur votre serveur RomCloud : %1$s %2$s (%3$s).</string>
     <string name="apk_not_on_server">Absent de votre serveur RomCloud : installez-le depuis le Play Store.</string>
+    <string name="update_title">Mise à jour de RomCloud</string>
+    <string name="update_text">RomCloud %1$s est disponible (version installée : %2$s, téléchargement : %3$s). La mise à jour conserve vos réglages et vos jeux téléchargés.</string>
+    <string name="action_update">Mettre à jour</string>
+    <string name="action_later">Plus tard</string>
     <string name="action_install_from_server">Installer depuis RomCloud</string>
     <string name="apk_downloading_title">Téléchargement de %1$s</string>
     <string name="apk_permission_title">Autoriser l’installation d’applications</string>
@@ -270,6 +274,8 @@
     <string name="libretro_menu_reset">Redémarrer le jeu</string>
     <string name="libretro_menu_show_touchpad">Afficher la manette tactile</string>
     <string name="libretro_menu_hide_touchpad">Masquer la manette tactile</string>
+    <string name="libretro_menu_save_quit">Sauvegarder et quitter</string>
+    <string name="action_resume_game">Reprendre</string>
     <string name="libretro_menu_quit">Quitter</string>
     <string name="libretro_state_saved">État sauvegardé</string>
     <string name="libretro_state_loaded">État chargé</string>
@@ -283,11 +289,7 @@
     <string name="libretro_options_reset_done">Options par défaut rétablies</string>
     <string name="libretro_options_default">Par défaut</string>
     <string name="libretro_options_general">Général</string>
-    <plurals name="libretro_options_count">
-        <item quantity="one">%1$d option</item>
-        <item quantity="many">%1$d options</item>
-        <item quantity="other">%1$d options</item>
-    </plurals>
+    <string name="libretro_options_tabs_hint">L1 / R1 : onglet précédent / suivant</string>
     <string name="libretro_crash_title">L’émulateur intégré s’est arrêté</string>
     <string name="libretro_crash_text">%1$s (cœur %2$s) s’est arrêté brutalement. Partagez le rapport pour aider à corriger le problème, ou essayez un autre cœur ou RetroArch pour ce système.</string>
     <string name="action_share_report">Partager le rapport</string>

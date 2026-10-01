@@ -5,6 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.romcloud.app.data.ApiClient
 import com.romcloud.app.data.ApkInstaller
+import com.romcloud.app.data.AppUpdater
 import com.romcloud.app.data.DownloadService
 import com.romcloud.app.data.Downloader
 import com.romcloud.app.data.LocalLibrary
@@ -45,6 +46,8 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         private set
     lateinit var apkInstaller: ApkInstaller
         private set
+    lateinit var updater: AppUpdater
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -56,6 +59,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         downloader = Downloader(this, api, library, appScope)
         launcher = GameLauncher(this, settings)
         apkInstaller = ApkInstaller(this, api, appScope)
+        updater = AppUpdater(this, api)
         DownloadService.createChannel(this)
     }
 
