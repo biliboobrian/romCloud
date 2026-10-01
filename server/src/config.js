@@ -27,8 +27,12 @@ export const config = {
   romsDir: path.resolve(dataDir, env.ROMS_DIR || 'roms'),
   mediaDir: path.join(dataDir, 'media'),
   dbFile: path.join(dataDir, 'romcloud.db'),
-  // Si défini, toutes les routes /api exigent "Authorization: Bearer <API_KEY>" (ou ?key=).
+  // Clé des applications (Windows, Android, TV) : lecture seule (requêtes GET) si ADMIN_KEY est
+  // définie, sinon accès complet. Envoyée par "Authorization: Bearer <clé>" (ou ?key=).
   apiKey: env.API_KEY || '',
+  // Clé de l'interface web d'administration : accès complet (envoi, suppression, scraping…).
+  // Sans elle, API_KEY sert aux deux, comme avant.
+  adminKey: env.ADMIN_KEY || '',
   // Langue par défaut (fr | en) : journal du serveur et clients sans en-tête Accept-Language.
   language: (env.DEFAULT_LANGUAGE || 'en').toLowerCase(),
   // Taille max. d'un fichier envoyé depuis l'interface web (en Mo).

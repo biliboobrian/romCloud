@@ -10,7 +10,7 @@ import { libretroMetadata, scrapeLibretro, titleFromLibretroName } from './libre
 import { zipEntries, zipMainEntry } from './rom-identity.js';
 import { findArcadeGame, isArcadeSystem } from './arcade.js';
 import { scrapeScreenScraper } from './screenscraper.js';
-import { scrapeWikipedia } from './wikipedia.js';
+import { scrapeWikipedia, wikidataFacts } from './wikipedia.js';
 
 export { QuotaError } from './screenscraper.js';
 
@@ -131,21 +131,41 @@ export async function scrapeGame(gameId, source = 'auto') {
     if (!usedSources.includes('fbneo')) usedSources.push('fbneo');
   }
 
-  // Pas de résumé (source Libretro, ou jeu sans synopsis sur ScreenScraper) : Wikipedia, dont
-  // l'article est aussi ajouté aux liens.
-  if (meta && source !== 'screenscraper') {
+  // Wikipedia : résumé manquant et lien vers l'article. Jeu introuvable ailleurs (fichier mal
+  // nommé) : l'article l'identifie (titre officiel, image, Wikidata), et libretro est réinterrogé
+  // avec le titre officiel pour les images.
+  if (source !== 'screenscraper') {
     try {
+      const unidentified = !meta;
       const wiki = await scrapeWikipedia({
-        title: meta.title || row.title,
+        title: meta?.title || row.title,
         system: system.name,
         languages: config.screenscraper.languages,
+        loose: unidentified,
       });
       if (wiki) {
-        if (!meta.description && !row.description) {
-          meta.description = wiki.text;
-          usedSources.push('wikipedia');
-        }
+        meta ||= { media: {} };
+        if (!meta.description && !row.description) meta.description = wiki.text;
         meta.details = mergeDetails(meta.details, { links: [{ label: 'Wikipedia', url: wiki.url }] });
+        if (unidentified) {
+          meta.title = wiki.title;
+          const facts = await wikidataFacts(wiki.wikidataId, config.screenscraper.languages).catch(() => null);
+          if (facts) {
+            for (const key of ['developer', 'publisher', 'genre', 'releaseDate']) meta[key] ||= facts[key];
+            meta.details = mergeDetails(meta.details, { modes: facts.modes });
+          }
+          if (useLibretro && system.libretroName) {
+            const lr = await scrapeLibretro({ system, fileName: `${wiki.title}.x`, crc32: null }).catch(() => null);
+            if (lr) {
+              meta.media.boxart ||= lr.media.boxart;
+              meta.media.screenshot ||= lr.media.screenshot;
+              if (!usedSources.includes('libretro')) usedSources.push('libretro');
+            }
+          }
+          // Image de l'article (souvent la jaquette) à défaut d'autre.
+          meta.media.boxart ||= wiki.image;
+        }
+        if (!usedSources.includes('wikipedia')) usedSources.push('wikipedia');
       }
     } catch (err) {
       errors.push(err.message);

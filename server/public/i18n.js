@@ -204,7 +204,8 @@ const dict = {
     'scrape.onlyMissing': 'Scrape only the games not scraped yet?\n\nOK = only the missing ones, Cancel = re-scrape everything.',
     'scrape.started': 'Scraping started ({n} game(s))',
 
-    'key.prompt': 'API key of the RomCloud server:',
+    'key.prompt': 'Administration key of the RomCloud server (ADMIN_KEY, or API_KEY if ADMIN_KEY is not set):',
+    'key.adminRequired': 'This key only gives read access: enter the administration key (ADMIN_KEY)',
     'key.required': 'API key required',
     'errors.http': 'Error {status}',
   },
@@ -406,7 +407,8 @@ const dict = {
     'scrape.onlyMissing': 'Scraper uniquement les jeux pas encore scrapés ?\n\nOK = seulement les manquants, Annuler = tout re-scraper.',
     'scrape.started': 'Scraping lancé ({n} jeu(x))',
 
-    'key.prompt': 'Clé d’API du serveur RomCloud :',
+    'key.prompt': 'Clé d’administration du serveur RomCloud (ADMIN_KEY, ou API_KEY si ADMIN_KEY n’est pas définie) :',
+    'key.adminRequired': 'Cette clé ne donne accès qu’en lecture : saisissez la clé d’administration (ADMIN_KEY)',
     'key.required': 'Clé d’API requise',
     'errors.http': 'Erreur {status}',
   },

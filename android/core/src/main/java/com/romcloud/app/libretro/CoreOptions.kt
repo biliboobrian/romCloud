@@ -28,6 +28,17 @@ internal data class CoreOption(val key: String, val label: String, val values: L
     }
 }
 
+/**
+ * Options du cœur imposées par le jeu, appliquées sans valeur choisie par l'utilisateur pour le
+ * système : cartouche Amstrad GX4000 / CPC+ (.cpr) avec cap32 -> modèle CPC 6128+, seul à les lire.
+ */
+internal object GameOptionDefaults {
+    fun forGame(core: String, game: java.io.File): Map<String, String> = when {
+        core == "cap32" && game.extension.equals("cpr", ignoreCase = true) -> mapOf("cap32_model" to "6128+ (experimental)")
+        else -> emptyMap()
+    }
+}
+
 /** Groupe d'options affiché sous un même titre ; [title] null = options générales. */
 internal data class CoreOptionGroup(val title: String?, val options: List<CoreOption>)
 

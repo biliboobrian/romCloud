@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "audio.h"
@@ -116,6 +117,18 @@ static uintptr_t RETRO_CALLCONV currentFramebuffer() { return g.video ? g.video-
 // ---------------------------------------------------------------------------
 
 static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
+  // Diagnostic : ROMCLOUD_TRACE=1 journalise chaque appel du cœur au moteur.
+  static const bool trace = getenv("ROMCLOUD_TRACE") != nullptr;
+  if (trace) logf("[env] %u", cmd & 0xffff);
+  // Les commandes qui lisent ou remplissent une structure exigent un pointeur ; certains cœurs
+  // passent nullptr pour « aucun » (Genesis Plus GX : pas de changement de disque sur cartouche).
+  if (!data) {
+    if (cmd == RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE) {
+      g.hasDiskControl = false;
+      return true;
+    }
+    if (cmd != RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT) return false;
+  }
   switch (cmd) {
     case RETRO_ENVIRONMENT_GET_CAN_DUPE:
       *static_cast<bool*>(data) = true;

@@ -345,4 +345,7 @@
     <string name="region_world">Monde</string>
     <string name="info_arcade_set">Jeu MAME / FBNeo</string>
     <string name="info_arcade_clone">clone de %1$s</string>
+    <string name="libretro_updating_core">Mise à jour du cœur %1$s…</string>
+    <string name="libretro_crash_reset">Réinitialiser le cœur</string>
+    <string name="libretro_crash_reset_done">Le cœur %1$s sera téléchargé à nouveau, avec ses options par défaut, au prochain lancement.</string>
 </resources>

@@ -27,5 +27,6 @@ app.listen(config.port, config.host, () => {
   for (const a of addresses) console.log(`  → ${a}`);
   console.log(t(defaultLanguage, 'log.roms', { dir: config.romsDir }));
   console.log(t(defaultLanguage, config.apiKey ? 'log.apiKeyOn' : 'log.apiKeyOff'));
+  console.log(t(defaultLanguage, config.adminKey ? 'log.adminKeyOn' : 'log.adminKeyOff'));
   console.log(t(defaultLanguage, screenscraperEnabled() ? 'log.ssOn' : 'log.ssOff'));
 });

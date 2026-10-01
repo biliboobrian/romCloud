@@ -11,7 +11,7 @@ import java.util.Locale
 import kotlin.concurrent.thread
 
 /** Arrêt brutal de l'émulateur intégré, à signaler à l'utilisateur au retour dans l'application. */
-internal data class CrashReport(val core: String, val game: String, val text: String)
+internal data class CrashReport(val core: String, val game: String, val text: String, val systemId: String = "")
 
 /**
  * Rapports de plantage de l'émulateur intégré. Un plantage d'un cœur (code natif) tue le processus
@@ -103,7 +103,7 @@ internal object CrashReports {
             appendLine("--- Journal (dernières lignes) ---")
             log(context).takeIf { it.isFile }?.readLines()?.takeLast(TAIL_LINES)?.forEach { appendLine(it) }
         }
-        return CrashReport(info["core"].orEmpty(), File(info["game"].orEmpty()).name, text)
+        return CrashReport(info["core"].orEmpty(), File(info["game"].orEmpty()).name, text, info["system"].orEmpty())
     }
 
     private fun isRunning(context: Context, pid: Int): Boolean =

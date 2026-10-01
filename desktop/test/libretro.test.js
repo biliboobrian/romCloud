@@ -96,3 +96,10 @@ test('arguments du moteur intégré : reprise de la partie', () => {
   assert.ok(args.includes('--resume'));
   assert.ok(!libretro.playerArgs(base).includes('--resume'));
 });
+
+test('options imposées par le jeu : cartouche .cpr avec cap32 -> CPC 6128+', () => {
+  assert.deepEqual(libretro.gameOptionDefaults('cap32', 'D:\\Jeux\\Pang.cpr'), { cap32_model: '6128+ (experimental)' });
+  assert.deepEqual(libretro.gameOptionDefaults('cap32', 'D:\\Jeux\\Disque.dsk'), {});
+  const args = libretro.playerArgs({ dll: 'c.dll', rom: 'Pang.cpr', optionDefaults: { cap32_model: '6128+ (experimental)' } });
+  assert.equal(args[args.indexOf('--option-default') + 1], 'cap32_model=6128+ (experimental)');
+});

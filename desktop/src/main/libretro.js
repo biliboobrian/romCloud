@@ -20,6 +20,15 @@ function needsExtraction(core, file) {
   return path.extname(file).toLowerCase() === '.zip' && !ARCHIVE_CORES.some((prefix) => core.startsWith(prefix));
 }
 
+/**
+ * Options du cœur imposées par le jeu, appliquées sans valeur choisie par l'utilisateur :
+ * cartouche Amstrad GX4000 / CPC+ (.cpr) avec cap32 -> modèle CPC 6128+, seul à les lire.
+ */
+function gameOptionDefaults(core, file) {
+  if (core === 'cap32' && path.extname(file).toLowerCase() === '.cpr') return { cap32_model: '6128+ (experimental)' };
+  return {};
+}
+
 /** Fichier principal d'un jeu à plusieurs fichiers (liste de disques, image CD), sinon le plus gros. */
 const MAIN_EXTENSIONS = ['.m3u', '.cue', '.gdi', '.ccd', '.chd', '.iso'];
 
@@ -42,7 +51,7 @@ function safeEntryPath(dir, name) {
  * Arguments de romcloud-player.exe. `stateName` : nom de l'état de sauvegarde (celui du jeu, même
  * si la ROM passée est extraite d'un .zip) ; `resume` : reprend la partie à cet état.
  */
-function playerArgs({ dll, rom, systemDir, saveDir, stateDir, stateName, optionsFile, title, language, windowed, resume }) {
+function playerArgs({ dll, rom, systemDir, saveDir, stateDir, stateName, optionsFile, title, language, windowed, resume, optionDefaults = {} }) {
   const args = [
     '--core', dll,
     '--rom', rom,
@@ -54,9 +63,10 @@ function playerArgs({ dll, rom, systemDir, saveDir, stateDir, stateName, options
     '--lang', language,
   ];
   if (stateName) args.push('--state-name', stateName);
+  for (const [key, value] of Object.entries(optionDefaults)) args.push('--option-default', `${key}=${value}`);
   if (windowed) args.push('--windowed');
   if (resume) args.push('--resume');
   return args;
 }
 
-module.exports = { BUILDBOT, validCore, coreDllName, coreUrl, needsExtraction, mainEntry, safeEntryPath, playerArgs };
+module.exports = { BUILDBOT, validCore, coreDllName, coreUrl, needsExtraction, mainEntry, safeEntryPath, gameOptionDefaults, playerArgs };
