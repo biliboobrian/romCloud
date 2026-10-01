@@ -21,9 +21,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -180,8 +184,10 @@ class LibretroActivity : ComponentActivity() {
                 return
             }
             val cores = LibretroCores(this)
-            val coreFile = cores.installed(core) ?: run {
-                val text = getString(R.string.libretro_downloading_core, core)
+            // Cœur absent, ou corrigé sur le buildbot depuis son téléchargement : (re)téléchargé.
+            val outdated = cores.isOutdated(core)
+            val coreFile = cores.installed(core)?.takeUnless { outdated } ?: run {
+                val text = getString(if (outdated) R.string.libretro_updating_core else R.string.libretro_downloading_core, core)
                 phase = Phase.Loading(text)
                 cores.download(core) { bytes, total ->
                     phase = Phase.Loading(
@@ -214,7 +220,9 @@ class LibretroActivity : ComponentActivity() {
             savesDirectory = sramFile.parentFile!!.apply { mkdirs() }.absolutePath
             saveRAMState = sram
             // Dernières options choisies pour ce système (les autres gardent la valeur par défaut du cœur).
-            variables = optionsStore.load(systemId).map { (key, value) -> Variable(key, value) }.toTypedArray()
+            // Valeurs imposées par le jeu (cartouche GX4000…), sauf choix de l'utilisateur.
+            variables = (GameOptionDefaults.forGame(core, game) + optionsStore.load(systemId))
+                .map { (key, value) -> Variable(key, value) }.toTypedArray()
             preferLowLatencyAudio = true
         }
         val view = GLRetroView(this, data).apply { isFocusable = false }
@@ -667,8 +675,9 @@ class LibretroActivity : ComponentActivity() {
         val groups = remember(list) { CoreOptionGroups.group(list) }
         val generalTitle = stringResource(R.string.libretro_options_general)
         val tab = optionTab.coerceIn(0, (groups.size - 1).coerceAtLeast(0))
-        // Une liste par onglet : chacun repart du haut.
-        val listState = remember(tab) { LazyListState() }
+        // Une grille par onglet : chacun repart du haut. Deux colonnes, une seule sur écran étroit.
+        val gridState = remember(tab) { LazyGridState() }
+        val columns = if (LocalConfiguration.current.screenWidthDp >= 600) 2 else 1
         Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp, vertical = 16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -715,7 +724,12 @@ class LibretroActivity : ComponentActivity() {
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
-                LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    state = gridState,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                ) {
                     OptionItems(groups.getOrNull(tab)?.options.orEmpty())
                 }
             }
@@ -723,7 +737,7 @@ class LibretroActivity : ComponentActivity() {
         LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     }
 
-    private fun LazyListScope.OptionItems(list: List<CoreOption>) {
+    private fun LazyGridScope.OptionItems(list: List<CoreOption>) {
         items(list, key = { it.key }) { option ->
             ListItem(
                 headlineContent = { Text(option.label) },

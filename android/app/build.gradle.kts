@@ -43,6 +43,10 @@ android {
     }
 
     buildTypes {
+        // Version de développement installable à côté de l'application publiée (données séparées).
+        debug {
+            applicationIdSuffix = ".debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

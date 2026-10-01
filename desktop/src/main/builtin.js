@@ -105,6 +105,7 @@ async function launch(system, game, file, core, { resume = false } = {}) {
     language: settings.language(),
     windowed: false,
     resume,
+    optionDefaults: libretro.gameOptionDefaults(core, rom),
   });
   fs.mkdirSync(base, { recursive: true });
   const log = fs.openSync(path.join(base, 'player.log'), 'w');

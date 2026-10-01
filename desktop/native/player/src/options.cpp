@@ -44,11 +44,19 @@ void CoreOptions::add(CoreOption option) {
   }
   // Valeur déjà en cours (nouvelle déclaration du même cœur) ou mémorisée, si elle existe encore.
   auto current = std::find_if(options_.begin(), options_.end(), [&](const CoreOption& o) { return o.key == option.key; });
-  std::string wanted = current != options_.end() ? current->value : (saved_.count(option.key) ? saved_[option.key] : "");
+  std::string wanted = current != options_.end() ? current->value
+                      : saved_.count(option.key)     ? saved_[option.key]
+                      : gameDefaults_.count(option.key) ? gameDefaults_[option.key]
+                                                     : "";
   bool valid = std::find(option.values.begin(), option.values.end(), wanted) != option.values.end();
   option.value = valid ? wanted : option.defaultVal;
   if (current != options_.end()) *current = option;
   else options_.push_back(option);
+}
+
+void CoreOptions::setGameDefault(const std::string& assignment) {
+  size_t eq = assignment.find('=');
+  if (eq != std::string::npos) gameDefaults_[trim(assignment.substr(0, eq))] = trim(assignment.substr(eq + 1));
 }
 
 void CoreOptions::declare(const retro_variable* vars) {

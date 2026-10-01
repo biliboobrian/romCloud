@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Version de développement : moteur intégré lançable depuis un PC (adb shell am start) pour les essais. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <activity
+            android:name="com.romcloud.app.libretro.LibretroActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

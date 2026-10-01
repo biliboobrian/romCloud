@@ -51,9 +51,10 @@ async function api(path, { method = 'GET', body, headers = {} } = {}) {
     opts.body = body;
   }
   const res = await fetch(`/api${path}`, opts);
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 403) {
+    // 403 : clé des applications (lecture seule) ; l'interface demande la clé d'administration.
     askKey();
-    throw new Error(t('key.required'));
+    throw new Error(res.status === 403 ? t('key.adminRequired') : t('key.required'));
   }
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));

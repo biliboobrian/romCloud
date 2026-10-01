@@ -59,22 +59,42 @@ api.use((req, res, next) => {
 
 // Informations publiques (permet à l'application de savoir si une clé est requise).
 api.get('/info', (req, res) => {
-  res.json({ name: 'RomCloud', version: VERSION, authRequired: Boolean(config.apiKey), languages: LANGUAGES });
+  res.json({
+    name: 'RomCloud',
+    version: VERSION,
+    authRequired: Boolean(config.apiKey),
+    adminKeyRequired: Boolean(config.adminKey || config.apiKey),
+    languages: LANGUAGES,
+  });
 });
 
-// ---- Authentification par clé d'API ----
-function keyMatches(given) {
-  if (!given) return false;
+// ---- Authentification : clé des applications (lecture) et clé d'administration (tout) ----
+function keyMatches(given, expected) {
+  if (!given || !expected) return false;
   const a = Buffer.from(String(given));
-  const b = Buffer.from(config.apiKey);
+  const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+/**
+ * Droits d'une requête : clé d'administration (ADMIN_KEY, ou API_KEY seule) -> tout ; clé des
+ * applications -> lectures (GET, HEAD) ; sans clé configurée, l'accès correspondant est libre.
+ */
+export function access(method, given, { apiKey, adminKey }) {
+  const read = method === 'GET' || method === 'HEAD';
+  const admin = adminKey || apiKey;
+  if (!admin || keyMatches(given, admin)) return 'ok';
+  if (read && (!apiKey || keyMatches(given, apiKey))) return 'ok';
+  // Clé des applications sur une modification : réservée à l'administration.
+  return keyMatches(given, apiKey) ? 'admin-required' : 'denied';
+}
+
 api.use((req, res, next) => {
-  if (!config.apiKey) return next();
   const auth = req.get('authorization') || '';
   const given = auth.startsWith('Bearer ') ? auth.slice(7) : req.get('x-api-key') || req.query.key;
-  if (keyMatches(given)) return next();
+  const result = access(req.method, given, config);
+  if (result === 'ok') return next();
+  if (result === 'admin-required') return res.status(403).json({ error: token('errors.adminKey'), code: 'errors.adminKey' });
   res.status(401).json({ error: token('errors.apiKey') });
 });
 

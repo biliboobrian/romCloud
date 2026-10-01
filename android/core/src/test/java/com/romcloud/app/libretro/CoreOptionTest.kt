@@ -50,4 +50,10 @@ class CoreOptionTest {
         assertEquals("key", CoreOption.parse("key", "; a|b", "a").label)
         assertEquals(listOf("x"), CoreOption.parse("key", "Label", "x").values)
     }
+
+    @Test
+    fun `cartouche GX4000 avec cap32 en CPC 6128+`() {
+        assertEquals(mapOf("cap32_model" to "6128+ (experimental)"), GameOptionDefaults.forGame("cap32", java.io.File("Pang.CPR")))
+        assertEquals(emptyMap<String, String>(), GameOptionDefaults.forGame("cap32", java.io.File("Disque.dsk")))
+    }
 }

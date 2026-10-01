@@ -352,4 +352,7 @@
     <string name="region_world">World</string>
     <string name="info_arcade_set">MAME / FBNeo set</string>
     <string name="info_arcade_clone">clone of %1$s</string>
+    <string name="libretro_updating_core">Updating the %1$s core…</string>
+    <string name="libretro_crash_reset">Reset the core</string>
+    <string name="libretro_crash_reset_done">The %1$s core will be downloaded again, with its default options, at the next launch.</string>
 </resources>

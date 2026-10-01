@@ -42,6 +42,8 @@ import com.romcloud.app.data.EmulatorApk
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.libretro.CrashReport
 import com.romcloud.app.libretro.CrashReports
+import com.romcloud.app.libretro.CoreOptionsStore
+import com.romcloud.app.libretro.LibretroCores
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -221,6 +223,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         }
     }
     crash?.let { report ->
+        val scope = rememberCoroutineScope()
         AlertDialog(
             onDismissRequest = { crash = null },
             title = { Text(stringResource(R.string.libretro_crash_title)) },
@@ -236,7 +239,16 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                 }) { Text(stringResource(R.string.action_share_report)) }
             },
             dismissButton = {
-                TextButton(onClick = { crash = null }) { Text(stringResource(R.string.action_close)) }
+                Row {
+                    // Cœur ou options en cause : nouveau téléchargement du cœur, options par défaut.
+                    TextButton(onClick = {
+                        crash = null
+                        if (report.core.isNotBlank()) LibretroCores(activity).delete(report.core)
+                        if (report.systemId.isNotBlank()) CoreOptionsStore(activity).clear(report.systemId)
+                        scope.launch { snackbar.showSnackbar(I18n.get(R.string.libretro_crash_reset_done, report.core)) }
+                    }) { Text(stringResource(R.string.libretro_crash_reset)) }
+                    TextButton(onClick = { crash = null }) { Text(stringResource(R.string.action_close)) }
+                }
             },
         )
     }

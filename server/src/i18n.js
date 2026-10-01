@@ -10,6 +10,7 @@ export const LANGUAGES = ['fr', 'en'];
 const messages = {
   en: {
     'errors.apiKey': 'Invalid or missing API key',
+    'errors.adminKey': 'This key only gives read access: use the administration key (ADMIN_KEY)',
     'errors.routeNotFound': 'Unknown route',
     'errors.internal': 'Internal error',
     'errors.fileTooLarge': 'File too large',
@@ -56,12 +57,15 @@ const messages = {
     'log.roms': 'ROMs: {dir}',
     'log.apiKeyOn': 'API key: enabled',
     'log.apiKeyOff': 'API key: disabled (server open on the network)',
+    'log.adminKeyOn': 'Administration key: enabled (API key: read only)',
+    'log.adminKeyOff': 'Administration key: not set (the API key gives full access)',
     'log.ssOn': 'ScreenScraper: configured',
     'log.ssOff': 'ScreenScraper: not configured (Libretro only)',
     'log.initialScanFailed': 'Initial scan failed: {error}',
   },
   fr: {
     'errors.apiKey': 'Clé d’API invalide ou manquante',
+    'errors.adminKey': 'Cette clé ne donne accès qu’en lecture : utilisez la clé d’administration (ADMIN_KEY)',
     'errors.routeNotFound': 'Route inconnue',
     'errors.internal': 'Erreur interne',
     'errors.fileTooLarge': 'Fichier trop volumineux',
@@ -108,6 +112,8 @@ const messages = {
     'log.roms': 'ROMs : {dir}',
     'log.apiKeyOn': 'Clé d’API : activée',
     'log.apiKeyOff': 'Clé d’API : désactivée (serveur ouvert sur le réseau)',
+    'log.adminKeyOn': 'Clé d’administration : activée (clé d’API : lecture seule)',
+    'log.adminKeyOff': 'Clé d’administration : non définie (la clé d’API donne un accès complet)',
     'log.ssOn': 'ScreenScraper : configuré',
     'log.ssOff': 'ScreenScraper : non configuré (Libretro seulement)',
     'log.initialScanFailed': 'Scan initial impossible : {error}',

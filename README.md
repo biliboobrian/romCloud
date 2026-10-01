@@ -30,7 +30,7 @@ mkdir -p romcloud/data && sudo chown -R 1000:1000 romcloud/data
 docker run -d --name romcloud --restart unless-stopped \
   -p 8080:8080 \
   -v "$PWD/romcloud/data:/data" \
-  -e API_KEY=choisissez-une-cle \
+  -e API_KEY=cle-des-applications   -e ADMIN_KEY=cle-d-administration \
   biliboobrian/romcloud-server:latest
 ```
 
@@ -48,7 +48,8 @@ services:
       - ./data:/data                 # base de données, images scrapées, ROMs (./data/roms)
       # - /mnt/nas/roms:/data/roms   # ou un dossier de ROMs existant
     environment:
-      API_KEY: choisissez-une-cle
+      API_KEY: cle-des-applications      # applications Windows / Android / TV (lecture seule)
+      ADMIN_KEY: cle-d-administration    # interface web (accès complet)
       # Facultatif : scraping ScreenScraper (sinon Libretro seul)
       SCREENSCRAPER_DEV_ID: ""
       SCREENSCRAPER_DEV_PASSWORD: ""
@@ -161,7 +162,7 @@ Sans Docker, prérequis : **Node.js ≥ 22.13** (utilise le module SQLite intég
 
 ```bash
 cd server
-cp .env.example .env      # puis renseigner API_KEY et, si possible, ScreenScraper
+cp .env.example .env      # puis renseigner API_KEY, ADMIN_KEY et, si possible, ScreenScraper
 npm install
 npm start                 # http://<ip-du-pc>:8080
 ```
@@ -193,16 +194,17 @@ L’interface est disponible en **français** et en **anglais** : menu de langue
 | `DATA_DIR` | Base SQLite, ROMs et médias (`./data`) |
 | `ROMS_DIR` | Dossier des ROMs, relatif à `DATA_DIR` ou absolu (ex. un NAS monté) |
 | `DEFAULT_LANGUAGE` | Langue par défaut du serveur (`fr` ou `en`, `en` par défaut) : journal et clients qui n’envoient pas d’en-tête `Accept-Language` |
-| `API_KEY` | Clé exigée par l'API et l'interface web. **À définir** si le serveur est accessible au-delà de votre réseau local. |
+| `API_KEY` | Clé des applications (Windows, Android, Android TV) : à saisir dans leurs réglages. Avec `ADMIN_KEY`, elle ne donne accès qu'**en lecture** (consulter, télécharger) ; sans `ADMIN_KEY`, elle donne un accès complet. **À définir** si le serveur est accessible au-delà de votre réseau local. |
+| `ADMIN_KEY` | Clé de l'**interface web** d'administration : accès complet (envoi, suppression, scraping, réglages). Recommandée, différente de `API_KEY` : une clé d'application divulguée ne permet alors pas de modifier le serveur. |
 | `SCREENSCRAPER_DEV_ID` / `_DEV_PASSWORD` | Identifiants **développeur** ScreenScraper (à demander sur le forum screenscraper.fr). Sans eux, seul Libretro est utilisé. |
 | `SCREENSCRAPER_USER` / `_PASSWORD` | Votre compte ScreenScraper (facultatif, augmente les quotas) |
 | `SCRAPE_LANGUAGES` / `SCRAPE_REGIONS` | Priorités de langue/région (`fr,en` / `fr,eu,wor,us,ss,jp`) |
 
-**Scraping** : ScreenScraper est interrogé par CRC32/MD5 + nom + taille (hachage jusqu'à `HASH_MAX_MB`, 1 Go par défaut). En cas d'absence ou d'image manquante, repli sur [thumbnails.libretro.com](https://thumbnails.libretro.com) (correspondance exacte du nom No-Intro, puis approximative). Les tâches s'exécutent une par une et s'arrêtent si le quota ScreenScraper est atteint. **Informations détaillées** (section *Informations* de la fiche du jeu sous Windows, Android et Android TV) : autres titres et dates de sortie par région, régions et langues, série, modes de jeu, thèmes, classifications d’âge, numéro de série, version de la ROM (révision, beta, proto, disque…), résolution et rotation (arcade), vibrations et stick analogique, CRC32 / MD5, liens ScreenScraper et Wikipedia. Elles viennent de ScreenScraper, des fiches [libretro-database](https://github.com/libretro/libretro-database/tree/master/metadat) (par CRC, nom No-Intro / Redump ou numéro de série : développeur, éditeur, genre, date, joueurs, ESRB, série…) et du nom du fichier ; relancez le scraping des jeux déjà scrapés pour les obtenir. Jeux zippés : la ROM contenue dans l’archive (nom, CRC) sert à la recherche. Jeux d’arcade renommés (« fatal fury.zip » au lieu de « fatfury1.zip », Neo Geo, CPS, MAME…) : le jeu est retrouvé d’après les CRC des fichiers de l’archive dans la DAT de FinalBurn Neo, puis cherché sous son nom court.
+**Scraping** : ScreenScraper est interrogé par CRC32/MD5 + nom + taille (hachage jusqu'à `HASH_MAX_MB`, 1 Go par défaut). En cas d'absence ou d'image manquante, repli sur [thumbnails.libretro.com](https://thumbnails.libretro.com) (correspondance exacte du nom No-Intro, puis approximative). Les tâches s'exécutent une par une et s'arrêtent si le quota ScreenScraper est atteint. **Informations détaillées** (section *Informations* de la fiche du jeu sous Windows, Android et Android TV) : autres titres et dates de sortie par région, régions et langues, série, modes de jeu, thèmes, classifications d’âge, numéro de série, version de la ROM (révision, beta, proto, disque…), résolution et rotation (arcade), vibrations et stick analogique, CRC32 / MD5, liens ScreenScraper et Wikipedia. Elles viennent de ScreenScraper, des fiches [libretro-database](https://github.com/libretro/libretro-database/tree/master/metadat) (par CRC, nom No-Intro / Redump ou numéro de série : développeur, éditeur, genre, date, joueurs, ESRB, série…) et du nom du fichier ; relancez le scraping des jeux déjà scrapés pour les obtenir. Jeux zippés : la ROM contenue dans l’archive (nom, CRC) sert à la recherche. Jeux d’arcade renommés (« fatal fury.zip » au lieu de « fatfury1.zip », Neo Geo, CPS, MAME…) : le jeu est retrouvé d’après les CRC des fichiers de l’archive dans la DAT de FinalBurn Neo, puis cherché sous son nom court. Jeu introuvable ailleurs : son article **Wikipedia** est recherché (titre du fichier, ou titre qui commence par lui sans être une suite, l’article devant alors citer la plateforme) ; il donne le titre officiel, le résumé, l’image de l’article comme jaquette, et via **Wikidata** le développeur, l’éditeur, le genre, les modes de jeu et la date de sortie ; libretro est ensuite réinterrogé avec le titre officiel pour les images.
 
 ### API
 
-Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <API_KEY>` (ou `?key=`) quand une clé est définie.
+Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <clé>` (ou `?key=`) quand une clé est définie : `API_KEY` pour les lectures (GET), `ADMIN_KEY` (ou `API_KEY` seule) pour les modifications ; une clé en lecture seule reçoit `403` sur une modification.
 
 | Méthode | Route | Description |
 |---|---|---|
