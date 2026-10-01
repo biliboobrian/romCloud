@@ -9,6 +9,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test \"test/**/*.test.js\"",
+    "player": "cmake -S native/player -B native/player/build -DCMAKE_BUILD_TYPE=Release && cmake --build native/player/build --config Release",
     "dist": "electron-builder --win --publish never"
   },
   "devDependencies": {
@@ -27,6 +28,12 @@
       "src/**/*",
       "assets/icon.png",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "native/player/build/romcloud-player.exe",
+        "to": "player/romcloud-player.exe"
+      }
     ],
     "win": {
       "icon": "assets/icon.png",

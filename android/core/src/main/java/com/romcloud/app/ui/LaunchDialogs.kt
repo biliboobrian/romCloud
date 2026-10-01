@@ -1,6 +1,7 @@
 package com.romcloud.app.ui
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -39,7 +40,12 @@ import com.romcloud.core.R
 import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.EmulatorApk
 import com.romcloud.app.launch.LaunchException
+import com.romcloud.app.libretro.CrashReport
+import com.romcloud.app.libretro.CrashReports
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Comportements globaux communs aux applications téléphone et TV : fins de téléchargement
@@ -181,6 +187,36 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
             },
             confirmButton = {
                 TextButton(onClick = app.apkInstaller::cancel) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    // Plantage de l'émulateur intégré lors de la dernière partie : rapport à partager.
+    var crash by remember { mutableStateOf<CrashReport?>(null) }
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Laisse au processus de jeu le temps de se terminer après une sortie normale.
+            delay(1500)
+            withContext(Dispatchers.IO) { CrashReports.takePending(activity) }?.let { crash = it }
+        }
+    }
+    crash?.let { report ->
+        AlertDialog(
+            onDismissRequest = { crash = null },
+            title = { Text(stringResource(R.string.libretro_crash_title)) },
+            text = { Text(stringResource(R.string.libretro_crash_text, report.game, report.core)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    crash = null
+                    val send = Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_SUBJECT, "RomCloud — ${report.core} — ${report.game}")
+                        .putExtra(Intent.EXTRA_TEXT, report.text)
+                    runCatching { activity.startActivity(Intent.createChooser(send, null)) }
+                }) { Text(stringResource(R.string.action_share_report)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { crash = null }) { Text(stringResource(R.string.action_close)) }
             },
         )
     }

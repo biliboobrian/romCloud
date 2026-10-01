@@ -294,6 +294,9 @@
         <item quantity="one">%1$d option</item>
         <item quantity="other">%1$d options</item>
     </plurals>
+    <string name="libretro_crash_title">The built-in emulator stopped</string>
+    <string name="libretro_crash_text">%1$s (core %2$s) stopped unexpectedly. Share the report to help fix the problem, or try another core or RetroArch for this system.</string>
+    <string name="action_share_report">Share the report</string>
     <string name="libretro_menu_gamepad">Set up the controller</string>
     <string name="libretro_menu_combo_hint">Start + Select: open this menu</string>
     <string name="action_skip">Skip</string>

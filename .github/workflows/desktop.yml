@@ -1,6 +1,6 @@
 name: Windows
 
-# Application RomCloud pour Windows (Electron) :
+# Application RomCloud pour Windows (Electron, avec le moteur d'émulation intégré en C++) :
 #   RomCloud-Windows-<version>-x64.exe       installeur
 #   RomCloud-Windows-<version>-portable.exe  version portable (sans installation)
 
@@ -50,6 +50,10 @@ jobs:
           fi
           npm version "$VERSION" --no-git-tag-version --allow-same-version
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      # Moteur d'émulation intégré (frontend libretro natif, C++ / SDL2), inclus dans l'installeur.
+      - name: Moteur d'émulation intégré
+        run: npm run player
 
       - name: Installeur et version portable
         run: npm run dist

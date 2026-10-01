@@ -40,12 +40,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -143,7 +145,12 @@ class LibretroActivity : ComponentActivity() {
         container = FrameLayout(this).apply { setBackgroundColor(AndroidColor.BLACK) }
         container.addView(
             ComposeView(this).apply {
-                setContent { MaterialTheme(colorScheme = darkColorScheme()) { Overlay() } }
+                setContent {
+                    MaterialTheme(colorScheme = darkColorScheme()) {
+                        // Couleur du texte du thème sombre (sinon noir sur fond noir).
+                        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) { Overlay() }
+                    }
+                }
             },
             FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT),
         )
@@ -159,6 +166,7 @@ class LibretroActivity : ComponentActivity() {
                 else -> openMenu()
             }
         }
+        CrashReports.startSession(this, core, rom.absolutePath, systemId)
         lifecycleScope.launch { prepare() }
     }
 
@@ -271,12 +279,16 @@ class LibretroActivity : ComponentActivity() {
         super.onPause()
         // L'émulation est déjà en pause ici (LibretroDroid suit le cycle de vie de l'activité).
         saveSram()
+        if (isFinishing) CrashReports.endSession(this)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         // Libère le cœur : un autre jeu pourra en charger un nouveau dans un processus neuf.
-        if (isFinishing) Process.killProcess(Process.myPid())
+        if (isFinishing) {
+            CrashReports.endSession(this)
+            Process.killProcess(Process.myPid())
+        }
     }
 
     /** Appelé seulement émulation en pause : les appels se font hors du thread d'émulation. */

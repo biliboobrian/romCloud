@@ -288,6 +288,9 @@
         <item quantity="many">%1$d options</item>
         <item quantity="other">%1$d options</item>
     </plurals>
+    <string name="libretro_crash_title">L’émulateur intégré s’est arrêté</string>
+    <string name="libretro_crash_text">%1$s (cœur %2$s) s’est arrêté brutalement. Partagez le rapport pour aider à corriger le problème, ou essayez un autre cœur ou RetroArch pour ce système.</string>
+    <string name="action_share_report">Partager le rapport</string>
     <string name="libretro_menu_gamepad">Configurer la manette</string>
     <string name="libretro_menu_combo_hint">Start + Select : ouvrir ce menu</string>
     <string name="action_skip">Passer</string>
