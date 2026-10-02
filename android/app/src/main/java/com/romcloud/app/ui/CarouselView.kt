@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -130,11 +129,9 @@ private fun HeroBanner(
     compact: Boolean,
 ) {
     val background = MaterialTheme.colorScheme.background
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(topInset + if (compact) 140.dp else 300.dp),
-    ) {
+    // Hauteur de la bannière = celle de son contenu : la jaquette suit directement les filtres,
+    // l'image de fond s'étend derrière.
+    Box(Modifier.fillMaxWidth()) {
         if (backgroundUrl != null) {
             AsyncImage(
                 model = backgroundUrl,
@@ -142,7 +139,7 @@ private fun HeroBanner(
                 contentScale = ContentScale.Crop,
                 // Bannière basse : on garde le haut de l'image plutôt que son centre.
                 alignment = if (compact) Alignment.TopCenter else Alignment.Center,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.matchParentSize(),
             )
         }
         // Dégradé vers le fond pour la lisibilité du texte et la transition avec les rangées ;
@@ -157,12 +154,16 @@ private fun HeroBanner(
         } else {
             arrayOf(0f to background.copy(alpha = 0.15f), 0.55f to background.copy(alpha = 0.7f), 1f to background)
         }
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(*stops)))
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(*stops)))
         Row(
-            Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 16.dp, vertical = if (compact) 10.dp else 16.dp),
-            verticalAlignment = Alignment.Bottom,
+            Modifier.padding(
+                start = 16.dp,
+                end = 16.dp,
+                // Barre du haut dessinée par-dessus (paysage) : la jaquette commence juste dessous.
+                top = topInset + 4.dp,
+                bottom = if (compact) 10.dp else 16.dp,
+            ),
+            verticalAlignment = Alignment.Top,
         ) {
             if (coverUrl != null) {
                 AsyncImage(
