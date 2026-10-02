@@ -183,7 +183,7 @@ fun TvGamesScreen(
                 game = featured,
                 coverUrl = featured?.let { mediaUrl(it, "boxart") },
                 status = featured?.let(::statusOf),
-                modifier = Modifier.padding(start = 48.dp, end = 48.dp, top = 4.dp).height(150.dp),
+                modifier = Modifier.padding(start = 48.dp, end = 48.dp).height(150.dp),
             )
 
             when {
