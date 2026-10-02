@@ -140,6 +140,8 @@ data class GameDetails(
     val controls: String? = null,
     val rumble: Boolean? = null,
     val analog: Boolean? = null,
+    /** Jeu jouable à plusieurs en coopération (LaunchBox). */
+    val cooperative: Boolean? = null,
     val links: List<GameLink> = emptyList(),
 )
 

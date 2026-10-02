@@ -4,6 +4,11 @@ import android.app.Activity
 import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ViewCarousel
@@ -35,6 +41,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -98,6 +105,8 @@ fun GamesScreen(
     var postDownloadHelp by remember { mutableStateOf<Triple<Game, RetroArchInfo, Boolean>?>(null) }
     // Paysage : les filtres passent dans la barre du haut pour libérer une ligne.
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Recherche avancée (genre, décennie, joueurs…) : panneau ouvert par le bouton « Filtres ».
+    var showCriteria by rememberSaveable { mutableStateOf(false) }
     val filters = @Composable {
         GameFilter.entries.forEach { f ->
             FilterChip(
@@ -106,6 +115,23 @@ fun GamesScreen(
                 label = { Text(stringResource(f.label)) },
             )
         }
+        if (!state.facets.isEmpty) {
+            val count = state.criteria.count
+            FilterChip(
+                selected = count > 0,
+                onClick = { showCriteria = true },
+                leadingIcon = { Icon(Icons.Filled.FilterList, null) },
+                label = { Text(if (count > 0) stringResource(R.string.criteria_count, count) else stringResource(R.string.criteria_title)) },
+            )
+        }
+    }
+    if (showCriteria) {
+        CriteriaSheet(
+            sections = criteriaSections(state.facets, state.criteria),
+            criteria = state.criteria,
+            onChange = viewModel::setCriteria,
+            onDismiss = { showCriteria = false },
+        )
     }
 
     // Au retour dans l'application (ex. après une partie), re-vérifie les fichiers locaux.
@@ -207,7 +233,7 @@ fun GamesScreen(
             if (state.offline) Banner(stringResource(R.string.banner_offline))
             if (!landscape) {
                 Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     filters()
@@ -231,6 +257,8 @@ fun GamesScreen(
                     state.games.isEmpty() && state.loading -> Centered(stringResource(R.string.loading))
                     state.games.isEmpty() && state.error != null ->
                         Centered(stringResource(R.string.error_with, state.error.orEmpty()), stringResource(R.string.action_retry), viewModel::refresh)
+                    games.isEmpty() && state.criteria.count > 0 ->
+                        Centered(stringResource(R.string.criteria_none), stringResource(R.string.criteria_reset)) { viewModel.setCriteria(GameCriteria()) }
                     games.isEmpty() -> Centered(stringResource(R.string.no_games))
                     // Carrousel façon Netflix ; pendant une recherche, résultats en grille.
                     state.grid && state.query.isBlank() -> GamesCarousel(
@@ -416,6 +444,42 @@ private fun GameRow(
         DownloadIndicator(status)
         IconButton(onClick = onDetails) {
             Icon(Icons.Filled.Info, stringResource(R.string.action_details), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+        }
+    }
+}
+
+/** Panneau « Filtres » : une rangée de puces par critère, « Effacer » pour tout retirer. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun CriteriaSheet(
+    sections: List<CriteriaSection>,
+    criteria: GameCriteria,
+    onChange: (GameCriteria) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.criteria_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                TextButton(onClick = { onChange(GameCriteria()) }, enabled = criteria.count > 0) {
+                    Text(stringResource(R.string.criteria_reset))
+                }
+            }
+            for (section in sections) {
+                Text(section.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (option in section.options) {
+                        FilterChip(
+                            selected = option.selected,
+                            onClick = { onChange(option.toggle(criteria)) },
+                            label = { Text(option.label) },
+                        )
+                    }
+                }
+            }
         }
     }
 }

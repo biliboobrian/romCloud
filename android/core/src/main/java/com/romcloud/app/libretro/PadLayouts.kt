@@ -34,7 +34,9 @@ internal data class PadLayout(
     val right: List<Shoulder> = emptyList(),
     val select: String? = "SELECT",
     val start: String? = "START",
-    /** Stick analogique à la place de la croix (Nintendo 64, Dreamcast). */
+    /** Croix directionnelle (absente de la Nintendo 64, qui ne garde que le stick). */
+    val dpad: Boolean = true,
+    /** Stick analogique (Nintendo 64, Dreamcast, PSP) : au-dessus de la croix s'il y en a une. */
     val stick: Boolean = false,
 ) {
     val width: Dp get() = buttons.maxOf { it.x + it.size }
@@ -99,6 +101,8 @@ internal object PadLayouts {
     )
 
     private val NES = PadLayout(buttons = diagonal("B" to B, "A" to A, colors = listOf(RED, RED)))
+    /** Famicom Disk System : L change la face de la disquette, R l'éjecte / l'insère (FCEUmm, Nestopia). */
+    private val FDS = NES.copy(left = listOf(Shoulder("FACE", L1)), right = listOf(Shoulder("DISK", R1)))
     private val GAME_BOY = PadLayout(buttons = diagonal("B" to B, "A" to A))
     private val GBA = GAME_BOY.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)))
 
@@ -107,15 +111,28 @@ internal object PadLayouts {
         left = listOf(Shoulder("L2", L2, 60.dp), Shoulder("L1", L1)),
         right = listOf(Shoulder("R1", R1), Shoulder("R2", R2, 60.dp)),
     )
-    private val PSP = PLAYSTATION.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)))
+    /** PSP : croix et stick (de nombreux jeux se jouent au stick). */
+    private val PSP = PLAYSTATION.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)), stick = true)
 
     /** Mega Drive 6 boutons : A B C en bas, X Y Z en haut ; Mode = Select (masqué). */
     private val GENESIS = PadLayout(
         buttons = grid(listOf("X" to L1, "Y" to X, "Z" to R1), listOf("A" to Y, "B" to B, "C" to A)),
         select = null,
     )
-    private val SATURN = GENESIS.copy(left = listOf(Shoulder("L", L2)), right = listOf(Shoulder("R", R2)))
+    /**
+     * Saturn : même disposition que la Mega Drive, mais les cœurs (Beetle Saturn, Yabause, Kronos)
+     * lisent A sur B, B sur A, C sur R, X sur Y, Y sur X, Z sur L, et les gâchettes sur L2 / R2.
+     */
+    private val SATURN = PadLayout(
+        buttons = grid(listOf("X" to Y, "Y" to X, "Z" to L1), listOf("A" to B, "B" to A, "C" to R1)),
+        left = listOf(Shoulder("L", L2)),
+        right = listOf(Shoulder("R", R2)),
+        select = null,
+    )
     private val MASTER_SYSTEM = PadLayout(buttons = diagonal("1" to B, "2" to A), select = null)
+
+    /** Amstrad GX4000 (cap32, joystick Amstrad) : Feu 1 sur B, Feu 2 sur A, ni Select ni Start. */
+    private val GX4000 = PadLayout(buttons = diagonal("1" to B, "2" to A), select = null, start = null)
 
     private val PC_ENGINE = PadLayout(buttons = diagonal("II" to B, "I" to A), start = "RUN")
 
@@ -132,10 +149,11 @@ internal object PadLayouts {
         left = listOf(Shoulder("Z", L2, 60.dp), Shoulder("L", L1)),
         right = listOf(Shoulder("R", R1)),
         select = null,
+        dpad = false,
         stick = true,
     )
 
-    /** Dreamcast (et Naomi, Atomiswave) : stick, A B X Y, gâchettes L et R. */
+    /** Dreamcast (et Naomi, Atomiswave) : croix et stick, A B X Y, gâchettes L et R. */
     private val DREAMCAST = PadLayout(
         buttons = diamond("Y" to X, "B" to A, "A" to B, "X" to Y, listOf(GREEN, BLUE, RED, YELLOW)),
         left = listOf(Shoulder("L", L2)),
@@ -174,7 +192,8 @@ internal object PadLayouts {
     )
 
     private val BY_SYSTEM: Map<String, PadLayout> = buildMap {
-        listOf("nes", "fds").forEach { put(it, NES) }
+        put("nes", NES)
+        put("fds", FDS)
         listOf("gb", "gbc", "megaduck", "gw", "pokemini", "supervision").forEach { put(it, GAME_BOY) }
         put("gba", GBA)
         listOf("snes", "snesmsu1", "satellaview").forEach { put(it, SNES) }
@@ -185,11 +204,13 @@ internal object PadLayouts {
         listOf("saturn", "stv").forEach { put(it, SATURN) }
         listOf("master", "gamegear", "sg1000").forEach { put(it, MASTER_SYSTEM) }
         listOf("dreamcast", "naomi", "atomiswave").forEach { put(it, DREAMCAST) }
-        listOf("tg16", "tgcd", "supergrafx", "pcfx").forEach { put(it, PC_ENGINE) }
+        // PC-FX (six boutons) : disposition par défaut, qui donne tous les boutons du RetroPad.
+        listOf("tg16", "tgcd", "supergrafx").forEach { put(it, PC_ENGINE) }
         listOf("neogeo", "neogeocd").forEach { put(it, NEO_GEO) }
         listOf("ngp", "ngpc").forEach { put(it, NEO_GEO_POCKET) }
         listOf("cps1", "cps2", "cps3").forEach { put(it, CPS) }
         listOf("fbneo", "mame").forEach { put(it, ARCADE) }
+        put("gx4000", GX4000)
         put("atari2600", ATARI_2600)
         put("atari7800", ATARI_7800)
         put("lynx", LYNX)
@@ -207,7 +228,7 @@ internal object PadLayouts {
         "pcsx_rearmed" to PLAYSTATION, "swanstation" to PLAYSTATION, "duckstation" to PLAYSTATION, "mednafen_psx" to PLAYSTATION,
         "ppsspp" to PSP,
         "genesis_plus_gx" to GENESIS, "picodrive" to GENESIS,
-        "mednafen_saturn" to SATURN, "yabause" to SATURN, "yabasanshiro" to SATURN,
+        "mednafen_saturn" to SATURN, "yabause" to SATURN, "yabasanshiro" to SATURN, "kronos" to SATURN,
         "gearsystem" to MASTER_SYSTEM, "smsplus" to MASTER_SYSTEM,
         "flycast" to DREAMCAST,
         "mednafen_pce" to PC_ENGINE, "mednafen_supergrafx" to PC_ENGINE,

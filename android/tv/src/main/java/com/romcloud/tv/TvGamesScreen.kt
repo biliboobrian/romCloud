@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
@@ -59,7 +60,9 @@ import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.ui.RetroArchHelpDialog
 import com.romcloud.app.ui.CarouselRow
 import com.romcloud.app.ui.DownloadedGreen
+import com.romcloud.app.ui.GameCriteria
 import com.romcloud.app.ui.GameFilter
+import com.romcloud.app.ui.criteriaSections
 import com.romcloud.app.ui.GamesViewModel
 import com.romcloud.app.ui.LocalStatus
 import com.romcloud.app.ui.RowLabels
@@ -88,6 +91,7 @@ fun TvGamesScreen(
     // Guide RetroArch ouvert après confirmation d'un téléchargement (jeu, guide, lancer ensuite ?)
     var postDownloadHelp by remember { mutableStateOf<Triple<Game, RetroArchInfo, Boolean>?>(null) }
     var searching by remember { mutableStateOf(false) }
+    var showCriteria by remember { mutableStateOf(false) }
 
     // Au retour d'une partie, re-vérifie les fichiers présents.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -148,6 +152,16 @@ fun TvGamesScreen(
                 GameFilter.entries.forEach { f ->
                     FilterChip(selected = state.filter == f, onClick = { viewModel.setFilter(f) }) { Text(stringResource(f.label)) }
                 }
+                if (!state.facets.isEmpty) {
+                    val count = state.criteria.count
+                    FilterChip(
+                        selected = count > 0,
+                        onClick = { showCriteria = true },
+                        leadingIcon = { Icon(Icons.Filled.FilterList, null, modifier = IconSize) },
+                    ) {
+                        Text(if (count > 0) stringResource(R.string.criteria_count, count) else stringResource(R.string.criteria_title))
+                    }
+                }
                 FilterChip(
                     selected = state.query.isNotBlank(),
                     onClick = { searching = true },
@@ -175,6 +189,7 @@ fun TvGamesScreen(
             when {
                 state.games.isEmpty() && state.loading -> Message(stringResource(R.string.loading))
                 state.games.isEmpty() && state.error != null -> Message(stringResource(R.string.error_with, state.error.orEmpty()))
+                games.isEmpty() && state.criteria.count > 0 -> Message(stringResource(R.string.criteria_none))
                 games.isEmpty() -> Message(stringResource(R.string.no_games))
                 else -> GameRows(
                     rows = rows,
@@ -254,6 +269,14 @@ fun TvGamesScreen(
                 askCancel = null
             },
             onDismiss = { askCancel = null },
+        )
+    }
+    if (showCriteria) {
+        CriteriaDialog(
+            sections = criteriaSections(state.facets, state.criteria),
+            criteria = state.criteria,
+            onChange = viewModel::setCriteria,
+            onDismiss = { showCriteria = false },
         )
     }
     if (searching) {

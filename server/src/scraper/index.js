@@ -10,6 +10,7 @@ import { libretroMetadata, scrapeLibretro, titleFromLibretroName } from './libre
 import { zipEntries, zipMainEntry } from './rom-identity.js';
 import { findArcadeGame, isArcadeSystem } from './arcade.js';
 import { scrapeScreenScraper } from './screenscraper.js';
+import { scrapeLaunchBox } from './launchbox.js';
 import { scrapeWikipedia, wikidataFacts } from './wikipedia.js';
 
 export { QuotaError } from './screenscraper.js';
@@ -131,6 +132,28 @@ export async function scrapeGame(gameId, source = 'auto') {
     if (!usedSources.includes('fbneo')) usedSources.push('fbneo');
   }
 
+  // LaunchBox Games DB (base de jeux rétro, sans compte) : complète tout ce qui manque — textes,
+  // note, joueurs, titres alternatifs, coop, ESRB, vidéo, images — par le titre du jeu.
+  let launchbox = null;
+  const applyLaunchBox = (lb) => {
+    launchbox = lb;
+    meta ||= { media: {} };
+    meta.title ||= lb.title;
+    for (const key of ['developer', 'publisher', 'genre', 'releaseDate', 'players', 'rating']) meta[key] ||= lb[key];
+    meta.media.boxart ||= lb.media.boxart;
+    meta.media.screenshot ||= lb.media.screenshot;
+    meta.details = mergeDetails(meta.details, lb.details);
+    if (!usedSources.includes('launchbox')) usedSources.push('launchbox');
+  };
+  if (source !== 'screenscraper') {
+    try {
+      const lb = await scrapeLaunchBox({ system, titles: [meta?.title, row.title, inner && titleFromLibretroName(inner.name)] });
+      if (lb) applyLaunchBox(lb);
+    } catch (err) {
+      errors.push(err.message);
+    }
+  }
+
   // Wikipedia : résumé manquant et lien vers l'article. Jeu introuvable ailleurs (fichier mal
   // nommé) : l'article l'identifie (titre officiel, image, Wikidata), et libretro est réinterrogé
   // avec le titre officiel pour les images.
@@ -146,14 +169,21 @@ export async function scrapeGame(gameId, source = 'auto') {
       if (wiki) {
         meta ||= { media: {} };
         if (!meta.description && !row.description) meta.description = wiki.text;
-        meta.details = mergeDetails(meta.details, { links: [{ label: 'Wikipedia', url: wiki.url }] });
+        // Un seul lien Wikipedia : l'article dans la langue préférée remplace celui de LaunchBox.
+        const others = (meta.details?.links || []).filter((l) => l.label !== 'Wikipedia');
+        meta.details = mergeDetails({ ...meta.details, links: others }, { links: [{ label: 'Wikipedia', url: wiki.url }] });
+        if (unidentified) meta.title = wiki.title;
+        // Wikidata : informations manquantes, série et liens vers les sites de jeux rétro
+        // (MobyGames, GameFAQs, RetroAchievements…).
+        const facts = await wikidataFacts(wiki.wikidataId, config.screenscraper.languages).catch(() => null);
+        if (facts) {
+          for (const key of ['developer', 'publisher', 'genre', 'releaseDate']) meta[key] ||= facts[key];
+          meta.details = mergeDetails(meta.details, { modes: facts.modes, series: facts.series, links: facts.links });
+        }
         if (unidentified) {
-          meta.title = wiki.title;
-          const facts = await wikidataFacts(wiki.wikidataId, config.screenscraper.languages).catch(() => null);
-          if (facts) {
-            for (const key of ['developer', 'publisher', 'genre', 'releaseDate']) meta[key] ||= facts[key];
-            meta.details = mergeDetails(meta.details, { modes: facts.modes });
-          }
+          // Titre officiel de l'article : nouvel essai dans LaunchBox.
+          const lb = await scrapeLaunchBox({ system, titles: [wiki.title] }).catch(() => null);
+          if (lb) applyLaunchBox(lb);
           if (useLibretro && system.libretroName) {
             const lr = await scrapeLibretro({ system, fileName: `${wiki.title}.x`, crc32: null }).catch(() => null);
             if (lr) {
@@ -171,6 +201,9 @@ export async function scrapeGame(gameId, source = 'auto') {
       errors.push(err.message);
     }
   }
+
+  // Résumé LaunchBox (en anglais) à défaut d'un résumé dans une langue préférée.
+  if (meta && !meta.description && !row.description && launchbox?.description) meta.description = launchbox.description;
 
   if (!meta) {
     const status = errors.length ? 'error' : 'notfound';
