@@ -339,10 +339,11 @@ void Player::runFrame() {
 
 void Player::present() {
   // Surimpression aux proportions de la fenêtre (360 lignes, texte à l'échelle de l'écran) ;
-  // options du cœur sur 540 lignes : texte 1,5 fois plus petit et plus d'options visibles.
+  // menu sur 480 lignes (deux colonnes : libellés plus longs) ; options du cœur sur 540 lignes :
+  // texte 1,5 fois plus petit et plus d'options visibles.
   int winW = 16, winH = 9;
   SDL_GL_GetDrawableSize(video_.window(), &winW, &winH);
-  const int canvasHeight = menu_.inOptions() ? 540 : 360;
+  const int canvasHeight = menu_.inOptions() ? 540 : menu_.isOpen() ? 480 : 360;
   int canvasWidth = std::clamp(winH > 0 ? (int)std::lround((double)canvasHeight * winW / winH) : canvasHeight * 16 / 9,
                                canvasHeight * 11 / 9, canvasHeight * 32 / 9);
   if (canvasWidth != overlay_.width() || canvasHeight != overlay_.height()) overlay_.resize(canvasWidth, canvasHeight);

@@ -19,7 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.platform.LocalConfiguration
@@ -617,34 +621,50 @@ class LibretroActivity : ComponentActivity() {
     @Composable
     private fun PauseMenu() {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
-            Column(
-                // Défilement : téléphone en paysage, menu plus haut que l'écran.
-                Modifier.widthIn(max = 320.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FocusedButton(stringResource(R.string.libretro_menu_resume), ::closeMenu, Modifier.fillMaxWidth())
+            // Entrées du menu (libellé, action), affichées sur deux colonnes ; « Reprendre » en premier.
+            val items = buildList<Pair<String, () -> Unit>> {
+                add(stringResource(R.string.libretro_menu_resume) to ::closeMenu)
                 if (gameReady) {
-                    MenuButton(stringResource(R.string.libretro_menu_save_state), ::saveState)
-                    MenuButton(stringResource(R.string.libretro_menu_load_state), ::loadState)
-                    MenuButton(stringResource(R.string.libretro_menu_reset), ::reset)
-                    MenuButton(stringResource(R.string.libretro_menu_core_options), ::openOptions)
+                    add(stringResource(R.string.libretro_menu_save_state) to ::saveState)
+                    add(stringResource(R.string.libretro_menu_load_state) to ::loadState)
+                    add(stringResource(R.string.libretro_menu_reset) to ::reset)
+                    add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
                 }
                 if (!isTv) {
-                    MenuButton(
-                        stringResource(if (showTouchPad) R.string.libretro_menu_hide_touchpad else R.string.libretro_menu_show_touchpad),
-                    ) {
-                        showTouchPad = !showTouchPad
-                        closeMenu()
+                    add(
+                        stringResource(if (showTouchPad) R.string.libretro_menu_hide_touchpad else R.string.libretro_menu_show_touchpad) to {
+                            showTouchPad = !showTouchPad
+                            closeMenu()
+                        },
+                    )
+                }
+                add(
+                    stringResource(R.string.libretro_menu_gamepad) to {
+                        mappingSession = MappingSession(gamepadMappings) { message ->
+                            toast = getString(message)
+                            mappingSession = null
+                        }
+                    },
+                )
+                if (gameReady) add(stringResource(R.string.libretro_menu_save_quit) to ::saveAndQuit)
+                add(stringResource(R.string.libretro_menu_quit) to ::finish)
+            }
+            Column(
+                // Défilement : téléphone en paysage, menu plus haut que l'écran.
+                Modifier.widthIn(max = 560.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items.chunked(2).forEachIndexed { row, pair ->
+                    // Même hauteur pour les deux boutons d'une ligne (libellé sur deux lignes).
+                    Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEachIndexed { column, (text, action) ->
+                            val modifier = Modifier.weight(1f).fillMaxHeight()
+                            if (row == 0 && column == 0) FocusedButton(text, action, modifier) else MenuButton(text, action, modifier)
+                        }
+                        // Nombre impair d'entrées : la dernière garde la largeur d'une colonne.
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
-                MenuButton(stringResource(R.string.libretro_menu_gamepad)) {
-                    mappingSession = MappingSession(gamepadMappings) { message ->
-                        toast = getString(message)
-                        mappingSession = null
-                    }
-                }
-                if (gameReady) MenuButton(stringResource(R.string.libretro_menu_save_quit), ::saveAndQuit)
-                MenuButton(stringResource(R.string.libretro_menu_quit), ::finish)
                 Text(
                     stringResource(R.string.libretro_menu_combo_hint),
                     style = MaterialTheme.typography.bodySmall,
@@ -819,15 +839,15 @@ class LibretroActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun MenuButton(text: String, onClick: () -> Unit) {
-        OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) { Text(text) }
+    private fun MenuButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = onClick, modifier = modifier) { Text(text, textAlign = TextAlign.Center) }
     }
 
     /** Bouton qui prend le focus à l'affichage (navigation à la manette ou à la télécommande). */
     @Composable
     private fun FocusedButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
         val focus = remember { FocusRequester() }
-        Button(onClick = onClick, modifier = modifier.focusRequester(focus)) { Text(text) }
+        Button(onClick = onClick, modifier = modifier.focusRequester(focus)) { Text(text, textAlign = TextAlign.Center) }
         LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     }
 
