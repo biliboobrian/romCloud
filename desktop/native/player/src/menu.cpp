@@ -28,7 +28,7 @@ static const struct {
     {"quit", "Quitter", "Quit"},
     {"yes", "Oui", "Yes"},
     {"no", "Non", "No"},
-    {"hint", "A / Entrée : OK   B / Échap : retour   ← → : changer", "A / Enter: OK   B / Esc: back   ← →: change"},
+    {"hint", "A / Entrée : OK   B / Échap : retour   Flèches : choisir", "A / Enter: OK   B / Esc: back   Arrows: move"},
     {"options_title", "Options du cœur", "Core options"},
     {"options_hint", "Mémorisées pour ce système. Certaines s'appliquent au redémarrage du jeu.",
      "Saved for this system. Some apply after restarting the game."},
@@ -129,21 +129,29 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
     return MenuAction::None;
   }
 
+  // Entrées sur deux colonnes, lues ligne par ligne : haut / bas changent de ligne, gauche /
+  // droite de colonne (disque, lissage et plein écran changent avec A / Entrée).
   int count = itemCount(state);
   selected_ = std::min(selected_, count - 1);
   Item item = itemAt(selected_, state);
+  const int rows = (count + 1) / 2;
+  const int row = selected_ / 2, column = selected_ % 2;
   switch (nav) {
-    case Nav::Up: selected_ = (selected_ + count - 1) % count; return MenuAction::None;
-    case Nav::Down: selected_ = (selected_ + 1) % count; return MenuAction::None;
+    case Nav::Up:
+    case Nav::Down: {
+      int next = ((row + (nav == Nav::Up ? rows - 1 : 1)) % rows) * 2 + column;
+      selected_ = std::min(next, count - 1);  // dernière ligne incomplète : seule entrée
+      return MenuAction::None;
+    }
     case Nav::Back: return MenuAction::Resume;
     case Nav::TabPrev:
     case Nav::TabNext: return MenuAction::None;
     case Nav::Left:
-    case Nav::Right:
-      if (item == Item::Disk) return nav == Nav::Left ? MenuAction::DiskPrev : MenuAction::DiskNext;
-      if (item == Item::Smooth) return MenuAction::ToggleSmooth;
-      if (item == Item::Fullscreen) return MenuAction::ToggleFullscreen;
+    case Nav::Right: {
+      int next = row * 2 + (1 - column);
+      if (next < count) selected_ = next;
       return MenuAction::None;
+    }
     case Nav::Confirm:
       switch (item) {
         case Item::Resume: return MenuAction::Resume;
@@ -169,17 +177,21 @@ void Menu::render(Canvas& c, const MenuState& state) const {
     renderOptions(c);
     return;
   }
-  int y = 28;
+  int y = 32;
   c.text(40, y, Canvas::fit(title_, 2, c.width() - 80), 2, kText);
   y += 22;
   c.text(40, y, core_, 1, kMuted);
-  y += 26;
+  y += 34;
+  // Deux colonnes de même largeur, entrées lues ligne par ligne.
+  const int margin = 32, gap = 12, rowHeight = 32;
+  const int columnWidth = (c.width() - 2 * margin - gap) / 2;
   int count = itemCount(state);
   for (int i = 0; i < count; i++) {
     bool sel = i == selected_;
-    if (sel) c.fill(32, y - 4, c.width() - 64, 24, kSelection);
-    c.text(44, y, itemLabel(itemAt(i, state), state), 2, sel ? rgba(255, 255, 255) : kText);
-    y += 26;
+    int x = margin + (i % 2) * (columnWidth + gap);
+    int top = y + (i / 2) * rowHeight;
+    c.fill(x, top - 6, columnWidth, 26, sel ? kSelection : rgba(255, 255, 255, 18));
+    c.text(x + 10, top, Canvas::fit(itemLabel(itemAt(i, state), state), 2, columnWidth - 20), 2, sel ? rgba(255, 255, 255) : kText);
   }
   std::string hint = tr("hint");
   c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 18, hint, 1, kMuted);
