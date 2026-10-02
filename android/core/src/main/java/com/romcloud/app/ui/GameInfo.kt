@@ -35,7 +35,9 @@ fun gameFacts(game: Game): List<GameFact> {
         add(stringResource(R.string.info_regions), d.regions.joinToString(", "))
         add(stringResource(R.string.info_languages), d.languages.joinToString(", "))
         add(stringResource(R.string.info_series), d.series)
-        add(stringResource(R.string.info_modes), d.modes.joinToString(", "))
+        // Coopération signalée par LaunchBox sans être citée dans les modes de jeu.
+        val coop = stringResource(R.string.criteria_players_coop).takeIf { d.cooperative == true && d.modes.none { it.contains("coop", true) } }
+        add(stringResource(R.string.info_modes), (d.modes + listOfNotNull(coop)).joinToString(", "))
         add(stringResource(R.string.info_themes), d.themes.joinToString(", "))
         add(stringResource(R.string.info_age_ratings), d.ageRatings.joinToString(", ") { r -> listOfNotNull(r.type, r.text).joinToString(" ") })
         add(stringResource(R.string.info_serial), d.serial)

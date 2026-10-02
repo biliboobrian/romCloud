@@ -35,6 +35,45 @@ class PadLayoutsTest {
         assertEquals(4, c.size)
         assertTrue(c.all { it.rightStick != null })
         assertEquals(KeyEvent.KEYCODE_BUTTON_L2, n64.left.first { it.label == "Z" }.key)
+        assertFalse(n64.dpad)
+    }
+
+    @Test
+    fun `croix et stick ensemble pour la dreamcast et la psp`() {
+        listOf(PadLayouts.forGame("dreamcast", "flycast"), PadLayouts.forGame("psp", "ppsspp")).forEach {
+            assertTrue(it.dpad && it.stick)
+        }
+    }
+
+    @Test
+    fun `saturn avec les boutons lus par ses coeurs`() {
+        val saturn = PadLayouts.forGame("saturn", "mednafen_saturn")
+        fun key(label: String) = saturn.buttons.first { it.label == label }.key
+        assertEquals(KeyEvent.KEYCODE_BUTTON_B, key("A"))
+        assertEquals(KeyEvent.KEYCODE_BUTTON_A, key("B"))
+        assertEquals(KeyEvent.KEYCODE_BUTTON_R1, key("C"))
+        assertEquals(KeyEvent.KEYCODE_BUTTON_Y, key("X"))
+        assertEquals(KeyEvent.KEYCODE_BUTTON_X, key("Y"))
+        assertEquals(KeyEvent.KEYCODE_BUTTON_L1, key("Z"))
+        assertEquals(listOf(KeyEvent.KEYCODE_BUTTON_L2), saturn.left.map { it.key })
+    }
+
+    @Test
+    fun `gx4000 avec deux boutons et une croix`() {
+        val gx = PadLayouts.forGame("gx4000", "cap32")
+        assertEquals(listOf("1", "2"), labels(gx))
+        assertEquals(listOf(KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_A), gx.buttons.map { it.key })
+        assertTrue(gx.dpad && !gx.stick && gx.left.isEmpty() && gx.right.isEmpty())
+        assertNull(gx.select)
+        assertNull(gx.start)
+    }
+
+    @Test
+    fun `famicom disk system avec changement de face`() {
+        val fds = PadLayouts.forGame("fds", "fceumm")
+        assertEquals(listOf(KeyEvent.KEYCODE_BUTTON_L1), fds.left.map { it.key })
+        assertEquals(listOf(KeyEvent.KEYCODE_BUTTON_R1), fds.right.map { it.key })
+        assertSame(PadLayouts.DEFAULT, PadLayouts.forGame("pcfx", "mednafen_pcfx"))
     }
 
     @Test

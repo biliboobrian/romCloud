@@ -80,10 +80,11 @@ internal fun TouchGamepad(
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Default.Menu, contentDescription = null, tint = Label) }
 
-        if (layout.stick) {
-            TouchStick({ x, y -> onAnalog(false, x, y) }, Modifier.align(Alignment.BottomStart))
-        } else {
-            DPad(onKey, Modifier.align(Alignment.BottomStart))
+        // Croix et stick ensemble : empilés et plus petits, pour tenir sous les tranches.
+        val both = layout.stick && layout.dpad
+        Column(Modifier.align(Alignment.BottomStart), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (layout.stick) TouchStick({ x, y -> onAnalog(false, x, y) }, diameter = if (both) 110.dp else 160.dp)
+            if (layout.dpad) DPad(onKey, diameter = if (both) 140.dp else 160.dp)
         }
 
         Box(Modifier.align(Alignment.BottomEnd).size(layout.width, layout.height)) {
@@ -154,11 +155,11 @@ private fun TouchButton(
 
 /** Stick analogique : position du doigt par rapport au centre, ramenée dans le cercle (-1 à 1). */
 @Composable
-private fun TouchStick(onMove: (Float, Float) -> Unit, modifier: Modifier = Modifier) {
+private fun TouchStick(onMove: (Float, Float) -> Unit, modifier: Modifier = Modifier, diameter: Dp = 160.dp) {
     var knob by remember { mutableStateOf(Offset.Zero) }
     Canvas(
         modifier
-            .size(160.dp)
+            .size(diameter)
             .pointerInput(Unit) {
                 val radius = size.width / 2f
                 fun move(position: Offset) {
@@ -190,11 +191,11 @@ private fun TouchStick(onMove: (Float, Float) -> Unit, modifier: Modifier = Modi
 
 /** Croix directionnelle : 8 directions selon la position du doigt par rapport au centre. */
 @Composable
-private fun DPad(onKey: (Int, Int) -> Unit, modifier: Modifier = Modifier) {
+private fun DPad(onKey: (Int, Int) -> Unit, modifier: Modifier = Modifier, diameter: Dp = 160.dp) {
     var held by remember { mutableStateOf(emptySet<Int>()) }
     Canvas(
         modifier
-            .size(160.dp)
+            .size(diameter)
             .pointerInput(Unit) {
                 fun update(next: Set<Int>) {
                     (held - next).forEach { onKey(KeyEvent.ACTION_UP, it) }

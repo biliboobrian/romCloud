@@ -179,6 +179,9 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         val error: String? = null,
         val query: String = "",
         val filter: GameFilter = GameFilter.ALL,
+        /** Recherche avancée (genre, décennie, joueurs…) et valeurs proposées d'après les jeux. */
+        val criteria: GameCriteria = GameCriteria(),
+        val facets: GameFacets = GameFacets(),
         val grid: Boolean = false,
         /** BIOS du système sur le serveur et ceux absents de l'appareil. */
         val bios: List<BiosFile> = emptyList(),
@@ -187,6 +190,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         val visibleGames: List<Game>
             get() = games.filter { g ->
                 (query.isBlank() || g.title.contains(query, true) || g.fileName.contains(query, true)) &&
+                    criteria.matches(g) &&
                     when (filter) {
                         GameFilter.ALL -> true
                         GameFilter.DOWNLOADED -> g.id in downloaded
@@ -216,7 +220,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
                 val bios = system?.let { app.repository.bios(it) }.orEmpty()
                 _state.update {
                     it.copy(
-                        loading = false, system = system, games = loaded.data,
+                        loading = false, system = system, games = loaded.data, facets = GameFacets.of(loaded.data),
                         offline = loaded.offline, error = loaded.error, bios = bios,
                     )
                 }
@@ -241,6 +245,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
 
     fun setQuery(q: String) = _state.update { it.copy(query = q) }
     fun setFilter(f: GameFilter) = _state.update { it.copy(filter = f) }
+    fun setCriteria(c: GameCriteria) = _state.update { it.copy(criteria = c) }
 
     fun toggleView() {
         val grid = !_state.value.grid

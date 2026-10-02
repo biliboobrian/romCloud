@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -27,10 +28,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.FilterChip
 import androidx.tv.material3.ListItem
 import com.romcloud.app.data.BiosFile
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
+import com.romcloud.app.ui.CriteriaSection
+import com.romcloud.app.ui.GameCriteria
 import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
 
@@ -190,5 +194,38 @@ fun ConfirmDialog(title: String, text: String, confirm: String, onConfirm: () ->
         dismissButton = {
             TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) { Text(stringResource(R.string.action_cancel)) }
         },
+    )
+}
+
+/** Recherche avancée : une rangée de puces par critère, parcourue à la télécommande. */
+@OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
+@Composable
+fun CriteriaDialog(sections: List<CriteriaSection>, criteria: GameCriteria, onChange: (GameCriteria) -> Unit, onDismiss: () -> Unit) {
+    val focus = rememberInitialFocus()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.criteria_title)) },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(sections.size) { i ->
+                    val section = sections[i]
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(section.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(section.options.size) { j ->
+                                val option = section.options[j]
+                                FilterChip(
+                                    selected = option.selected,
+                                    onClick = { onChange(option.toggle(criteria)) },
+                                    modifier = if (i == 0 && j == 0) Modifier.focusRequester(focus) else Modifier,
+                                ) { androidx.tv.material3.Text(option.label) }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+        dismissButton = { TextButton(onClick = { onChange(GameCriteria()) }) { Text(stringResource(R.string.criteria_reset)) } },
     )
 }

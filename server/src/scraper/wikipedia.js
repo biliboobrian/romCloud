@@ -106,7 +106,39 @@ export async function scrapeWikipedia({ title, system, languages, loose = false 
 // Wikidata : informations structurées de l'article (élément « Q… »)
 // ---------------------------------------------------------------------------
 
-const PROPS = { developer: 'P178', publisher: 'P123', genre: 'P136', modes: 'P404', date: 'P577' };
+const PROPS = { developer: 'P178', publisher: 'P123', genre: 'P136', modes: 'P404', series: 'P179', date: 'P577' };
+
+/**
+ * Fiches du jeu sur les sites de jeux rétro, d'après ses identifiants Wikidata :
+ * propriété -> [nom du site, adresse ($1 = identifiant)].
+ */
+export const GAME_SITES = {
+  P11688: ['MobyGames', 'https://www.mobygames.com/game/$1/'],
+  P4769: ['GameFAQs', 'https://gamefaqs.gamespot.com/-/$1-'],
+  P5794: ['IGDB', 'https://www.igdb.com/games/$1'],
+  P11393: ['RetroAchievements', 'https://retroachievements.org/game/$1'],
+  P2816: ['HowLongToBeat', 'https://howlongtobeat.com/game/$1'],
+  P2858: ['Killer List of Videogames', 'https://www.arcade-museum.com/game_detail.php?game_id=$1'],
+  P4710: ['Guardiana', 'https://www.guardiana.net/?game_id=$1'],
+  P5585: ['SMS Power!', 'https://www.smspower.org/Games/$1'],
+  P4961: ['Sega8bit', 'https://www.smstributes.co.uk/getinfo.asp?gameid=$1'],
+  P7555: ['UVL', 'https://www.uvlist.net/game-$1'],
+  P10850: ['Kultboy', 'https://www.kultboy.com/testbericht-uebersicht/$1/'],
+  P12652: ['My Abandonware', 'https://www.myabandonware.com/game/--$1'],
+  P5659: ['VGMdb', 'https://vgmdb.net/product/$1'],
+  P9075: ['StrategyWiki', 'https://strategywiki.org/wiki/$1'],
+  P6783: ['speedrun.com', 'https://www.speedrun.com/$1'],
+};
+
+/** Liens vers les sites de jeux rétro dont l'élément Wikidata donne l'identifiant du jeu. */
+export function siteLinks(claims) {
+  const links = [];
+  for (const [prop, [label, format]] of Object.entries(GAME_SITES)) {
+    const id = claims?.[prop]?.[0]?.mainsnak?.datavalue?.value;
+    if (typeof id === 'string' && id) links.push({ label, url: format.replace('$1', encodeURIComponent(id).replace(/%2F/g, '/')) });
+  }
+  return links;
+}
 
 const entityIds = (claims, prop) =>
   (claims?.[prop] || []).map((c) => c.mainsnak?.datavalue?.value?.id).filter(Boolean);
@@ -127,7 +159,8 @@ export function earliestDate(claims) {
 }
 
 /**
- * Développeur, éditeur, genres, modes de jeu et date de sortie d'un élément Wikidata, libellés
+ * Développeur, éditeur, genres, modes de jeu, série, date de sortie et liens vers les sites de
+ * jeux rétro d'un élément Wikidata, libellés
  * dans la première des [languages] disponible ; null en cas d'échec.
  */
 export async function wikidataFacts(id, languages) {
@@ -136,7 +169,7 @@ export async function wikidataFacts(id, languages) {
   const claims = entity?.claims;
   if (!claims) return null;
   const ids = {};
-  for (const key of ['developer', 'publisher', 'genre', 'modes']) ids[key] = entityIds(claims, PROPS[key]).slice(0, 5);
+  for (const key of ['developer', 'publisher', 'genre', 'modes', 'series']) ids[key] = entityIds(claims, PROPS[key]).slice(0, 5);
   const all = [...new Set(Object.values(ids).flat())];
   const labels = {};
   if (all.length) {
@@ -155,6 +188,8 @@ export async function wikidataFacts(id, languages) {
     publisher: names('publisher').join(', ') || null,
     genre: names('genre').slice(0, 3).join(', ') || null,
     modes: names('modes'),
+    series: names('series').slice(0, 2).join(', ') || null,
     releaseDate: earliestDate(claims),
+    links: siteLinks(claims),
   };
 }

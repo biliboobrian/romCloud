@@ -14,6 +14,14 @@ android {
     defaultConfig {
         minSdk = 26
         consumerProguardFiles("consumer-rules.pro")
+        // Mêmes architectures que LibretroDroid.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
+        // Adaptateur en C++ sans bibliothèque standard : rien d'autre à embarquer.
+        externalNativeBuild { cmake { arguments += "-DANDROID_STL=none" } }
+    }
+    // Adaptateur audio des cœurs qui envoient leur son échantillon par échantillon (cap32).
+    externalNativeBuild {
+        cmake { path = file("src/main/cpp/CMakeLists.txt") }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

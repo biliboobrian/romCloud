@@ -67,6 +67,10 @@ svg.icon { width: 20px; height: 20px; fill: currentColor; flex-shrink: 0; }
 }
 .chip:hover { border-color: var(--accent); }
 .chip.selected { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+#criteriaBtn { display: inline-flex; align-items: center; gap: 6px; }
+/* Fenêtre « Filtres » : une rangée de puces par critère. */
+.criteria-section h4 { font-size: 13px; color: var(--accent); margin: 4px 0 8px; }
+.criteria-values { display: flex; flex-wrap: wrap; gap: 8px; }
 input[type=text], input[type=password], input[type=search], select {
   font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
   border-radius: 8px; padding: 8px 12px; width: 100%; user-select: text;
@@ -169,7 +173,7 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 /* ---- Fiche du jeu ---- */
 .detail { position: relative; min-height: 100%; }
 .detail .backdrop { height: 100%; }
-.detail-body { position: relative; display: flex; align-items: flex-start; gap: 36px; padding: 32px 36px; }
+.detail-body { position: relative; display: flex; align-items: flex-start; gap: 36px; padding: 0 36px 32px; }
 .detail .cover-lg { width: 280px; aspect-ratio: 3 / 4; border-radius: 12px; overflow: hidden; background: var(--surface-2); flex-shrink: 0; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; }
 .detail .cover-lg img { width: 100%; height: 100%; object-fit: cover; }
 .detail .col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; max-width: 900px; }

@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import android.os.Process
+import android.system.Os
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -214,7 +215,7 @@ class LibretroActivity : ComponentActivity() {
     private suspend fun startGame(coreFile: File, game: File) {
         val sram = withContext(Dispatchers.IO) { sramFile.takeIf { it.isFile }?.readBytes() }
         val data = GLRetroViewData(this).apply {
-            coreFilePath = coreFile.absolutePath
+            coreFilePath = corePath(coreFile)
             gameFilePath = game.absolutePath
             systemDirectory = intent.getStringExtra(EXTRA_SYSTEM_DIR) ?: filesDir.absolutePath
             savesDirectory = sramFile.parentFile!!.apply { mkdirs() }.absolutePath
@@ -241,6 +242,18 @@ class LibretroActivity : ComponentActivity() {
         }
         phase = Phase.Running
         showTouchPad = !isTv && !GamepadInput.hasGamepad()
+    }
+
+    /**
+     * Chemin du cœur donné à LibretroDroid. Un cœur qui envoie son son échantillon par échantillon
+     * (canal ignoré par LibretroDroid : jeu muet) est chargé par l'adaptateur audio_shim, qui
+     * regroupe ces échantillons en lots ; l'adaptateur lit le chemin du cœur réel dans l'environnement.
+     */
+    private fun corePath(coreFile: File): String {
+        if (core !in SAMPLE_AUDIO_CORES) return coreFile.absolutePath
+        Os.setenv("ROMCLOUD_SHIM_CORE", coreFile.absolutePath, true)
+        // Bibliothèques non extraites de l'APK : dlopen les trouve par leur seul nom.
+        return File(applicationInfo.nativeLibraryDir, AUDIO_SHIM).takeIf { it.isFile }?.absolutePath ?: AUDIO_SHIM
     }
 
     private fun onRetroError(code: Int) {
@@ -837,6 +850,9 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_RESUME = "resume"
         private const val RETRO_DEVICE_JOYPAD = 1
         private const val RETRO_DEVICE_MASK = 0xff
+        private const val AUDIO_SHIM = "libromcloud_audio_shim.so"
+        /** Cœurs dont le son passe par retro_audio_sample (un échantillon à la fois). */
+        private val SAMPLE_AUDIO_CORES = setOf("cap32")
 
         /** État de sauvegarde d'un jeu pour un cœur (« Sauvegarder l'état », « Sauvegarder et quitter »). */
         fun stateFile(context: Context, core: String, rom: File): File =

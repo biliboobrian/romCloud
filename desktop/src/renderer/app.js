@@ -2,6 +2,7 @@
 (function () {
   const rc = window.romcloud;
   const { t, errorText, formatSize } = window.I18N;
+  const Criteria = window.RomCloudCriteria;
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -16,7 +17,7 @@
     systemsError: null,
     systemsLoading: true,
     search: { query: '', results: [], downloaded: new Set(), offline: false, loading: false, error: null },
-    games: { systemId: null, list: [], downloaded: new Set(), offline: false, loading: false, error: null, filter: 'all', query: '' },
+    games: { systemId: null, list: [], downloaded: new Set(), offline: false, loading: false, error: null, filter: 'all', query: '', criteria: {} },
     downloads: {}, // gameId -> { status, bytes, total, title, error }
     autoLaunch: new Set(),
     route: { name: 'systems' },
@@ -41,6 +42,7 @@
     info: 'M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',
     list: 'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z',
     carousel: 'M7 19h10V4H7v15zm-5-2h4V6H2v11zM18 6v11h4V6h-4z',
+    filter: 'M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z',
     folder: 'M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
     trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
     open: 'M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z',
@@ -328,7 +330,7 @@
 
   function openSystem(systemId) {
     if (S.games.systemId !== systemId) {
-      S.games = { systemId, list: [], downloaded: new Set(), offline: false, loading: true, error: null, filter: 'all', query: '' };
+      S.games = { systemId, list: [], downloaded: new Set(), offline: false, loading: true, error: null, filter: 'all', query: '', criteria: {} };
       S.focusedGameId = null;
     }
     go({ name: 'games', systemId });
@@ -358,6 +360,7 @@
     const q = S.games.query.trim().toLowerCase();
     return S.games.list.filter((g) => {
       if (q && !g.title.toLowerCase().includes(q) && !g.fileName.toLowerCase().includes(q)) return false;
+      if (!Criteria.matches(g, S.games.criteria)) return false;
       if (S.games.filter === 'downloaded') return S.games.downloaded.has(g.id);
       if (S.games.filter === 'remote') return !S.games.downloaded.has(g.id);
       return true;
@@ -393,6 +396,55 @@
       || games[0];
   }
 
+  // ---------------------------------------------------------------------------
+  // Recherche avancée (genre, décennie, joueurs, région, note, éditeur)
+  // ---------------------------------------------------------------------------
+
+  /** Bouton « Filtres » de la barre du haut (absent si les jeux n'ont aucune information). */
+  function criteriaChip() {
+    if (Criteria.isEmpty(Criteria.facets(S.games.list))) return '';
+    const n = Criteria.count(S.games.criteria);
+    return `<button class="chip${n ? ' selected' : ''}" id="criteriaBtn">${icon('filter', 16)} ${esc(n ? t('criteria.count', { n }) : t('criteria.title'))}</button>`;
+  }
+
+  /** Libellé d'une valeur de critère. */
+  function criteriaLabel(key, value) {
+    if (key === 'decade') return t('criteria.decadeValue', { n: value });
+    if (key === 'players') return t(`criteria.players.${value}`);
+    if (key === 'minRating') return t('criteria.ratingValue', { n: value });
+    return value;
+  }
+
+  /** Fenêtre « Filtres » : une rangée de puces par critère ; un appui choisit, un second retire. */
+  function openCriteria() {
+    const facets = Criteria.facets(S.games.list);
+    const c = S.games.criteria;
+    const sections = Criteria.KEYS.filter((k) => facets[k].length).map((k) => `<div class="criteria-section">
+        <h4>${esc(t(`criteria.${k}`))}</h4>
+        <div class="criteria-values">${facets[k].map((v, i) => `<button class="chip${c[k] === v ? ' selected' : ''}" data-key="${k}" data-index="${i}">${esc(criteriaLabel(k, v))}</button>`).join('')}</div>
+      </div>`).join('');
+    const update = (next) => {
+      S.games.criteria = next;
+      renderGames();
+      openCriteria();
+    };
+    const root = modal({
+      title: t('criteria.title'),
+      body: sections,
+      buttons: [
+        { label: t('criteria.reset'), kind: 'ghost', left: true, keepOpen: true, onClick: () => update({}) },
+        { label: t('app.close'), kind: 'primary' },
+      ],
+    });
+    for (const el of $$('[data-key]', root)) {
+      el.onclick = () => {
+        const key = el.dataset.key;
+        const value = facets[key][Number(el.dataset.index)];
+        update({ ...c, [key]: c[key] === value ? undefined : value });
+      };
+    }
+  }
+
   function renderGames() {
     const system = systemById(S.route.systemId);
     const f = S.games.filter;
@@ -402,6 +454,7 @@
       subtitle: t('games.subtitle', { n: S.games.list.length, d: S.games.downloaded.size }),
       center: `<div class="games-toolbar">
         ${['all', 'downloaded', 'remote'].map((k) => `<button class="chip${f === k ? ' selected' : ''}" data-filter="${k}">${esc(t(`filter.${k}`))}</button>`).join('')}
+        ${criteriaChip()}
         <input type="search" class="search-box" id="gameSearch" placeholder="${esc(t('games.search'))}" value="${esc(S.games.query)}" style="width:240px">
       </div>`,
       right: `<button class="icon-btn" id="viewBtn" title="${esc(t(view === 'list' ? 'games.carousel' : 'games.list'))}">${icon(view === 'list' ? 'carousel' : 'list')}</button>
@@ -413,6 +466,8 @@
         renderGames();
       };
     }
+    const criteriaBtn = $('#criteriaBtn');
+    if (criteriaBtn) criteriaBtn.onclick = openCriteria;
     $('#gameSearch').oninput = (e) => {
       S.games.query = e.target.value;
       renderGamesBody();
@@ -434,7 +489,8 @@
     // Carrousel sans bandeau : l'image de fond monte sous la barre du haut.
     document.body.classList.toggle('immersive', games.length > 0 && S.settings.view !== 'list' && !S.games.offline);
     if (!games.length) {
-      const text = S.games.loading ? t('app.loading') : S.games.error || t('games.none');
+      const text = S.games.loading ? t('app.loading') : S.games.error
+        || (S.games.list.length && Criteria.count(S.games.criteria) ? t('criteria.none') : t('games.none'));
       main.innerHTML = `<div class="centered"><p>${esc(text)}</p></div>`;
       return;
     }
@@ -754,7 +810,8 @@
       [t('info.regions'), list(d.regions)],
       [t('info.languages'), list(d.languages)],
       [t('info.series'), d.series],
-      [t('info.modes'), list(d.modes)],
+      // Coopération signalée par LaunchBox sans être citée dans les modes de jeu.
+      [t('info.modes'), list([...(d.modes || []), ...(d.cooperative && !(d.modes || []).some((m) => /coop/i.test(m)) ? [t('criteria.players.coop')] : [])])],
       [t('info.themes'), list(d.themes)],
       [t('info.ageRatings'), (d.ageRatings || []).map((r) => [r.type, r.text].filter(Boolean).join(' ')).join(', ')],
       [t('info.serial'), d.serial],
