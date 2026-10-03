@@ -9,6 +9,7 @@ const { app } = require('electron');
 const settings = require('./settings');
 const zip = require('./zip');
 const libretro = require('./libretro');
+const keyboard = require('./keyboard');
 const { AppError } = require('./api');
 
 const root = () => path.join(app.getPath('userData'), 'libretro');
@@ -105,6 +106,7 @@ async function launch(system, game, file, core, { resume = false } = {}) {
     language: settings.language(),
     windowed: false,
     resume,
+    keys: keyboard.playerKeys(settings.load().keyboard),
     optionDefaults: libretro.gameOptionDefaults(core, rom),
   });
   fs.mkdirSync(base, { recursive: true });

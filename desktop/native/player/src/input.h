@@ -5,6 +5,9 @@
 #include <SDL.h>
 
 #include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "libretro.h"
 
@@ -12,8 +15,12 @@ class Input {
  public:
   static constexpr int kPorts = 4;
 
+  Input();
+
   void init();
   void shutdown();
+  /** Touches du clavier (joueur 1) : « identifiant libretro=scancode SDL » séparés par des virgules. */
+  void setKeys(const std::string& spec);
   /** Branchement / débranchement des manettes. */
   void handleEvent(const SDL_Event& event);
 
@@ -27,8 +34,10 @@ class Input {
 
  private:
   bool button(unsigned port, unsigned id) const;
+  bool key(unsigned id) const;
   int16_t axis(unsigned port, SDL_GameControllerAxis axis) const;
 
+  std::vector<std::pair<unsigned, SDL_Scancode>> keys_;  // bouton RetroPad -> touche
   SDL_GameController* pads_[kPorts] = {};
   uint16_t rumbleStrong_[kPorts] = {}, rumbleWeak_[kPorts] = {};
 };

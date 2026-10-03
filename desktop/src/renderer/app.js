@@ -302,24 +302,15 @@
     </div>`;
   }
 
-  /** Clic : jouer / télécharger ; bouton ⓘ ou clic droit : fiche du jeu. */
-  function bindCards(root, games, onDetails, onClick) {
+  /** Clic, bouton ⓘ ou clic droit : fiche du jeu (jouer / télécharger depuis la fiche ou le bandeau). */
+  function bindCards(root, games, onDetails) {
     const byId = new Map(games.map((g) => [g.id, g]));
     for (const el of $$('[data-card]', root)) {
       const game = byId.get(Number(el.dataset.card));
-      el.onclick = (e) => {
-        if (e.target.closest('[data-info]')) return onDetails(game);
-        (onClick || onDetails)(game);
-      };
+      el.onclick = () => onDetails(game);
       el.oncontextmenu = (e) => {
         e.preventDefault();
         onDetails(game);
-      };
-      el.onmouseenter = () => {
-        if (S.route.name === 'games') {
-          S.focusedGameId = game.id;
-          renderHero();
-        }
       };
     }
   }
@@ -528,7 +519,7 @@
       }
       renderHero();
     }
-    bindCards(main, games, (g) => openGameDetail(g.systemId, g.id), (g) => onGameClick(systemById(g.systemId), g));
+    bindCards(main, games, (g) => openGameDetail(g.systemId, g.id));
   }
 
   function renderHero() {
@@ -996,7 +987,7 @@
 
   async function renderSettings() {
     const s = S.settings;
-    const [version, emulators] = await Promise.all([call(rc.app.version), call(rc.emulators.list)]);
+    const [version, emulators, keys] = await Promise.all([call(rc.app.version), call(rc.emulators.list), call(rc.keyboard.layout)]);
     // Nom des systèmes du serveur quand ils existent, sinon l'identifiant court.
     const systemLabel = (id) => S.systems.find((x) => x.shortname === id || x.id === id)?.name;
     setTopbar({ title: t('settings.title') });
@@ -1028,6 +1019,15 @@
         <div class="muted small">${esc(t('settings.emulatorSystems', { list: e.systems.map((id, i) => systemLabel(id) || e.systemNames[i]).join(', ') }))}${e.direct ? '' : ` · ${esc(t('emulator.noDirect'))}`}</div>
         ${emulatorBlock(e, { compact: true })}
       </div>`).join('')}</div>
+
+      <h3>${esc(t('settings.keyboard'))}</h3>
+      <p class="muted">${esc(t('settings.keyboardHint'))}</p>
+      <div class="key-grid">${keys.buttons.map((b) => `<div class="key-row">
+        <span>${esc(buttonLabel(b))}</span>
+        <button class="btn key-btn" data-key="${b}"></button>
+        <button class="icon-btn" data-key-clear="${b}" title="${esc(t('settings.keyClear'))}">${icon('close', 16)}</button>
+      </div>`).join('')}</div>
+      <div class="line"><button class="btn" id="keysReset">${esc(t('settings.keyReset'))}</button></div>
 
       <div class="line" style="margin-top:14px"><button class="btn primary" id="saveBtn">${esc(t('app.save'))}</button></div>
       <p class="muted">${esc(t('settings.version', { v: version }))}</p>
@@ -1063,6 +1063,7 @@
     };
     $('#detectBtn').onclick = (e) => detectEmulators(e.currentTarget);
     for (const e of emulators) bindEmulatorBlock($('#main'), e, () => renderSettings());
+    bindKeyboard(keys);
     $('#raBrowse').onclick = async () => {
       const file = await call(rc.dialog.pickFile, [{ name: t('settings.exe'), extensions: ['exe'] }]);
       if (file) $('#retroarchPath').value = file;
@@ -1112,6 +1113,77 @@
     }
     patchGame(gameId);
   });
+
+  // Touches du clavier (moteur intégré) : un bouton par bouton de manette ; clic, puis touche.
+  const buttonLabel = (b) => (['up', 'down', 'left', 'right'].includes(b) ? t(`key.${b}`) : b.toUpperCase().replace('START', 'Start').replace('SELECT', 'Select'));
+  const KEY_SYMBOLS = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Backspace: '⌫' };
+  let layoutMap = null; // disposition du clavier (AZERTY…) : « KeyQ » affiché « A »
+  navigator.keyboard?.getLayoutMap?.().then((m) => { layoutMap = m; }).catch(() => {});
+
+  function keyName(code) {
+    if (!code) return t('settings.keyNone');
+    if (KEY_SYMBOLS[code]) return KEY_SYMBOLS[code];
+    const named = t(`keyname.${code}`);
+    if (named !== `keyname.${code}`) return named;
+    const local = layoutMap?.get(code);
+    if (local && local.trim()) return local.toUpperCase();
+    return code.replace(/^Key|^Digit/, '').replace(/^Numpad(.+)/, (m, k) => t('keyname.numpad', { key: k }));
+  }
+
+  function bindKeyboard(layout) {
+    let keys = { ...layout.keys };
+    let waiting = null; // bouton en attente d'une touche
+    const paint = () => {
+      for (const el of $$('[data-key]')) {
+        const b = el.dataset.key;
+        el.textContent = waiting === b ? t('settings.keyPress') : keyName(keys[b]);
+        el.classList.toggle('selected', waiting === b);
+        el.classList.toggle('unset', !keys[b]);
+      }
+    };
+    const save = async (next) => {
+      keys = next;
+      paint();
+      S.settings = await call(rc.settings.save, { keyboard: keys });
+    };
+    const stop = () => {
+      waiting = null;
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('mousedown', cancel, true);
+      paint();
+    };
+    const cancel = (e) => { if (!e.target.closest?.('[data-key]')) stop(); };
+    function onKey(e) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.repeat) return;
+      const button = waiting;
+      if (e.code === 'Escape') return stop();
+      if (layout.reserved.includes(e.code)) return toast(t('settings.keyReserved', { key: e.code }), { type: 'error' });
+      if (!layout.codes.includes(e.code)) return toast(t('settings.keyUnknown'), { type: 'error' });
+      // Une touche ne commande qu'un bouton : retirée de celui qui l'avait.
+      const next = { ...keys };
+      for (const b of layout.buttons) if (next[b] === e.code) next[b] = '';
+      next[button] = e.code;
+      stop();
+      save(next);
+    }
+    for (const el of $$('[data-key]')) {
+      el.onclick = () => {
+        if (waiting === el.dataset.key) return stop();
+        if (!waiting) {
+          window.addEventListener('keydown', onKey, true);
+          window.addEventListener('mousedown', cancel, true);
+        }
+        waiting = el.dataset.key;
+        el.blur(); // Espace / Entrée ne doivent pas recliquer le bouton
+        paint();
+      };
+    }
+    for (const el of $$('[data-key-clear]')) el.onclick = () => save({ ...keys, [el.dataset.keyClear]: '' });
+    $('#keysReset').onclick = () => save({ ...layout.defaults });
+    paint();
+  }
 
   // ---------------------------------------------------------------------------
   // Démarrage
