@@ -1,7 +1,8 @@
 // Moteur d'émulation intégré (romcloud-player.exe, frontend libretro natif) : téléchargement des
 // cœurs à la demande depuis le buildbot libretro, préparation de la ROM et lancement du jeu.
 // Données dans le dossier de l'application : libretro\cores, saves\<cœur>, states\<cœur>,
-// options\<système>.cfg (options du cœur mémorisées par système), player.log (journal).
+// options\<système>.cfg (options du cœur mémorisées par système), keyboard.cfg (touches du clavier,
+// modifiables aussi depuis le menu du moteur), player.log (journal).
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
@@ -82,6 +83,23 @@ function prepareRom(core, file) {
   return main || file;
 }
 
+const keysFile = () => path.join(root(), 'keyboard.cfg');
+
+/** Touches du clavier du moteur ; sans fichier, celles des paramètres de la version 1.16.0. */
+function loadKeys() {
+  try {
+    return keyboard.parseFile(fs.readFileSync(keysFile(), 'utf8'));
+  } catch {
+    return keyboard.resolve(settings.load().keyboard || {});
+  }
+}
+
+function saveKeys(keys) {
+  fs.mkdirSync(root(), { recursive: true });
+  fs.writeFileSync(keysFile(), keyboard.formatFile(keys));
+  return loadKeys();
+}
+
 /** État de sauvegarde du jeu dans le moteur (« Sauvegarder et quitter », F2…). */
 const statePath = (core, file) => path.join(root(), 'states', core, `${path.parse(file).name}.state`);
 
@@ -106,10 +124,11 @@ async function launch(system, game, file, core, { resume = false } = {}) {
     language: settings.language(),
     windowed: false,
     resume,
-    keys: keyboard.playerKeys(settings.load().keyboard),
+    keysFile: keysFile(),
     optionDefaults: libretro.gameOptionDefaults(core, rom),
   });
   fs.mkdirSync(base, { recursive: true });
+  if (!fs.existsSync(keysFile())) saveKeys(loadKeys());
   const log = fs.openSync(path.join(base, 'player.log'), 'w');
   return new Promise((resolve, reject) => {
     let child;
@@ -123,4 +142,4 @@ async function launch(system, game, file, core, { resume = false } = {}) {
   });
 }
 
-module.exports = { playerPath, available, coreInstalled, ensureCore, prepareRom, statePath, launch };
+module.exports = { playerPath, available, coreInstalled, ensureCore, prepareRom, statePath, launch, loadKeys, saveKeys };

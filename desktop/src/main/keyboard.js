@@ -1,6 +1,8 @@
 // Touches du clavier du joueur 1 dans le moteur intégré (fonctions pures, sans Electron).
 // Une touche est notée par son code physique (KeyboardEvent.code : « KeyZ », « ArrowUp »…), donc
-// indépendant de la disposition AZERTY / QWERTY, et transmise au moteur en code SDL (scancode USB).
+// indépendant de la disposition AZERTY / QWERTY. Disposition mémorisée dans un fichier partagé avec
+// le moteur, qui la modifie aussi depuis son menu : une ligne « bouton=scancode SDL » (USB) par
+// bouton, valeur vide = aucune touche, bouton absent = touche par défaut.
 
 /** Boutons de la manette libretro (RetroPad) : nom et identifiant RETRO_DEVICE_ID_JOYPAD_*. */
 const BUTTONS = [
@@ -68,10 +70,23 @@ function resolve(saved = {}) {
   return keys;
 }
 
-/** Argument --keys du moteur : « identifiant libretro=scancode » séparés par des virgules. */
-function playerKeys(saved) {
-  const keys = resolve(saved);
-  return BUTTONS.filter(({ name }) => keys[name]).map(({ name, id }) => `${id}=${SCANCODES[keys[name]]}`).join(',');
+/** Contenu du fichier des touches -> { bouton: code } (touches inconnues ignorées). */
+function parseFile(text) {
+  const codes = Object.fromEntries(Object.entries(SCANCODES).map(([code, sc]) => [sc, code]));
+  const saved = {};
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const match = /^(\w+)=(\d*)$/.exec(line.trim());
+    if (!match || !BUTTONS.some((b) => b.name === match[1])) continue;
+    if (match[2] === '') saved[match[1]] = '';
+    else if (codes[match[2]]) saved[match[1]] = codes[match[2]];
+  }
+  return resolve(saved);
 }
 
-module.exports = { BUTTONS, DEFAULTS, RESERVED, SCANCODES, assignable, resolve, playerKeys };
+/** Fichier des touches pour le moteur. */
+function formatFile(saved) {
+  const keys = resolve(saved);
+  return BUTTONS.map(({ name }) => `${name}=${keys[name] ? SCANCODES[keys[name]] : ''}\n`).join('');
+}
+
+module.exports = { BUTTONS, DEFAULTS, RESERVED, SCANCODES, assignable, resolve, parseFile, formatFile };

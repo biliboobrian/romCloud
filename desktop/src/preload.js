@@ -37,7 +37,7 @@ contextBridge.exposeInMainWorld('romcloud', {
   },
   dialog: { pickFile: call('dialog:pickFile'), pickFolder: call('dialog:pickFolder') },
   shell: { showItem: call('shell:showItem'), openExternal: call('shell:openExternal') },
-  keyboard: { layout: call('keyboard:layout') },
+  keyboard: { layout: call('keyboard:layout'), save: call('keyboard:save') },
   app: { version: call('app:version') },
   update: {
     check: call('update:check'),

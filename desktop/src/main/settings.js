@@ -19,7 +19,6 @@ function defaults() {
     emulatorArgs: {}, // { [id]: arguments personnalisés, vide = ceux du catalogue }
     emulatorsDetectedAt: '', // date de la dernière recherche des émulateurs sur le PC
     retroarchHelpDismissed: false,
-    keyboard: {}, // { [bouton]: KeyboardEvent.code, '' = aucune } ; absent : touche par défaut (keyboard.js)
   };
 }
 

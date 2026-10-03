@@ -6,8 +6,6 @@
 
 #include <cstdint>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "libretro.h"
 
@@ -18,6 +16,21 @@ class Input {
   Input();
 
   void init();
+
+  // Touches du clavier du joueur 1, une par bouton du RetroPad (SDL_SCANCODE_UNKNOWN : aucune),
+  // mémorisées dans un fichier « bouton=scancode » partagé avec l'application (keyboard.js).
+  static constexpr int kButtons = RETRO_DEVICE_ID_JOYPAD_R3 + 1;
+  /** Boutons dans l'ordre d'affichage : identifiants libretro et noms du fichier. */
+  static const unsigned kButtonOrder[kButtons];
+  static const char* buttonName(unsigned id);
+  /** Touche attribuable (connue de l'application et non réservée au moteur). */
+  static bool assignable(SDL_Scancode code);
+  void loadKeys(const std::string& file);
+  bool saveKeys() const;
+  SDL_Scancode keyOf(unsigned id) const { return id < (unsigned)kButtons ? keys_[id] : SDL_SCANCODE_UNKNOWN; }
+  /** Attribue la touche au bouton (et la retire de celui qui l'avait), puis enregistre. */
+  void assignKey(unsigned id, SDL_Scancode code);
+  void resetKeys();
   void shutdown();
   /** Touches du clavier (joueur 1) : « identifiant libretro=scancode SDL » séparés par des virgules. */
   void setKeys(const std::string& spec);
@@ -37,7 +50,8 @@ class Input {
   bool key(unsigned id) const;
   int16_t axis(unsigned port, SDL_GameControllerAxis axis) const;
 
-  std::vector<std::pair<unsigned, SDL_Scancode>> keys_;  // bouton RetroPad -> touche
+  SDL_Scancode keys_[kButtons] = {};
+  std::string keysFile_;
   SDL_GameController* pads_[kPorts] = {};
   uint16_t rumbleStrong_[kPorts] = {}, rumbleWeak_[kPorts] = {};
 };

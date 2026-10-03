@@ -7,6 +7,7 @@ const library = require('./library');
 const downloads = require('./downloads');
 const launcher = require('./launcher');
 const keyboard = require('./keyboard');
+const builtin = require('./builtin');
 const { createUpdater } = require('./updater');
 
 const updater = createUpdater({ app });
@@ -94,8 +95,9 @@ handle('keyboard:layout', () => ({
   defaults: keyboard.DEFAULTS,
   reserved: keyboard.RESERVED,
   codes: Object.keys(keyboard.SCANCODES),
-  keys: keyboard.resolve(settings.load().keyboard),
+  keys: builtin.loadKeys(),
 }));
+handle('keyboard:save', (keys) => builtin.saveKeys(keys));
 handle('app:version', () => app.getVersion());
 // Mise à jour : vérifiée au chargement de l'interface ; installation sur confirmation.
 handle('update:check', () => updater.check());

@@ -99,9 +99,9 @@ test('arguments du moteur intégré : reprise de la partie', () => {
 
 test('arguments du moteur intégré : touches du clavier', () => {
   const base = { dll: 'C.dll', rom: 'R', systemDir: 'B', saveDir: 'S', stateDir: 'T', optionsFile: 'O', title: 'Jeu', language: 'fr' };
-  const args = libretro.playerArgs({ ...base, keys: '0=44,8=27' });
-  assert.equal(args[args.indexOf('--keys') + 1], '0=44,8=27');
-  assert.ok(!libretro.playerArgs(base).includes('--keys'));
+  const args = libretro.playerArgs({ ...base, keysFile: 'K:\keyboard.cfg' });
+  assert.equal(args[args.indexOf('--keys-file') + 1], 'K:\keyboard.cfg');
+  assert.ok(!libretro.playerArgs(base).includes('--keys-file'));
 });
 
 test('options imposées par le jeu : cartouche .cpr avec cap32 -> CPC 6128+', () => {

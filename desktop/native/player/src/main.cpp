@@ -3,7 +3,7 @@
 //   romcloud-player --core <cœur.dll> --rom <jeu> [--system-dir <BIOS>] [--save-dir <dossier>]
 //                   [--state-dir <dossier>] [--options <fichier>] [--title <nom>] [--lang fr|en]
 //                   [--windowed] [--resume] [--state-name <nom>] [--option-default <clé>=<valeur>]…
-//                   [--keys <bouton libretro>=<scancode SDL>,…]
+//                   [--keys-file <touches du clavier>]
 //
 // Fonctionnement calqué sur LibretroDroid : le cœur est chargé, le jeu démarré, puis une boucle
 // exécute retro_run au rythme de l'audio et affiche chaque image avec OpenGL. Codes de sortie :
@@ -32,14 +32,14 @@ struct Args {
   std::string core, rom, systemDir, saveDir, stateDir, options, title, lang = "fr";
   std::string stateName;  // nom de l'état de sauvegarde (par défaut celui de la ROM)
   std::vector<std::string> optionDefaults;  // « clé=valeur » propres au jeu (--option-default)
-  std::string keys;  // touches du clavier (--keys), absent : disposition par défaut
-  bool hasKeys = false;
+  std::string keysFile;  // touches du clavier « bouton=scancode », modifiées depuis le menu
   bool windowed = false;
   bool resume = false;  // reprend la partie à l'état sauvegardé
   // Mode d'essai : fenêtre cachée, N images au plus vite, dernière image enregistrée en BMP.
   std::string testFrames, screenshot, testSeconds, testOptions;
   bool testWindow = false;  // essai dans une fenêtre visible : affichage et menu capturés
   bool testMenu = false;
+  bool testKeys = false;  // essai : écran des touches du clavier
   bool testSaveState = false;  // essai : état enregistré après les N images
 };
 
@@ -49,6 +49,7 @@ Args parseArgs(int argc, char** argv) {
       {"--core", &a.core},           {"--rom", &a.rom},         {"--system-dir", &a.systemDir},
       {"--save-dir", &a.saveDir},    {"--state-dir", &a.stateDir}, {"--options", &a.options},
       {"--title", &a.title},         {"--lang", &a.lang},       {"--state-name", &a.stateName},
+      {"--keys-file", &a.keysFile},
       {"--test-frames", &a.testFrames}, {"--screenshot", &a.screenshot}, {"--test-seconds", &a.testSeconds},
       {"--test-options", &a.testOptions},  // essai : écran des options du cœur, onglet N
   };
@@ -58,12 +59,9 @@ Args parseArgs(int argc, char** argv) {
     else if (arg == "--resume") a.resume = true;
     else if (arg == "--test-window") a.testWindow = true;
     else if (arg == "--test-menu") a.testMenu = true;
+    else if (arg == "--test-keys") a.testKeys = true;
     else if (arg == "--test-save-state") a.testSaveState = true;
     else if (arg == "--option-default" && i + 1 < argc) a.optionDefaults.push_back(argv[++i]);
-    else if (arg == "--keys" && i + 1 < argc) {
-      a.keys = argv[++i];
-      a.hasKeys = true;
-    }
     else if (values.count(arg) && i + 1 < argc) *values[arg] = argv[++i];
   }
   return a;
@@ -271,6 +269,11 @@ bool Player::handleEvents() {
         break;
 
       case SDL_KEYDOWN: {
+        // Écran des touches du menu : la touche appuyée est attribuée au bouton choisi.
+        if (menu_.waitingKey()) {
+          if (!e.key.repeat) menu_.keyPressed(e.key.keysym.scancode);
+          break;
+        }
         SDL_Keycode key = e.key.keysym.sym;
         bool alt = (e.key.keysym.mod & KMOD_ALT) != 0;
         if (key == SDLK_F11 || (key == SDLK_RETURN && alt)) {
@@ -308,6 +311,10 @@ bool Player::handleEvents() {
           break;
         }
         if (!menu_.isOpen()) break;
+        if (menu_.waitingKey()) {
+          if (button == SDL_CONTROLLER_BUTTON_B) menu_.keyPressed(SDL_SCANCODE_ESCAPE);  // annule
+          break;
+        }
         Nav nav;
         switch (button) {
           case SDL_CONTROLLER_BUTTON_DPAD_UP: nav = Nav::Up; break;
@@ -409,7 +416,7 @@ int Player::run() {
     g.api.deinit();
     return fail(menu_.tr("video_failed") + "\n" + error);
   }
-  if (args_.hasKeys) input_.setKeys(args_.keys);
+  input_.loadKeys(args_.keysFile);
   input_.init();
   loadSram();  // avant l'état de sauvegarde, qui la contient aussi
   if (args_.resume) {
@@ -429,7 +436,8 @@ int Player::run() {
     }
     bool saved = true;
     if (args_.testWindow) {
-      if (args_.testMenu || !args_.testOptions.empty()) menu_.open();
+      if (args_.testMenu || args_.testKeys || !args_.testOptions.empty()) menu_.open();
+      if (args_.testKeys) menu_.openKeys();
       if (!args_.testOptions.empty()) {
         menu_.openOptions();
         for (int i = atoi(args_.testOptions.c_str()); i > 0; i--) menu_.handle(Nav::TabNext, menuState());
