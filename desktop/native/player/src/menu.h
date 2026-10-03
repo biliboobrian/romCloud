@@ -1,7 +1,9 @@
 // Menu du moteur (Échap, bouton central de la manette ou Start + Select) : reprendre, états de
-// sauvegarde, redémarrage, options du cœur (un onglet par type), disque, lissage, plein écran,
-// sauvegarder et quitter, quitter.
+// sauvegarde, redémarrage, options du cœur (un onglet par type), touches du clavier, disque,
+// lissage, plein écran, sauvegarder et quitter, quitter.
 #pragma once
+
+#include <SDL.h>
 
 #include <string>
 
@@ -27,10 +29,17 @@ class Menu {
   void open();
   void close() { open_ = false; }
   bool isOpen() const { return open_; }
-  /** Écran des options du cœur affiché (dessiné en plus petit : nombreuses lignes). */
-  bool inOptions() const { return open_ && screen_ == Screen::Options; }
+  /** Écran des options du cœur ou des touches affiché (dessiné en plus petit : nombreuses lignes). */
+  bool inOptions() const { return open_ && screen_ != Screen::Main; }
   /** Écran des options du cœur, premier onglet. */
   void openOptions();
+
+  /** Écran des touches du clavier. */
+  void openKeys();
+  /** Écran des touches en attente d'une touche pour le bouton choisi. */
+  bool waitingKey() const { return open_ && waitingKey_; }
+  /** Touche appuyée pendant l'attente : attribuée, sauf Échap (annule) et touches réservées. */
+  void keyPressed(SDL_Scancode code);
 
   MenuAction handle(Nav nav, const MenuState& state);
   void render(Canvas& canvas, const MenuState& state) const;
@@ -39,13 +48,17 @@ class Menu {
   std::string tr(const char* key) const;
 
  private:
-  enum class Screen { Main, Options };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Disk, Smooth, Fullscreen, SaveQuit, Quit };
+  enum class Screen { Main, Options, Keys };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Disk, Smooth, Fullscreen, SaveQuit, Quit };
 
   int itemCount(const MenuState& state) const;
   Item itemAt(int index, const MenuState& state) const;
   std::string itemLabel(Item item, const MenuState& state) const;
   void renderOptions(Canvas& canvas) const;
+  void renderKeys(Canvas& canvas) const;
+  MenuAction handleKeys(Nav nav);
+  std::string keyName(SDL_Scancode code) const;
+  std::string buttonLabel(unsigned id) const;
 
   std::string language_, title_, core_;
   bool open_ = false;
@@ -54,4 +67,7 @@ class Menu {
   int optionTab_ = 0;  // onglet (type d'options) affiché
   int optionSelected_ = 0;
   mutable int optionScroll_ = 0;
+  int keySelected_ = 0;  // 0 : « Touches par défaut », puis les boutons
+  bool waitingKey_ = false;
+  std::string keyMessage_;  // touche refusée
 };

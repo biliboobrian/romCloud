@@ -2,12 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const keyboard = require('../src/main/keyboard');
 
-test('touches par défaut : même disposition que le moteur sans réglage', () => {
-  const spec = keyboard.playerKeys({});
-  assert.ok(spec.split(',').includes('4=82')); // haut -> flèche haut
-  assert.ok(spec.split(',').includes('0=29')); // B -> Z
-  assert.ok(spec.split(',').includes('3=40')); // Start -> Entrée
-  assert.ok(!spec.split(',').some((e) => e.startsWith('14='))); // L3 sans touche
+test('touches par défaut : même disposition que le moteur sans fichier', () => {
+  const lines = keyboard.formatFile({}).trim().split('\n');
+  assert.equal(lines.length, keyboard.BUTTONS.length);
+  assert.ok(lines.includes('up=82')); // flèche haut
+  assert.ok(lines.includes('b=29')); // Z
+  assert.ok(lines.includes('start=40')); // Entrée
+  assert.ok(lines.includes('l3=')); // aucune touche
 });
 
 test('touches choisies : remplacées, retirées, invalides ignorées', () => {
@@ -16,9 +17,16 @@ test('touches choisies : remplacées, retirées, invalides ignorées', () => {
   assert.equal(keys.a, '');
   assert.equal(keys.up, 'ArrowUp'); // réservée au moteur
   assert.equal(keys.down, 'ArrowDown'); // inconnue
-  const spec = keyboard.playerKeys({ b: 'Space', a: '' }).split(',');
-  assert.ok(spec.includes('0=44'));
-  assert.ok(!spec.some((e) => e.startsWith('8=')));
+});
+
+test('fichier des touches : relu tel qu’écrit par le moteur', () => {
+  const keys = keyboard.parseFile('b=44\r\na=\r\nup=41\r\nr3=4\r\nautre=5\r\n');
+  assert.equal(keys.b, 'Space');
+  assert.equal(keys.a, '');
+  assert.equal(keys.up, 'ArrowUp'); // Échap (41) : réservée
+  assert.equal(keys.r3, 'KeyA');
+  assert.equal(keys.start, 'Enter'); // absent : par défaut
+  assert.deepEqual(keyboard.parseFile(keyboard.formatFile(keys)), keys);
 });
 
 test('codes des touches -> scancodes SDL', () => {

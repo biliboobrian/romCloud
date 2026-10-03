@@ -1,11 +1,12 @@
 #include "input.h"
 
 #include <cstdlib>
-#include <iterator>
+#include <utility>
+#include <vector>
 
 #include "util.h"
 
-// Clavier du joueur 1 par défaut (disposition proche de RetroArch), remplacé par --keys.
+// Clavier du joueur 1 par défaut (disposition proche de RetroArch), comme DEFAULTS de keyboard.js.
 static const std::pair<unsigned, SDL_Scancode> kDefaultKeys[] = {
     {RETRO_DEVICE_ID_JOYPAD_UP, SDL_SCANCODE_UP},       {RETRO_DEVICE_ID_JOYPAD_DOWN, SDL_SCANCODE_DOWN},
     {RETRO_DEVICE_ID_JOYPAD_LEFT, SDL_SCANCODE_LEFT},   {RETRO_DEVICE_ID_JOYPAD_RIGHT, SDL_SCANCODE_RIGHT},
@@ -15,6 +16,79 @@ static const std::pair<unsigned, SDL_Scancode> kDefaultKeys[] = {
     {RETRO_DEVICE_ID_JOYPAD_L2, SDL_SCANCODE_E},        {RETRO_DEVICE_ID_JOYPAD_R2, SDL_SCANCODE_R},
     {RETRO_DEVICE_ID_JOYPAD_START, SDL_SCANCODE_RETURN}, {RETRO_DEVICE_ID_JOYPAD_SELECT, SDL_SCANCODE_RSHIFT},
 };
+
+const unsigned Input::kButtonOrder[Input::kButtons] = {
+    RETRO_DEVICE_ID_JOYPAD_UP, RETRO_DEVICE_ID_JOYPAD_DOWN, RETRO_DEVICE_ID_JOYPAD_LEFT, RETRO_DEVICE_ID_JOYPAD_RIGHT,
+    RETRO_DEVICE_ID_JOYPAD_A,  RETRO_DEVICE_ID_JOYPAD_B,    RETRO_DEVICE_ID_JOYPAD_X,    RETRO_DEVICE_ID_JOYPAD_Y,
+    RETRO_DEVICE_ID_JOYPAD_L,  RETRO_DEVICE_ID_JOYPAD_R,    RETRO_DEVICE_ID_JOYPAD_L2,   RETRO_DEVICE_ID_JOYPAD_R2,
+    RETRO_DEVICE_ID_JOYPAD_L3, RETRO_DEVICE_ID_JOYPAD_R3,   RETRO_DEVICE_ID_JOYPAD_START, RETRO_DEVICE_ID_JOYPAD_SELECT,
+};
+
+const char* Input::buttonName(unsigned id) {
+  static const char* names[kButtons] = {"b", "y", "select", "start", "up", "down", "left", "right",
+                                        "a", "x", "l", "r", "l2", "r2", "l3", "r3"};
+  return id < (unsigned)kButtons ? names[id] : "";
+}
+
+bool Input::assignable(SDL_Scancode code) {
+  // Touches de keyboard.js (SCANCODES) ; Échap, F1, F2, F4 et F11 commandent le moteur.
+  bool known = (code >= SDL_SCANCODE_A && code <= SDL_SCANCODE_APPLICATION && code != SDL_SCANCODE_NONUSHASH) ||
+               (code >= SDL_SCANCODE_LCTRL && code <= SDL_SCANCODE_RGUI);
+  return known && code != SDL_SCANCODE_ESCAPE && code != SDL_SCANCODE_F1 && code != SDL_SCANCODE_F2 &&
+         code != SDL_SCANCODE_F4 && code != SDL_SCANCODE_F11;
+}
+
+void Input::resetKeys() {
+  for (auto& k : keys_) k = SDL_SCANCODE_UNKNOWN;
+  for (const auto& [id, code] : kDefaultKeys) keys_[id] = code;
+}
+
+void Input::loadKeys(const std::string& file) {
+  resetKeys();
+  keysFile_ = file;
+  std::vector<uint8_t> data;
+  if (file.empty() || !readFile(file, data)) return;
+  std::string text(data.begin(), data.end());
+  size_t start = 0;
+  while (start < text.size()) {
+    size_t end = text.find('\n', start);
+    if (end == std::string::npos) end = text.size();
+    std::string line = text.substr(start, end - start);
+    start = end + 1;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    size_t eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    std::string name = line.substr(0, eq), value = line.substr(eq + 1);
+    for (unsigned id = 0; id < (unsigned)kButtons; id++) {
+      if (name != buttonName(id)) continue;
+      auto code = (SDL_Scancode)atoi(value.c_str());
+      if (value.empty()) keys_[id] = SDL_SCANCODE_UNKNOWN;
+      else if (assignable(code)) keys_[id] = code;
+    }
+  }
+  logf("Clavier : %s", file.c_str());
+}
+
+bool Input::saveKeys() const {
+  if (keysFile_.empty()) return false;
+  std::string text;
+  for (unsigned id : kButtonOrder) {
+    text += std::string(buttonName(id)) + "=" + (keys_[id] ? std::to_string((int)keys_[id]) : "") + "\n";
+  }
+  return writeFile(keysFile_, text.data(), text.size());
+}
+
+void Input::assignKey(unsigned id, SDL_Scancode code) {
+  if (id >= (unsigned)kButtons) return;
+  if (code != SDL_SCANCODE_UNKNOWN) {
+    if (!assignable(code)) return;
+    for (auto& k : keys_) {
+      if (k == code) k = SDL_SCANCODE_UNKNOWN;  // une touche ne commande qu'un bouton
+    }
+  }
+  keys_[id] = code;
+  saveKeys();
+}
 
 // Manette SDL (disposition Xbox : A en bas) -> RetroPad (disposition Super Nintendo : B en bas).
 static int padButton(unsigned id) {
@@ -37,33 +111,11 @@ static int padButton(unsigned id) {
   }
 }
 
-void Input::setKeys(const std::string& spec) {
-  keys_.clear();
-  size_t start = 0;
-  while (start < spec.size()) {
-    size_t end = spec.find(',', start);
-    if (end == std::string::npos) end = spec.size();
-    std::string entry = spec.substr(start, end - start);
-    size_t eq = entry.find('=');
-    if (eq != std::string::npos) {
-      int id = atoi(entry.c_str()), code = atoi(entry.c_str() + eq + 1);
-      if (id >= 0 && id <= RETRO_DEVICE_ID_JOYPAD_R3 && code > SDL_SCANCODE_UNKNOWN && code < SDL_NUM_SCANCODES) {
-        keys_.emplace_back((unsigned)id, (SDL_Scancode)code);
-      }
-    }
-    start = end + 1;
-  }
-  logf("Clavier : %zu touches", keys_.size());
-}
-
-Input::Input() : keys_(std::begin(kDefaultKeys), std::end(kDefaultKeys)) {}
+Input::Input() { resetKeys(); }
 
 bool Input::key(unsigned id) const {
-  const Uint8* keys = SDL_GetKeyboardState(nullptr);
-  for (const auto& [button, code] : keys_) {
-    if (button == id && keys[code]) return true;
-  }
-  return false;
+  SDL_Scancode code = keyOf(id);
+  return code != SDL_SCANCODE_UNKNOWN && SDL_GetKeyboardState(nullptr)[code];
 }
 
 void Input::init() {

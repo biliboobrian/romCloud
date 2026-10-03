@@ -1144,7 +1144,8 @@
     const save = async (next) => {
       keys = next;
       paint();
-      S.settings = await call(rc.settings.save, { keyboard: keys });
+      keys = await call(rc.keyboard.save, next);
+      paint();
     };
     const stop = () => {
       waiting = null;

@@ -1,10 +1,12 @@
 #include "menu.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <utility>
 
 #include "core.h"
+#include "input.h"
 
 static const uint32_t kText = rgba(235, 235, 245);
 static const uint32_t kMuted = rgba(160, 160, 180);
@@ -44,6 +46,20 @@ static const struct {
      "The game could not be started with this core (unsupported file or missing BIOS?)."},
     {"core_failed", "Le cœur n'a pas pu être chargé :", "The core could not be loaded:"},
     {"video_failed", "L'affichage OpenGL n'a pas pu être initialisé :", "OpenGL display could not be initialized:"},
+    {"keys", "Touches du clavier", "Keyboard keys"},
+    {"keys_title", "Touches du clavier (joueur 1)", "Keyboard keys (player 1)"},
+    {"keys_info", "Touches physiques, mémorisées pour tous les jeux.", "Physical keys, saved for all games."},
+    {"keys_reset", "Touches par défaut", "Default keys"},
+    {"keys_hint", "A / Entrée : changer   Gauche : aucune touche   B / Échap : retour",
+     "A / Enter: change   Left: no key   B / Esc: back"},
+    {"keys_wait", "Appuyez sur une touche...   Échap : annuler", "Press a key...   Esc: cancel"},
+    {"keys_reserved", "Touche réservée au moteur (Échap, F1, F2, F4, F11)", "Key reserved by the engine (Esc, F1, F2, F4, F11)"},
+    {"keys_unknown", "Cette touche n'est pas utilisable", "This key cannot be used"},
+    {"key_none", "Aucune", "None"},
+    {"btn_up", "Haut", "Up"},
+    {"btn_down", "Bas", "Down"},
+    {"btn_left", "Gauche", "Left"},
+    {"btn_right", "Droite", "Right"},
     {"menu_hint", "Échap ou Start + Select : menu", "Esc or Start + Select: menu"},
 };
 
@@ -70,13 +86,20 @@ void Menu::openOptions() {
   optionScroll_ = 0;
 }
 
-int Menu::itemCount(const MenuState& state) const { return state.diskCount > 1 ? 10 : 9; }
+void Menu::openKeys() {
+  screen_ = Screen::Keys;
+  keySelected_ = 0;
+  waitingKey_ = false;
+  keyMessage_.clear();
+}
+
+int Menu::itemCount(const MenuState& state) const { return state.diskCount > 1 ? 11 : 10; }
 
 Menu::Item Menu::itemAt(int index, const MenuState& state) const {
-  static const Item withDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options,
+  static const Item withDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options, Item::Keys,
                                   Item::Disk, Item::Smooth, Item::Fullscreen, Item::SaveQuit, Item::Quit};
-  static const Item withoutDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset,
-                                     Item::Options, Item::Smooth, Item::Fullscreen, Item::SaveQuit, Item::Quit};
+  static const Item withoutDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options,
+                                     Item::Keys, Item::Smooth, Item::Fullscreen, Item::SaveQuit, Item::Quit};
   return state.diskCount > 1 ? withDisk[index] : withoutDisk[index];
 }
 
@@ -87,6 +110,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::LoadState: return tr("load_state");
     case Item::Reset: return tr("reset");
     case Item::Options: return tr("options");
+    case Item::Keys: return tr("keys");
     case Item::Disk:
       return tr("disk") + " : " + std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
     case Item::Smooth: return tr("smooth") + " : " + tr(state.smooth ? "yes" : "no");
@@ -98,6 +122,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
 }
 
 MenuAction Menu::handle(Nav nav, const MenuState& state) {
+  if (screen_ == Screen::Keys) return handleKeys(nav);
   if (screen_ == Screen::Options) {
     const auto groups = g.options.groups();
     const int tabs = std::max(1, (int)groups.size());
@@ -161,6 +186,9 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
         case Item::Options:
           openOptions();
           return MenuAction::None;
+        case Item::Keys:
+          openKeys();
+          return MenuAction::None;
         case Item::Disk: return MenuAction::DiskNext;
         case Item::Smooth: return MenuAction::ToggleSmooth;
         case Item::Fullscreen: return MenuAction::ToggleFullscreen;
@@ -175,6 +203,10 @@ void Menu::render(Canvas& c, const MenuState& state) const {
   c.fill(0, 0, c.width(), c.height(), rgba(8, 9, 14, 200));
   if (screen_ == Screen::Options) {
     renderOptions(c);
+    return;
+  }
+  if (screen_ == Screen::Keys) {
+    renderKeys(c);
     return;
   }
   int y = 32;
@@ -259,5 +291,117 @@ void Menu::renderOptions(Canvas& c) const {
     y += lineHeight;
   }
   std::string hint = tr("hint");
+  c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, kMuted);
+}
+
+// ---------------------------------------------------------------------------
+// Touches du clavier : « Touches par défaut », puis un bouton par ligne ; A / Entrée attend la
+// touche à attribuer (main.cpp la transmet à keyPressed), Gauche retire la touche du bouton.
+
+MenuAction Menu::handleKeys(Nav nav) {
+  const int count = Input::kButtons + 1;
+  keyMessage_.clear();
+  switch (nav) {
+    case Nav::Up: keySelected_ = (keySelected_ + count - 1) % count; break;
+    case Nav::Down: keySelected_ = (keySelected_ + 1) % count; break;
+    case Nav::Left:
+      if (keySelected_ > 0 && g.input) g.input->assignKey(Input::kButtonOrder[keySelected_ - 1], SDL_SCANCODE_UNKNOWN);
+      break;
+    case Nav::Confirm:
+      if (!g.input) break;
+      if (keySelected_ == 0) {
+        g.input->resetKeys();
+        g.input->saveKeys();
+      } else {
+        waitingKey_ = true;
+      }
+      break;
+    case Nav::Back: screen_ = Screen::Main; break;
+    default: break;
+  }
+  return MenuAction::None;
+}
+
+void Menu::keyPressed(SDL_Scancode code) {
+  if (code == SDL_SCANCODE_ESCAPE) {
+    waitingKey_ = false;
+    keyMessage_.clear();
+    return;
+  }
+  if (!Input::assignable(code)) {
+    bool reserved = code == SDL_SCANCODE_F1 || code == SDL_SCANCODE_F2 || code == SDL_SCANCODE_F4 || code == SDL_SCANCODE_F11;
+    keyMessage_ = tr(reserved ? "keys_reserved" : "keys_unknown");
+    return;  // toujours en attente
+  }
+  keyMessage_.clear();
+  waitingKey_ = false;
+  if (g.input && keySelected_ > 0) g.input->assignKey(Input::kButtonOrder[keySelected_ - 1], code);
+}
+
+std::string Menu::keyName(SDL_Scancode code) const {
+  if (code == SDL_SCANCODE_UNKNOWN) return tr("key_none");
+  if (language_ == "fr") {
+    switch (code) {
+      case SDL_SCANCODE_UP: return "Flèche haut";
+      case SDL_SCANCODE_DOWN: return "Flèche bas";
+      case SDL_SCANCODE_LEFT: return "Flèche gauche";
+      case SDL_SCANCODE_RIGHT: return "Flèche droite";
+      case SDL_SCANCODE_RETURN: return "Entrée";
+      case SDL_SCANCODE_SPACE: return "Espace";
+      case SDL_SCANCODE_BACKSPACE: return "Retour arrière";
+      case SDL_SCANCODE_LSHIFT: return "Maj gauche";
+      case SDL_SCANCODE_RSHIFT: return "Maj droite";
+      case SDL_SCANCODE_LCTRL: return "Ctrl gauche";
+      case SDL_SCANCODE_RCTRL: return "Ctrl droite";
+      case SDL_SCANCODE_LALT: return "Alt";
+      case SDL_SCANCODE_RALT: return "Alt Gr";
+      case SDL_SCANCODE_CAPSLOCK: return "Verr. Maj";
+      case SDL_SCANCODE_DELETE: return "Suppr";
+      case SDL_SCANCODE_INSERT: return "Inser";
+      case SDL_SCANCODE_HOME: return "Début";
+      case SDL_SCANCODE_END: return "Fin";
+      default: break;
+    }
+  }
+  // Nom selon la disposition du clavier (touche Q d'un AZERTY : « A »).
+  const char* name = SDL_GetKeyName(SDL_GetKeyFromScancode(code));
+  return name && *name ? std::string(name) : "#" + std::to_string((int)code);
+}
+
+/** Libellé d'un bouton du RetroPad : Haut… Droite traduits, Start, Select, sinon le nom en capitales. */
+std::string Menu::buttonLabel(unsigned id) const {
+  std::string name = Input::buttonName(id);
+  if (id >= RETRO_DEVICE_ID_JOYPAD_UP && id <= RETRO_DEVICE_ID_JOYPAD_RIGHT) return tr(("btn_" + name).c_str());
+  if (name == "start") return "Start";
+  if (name == "select") return "Select";
+  for (auto& ch : name) ch = (char)toupper((unsigned char)ch);
+  return name;
+}
+
+void Menu::renderKeys(Canvas& c) const {
+  int y = 20;
+  c.text(24, y, tr("keys_title"), 2, kText);
+  y += 22;
+  c.text(24, y, Canvas::fit(tr("keys_info"), 1, c.width() - 48), 1, kMuted);
+  y += 22;
+  const int lineHeight = 16, count = Input::kButtons + 1;
+  const int labelWidth = 120, right = c.width() - 24;
+  for (int row = 0; row < count; row++) {
+    bool sel = row == keySelected_;
+    if (sel) c.fill(16, y - 4, c.width() - 32, lineHeight, kSelection);
+    if (row == 0) {
+      c.text(24, y, tr("keys_reset"), 1, sel ? rgba(255, 255, 255) : kAccent);
+    } else {
+      unsigned id = Input::kButtonOrder[row - 1];
+      SDL_Scancode code = g.input ? g.input->keyOf(id) : SDL_SCANCODE_UNKNOWN;
+      std::string value = sel && waitingKey_ ? tr("keys_wait") : keyName(code);
+      c.text(24, y, buttonLabel(id), 1, sel ? rgba(255, 255, 255) : kText);
+      c.text(24 + labelWidth, y, Canvas::fit(value, 1, right - 24 - labelWidth), 1,
+             sel ? rgba(255, 255, 255) : code == SDL_SCANCODE_UNKNOWN ? kMuted : kAccent);
+    }
+    y += lineHeight;
+  }
+  if (!keyMessage_.empty()) c.text(24, y + 6, Canvas::fit(keyMessage_, 1, c.width() - 48), 1, rgba(255, 140, 140));
+  std::string hint = tr("keys_hint");
   c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, kMuted);
 }
