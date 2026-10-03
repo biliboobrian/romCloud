@@ -396,7 +396,8 @@ private fun GameRows(
                             game = game,
                             coverUrl = mediaUrl(game, "boxart"),
                             status = statusOf(game),
-                            onClick = { onClick(game) },
+                            // Validation : fiche du jeu (jouer / télécharger depuis la fiche).
+                            onClick = { onDetails(game) },
                             onLongClick = { onDetails(game) },
                             onFocused = { onFocused(row.title, game) },
                             modifier = Modifier

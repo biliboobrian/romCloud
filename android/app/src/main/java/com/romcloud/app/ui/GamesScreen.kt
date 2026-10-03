@@ -283,7 +283,7 @@ fun GamesScreen(
                                 game = game,
                                 coverUrl = mediaUrl(game, "boxart"),
                                 status = statusOf(game),
-                                onClick = { onClick(game) },
+                                onClick = { onOpenGame(game.id) },
                                 onDetails = { onOpenGame(game.id) },
                             )
                         }
@@ -294,7 +294,7 @@ fun GamesScreen(
                                 game = game,
                                 coverUrl = mediaUrl(game, "boxart"),
                                 status = statusOf(game),
-                                onClick = { onClick(game) },
+                                onClick = { onOpenGame(game.id) },
                                 onDetails = { onOpenGame(game.id) },
                             )
                             HorizontalDivider(Modifier.padding(start = 84.dp), thickness = 0.5.dp)

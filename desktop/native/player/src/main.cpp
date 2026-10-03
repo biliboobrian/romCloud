@@ -3,6 +3,7 @@
 //   romcloud-player --core <cœur.dll> --rom <jeu> [--system-dir <BIOS>] [--save-dir <dossier>]
 //                   [--state-dir <dossier>] [--options <fichier>] [--title <nom>] [--lang fr|en]
 //                   [--windowed] [--resume] [--state-name <nom>] [--option-default <clé>=<valeur>]…
+//                   [--keys <bouton libretro>=<scancode SDL>,…]
 //
 // Fonctionnement calqué sur LibretroDroid : le cœur est chargé, le jeu démarré, puis une boucle
 // exécute retro_run au rythme de l'audio et affiche chaque image avec OpenGL. Codes de sortie :
@@ -31,6 +32,8 @@ struct Args {
   std::string core, rom, systemDir, saveDir, stateDir, options, title, lang = "fr";
   std::string stateName;  // nom de l'état de sauvegarde (par défaut celui de la ROM)
   std::vector<std::string> optionDefaults;  // « clé=valeur » propres au jeu (--option-default)
+  std::string keys;  // touches du clavier (--keys), absent : disposition par défaut
+  bool hasKeys = false;
   bool windowed = false;
   bool resume = false;  // reprend la partie à l'état sauvegardé
   // Mode d'essai : fenêtre cachée, N images au plus vite, dernière image enregistrée en BMP.
@@ -57,6 +60,10 @@ Args parseArgs(int argc, char** argv) {
     else if (arg == "--test-menu") a.testMenu = true;
     else if (arg == "--test-save-state") a.testSaveState = true;
     else if (arg == "--option-default" && i + 1 < argc) a.optionDefaults.push_back(argv[++i]);
+    else if (arg == "--keys" && i + 1 < argc) {
+      a.keys = argv[++i];
+      a.hasKeys = true;
+    }
     else if (values.count(arg) && i + 1 < argc) *values[arg] = argv[++i];
   }
   return a;
@@ -402,6 +409,7 @@ int Player::run() {
     g.api.deinit();
     return fail(menu_.tr("video_failed") + "\n" + error);
   }
+  if (args_.hasKeys) input_.setKeys(args_.keys);
   input_.init();
   loadSram();  // avant l'état de sauvegarde, qui la contient aussi
   if (args_.resume) {

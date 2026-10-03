@@ -200,6 +200,12 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .settings label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 .settings .line { display: flex; gap: 8px; }
 .settings .line input { flex: 1; }
+.key-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; }
+.key-row { display: flex; align-items: center; gap: 8px; }
+.key-row > span { flex: 0 0 64px; font-size: 13px; }
+.key-btn { flex: 1; min-width: 0; justify-content: center; }
+.key-btn.selected { border-color: var(--accent); color: var(--accent); }
+.key-btn.unset { color: var(--muted); }
 
 /* ---- Fenêtres, notifications ---- */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 20; }

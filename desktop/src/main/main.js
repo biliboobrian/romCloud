@@ -6,6 +6,7 @@ const api = require('./api');
 const library = require('./library');
 const downloads = require('./downloads');
 const launcher = require('./launcher');
+const keyboard = require('./keyboard');
 const { createUpdater } = require('./updater');
 
 const updater = createUpdater({ app });
@@ -88,6 +89,13 @@ handle('dialog:pickFolder', async () => {
 });
 handle('shell:showItem', (file) => shell.showItemInFolder(file));
 handle('shell:openExternal', (url) => shell.openExternal(url));
+handle('keyboard:layout', () => ({
+  buttons: keyboard.BUTTONS.map((b) => b.name),
+  defaults: keyboard.DEFAULTS,
+  reserved: keyboard.RESERVED,
+  codes: Object.keys(keyboard.SCANCODES),
+  keys: keyboard.resolve(settings.load().keyboard),
+}));
 handle('app:version', () => app.getVersion());
 // Mise à jour : vérifiée au chargement de l'interface ; installation sur confirmation.
 handle('update:check', () => updater.check());

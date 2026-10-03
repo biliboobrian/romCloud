@@ -105,7 +105,8 @@ fun GamesCarousel(
                             game = game,
                             coverUrl = mediaUrl(game, "boxart"),
                             status = statusOf(game),
-                            onClick = { onClick(game) },
+                            // Appui : fiche du jeu (jouer / télécharger depuis la fiche ou le bandeau).
+                            onClick = { onDetails(game) },
                             onDetails = { onDetails(game) },
                             modifier = Modifier.width(118.dp),
                         )

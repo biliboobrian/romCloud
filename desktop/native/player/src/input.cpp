@@ -1,14 +1,12 @@
 #include "input.h"
 
 #include <cstdlib>
+#include <iterator>
 
 #include "util.h"
 
-// Clavier du joueur 1 (disposition proche de RetroArch).
-static const struct {
-  unsigned id;
-  SDL_Scancode key;
-} kKeyboard[] = {
+// Clavier du joueur 1 par défaut (disposition proche de RetroArch), remplacé par --keys.
+static const std::pair<unsigned, SDL_Scancode> kDefaultKeys[] = {
     {RETRO_DEVICE_ID_JOYPAD_UP, SDL_SCANCODE_UP},       {RETRO_DEVICE_ID_JOYPAD_DOWN, SDL_SCANCODE_DOWN},
     {RETRO_DEVICE_ID_JOYPAD_LEFT, SDL_SCANCODE_LEFT},   {RETRO_DEVICE_ID_JOYPAD_RIGHT, SDL_SCANCODE_RIGHT},
     {RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_Z},         {RETRO_DEVICE_ID_JOYPAD_A, SDL_SCANCODE_X},
@@ -37,6 +35,35 @@ static int padButton(unsigned id) {
     case RETRO_DEVICE_ID_JOYPAD_RIGHT: return SDL_CONTROLLER_BUTTON_DPAD_RIGHT;
     default: return -1;
   }
+}
+
+void Input::setKeys(const std::string& spec) {
+  keys_.clear();
+  size_t start = 0;
+  while (start < spec.size()) {
+    size_t end = spec.find(',', start);
+    if (end == std::string::npos) end = spec.size();
+    std::string entry = spec.substr(start, end - start);
+    size_t eq = entry.find('=');
+    if (eq != std::string::npos) {
+      int id = atoi(entry.c_str()), code = atoi(entry.c_str() + eq + 1);
+      if (id >= 0 && id <= RETRO_DEVICE_ID_JOYPAD_R3 && code > SDL_SCANCODE_UNKNOWN && code < SDL_NUM_SCANCODES) {
+        keys_.emplace_back((unsigned)id, (SDL_Scancode)code);
+      }
+    }
+    start = end + 1;
+  }
+  logf("Clavier : %zu touches", keys_.size());
+}
+
+Input::Input() : keys_(std::begin(kDefaultKeys), std::end(kDefaultKeys)) {}
+
+bool Input::key(unsigned id) const {
+  const Uint8* keys = SDL_GetKeyboardState(nullptr);
+  for (const auto& [button, code] : keys_) {
+    if (button == id && keys[code]) return true;
+  }
+  return false;
 }
 
 void Input::init() {
@@ -92,12 +119,7 @@ int16_t Input::axis(unsigned port, SDL_GameControllerAxis a) const {
 
 bool Input::button(unsigned port, unsigned id) const {
   if (port >= (unsigned)kPorts) return false;
-  if (port == 0) {
-    const Uint8* keys = SDL_GetKeyboardState(nullptr);
-    for (const auto& k : kKeyboard) {
-      if (k.id == id && keys[k.key]) return true;
-    }
-  }
+  if (port == 0 && key(id)) return true;
   SDL_GameController* pad = pads_[port];
   if (!pad) return false;
   if (id == RETRO_DEVICE_ID_JOYPAD_L2) return SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 16000;
@@ -132,10 +154,10 @@ int16_t Input::state(unsigned port, unsigned device, unsigned index, unsigned id
         int16_t v = axis(port, a);
         if (v != 0) return v;
       }
-      // Clavier : les flèches servent aussi de stick gauche (jeux Nintendo 64, par exemple).
+      // Clavier : les touches de direction servent aussi de stick gauche (jeux Nintendo 64, par exemple).
       if (port == 0 && left) {
-        const Uint8* keys = SDL_GetKeyboardState(nullptr);
-        int v = x ? (keys[SDL_SCANCODE_RIGHT] - keys[SDL_SCANCODE_LEFT]) : (keys[SDL_SCANCODE_DOWN] - keys[SDL_SCANCODE_UP]);
+        int v = x ? key(RETRO_DEVICE_ID_JOYPAD_RIGHT) - key(RETRO_DEVICE_ID_JOYPAD_LEFT)
+                  : key(RETRO_DEVICE_ID_JOYPAD_DOWN) - key(RETRO_DEVICE_ID_JOYPAD_UP);
         return (int16_t)(v * 0x7FFF);
       }
       return 0;

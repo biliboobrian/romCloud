@@ -97,6 +97,13 @@ test('arguments du moteur intégré : reprise de la partie', () => {
   assert.ok(!libretro.playerArgs(base).includes('--resume'));
 });
 
+test('arguments du moteur intégré : touches du clavier', () => {
+  const base = { dll: 'C.dll', rom: 'R', systemDir: 'B', saveDir: 'S', stateDir: 'T', optionsFile: 'O', title: 'Jeu', language: 'fr' };
+  const args = libretro.playerArgs({ ...base, keys: '0=44,8=27' });
+  assert.equal(args[args.indexOf('--keys') + 1], '0=44,8=27');
+  assert.ok(!libretro.playerArgs(base).includes('--keys'));
+});
+
 test('options imposées par le jeu : cartouche .cpr avec cap32 -> CPC 6128+', () => {
   assert.deepEqual(libretro.gameOptionDefaults('cap32', 'D:\\Jeux\\Pang.cpr'), { cap32_model: '6128+ (experimental)' });
   assert.deepEqual(libretro.gameOptionDefaults('cap32', 'D:\\Jeux\\Disque.dsk'), {});
