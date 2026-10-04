@@ -26,3 +26,18 @@ test('cœurs Windows d’un système : sans doublon, variantes GLES ramenées au
   assert.deepEqual(cores(system), ['mupen64plus_next', 'parallel_n64']);
   assert.deepEqual(cores({ players: [] }), []);
 });
+
+test('cœurs d’un système : du plus abouti au moins abouti, les inconnus ensuite dans l’ordre des modèles', () => {
+  const gba = { id: 'gba', players: ['vba_next', 'vbam', 'mgba', 'inconnu', 'gpsp', 'autre'].map(retroarch) };
+  assert.deepEqual(cores(gba), ['mgba', 'vbam', 'vba_next', 'gpsp', 'inconnu', 'autre']);
+  const ps2 = { id: 'ps2', players: ['play', 'pcee2', 'armsx2', 'pcsx2'].map(retroarch) };
+  assert.deepEqual(cores(ps2), ['pcsx2', 'pcee2', 'play', 'armsx2']); // armsx2 : absent sous Windows
+  // MAME (arcade) d'Android : « mame » sous Windows.
+  const mame = { id: 'mame', players: ['mame2003_plus', 'mamearcade', 'mame2010'].map(retroarch) };
+  assert.deepEqual(cores(mame), ['mame', 'mame2010', 'mame2003_plus']);
+  // Cœur absent du buildbot Windows : en dernier.
+  const psx = { id: 'psx', players: ['duckstation', 'pcsx_rearmed'].map(retroarch) };
+  assert.deepEqual(cores(psx), ['pcsx_rearmed', 'duckstation']);
+  // Système sans classement : ordre des modèles.
+  assert.deepEqual(cores({ id: 'perso', players: ['b', 'a'].map(retroarch) }), ['b', 'a']);
+});
