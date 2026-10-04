@@ -34,18 +34,29 @@ class LibretroPlayersTest {
             system(retroArch("ra64.snes9x", "snes9x"), other, retroArch("ra32.snes9x", "snes9x"), retroArch("ra64.bsnes", "bsnes", regex = null)),
         )
         assertEquals(
-            listOf("libretrodroid.snes9x", "libretrodroid.bsnes", "ra64.snes9x", "snes.ex", "ra32.snes9x", "ra64.bsnes"),
+            listOf("libretrodroid.bsnes", "libretrodroid.snes9x", "ra64.snes9x", "snes.ex", "ra32.snes9x", "ra64.bsnes"),
             result.players.map { it.uniqueId },
         )
-        assertEquals("snes9x", result.players[0].libretroCore)
-        assertEquals("^(.*)\\.(?:sfc|zip)$", result.players[0].acceptedFilenameRegex)
-        assertNull(result.players[1].acceptedFilenameRegex)
+        assertEquals("bsnes", result.players[0].libretroCore)
+        assertNull(result.players[0].acceptedFilenameRegex)
+        assertEquals("^(.*)\\.(?:sfc|zip)$", result.players[1].acceptedFilenameRegex)
     }
 
     @Test
-    fun `PlayStation 2 LRPS2 propose en premier`() {
-        val result = LibretroPlayers.addTo(system(retroArch("ra.play", "play"), retroArch("ra.pcee2", "pcee2"), retroArch("ra.lrps2", "pcsx2")))
-        assertEquals(listOf("libretrodroid.pcsx2", "libretrodroid.play", "libretrodroid.pcee2"), result.players.take(3).map { it.uniqueId })
+    fun `coeurs du plus abouti au moins abouti, inconnus ensuite`() {
+        val ps2 = LibretroPlayers.addTo(
+            system(retroArch("ra.play", "play"), retroArch("ra.pcee2", "pcee2"), retroArch("ra.lrps2", "pcsx2")).copy(id = "ps2", shortname = "ps2"),
+        )
+        assertEquals(listOf("libretrodroid.pcsx2", "libretrodroid.pcee2", "libretrodroid.play"), ps2.players.take(3).map { it.uniqueId })
+        val gba = LibretroPlayers.addTo(
+            system(retroArch("a", "vba_next"), retroArch("b", "inconnu"), retroArch("c", "mgba")).copy(id = "gba", shortname = "gba"),
+        )
+        assertEquals(listOf("libretrodroid.mgba", "libretrodroid.vba_next", "libretrodroid.inconnu"), gba.players.take(3).map { it.uniqueId })
+        // Cœur absent du buildbot Android : en dernier.
+        val n3ds = LibretroPlayers.addTo(
+            system(retroArch("a", "azahar"), retroArch("b", "citra"), retroArch("c", "panda3ds")).copy(id = "3ds", shortname = "3ds"),
+        )
+        assertEquals(listOf("libretrodroid.citra", "libretrodroid.panda3ds", "libretrodroid.azahar"), n3ds.players.take(3).map { it.uniqueId })
     }
 
     @Test

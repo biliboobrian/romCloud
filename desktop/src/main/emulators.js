@@ -1,5 +1,6 @@
 // Fonctions pures (sans Electron) : lecture des modèles d'émulateurs Daijishou du serveur.
 const path = require('node:path');
+const { rankCores } = require('./coreRanking');
 
 /** Découpe une ligne de commande en arguments (guillemets gérés). */
 function tokenize(input) {
@@ -38,11 +39,14 @@ function coreOf(player) {
   return null;
 }
 
-/** Cœurs RetroArch utilisables pour un système (sans doublon, ordre des modèles). */
+/**
+ * Cœurs RetroArch utilisables pour un système (sans doublon), du plus abouti au moins abouti
+ * (coreRanking.js), sinon dans l'ordre des modèles.
+ */
 function cores(system) {
-  // Les cœurs GLES (Android) ont un équivalent sans suffixe sous Windows.
-  const names = (system.players || []).map(coreOf).filter(Boolean).map((c) => c.replace(/_gles[23]$/, ''));
-  return [...new Set(names)];
+  // Les cœurs GLES (Android) ont un équivalent sans suffixe sous Windows, MAME (arcade) s'y appelle « mame ».
+  const names = (system.players || []).map(coreOf).filter(Boolean).map((c) => (c === 'mamearcade' ? 'mame' : c.replace(/_gles[23]$/, '')));
+  return rankCores(system.shortname || system.id, [...new Set(names)]);
 }
 
 module.exports = { tokenize, coreOf, cores };
