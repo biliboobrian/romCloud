@@ -1,17 +1,23 @@
-// Adaptateur chargé par LibretroDroid à la place d'un cœur libretro qui envoie son son
-// échantillon par échantillon (retro_audio_sample_t, comme cap32) : LibretroDroid ignore ce
-// canal et ne lit que les lots (retro_audio_sample_batch_t). Le cœur réel, dont le chemin est
-// dans la variable d'environnement ROMCLOUD_SHIM_CORE, reçoit toutes les fonctions telles
-// quelles ; les échantillons reçus pendant une image sont renvoyés en un lot à la fin de retro_run.
+// Adaptateur chargé par LibretroDroid à la place d'un cœur libretro, dont le chemin est dans la
+// variable d'environnement ROMCLOUD_SHIM_CORE ; le cœur réel reçoit toutes les fonctions telles
+// quelles, sauf :
+// - son échantillon par échantillon (retro_audio_sample_t, comme cap32) : LibretroDroid ignore ce
+//   canal et ne lit que les lots (retro_audio_sample_batch_t) ; les échantillons reçus pendant une
+//   image sont renvoyés en un lot à la fin de retro_run ;
+// - image (ROMCLOUD_SHIM_BLIT=1, flycast) : le cœur dessine bien dans le framebuffer de
+//   LibretroDroid, mais l'affichage de ce framebuffer par LibretroDroid reste noir (état OpenGL
+//   laissé par le cœur). Après l'affichage de LibretroDroid, l'image est copiée à l'écran
+//   (glBlitFramebuffer), centrée à ses proportions dans la zone d'affichage de LibretroDroid.
 // Pas de bibliothèque C++ (ni STL, ni variable statique locale) : rien d'autre à embarquer.
 
+#include <GLES3/gl3.h>
 #include <android/log.h>
 #include <dlfcn.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 
-#define LOG_TAG "RomCloudAudioShim"
+#define LOG_TAG "RomCloudShim"
 #define EXPORT extern "C" __attribute__((visibility("default")))
 
 typedef void (*audio_sample_t)(int16_t left, int16_t right);
@@ -115,7 +121,6 @@ FORWARD(void, retro_init, (), ())
 FORWARD(void, retro_deinit, (), ())
 FORWARD(unsigned, retro_api_version, (), ())
 FORWARD(void, retro_get_system_info, (retro_system_info *info), (info))
-FORWARD(void, retro_get_system_av_info, (retro_system_av_info *info), (info))
 FORWARD(void, retro_set_controller_port_device, (unsigned port, unsigned device), (port, device))
 FORWARD(void, retro_reset, (), ())
 FORWARD(size_t, retro_serialize_size, (), ())
@@ -128,7 +133,106 @@ FORWARD(bool, retro_load_game_special, (unsigned type, const retro_game_info *in
 FORWARD(unsigned, retro_get_region, (), ())
 FORWARD(void *, retro_get_memory_data, (unsigned id), (id))
 FORWARD(size_t, retro_get_memory_size, (unsigned id), (id))
-FORWARD(void, retro_set_environment, (environment_t cb), (cb))
-FORWARD(void, retro_set_video_refresh, (video_refresh_t cb), (cb))
+// --- Image (ROMCLOUD_SHIM_BLIT) ---
+
+// Structures de libretro.h utilisées ici (même disposition).
+struct retro_game_geometry {
+    unsigned base_width, base_height, max_width, max_height;
+    float aspect_ratio;
+};
+typedef uintptr_t (*get_current_framebuffer_t)();
+struct retro_hw_render_callback {
+    int context_type;
+    void (*context_reset)();
+    get_current_framebuffer_t get_current_framebuffer;
+    void *(*get_proc_address)(const char *sym);
+    bool depth, stencil, bottom_left_origin;
+    unsigned version_major, version_minor;
+    bool cache_context;
+    void (*context_destroy)();
+    bool debug_context;
+};
+const unsigned SET_HW_RENDER = 14, SET_SYSTEM_AV_INFO = 32, SET_GEOMETRY = 37;
+
+static environment_t frontend_environment = nullptr;
+static video_refresh_t frontend_video = nullptr;
+static get_current_framebuffer_t frontend_framebuffer = nullptr;
+static bool bottom_left_origin = true;
+static float aspect_ratio = 0;
+
+static bool blit_enabled() {
+    const char *value = getenv("ROMCLOUD_SHIM_BLIT");
+    return value && value[0] == '1';
+}
+
+static void on_geometry(const retro_game_geometry *geometry) {
+    aspect_ratio = geometry->aspect_ratio > 0 ? geometry->aspect_ratio
+        : geometry->base_height ? (float)geometry->base_width / (float)geometry->base_height : 0;
+}
+
+static bool on_environment(unsigned cmd, void *data) {
+    bool handled = frontend_environment(cmd, data);
+    if (!handled || !data) return handled;
+    if (cmd == SET_HW_RENDER) {
+        auto *hw = static_cast<retro_hw_render_callback *>(data);
+        frontend_framebuffer = hw->get_current_framebuffer;
+        bottom_left_origin = hw->bottom_left_origin;
+    } else if (cmd == SET_SYSTEM_AV_INFO || cmd == SET_GEOMETRY) {
+        // retro_system_av_info commence par sa géométrie.
+        on_geometry(static_cast<const retro_game_geometry *>(data));
+    }
+    return handled;
+}
+
+/** Copie l'image du cœur ([width] x [height] dans son framebuffer) sur l'écran. */
+static void blit_frame(unsigned width, unsigned height) {
+    GLint viewport[4] = {0};
+    glGetIntegerv(GL_VIEWPORT, viewport);  // zone d'affichage choisie par LibretroDroid
+    int areaWidth = viewport[2], areaHeight = viewport[3];
+    if (areaWidth <= 0 || areaHeight <= 0 || !width || !height) return;
+    float aspect = aspect_ratio > 0 ? aspect_ratio : (float)width / (float)height;
+    int w = areaWidth, h = (int)((float)areaWidth / aspect);
+    if (h > areaHeight) {
+        h = areaHeight;
+        w = (int)((float)areaHeight * aspect);
+    }
+    int x = viewport[0] + (areaWidth - w) / 2, y = viewport[1] + (areaHeight - h) / 2;
+    GLint read = 0, draw = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)frontend_framebuffer());
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glDisable(GL_SCISSOR_TEST);
+    // Origine en haut à gauche : image retournée.
+    GLint top = bottom_left_origin ? (GLint)height : 0, bottom = bottom_left_origin ? 0 : (GLint)height;
+    glBlitFramebuffer(0, bottom, (GLint)width, top, x, y, x + w, y + h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, read);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw);
+}
+
+static void on_video(const void *data, unsigned width, unsigned height, size_t pitch) {
+    frontend_video(data, width, height, pitch);
+    // Image en double (data == nullptr) : LibretroDroid redessine aussi l'écran, copie refaite.
+    if (frontend_framebuffer && blit_enabled()) blit_frame(width, height);
+}
+
+CORE_FN(void, retro_set_environment, (environment_t cb))
+EXPORT void retro_set_environment(environment_t cb) {
+    frontend_environment = cb;
+    real_retro_set_environment()(on_environment);
+}
+
+CORE_FN(void, retro_set_video_refresh, (video_refresh_t cb))
+EXPORT void retro_set_video_refresh(video_refresh_t cb) {
+    frontend_video = cb;
+    real_retro_set_video_refresh()(on_video);
+}
+
+CORE_FN(void, retro_get_system_av_info, (retro_system_av_info *info))
+EXPORT void retro_get_system_av_info(retro_system_av_info *info) {
+    real_retro_get_system_av_info()(info);
+    // retro_system_av_info commence par sa géométrie.
+    on_geometry(reinterpret_cast<const retro_game_geometry *>(info));
+}
 FORWARD(void, retro_set_input_poll, (input_poll_t cb), (cb))
 FORWARD(void, retro_set_input_state, (input_state_t cb), (cb))
