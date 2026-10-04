@@ -134,8 +134,63 @@ class LibretroCores(context: Context) {
         }
     }
 
+    /**
+     * Fichiers système du cœur (« Core System Files » de RetroArch : Dolphin.zip…) absents du
+     * dossier système [systemDir] ?
+     */
+    fun systemFilesMissing(core: String, systemDir: File): Boolean =
+        SYSTEM_FILES[core]?.let { (_, marker) -> !File(systemDir, marker).isFile } ?: false
+
+    /** Télécharge les fichiers système du cœur depuis le buildbot et les décompresse dans [systemDir]. */
+    suspend fun downloadSystemFiles(core: String, systemDir: File, progress: (Long, Long) -> Unit) = withContext(Dispatchers.IO) {
+        val (archive, _) = SYSTEM_FILES[core] ?: return@withContext
+        if (!systemDir.isDirectory && !systemDir.mkdirs()) throw IOException(I18n.get(R.string.err_invalid_folder))
+        val zip = File(dir.apply { mkdirs() }, "$archive.part")
+        try {
+            http.newCall(Request.Builder().url("$SYSTEM_FILES_URL/$archive").build()).execute().use { response ->
+                if (!response.isSuccessful) throw IOException(I18n.get(R.string.err_server, response.code))
+                val body = response.body ?: throw IOException(I18n.get(R.string.err_empty_response))
+                val total = body.contentLength()
+                var bytes = 0L
+                body.byteStream().use { input ->
+                    zip.outputStream().use { output ->
+                        val buffer = ByteArray(128 * 1024)
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            output.write(buffer, 0, read)
+                            bytes += read
+                            progress(bytes, total)
+                        }
+                    }
+                }
+            }
+            // Archive : dossiers du dossier système (« dolphin-emu/Sys/… ») ; chemins hors du dossier ignorés.
+            val root = systemDir.canonicalPath + File.separator
+            ZipInputStream(zip.inputStream().buffered()).use { input ->
+                generateSequence { input.nextEntry }.forEach { entry ->
+                    val out = File(systemDir, entry.name)
+                    if (!out.canonicalPath.startsWith(root)) return@forEach
+                    if (entry.isDirectory) {
+                        out.mkdirs()
+                    } else {
+                        out.parentFile?.mkdirs()
+                        out.outputStream().use { input.copyTo(it) }
+                    }
+                }
+            }
+        } finally {
+            zip.delete()
+        }
+    }
+
     private companion object {
         const val BUILDBOT = "https://buildbot.libretro.com/nightly/android/latest"
+        const val SYSTEM_FILES_URL = "https://buildbot.libretro.com/assets/system"
+
+        /** Cœur -> archive des fichiers système du buildbot et fichier témoin de leur présence. */
+        val SYSTEM_FILES = mapOf("dolphin" to ("Dolphin.zip" to "dolphin-emu/Sys/GC/dsp_rom.bin"))
         val BUILDBOT_ABIS = setOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
         const val CHECK_INTERVAL_MS = 24 * 3600_000L
     }
