@@ -7,7 +7,9 @@
 // - image (ROMCLOUD_SHIM_BLIT=1, flycast) : le cœur dessine bien dans le framebuffer de
 //   LibretroDroid, mais l'affichage de ce framebuffer par LibretroDroid reste noir (état OpenGL
 //   laissé par le cœur). Après l'affichage de LibretroDroid, l'image est copiée à l'écran
-//   (glBlitFramebuffer), centrée à ses proportions dans la zone d'affichage de LibretroDroid.
+//   (glBlitFramebuffer), centrée à ses proportions dans la zone d'affichage de LibretroDroid ;
+// - boutons lus d'un coup (RETRO_DEVICE_ID_JOYPAD_MASK, comme LRPS2) : LibretroDroid traite cette
+//   demande comme un bouton (toujours relâché) ; le masque est reconstitué bouton par bouton.
 // Pas de bibliothèque C++ (ni STL, ni variable statique locale) : rien d'autre à embarquer.
 
 #include <GLES3/gl3.h>
@@ -235,4 +237,25 @@ EXPORT void retro_get_system_av_info(retro_system_av_info *info) {
     on_geometry(reinterpret_cast<const retro_game_geometry *>(info));
 }
 FORWARD(void, retro_set_input_poll, (input_poll_t cb), (cb))
-FORWARD(void, retro_set_input_state, (input_state_t cb), (cb))
+// --- Boutons lus d'un coup (RETRO_DEVICE_ID_JOYPAD_MASK) ---
+
+const unsigned DEVICE_JOYPAD = 1, DEVICE_TYPE_MASK = 0xff, JOYPAD_MASK = 256, JOYPAD_BUTTONS = 16;
+
+static input_state_t frontend_input = nullptr;
+
+static int16_t on_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
+    if ((device & DEVICE_TYPE_MASK) == DEVICE_JOYPAD && id == JOYPAD_MASK) {
+        int16_t mask = 0;
+        for (unsigned button = 0; button < JOYPAD_BUTTONS; button++) {
+            if (frontend_input(port, DEVICE_JOYPAD, index, button)) mask |= (int16_t)(1 << button);
+        }
+        return mask;
+    }
+    return frontend_input(port, device, index, id);
+}
+
+CORE_FN(void, retro_set_input_state, (input_state_t cb))
+EXPORT void retro_set_input_state(input_state_t cb) {
+    frontend_input = cb;
+    real_retro_set_input_state()(on_input_state);
+}
