@@ -249,13 +249,15 @@ class LibretroActivity : ComponentActivity() {
     }
 
     /**
-     * Chemin du cœur donné à LibretroDroid. Un cœur qui envoie son son échantillon par échantillon
-     * (canal ignoré par LibretroDroid : jeu muet) est chargé par l'adaptateur audio_shim, qui
-     * regroupe ces échantillons en lots ; l'adaptateur lit le chemin du cœur réel dans l'environnement.
+     * Chemin du cœur donné à LibretroDroid. Certains cœurs sont chargés par l'adaptateur audio_shim,
+     * qui lit le chemin du cœur réel dans l'environnement : son envoyé échantillon par échantillon
+     * (canal ignoré par LibretroDroid : jeu muet), regroupé en lots ; image du cœur restée noire
+     * à l'affichage par LibretroDroid (flycast), copiée à l'écran par l'adaptateur.
      */
     private fun corePath(coreFile: File): String {
-        if (core !in SAMPLE_AUDIO_CORES) return coreFile.absolutePath
+        if (core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES) return coreFile.absolutePath
         Os.setenv("ROMCLOUD_SHIM_CORE", coreFile.absolutePath, true)
+        Os.setenv("ROMCLOUD_SHIM_BLIT", if (core in BLIT_CORES) "1" else "0", true)
         // Bibliothèques non extraites de l'APK : dlopen les trouve par leur seul nom.
         return File(applicationInfo.nativeLibraryDir, AUDIO_SHIM).takeIf { it.isFile }?.absolutePath ?: AUDIO_SHIM
     }
@@ -873,6 +875,8 @@ class LibretroActivity : ComponentActivity() {
         private const val AUDIO_SHIM = "libromcloud_audio_shim.so"
         /** Cœurs dont le son passe par retro_audio_sample (un échantillon à la fois). */
         private val SAMPLE_AUDIO_CORES = setOf("cap32")
+        /** Cœurs dont l'image reste noire avec LibretroDroid (Dreamcast) : copiée à l'écran par l'adaptateur. */
+        private val BLIT_CORES = setOf("flycast")
 
         /** État de sauvegarde d'un jeu pour un cœur (« Sauvegarder l'état », « Sauvegarder et quitter »). */
         fun stateFile(context: Context, core: String, rom: File): File =
