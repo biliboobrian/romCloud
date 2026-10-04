@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color as AndroidColor
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Process
 import android.system.Os
 import android.view.InputDevice
@@ -255,12 +257,26 @@ class LibretroActivity : ComponentActivity() {
      * à l'affichage par LibretroDroid (flycast), copiée à l'écran par l'adaptateur.
      */
     private fun corePath(coreFile: File): String {
+        // Play! (PS2) range ses données dans $EXTERNAL_STORAGE/Play Data Files ; sans accès à tous
+        // les fichiers, ce dossier ne peut pas être créé (arrêt du cœur) : dossier privé de
+        // l'application à la place. Processus de jeu séparé : le reste de l'application n'est pas concerné.
+        if (core == "play" && !hasAllFilesAccess()) {
+            Os.setenv("EXTERNAL_STORAGE", File(filesDir, "libretro/play").apply { mkdirs() }.absolutePath, true)
+        }
         if (core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES) return coreFile.absolutePath
         Os.setenv("ROMCLOUD_SHIM_CORE", coreFile.absolutePath, true)
         Os.setenv("ROMCLOUD_SHIM_BLIT", if (core in BLIT_CORES) "1" else "0", true)
         // Bibliothèques non extraites de l'APK : dlopen les trouve par leur seul nom.
         return File(applicationInfo.nativeLibraryDir, AUDIO_SHIM).takeIf { it.isFile }?.absolutePath ?: AUDIO_SHIM
     }
+
+    /** Stockage partagé accessible en écriture (même règle que LocalLibrary.hasStoragePermission). */
+    private fun hasAllFilesAccess(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
 
     private fun onRetroError(code: Int) {
         when (code) {

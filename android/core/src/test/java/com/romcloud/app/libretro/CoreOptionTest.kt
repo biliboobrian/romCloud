@@ -55,5 +55,6 @@ class CoreOptionTest {
     fun `cartouche GX4000 avec cap32 en CPC 6128+`() {
         assertEquals(mapOf("cap32_model" to "6128+ (experimental)"), GameOptionDefaults.forGame("cap32", java.io.File("Pang.CPR")))
         assertEquals(emptyMap<String, String>(), GameOptionDefaults.forGame("cap32", java.io.File("Disque.dsk")))
+        assertEquals(mapOf("pcsx2_renderer" to "Software (SW)"), GameOptionDefaults.forGame("pcsx2", java.io.File("FFX.chd")))
     }
 }

@@ -43,6 +43,12 @@ class LibretroPlayersTest {
     }
 
     @Test
+    fun `PlayStation 2 LRPS2 propose en premier`() {
+        val result = LibretroPlayers.addTo(system(retroArch("ra.play", "play"), retroArch("ra.pcee2", "pcee2"), retroArch("ra.lrps2", "pcsx2")))
+        assertEquals(listOf("libretrodroid.pcsx2", "libretrodroid.play", "libretrodroid.pcee2"), result.players.take(3).map { it.uniqueId })
+    }
+
+    @Test
     fun `systeme sans RetroArch ou deja complete inchange`() {
         val plain = system(Player(name = "x", uniqueId = "x", amStartArguments = "-n a/.B"))
         assertSame(plain, LibretroPlayers.addTo(plain))
