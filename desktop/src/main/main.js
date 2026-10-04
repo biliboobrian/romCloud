@@ -73,6 +73,7 @@ handle('launcher:options', (system) => launcher.options(system));
 handle('launcher:choose', (systemId, option, command) => launcher.choose(systemId, option, command));
 handle('launcher:play', (system, game, options) => launcher.play(system, game, options));
 handle('launcher:resumable', (system, game) => launcher.resumable(system, game));
+handle('launcher:resumableIds', (system, games) => launcher.resumableIds(system, games));
 handle('launcher:check', (system) => launcher.check(system));
 handle('launcher:describe', (system, game) => launcher.describe(system, game));
 handle('emulators:list', () => launcher.listEmulators());

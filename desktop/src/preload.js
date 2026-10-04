@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('romcloud', {
     choose: call('launcher:choose'),
     play: call('launcher:play'),
     resumable: call('launcher:resumable'),
+    resumableIds: call('launcher:resumableIds'),
     check: call('launcher:check'),
     describe: call('launcher:describe'),
   },

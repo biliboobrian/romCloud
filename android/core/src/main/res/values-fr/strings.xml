@@ -150,6 +150,7 @@
 
     <!-- TV -->
     <string name="tv_ready">✓ Prêt à jouer — OK pour lancer</string>
+    <string name="tv_resume_hint">⏵ Partie sauvegardée — appui long : Reprendre</string>
     <string name="tv_downloading_percent">Téléchargement… %1$d %%</string>
     <string name="tv_to_download">À télécharger — OK pour télécharger · appui long : fiche du jeu</string>
     <string name="tv_on_tv">✓ Sur le téléviseur</string>

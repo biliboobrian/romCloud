@@ -217,6 +217,11 @@ function check(system) {
   };
 }
 
+/** Jeux de [games] (même système) avec une partie à reprendre : identifiants. */
+function resumableIds(system, games) {
+  return games.filter((game) => resumable(system, game)).map((game) => game.id);
+}
+
 /** Partie à reprendre : moteur intégré choisi et état sauvegardé pour ce jeu et ce cœur. */
 function resumable(system, game) {
   try {
@@ -248,6 +253,6 @@ async function play(system, game, { resume = false } = {}) {
 }
 
 module.exports = {
-  tokenize, coreOf, cores, options, choose, coreDll, prepare, describe, check, resumable, play,
+  tokenize, coreOf, cores, options, choose, coreDll, prepare, describe, check, resumable, resumableIds, play,
   listEmulators, detectEmulators, setEmulatorPath, setEmulatorArgs, launchEmulator,
 };
