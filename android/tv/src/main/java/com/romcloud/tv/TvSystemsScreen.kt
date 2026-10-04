@@ -1,5 +1,8 @@
 package com.romcloud.tv
 
+import androidx.activity.compose.BackHandler
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,6 +77,22 @@ fun TvSystemsScreen(
         val index = lastFocused.coerceIn(0, state.systems.lastIndex)
         gridState.scrollToItem(index)
         runCatching { restoreFocus.requestFocus() }
+    }
+
+    // Retour : efface d'abord la recherche affichée, puis demande confirmation avant de quitter.
+    val activity = LocalContext.current as Activity
+    var askQuit by remember { mutableStateOf(false) }
+    BackHandler(enabled = !searchDialog) {
+        if (search.active) viewModel.setQuery("", debounce = false) else askQuit = true
+    }
+    if (askQuit) {
+        ConfirmDialog(
+            title = stringResource(R.string.quit_app_title),
+            text = stringResource(R.string.quit_app_text),
+            confirm = stringResource(R.string.action_quit),
+            onConfirm = { activity.finish() },
+            onDismiss = { askQuit = false },
+        )
     }
 
     if (searchDialog) {
