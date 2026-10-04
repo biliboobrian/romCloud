@@ -17,7 +17,7 @@
     systemsError: null,
     systemsLoading: true,
     search: { query: '', results: [], downloaded: new Set(), offline: false, loading: false, error: null },
-    games: { systemId: null, list: [], downloaded: new Set(), offline: false, loading: false, error: null, filter: 'all', query: '', criteria: {} },
+    games: { systemId: null, list: [], downloaded: new Set(), resumable: new Set(), offline: false, loading: false, error: null, filter: 'all', query: '', criteria: {} },
     downloads: {}, // gameId -> { status, bytes, total, title, error }
     autoLaunch: new Set(),
     route: { name: 'systems' },
@@ -302,17 +302,27 @@
     </div>`;
   }
 
-  /** Clic, bouton ⓘ ou clic droit : fiche du jeu (jouer / télécharger depuis la fiche ou le bandeau). */
-  function bindCards(root, games, onDetails) {
+  /**
+   * Clic : [onClick] (par défaut la fiche du jeu) ; bouton ⓘ ou clic droit : fiche du jeu
+   * (jouer / télécharger depuis la fiche ou la bannière).
+   */
+  function bindCards(root, games, onDetails, onClick = onDetails) {
     const byId = new Map(games.map((g) => [g.id, g]));
     for (const el of $$('[data-card]', root)) {
       const game = byId.get(Number(el.dataset.card));
-      el.onclick = () => onDetails(game);
+      el.onclick = (e) => (e.target.closest('[data-info]') ? onDetails(game) : onClick(game));
       el.oncontextmenu = (e) => {
         e.preventDefault();
         onDetails(game);
       };
     }
+  }
+
+  /** Jeu du carrousel affiché dans la bannière ; sa carte est encadrée. */
+  function selectGame(game) {
+    S.focusedGameId = game.id;
+    renderHero();
+    for (const el of $$('.game-card[data-card]', $('#main'))) el.classList.toggle('selected', Number(el.dataset.card) === game.id);
   }
 
   // ---------------------------------------------------------------------------
@@ -321,7 +331,7 @@
 
   function openSystem(systemId) {
     if (S.games.systemId !== systemId) {
-      S.games = { systemId, list: [], downloaded: new Set(), offline: false, loading: true, error: null, filter: 'all', query: '', criteria: {} };
+      S.games = { systemId, list: [], downloaded: new Set(), resumable: new Set(), offline: false, loading: true, error: null, filter: 'all', query: '', criteria: {} };
       S.focusedGameId = null;
     }
     go({ name: 'games', systemId });
@@ -335,6 +345,7 @@
       const r = await call(rc.api.games, systemId);
       const ids = await call(rc.library.downloaded, S.systems, r.data);
       Object.assign(S.games, { list: r.data, offline: r.offline, downloaded: new Set(ids), error: null });
+      await refreshResumable();
     } catch (err) {
       S.games.error = err.message;
     }
@@ -342,8 +353,18 @@
     if (S.route.name === 'games' && S.route.systemId === systemId) renderGamesBody();
   }
 
+  /** Jeux téléchargés du système affiché avec une partie sauvegardée (moteur intégré) : « Reprendre ». */
+  async function refreshResumable() {
+    const system = systemById(S.games.systemId);
+    const games = S.games.list.filter((g) => S.games.downloaded.has(g.id));
+    S.games.resumable = new Set(system && games.length ? await call(rc.launcher.resumableIds, system, games).catch(() => []) : []);
+  }
+
   async function refreshDownloaded() {
-    if (S.games.list.length) S.games.downloaded = new Set(await call(rc.library.downloaded, S.systems, S.games.list));
+    if (S.games.list.length) {
+      S.games.downloaded = new Set(await call(rc.library.downloaded, S.systems, S.games.list));
+      await refreshResumable();
+    }
     if (S.search.results.length) S.search.downloaded = new Set(await call(rc.library.downloaded, S.systems, S.search.results));
   }
 
@@ -493,14 +514,15 @@
           <div class="main"><div class="t">${esc(g.title)}</div>
             <div class="muted">${esc([year(g), g.genre, formatSize(g.size)].filter(Boolean).join(' · '))}</div></div>
           <div class="status" data-status="${g.id}">${statusHtml(statusOf(g, S.games.downloaded))}</div>
+          ${canResume(g) ? `<button class="btn primary" data-resume="${g.id}">${icon('play', 18)} ${esc(t('action.resume'))}</button>` : ''}
           <button class="icon-btn" data-info="${g.id}" title="${esc(t('action.details'))}">${icon('info')}</button>
         </div>`;
       }).join('')}</div></div>`;
     } else {
       const rows = S.games.query.trim() ? [{ title: S.games.query, games }] : carouselRows(games, S.games.downloaded);
+      // Bannière fixe en haut (image, jaquette, nom, description) : les rangées défilent dessous.
       main.innerHTML = `<div class="carousel">
-        <div class="backdrop" id="backdrop"></div>
-        <div class="hero" id="hero"></div>
+        <div class="carousel-head"><div class="backdrop" id="backdrop"></div><div class="hero" id="hero"></div></div>
         ${rows.map((r) => `<section class="row"><h3>${esc(r.title)} <span class="count">· ${r.games.length}</span></h3>
           <div class="row-track">${r.games.map((g) => cardHtml(g, S.games.downloaded)).join('')}</div></section>`).join('')}
       </div>`;
@@ -519,18 +541,32 @@
       }
       renderHero();
     }
-    bindCards(main, games, (g) => openGameDetail(g.systemId, g.id));
+    const details = (g) => openGameDetail(g.systemId, g.id);
+    // Carrousel : clic sur un jeu -> affiché dans la bannière ; liste : fiche du jeu.
+    bindCards(main, games, details, S.settings.view === 'list' ? details : selectGame);
+    for (const el of $$('[data-resume]', main)) {
+      const game = games.find((g) => g.id === Number(el.dataset.resume));
+      el.onclick = (e) => {
+        e.stopPropagation(); // pas la fiche du jeu (clic sur la ligne)
+        playChecked(systemById(game.systemId), game, { resume: true });
+      };
+    }
   }
+
+  /** Partie sauvegardée dans le moteur intégré pour ce jeu téléchargé. */
+  const canResume = (game) => S.games.resumable.has(game.id) && statusOf(game, S.games.downloaded).kind === 'downloaded';
 
   function renderHero() {
     const hero = $('#hero');
     if (!hero) return;
     const game = featured(visibleGames());
     if (!game) return;
+    for (const el of $$('.game-card[data-card]', $('#main'))) el.classList.toggle('selected', Number(el.dataset.card) === game.id);
     const shot = mediaUrl(game, 'screenshot') || mediaUrl(game, 'boxart');
     $('#backdrop').innerHTML = shot ? `<img src="${esc(shot)}" alt="">` : '';
     const cover = mediaUrl(game, 'boxart');
     const st = statusOf(game, S.games.downloaded);
+    const resume = canResume(game);
     const statusLine = st.kind === 'downloaded' ? `<span class="good">${esc(t('hero.ready'))}</span>`
       : st.kind === 'running' ? `<span style="color:var(--accent)">${esc(t('hero.downloading', { p: Math.round(st.progress * 100) }))}</span>`
       : st.kind === 'failed' ? `<span class="bad">${esc(t('status.failed', { error: st.error }))}</span>`
@@ -543,11 +579,13 @@
         ${statusLine}
         ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
         <div class="actions">
-          <button class="btn primary" id="heroMain">${icon(st.kind === 'downloaded' ? 'play' : 'cloud', 18)} ${esc(st.kind === 'downloaded' ? t('action.play') : st.kind === 'running' ? `${Math.round(st.progress * 100)} %` : t('action.download'))}</button>
+          ${resume ? `<button class="btn primary" id="heroResume">${icon('play', 18)} ${esc(t('action.resume'))}</button>` : ''}
+          <button class="btn${resume ? '' : ' primary'}" id="heroMain">${icon(resume ? 'refresh' : st.kind === 'downloaded' ? 'play' : 'cloud', 18)} ${esc(st.kind === 'downloaded' ? t('action.play') : st.kind === 'running' ? `${Math.round(st.progress * 100)} %` : t('action.download'))}</button>
           <button class="btn" id="heroInfo">${icon('info', 18)} ${esc(t('action.info'))}</button>
         </div>
       </div>`;
     $('#heroMain').onclick = () => onGameClick(systemById(game.systemId), game);
+    $('#heroResume')?.addEventListener('click', () => playChecked(systemById(game.systemId), game, { resume: true }));
     $('#heroInfo').onclick = () => openGameDetail(game.systemId, game.id);
   }
 
@@ -1204,8 +1242,9 @@
   });
 
   // Barre du haut opaque dès que le contenu défile dessous (mode immersif).
+  // Carrousel : la bannière reste fixe sous la barre, qui reste translucide.
   $('#main').addEventListener('scroll', (e) => {
-    $('.topbar').classList.toggle('scrolled', e.target.scrollTop > 8);
+    $('.topbar').classList.toggle('scrolled', e.target.scrollTop > 8 && !$('.carousel-head'));
   });
 
   // ---------------------------------------------------------------------------

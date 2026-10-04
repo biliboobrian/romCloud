@@ -183,6 +183,7 @@ fun TvGamesScreen(
                 game = featured,
                 coverUrl = featured?.let { mediaUrl(it, "boxart") },
                 status = featured?.let(::statusOf),
+                resumable = featured?.let { it.id in state.resumable } == true,
                 modifier = Modifier.padding(start = 48.dp, end = 48.dp).height(150.dp),
             )
 
@@ -203,6 +204,15 @@ fun TvGamesScreen(
                     },
                     onClick = ::onClick,
                     onDetails = { onOpenGame(it.id) },
+                    // Appui long sur un jeu avec une partie sauvegardée : reprise directe.
+                    onResume = { game ->
+                        if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
+                            viewModel.play(activity, game, resume = true)?.let(onMessage)
+                            true
+                        } else {
+                            false
+                        }
+                    },
                 )
             }
         }
@@ -293,7 +303,7 @@ fun TvGamesScreen(
 
 /** Zone du haut : jaquette et informations du jeu sélectionné (description à côté de la jaquette). */
 @Composable
-private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, modifier: Modifier = Modifier) {
+private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, resumable: Boolean, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         if (game == null) return@Row
         if (coverUrl != null) {
@@ -304,12 +314,12 @@ private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, modif
                 modifier = Modifier.fillMaxHeight().aspectRatio(3f / 4f).clip(RoundedCornerShape(8.dp)),
             )
         }
-        GameHeroText(game, status)
+        GameHeroText(game, status, resumable)
     }
 }
 
 @Composable
-private fun GameHeroText(game: Game, status: LocalStatus?) {
+private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean) {
     Column(Modifier.fillMaxWidth(0.7f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             game.title,
@@ -324,7 +334,11 @@ private fun GameHeroText(game: Game, status: LocalStatus?) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         when (status) {
-            LocalStatus.Downloaded -> Text(stringResource(R.string.tv_ready), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
+            LocalStatus.Downloaded -> Text(
+                stringResource(if (resumable) R.string.tv_resume_hint else R.string.tv_ready),
+                color = DownloadedGreen,
+                style = MaterialTheme.typography.labelLarge,
+            )
             is LocalStatus.Downloading -> Text(
                 stringResource(R.string.tv_downloading_percent, (status.state.progress * 100).toInt()),
                 color = MaterialTheme.colorScheme.primary,
@@ -354,6 +368,8 @@ private fun GameRows(
     onFocused: (String, Game) -> Unit,
     onClick: (Game) -> Unit,
     onDetails: (Game) -> Unit,
+    /** Appui long : reprend la partie sauvegardée ; faux si le jeu n'en a pas (fiche du jeu à la place). */
+    onResume: (Game) -> Boolean,
 ) {
     // Positions de défilement (colonne et rangées) sauvegardées par Compose avec l'écran :
     // au retour, on redonne seulement le focus à la carte qui l'avait.
@@ -398,7 +414,7 @@ private fun GameRows(
                             status = statusOf(game),
                             // Validation : fiche du jeu (jouer / télécharger depuis la fiche).
                             onClick = { onDetails(game) },
-                            onLongClick = { onDetails(game) },
+                            onLongClick = { if (!onResume(game)) onDetails(game) },
                             onFocused = { onFocused(row.title, game) },
                             modifier = Modifier
                                 .width(PosterWidth)

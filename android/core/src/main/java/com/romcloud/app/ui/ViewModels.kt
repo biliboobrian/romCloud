@@ -186,6 +186,8 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         /** BIOS du système sur le serveur et ceux absents de l'appareil. */
         val bios: List<BiosFile> = emptyList(),
         val missingBios: List<BiosFile> = emptyList(),
+        /** Jeux téléchargés avec une partie sauvegardée dans l'émulateur intégré (« Reprendre »). */
+        val resumable: Set<Long> = emptySet(),
     ) {
         val visibleGames: List<Game>
             get() = games.filter { g ->
@@ -236,10 +238,14 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         val s = _state.value
         val system = s.system ?: return
         viewModelScope.launch {
-            val (ids, missing) = withContext(Dispatchers.IO) {
-                app.library.downloadedIds(system, s.games) to app.library.missingBios(s.bios)
+            val (ids, missing, resumable) = withContext(Dispatchers.IO) {
+                val ids = app.library.downloadedIds(system, s.games)
+                val resumable = s.games.filter { it.id in ids }.filter { game ->
+                    app.launcher.canResume(app.library.fileFor(system, game), app.launcher.selectedPlayer(system, game.fileName))
+                }.mapTo(mutableSetOf()) { it.id }
+                Triple(ids, app.library.missingBios(s.bios), resumable)
             }
-            _state.update { it.copy(downloaded = ids, missingBios = missing) }
+            _state.update { it.copy(downloaded = ids, missingBios = missing, resumable = resumable) }
         }
     }
 
@@ -282,9 +288,10 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
     fun setRetroArchHelpDismissed(packageName: String, dismissed: Boolean) =
         app.settings.setRetroArchHelpDismissed(packageName, dismissed)
 
-    fun play(activity: Activity, game: Game): String? {
+    /** [resume] : reprend la partie sauvegardée dans l'émulateur intégré. */
+    fun play(activity: Activity, game: Game, resume: Boolean = false): String? {
         val system = _state.value.system ?: return I18n.get(R.string.err_system_not_found)
-        return app.play(activity, system, game)
+        return app.play(activity, system, game, resume = resume)
     }
 }
 

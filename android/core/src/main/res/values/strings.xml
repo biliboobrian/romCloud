@@ -156,6 +156,7 @@
 
     <!-- TV -->
     <string name="tv_ready">✓ Ready to play — OK to launch</string>
+    <string name="tv_resume_hint">⏵ Saved game — long press: Resume</string>
     <string name="tv_downloading_percent">Downloading… %1$d %%</string>
     <string name="tv_to_download">To download — OK to download · long press: game details</string>
     <string name="tv_on_tv">✓ On the TV</string>

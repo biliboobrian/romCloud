@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material3.AlertDialog
@@ -40,6 +41,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -65,7 +67,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -156,19 +157,17 @@ fun GamesScreen(
         }
     }
 
-    // Paysage, carrousel : l'image de la bannière monte sous la barre du haut,
-    // transparente tant que les rangées n'ont pas défilé dessous.
+    // Paysage, carrousel : l'image de la bannière (fixe) monte sous la barre du haut, transparente ;
+    // les rangées défilent sous la bannière.
     val immersive = landscape && state.grid && state.query.isBlank() && !state.offline && state.visibleGames.isNotEmpty()
-    val topBarScroll = TopAppBarDefaults.pinnedScrollBehavior()
     val pullState = rememberPullToRefreshState()
 
     Scaffold(
-        modifier = if (immersive) Modifier.nestedScroll(topBarScroll.nestedScrollConnection) else Modifier,
+        modifier = Modifier,
         topBar = {
             TopAppBar(
                 colors = if (immersive) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 else TopAppBarDefaults.topAppBarColors(),
-                scrollBehavior = if (immersive) topBarScroll else null,
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) }
                 },
@@ -268,6 +267,10 @@ fun GamesScreen(
                         statusOf = ::statusOf,
                         onClick = ::onClick,
                         onDetails = { onOpenGame(it.id) },
+                        canResume = { it.id in state.resumable },
+                        onResume = { game ->
+                            viewModel.play(activity, game, resume = true)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                        },
                         topInset = topInset,
                         compact = landscape,
                     )
@@ -296,6 +299,9 @@ fun GamesScreen(
                                 status = statusOf(game),
                                 onClick = { onOpenGame(game.id) },
                                 onDetails = { onOpenGame(game.id) },
+                                onResume = if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
+                                    { viewModel.play(activity, game, resume = true)?.let { scope.launch { snackbar.showSnackbar(it) } } }
+                                } else null,
                             )
                             HorizontalDivider(Modifier.padding(start = 84.dp), thickness = 0.5.dp)
                         }
@@ -419,6 +425,8 @@ private fun GameRow(
     status: LocalStatus,
     onClick: () -> Unit,
     onDetails: () -> Unit,
+    /** Partie sauvegardée dans l'émulateur intégré : bouton « Reprendre » sur la ligne. */
+    onResume: (() -> Unit)? = null,
 ) {
     Row(
         Modifier
@@ -442,6 +450,9 @@ private fun GameRow(
             }
         }
         DownloadIndicator(status)
+        onResume?.let {
+            FilledTonalIconButton(onClick = it) { Icon(Icons.Filled.PlayArrow, stringResource(R.string.action_resume_game)) }
+        }
         IconButton(onClick = onDetails) {
             Icon(Icons.Filled.Info, stringResource(R.string.action_details), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
         }

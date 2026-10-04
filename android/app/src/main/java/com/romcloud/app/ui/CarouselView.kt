@@ -1,5 +1,10 @@
 package com.romcloud.app.ui
 
+import androidx.compose.foundation.border
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -24,12 +29,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +66,9 @@ fun GamesCarousel(
     statusOf: (Game) -> LocalStatus,
     onClick: (Game) -> Unit,
     onDetails: (Game) -> Unit,
+    /** Partie sauvegardée dans l'émulateur intégré : « Reprendre » sur la bannière. */
+    canResume: (Game) -> Boolean = { false },
+    onResume: (Game) -> Unit = {},
     /** Hauteur de la barre du haut dessinée par-dessus : l'image de la bannière passe dessous. */
     topInset: Dp = 0.dp,
     /** Paysage : bannière réduite pour remonter les rangées. */
@@ -71,45 +81,53 @@ fun GamesCarousel(
         all = stringResource(R.string.row_all),
     )
     val rows = remember(games, downloaded, labels) { carouselRows(games, downloaded, labels) }
-    val featured = remember(games, downloaded) { pickFeatured(games, downloaded) }
+    // Jeu choisi dans les rangées (appui sur sa carte), sinon le jeu mis en avant par défaut.
+    var selectedId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val defaultFeatured = remember(games, downloaded) { pickFeatured(games, downloaded) }
+    val featured = games.find { it.id == selectedId } ?: defaultFeatured
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    // Bannière fixe en haut : seules les rangées défilent dessous.
+    Column(Modifier.fillMaxSize()) {
         featured?.let { game ->
-            item(key = "hero") {
-                HeroBanner(
-                    game = game,
-                    backgroundUrl = mediaUrl(game, "screenshot") ?: mediaUrl(game, "boxart"),
-                    coverUrl = mediaUrl(game, "boxart"),
-                    status = statusOf(game),
-                    onPrimary = { onClick(game) },
-                    onDetails = { onDetails(game) },
-                    topInset = topInset,
-                    compact = compact,
-                )
-            }
+            HeroBanner(
+                game = game,
+                backgroundUrl = mediaUrl(game, "screenshot") ?: mediaUrl(game, "boxart"),
+                coverUrl = mediaUrl(game, "boxart"),
+                status = statusOf(game),
+                canResume = canResume(game),
+                onPrimary = { onClick(game) },
+                onResume = { onResume(game) },
+                onDetails = { onDetails(game) },
+                topInset = topInset,
+                compact = compact,
+            )
         }
-        items(rows, key = { "row:" + it.title }) { row ->
-            Column(Modifier.padding(top = if (compact) 8.dp else 16.dp)) {
-                Text(
-                    stringResource(R.string.row_title, row.title, row.games.size),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                )
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(row.games, key = { it.id }) { game ->
-                        GameCard(
-                            game = game,
-                            coverUrl = mediaUrl(game, "boxart"),
-                            status = statusOf(game),
-                            // Appui : fiche du jeu (jouer / télécharger depuis la fiche ou le bandeau).
-                            onClick = { onDetails(game) },
-                            onDetails = { onDetails(game) },
-                            modifier = Modifier.width(118.dp),
-                        )
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            items(rows, key = { "row:" + it.title }) { row ->
+                Column(Modifier.padding(top = if (compact) 8.dp else 16.dp)) {
+                    Text(
+                        stringResource(R.string.row_title, row.title, row.games.size),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(row.games, key = { it.id }) { game ->
+                            GameCard(
+                                game = game,
+                                coverUrl = mediaUrl(game, "boxart"),
+                                status = statusOf(game),
+                                // Appui : jeu affiché dans la bannière (jouer / télécharger depuis la bannière) ;
+                                // appui long ou bouton « i » : fiche du jeu.
+                                onClick = { selectedId = game.id },
+                                onDetails = { onDetails(game) },
+                                selected = game.id == featured?.id,
+                                modifier = Modifier.width(118.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -124,7 +142,9 @@ private fun HeroBanner(
     backgroundUrl: String?,
     coverUrl: String?,
     status: LocalStatus,
+    canResume: Boolean,
     onPrimary: () -> Unit,
+    onResume: () -> Unit,
     onDetails: () -> Unit,
     topInset: Dp,
     compact: Boolean,
@@ -187,11 +207,28 @@ private fun HeroBanner(
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!compact) game.description?.let { HeroDescription(it, maxLines = 3) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    when (status) {
-                        LocalStatus.Downloaded -> Button(onClick = onPrimary) {
+                    // Partie sauvegardée : « Reprendre » d'abord, puis « Jouer » (comme la fiche du jeu).
+                    val resumable = canResume && status == LocalStatus.Downloaded
+                    if (resumable) {
+                        Button(onClick = onResume) {
                             Icon(Icons.Filled.PlayArrow, null)
                             Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.action_play))
+                            Text(stringResource(R.string.action_resume_game))
+                        }
+                    }
+                    when (status) {
+                        LocalStatus.Downloaded -> if (resumable) {
+                            OutlinedButton(onClick = onPrimary) {
+                                Icon(Icons.Filled.Refresh, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.action_play))
+                            }
+                        } else {
+                            Button(onClick = onPrimary) {
+                                Icon(Icons.Filled.PlayArrow, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.action_play))
+                            }
                         }
                         is LocalStatus.Downloading -> OutlinedButton(onClick = onPrimary) {
                             Text(stringResource(R.string.percent, (status.state.progress * 100).toInt()))
@@ -202,10 +239,15 @@ private fun HeroBanner(
                             Text(stringResource(R.string.action_download))
                         }
                     }
-                    OutlinedButton(onClick = onDetails) {
-                        Icon(Icons.Filled.Info, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.action_info))
+                    // Trois boutons : « Infos » réduit à son icône pour tenir sur la ligne.
+                    if (resumable) {
+                        OutlinedIconButton(onClick = onDetails) { Icon(Icons.Filled.Info, stringResource(R.string.action_info)) }
+                    } else {
+                        OutlinedButton(onClick = onDetails) {
+                            Icon(Icons.Filled.Info, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.action_info))
+                        }
                     }
                 }
             }
@@ -246,6 +288,8 @@ fun GameCard(
     modifier: Modifier = Modifier,
     /** Élément en bas à droite de la jaquette (ex. logo de la console dans les résultats de recherche). */
     badge: (@Composable () -> Unit)? = null,
+    /** Jeu affiché dans la bannière du carrousel : jaquette encadrée. */
+    selected: Boolean = false,
 ) {
     Column(
         modifier
@@ -257,6 +301,7 @@ fun GameCard(
                 .fillMaxWidth()
                 .aspectRatio(3f / 4f)
                 .clip(RoundedCornerShape(10.dp))
+                .then(if (selected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp)) else Modifier)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
