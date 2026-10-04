@@ -38,3 +38,15 @@ test('codes des touches -> scancodes SDL', () => {
   assert.equal(keyboard.SCANCODES.ShiftRight, 229);
   assert.ok(!keyboard.assignable('F1'));
 });
+
+test('boutons proposés : ceux de la console, sous leur nom', () => {
+  assert.equal(keyboard.consoleButtons('gba', 'vbam'), 'up,down,left,right,b=B,a=A,l=L,r=R,start=Start,select=Select');
+  // Mega Drive : A B C sur Y B A, X Y Z sur L X R, pas de Select.
+  assert.equal(keyboard.consoleButtons('genesis', 'genesis_plus_gx'), 'up,down,left,right,y=A,b=B,a=C,l=X,x=Y,r=Z,start=Start');
+  assert.ok(keyboard.consoleButtons('psx', 'pcsx_rearmed', 'en').includes('b=Cross'));
+  assert.ok(keyboard.consoleButtons('psx', 'pcsx_rearmed', 'fr').includes('b=Croix'));
+  // Système inconnu : d'après le cœur, sinon tous les boutons.
+  assert.ok(keyboard.consoleButtons('perso', 'snes9x').includes('y=Y'));
+  assert.ok(keyboard.consoleButtons('perso', 'inconnu').includes('r3=R3'));
+  assert.ok(!keyboard.consoleButtons('gx4000', 'cap32').includes('start'));
+});

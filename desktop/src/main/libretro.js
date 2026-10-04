@@ -50,9 +50,10 @@ function safeEntryPath(dir, name) {
 /**
  * Arguments de romcloud-player.exe. `stateName` : nom de l'état de sauvegarde (celui du jeu, même
  * si la ROM passée est extraite d'un .zip) ; `resume` : reprend la partie à cet état ; `keysFile` :
- * touches du clavier (voir keyboard.js), absent = disposition par défaut du moteur.
+ * touches du clavier (voir keyboard.js), absent = disposition par défaut du moteur ;
+ * `buttons` : boutons de la console proposés dans l'écran des touches (voir keyboard.js).
  */
-function playerArgs({ dll, rom, systemDir, saveDir, stateDir, stateName, optionsFile, title, language, windowed, resume, keysFile, optionDefaults = {} }) {
+function playerArgs({ dll, rom, systemDir, saveDir, stateDir, stateName, optionsFile, title, language, windowed, resume, keysFile, buttons, optionDefaults = {} }) {
   const args = [
     '--core', dll,
     '--rom', rom,
@@ -65,6 +66,7 @@ function playerArgs({ dll, rom, systemDir, saveDir, stateDir, stateName, options
   ];
   if (stateName) args.push('--state-name', stateName);
   if (keysFile) args.push('--keys-file', keysFile);
+  if (buttons) args.push('--buttons', buttons);
   for (const [key, value] of Object.entries(optionDefaults)) args.push('--option-default', `${key}=${value}`);
   if (windowed) args.push('--windowed');
   if (resume) args.push('--resume');

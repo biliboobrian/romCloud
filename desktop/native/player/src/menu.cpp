@@ -64,7 +64,32 @@ static const struct {
 };
 
 Menu::Menu(std::string language, std::string title, std::string core)
-    : language_(std::move(language)), title_(std::move(title)), core_(std::move(core)) {}
+    : language_(std::move(language)), title_(std::move(title)), core_(std::move(core)) {
+  setButtons("");
+}
+
+void Menu::setButtons(const std::string& spec) {
+  keyRows_.clear();
+  size_t start = 0;
+  while (start < spec.size()) {
+    size_t end = spec.find(',', start);
+    if (end == std::string::npos) end = spec.size();
+    std::string entry = spec.substr(start, end - start), label;
+    start = end + 1;
+    size_t eq = entry.find('=');
+    if (eq != std::string::npos) {
+      label = entry.substr(eq + 1);
+      entry.resize(eq);
+    }
+    for (unsigned id : Input::kButtonOrder) {
+      if (entry == Input::buttonName(id)) keyRows_.emplace_back(id, label);
+    }
+  }
+  if (keyRows_.empty()) {
+    for (unsigned id : Input::kButtonOrder) keyRows_.emplace_back(id, std::string());
+  }
+  keySelected_ = 0;
+}
 
 std::string Menu::tr(const char* key) const {
   for (const auto& s : kStrings) {
@@ -299,13 +324,13 @@ void Menu::renderOptions(Canvas& c) const {
 // touche à attribuer (main.cpp la transmet à keyPressed), Gauche retire la touche du bouton.
 
 MenuAction Menu::handleKeys(Nav nav) {
-  const int count = Input::kButtons + 1;
+  const int count = (int)keyRows_.size() + 1;
   keyMessage_.clear();
   switch (nav) {
     case Nav::Up: keySelected_ = (keySelected_ + count - 1) % count; break;
     case Nav::Down: keySelected_ = (keySelected_ + 1) % count; break;
     case Nav::Left:
-      if (keySelected_ > 0 && g.input) g.input->assignKey(Input::kButtonOrder[keySelected_ - 1], SDL_SCANCODE_UNKNOWN);
+      if (keySelected_ > 0 && g.input) g.input->assignKey(keyRows_[(size_t)keySelected_ - 1].first, SDL_SCANCODE_UNKNOWN);
       break;
     case Nav::Confirm:
       if (!g.input) break;
@@ -335,7 +360,7 @@ void Menu::keyPressed(SDL_Scancode code) {
   }
   keyMessage_.clear();
   waitingKey_ = false;
-  if (g.input && keySelected_ > 0) g.input->assignKey(Input::kButtonOrder[keySelected_ - 1], code);
+  if (g.input && keySelected_ > 0) g.input->assignKey(keyRows_[(size_t)keySelected_ - 1].first, code);
 }
 
 std::string Menu::keyName(SDL_Scancode code) const {
@@ -384,7 +409,7 @@ void Menu::renderKeys(Canvas& c) const {
   y += 22;
   c.text(24, y, Canvas::fit(tr("keys_info"), 1, c.width() - 48), 1, kMuted);
   y += 22;
-  const int lineHeight = 16, count = Input::kButtons + 1;
+  const int lineHeight = 16, count = (int)keyRows_.size() + 1;
   const int labelWidth = 120, right = c.width() - 24;
   for (int row = 0; row < count; row++) {
     bool sel = row == keySelected_;
@@ -392,10 +417,10 @@ void Menu::renderKeys(Canvas& c) const {
     if (row == 0) {
       c.text(24, y, tr("keys_reset"), 1, sel ? rgba(255, 255, 255) : kAccent);
     } else {
-      unsigned id = Input::kButtonOrder[row - 1];
+      const auto& [id, name] = keyRows_[(size_t)row - 1];
       SDL_Scancode code = g.input ? g.input->keyOf(id) : SDL_SCANCODE_UNKNOWN;
       std::string value = sel && waitingKey_ ? tr("keys_wait") : keyName(code);
-      c.text(24, y, buttonLabel(id), 1, sel ? rgba(255, 255, 255) : kText);
+      c.text(24, y, name.empty() ? buttonLabel(id) : name, 1, sel ? rgba(255, 255, 255) : kText);
       c.text(24 + labelWidth, y, Canvas::fit(value, 1, right - 24 - labelWidth), 1,
              sel ? rgba(255, 255, 255) : code == SDL_SCANCODE_UNKNOWN ? kMuted : kAccent);
     }

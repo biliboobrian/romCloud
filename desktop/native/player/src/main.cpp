@@ -3,7 +3,7 @@
 //   romcloud-player --core <cœur.dll> --rom <jeu> [--system-dir <BIOS>] [--save-dir <dossier>]
 //                   [--state-dir <dossier>] [--options <fichier>] [--title <nom>] [--lang fr|en]
 //                   [--windowed] [--resume] [--state-name <nom>] [--option-default <clé>=<valeur>]…
-//                   [--keys-file <touches du clavier>]
+//                   [--keys-file <touches du clavier>] [--buttons <boutons de la console>]
 //
 // Fonctionnement calqué sur LibretroDroid : le cœur est chargé, le jeu démarré, puis une boucle
 // exécute retro_run au rythme de l'audio et affiche chaque image avec OpenGL. Codes de sortie :
@@ -33,6 +33,7 @@ struct Args {
   std::string stateName;  // nom de l'état de sauvegarde (par défaut celui de la ROM)
   std::vector<std::string> optionDefaults;  // « clé=valeur » propres au jeu (--option-default)
   std::string keysFile;  // touches du clavier « bouton=scancode », modifiées depuis le menu
+  std::string buttons;  // boutons de la console proposés dans l'écran des touches (--buttons)
   bool windowed = false;
   bool resume = false;  // reprend la partie à l'état sauvegardé
   // Mode d'essai : fenêtre cachée, N images au plus vite, dernière image enregistrée en BMP.
@@ -49,7 +50,7 @@ Args parseArgs(int argc, char** argv) {
       {"--core", &a.core},           {"--rom", &a.rom},         {"--system-dir", &a.systemDir},
       {"--save-dir", &a.saveDir},    {"--state-dir", &a.stateDir}, {"--options", &a.options},
       {"--title", &a.title},         {"--lang", &a.lang},       {"--state-name", &a.stateName},
-      {"--keys-file", &a.keysFile},
+      {"--keys-file", &a.keysFile}, {"--buttons", &a.buttons},
       {"--test-frames", &a.testFrames}, {"--screenshot", &a.screenshot}, {"--test-seconds", &a.testSeconds},
       {"--test-options", &a.testOptions},  // essai : écran des options du cœur, onglet N
   };
@@ -417,6 +418,7 @@ int Player::run() {
     return fail(menu_.tr("video_failed") + "\n" + error);
   }
   input_.loadKeys(args_.keysFile);
+  menu_.setButtons(args_.buttons);
   input_.init();
   loadSram();  // avant l'état de sauvegarde, qui la contient aussi
   if (args_.resume) {
