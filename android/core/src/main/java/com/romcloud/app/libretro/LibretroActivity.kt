@@ -254,7 +254,8 @@ class LibretroActivity : ComponentActivity() {
      * Chemin du cœur donné à LibretroDroid. Certains cœurs sont chargés par l'adaptateur audio_shim,
      * qui lit le chemin du cœur réel dans l'environnement : son envoyé échantillon par échantillon
      * (canal ignoré par LibretroDroid : jeu muet), regroupé en lots ; image du cœur restée noire
-     * à l'affichage par LibretroDroid (flycast), copiée à l'écran par l'adaptateur.
+     * à l'affichage par LibretroDroid (flycast), copiée à l'écran par l'adaptateur ; boutons lus d'un
+     * coup (masque ignoré par LibretroDroid : aucun bouton, LRPS2), masque reconstitué par l'adaptateur.
      */
     private fun corePath(coreFile: File): String {
         // Play! (PS2) range ses données dans $EXTERNAL_STORAGE/Play Data Files ; sans accès à tous
@@ -263,7 +264,7 @@ class LibretroActivity : ComponentActivity() {
         if (core == "play" && !hasAllFilesAccess()) {
             Os.setenv("EXTERNAL_STORAGE", File(filesDir, "libretro/play").apply { mkdirs() }.absolutePath, true)
         }
-        if (core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES) return coreFile.absolutePath
+        if (core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES && core !in INPUT_MASK_CORES) return coreFile.absolutePath
         Os.setenv("ROMCLOUD_SHIM_CORE", coreFile.absolutePath, true)
         Os.setenv("ROMCLOUD_SHIM_BLIT", if (core in BLIT_CORES) "1" else "0", true)
         // Bibliothèques non extraites de l'APK : dlopen les trouve par leur seul nom.
@@ -893,6 +894,8 @@ class LibretroActivity : ComponentActivity() {
         private val SAMPLE_AUDIO_CORES = setOf("cap32")
         /** Cœurs dont l'image reste noire avec LibretroDroid (Dreamcast) : copiée à l'écran par l'adaptateur. */
         private val BLIT_CORES = setOf("flycast")
+        /** Cœurs qui lisent les boutons d'un coup (RETRO_DEVICE_ID_JOYPAD_MASK) : masque reconstitué par l'adaptateur. */
+        private val INPUT_MASK_CORES = setOf("pcsx2")
 
         /** État de sauvegarde d'un jeu pour un cœur (« Sauvegarder l'état », « Sauvegarder et quitter »). */
         fun stateFile(context: Context, core: String, rom: File): File =
