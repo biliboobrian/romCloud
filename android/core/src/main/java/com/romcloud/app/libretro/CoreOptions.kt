@@ -29,12 +29,16 @@ internal data class CoreOption(val key: String, val label: String, val values: L
 }
 
 /**
- * Options du cœur imposées par le jeu, appliquées sans valeur choisie par l'utilisateur pour le
- * système : cartouche Amstrad GX4000 / CPC+ (.cpr) avec cap32 -> modèle CPC 6128+, seul à les lire.
+ * Options du cœur imposées par le jeu ou le cœur, appliquées sans valeur choisie par l'utilisateur
+ * pour le système :
+ * - cartouche Amstrad GX4000 / CPC+ (.cpr) avec cap32 -> modèle CPC 6128+, seul à les lire ;
+ * - LRPS2 (pcsx2, PlayStation 2) -> rendu logiciel « Software (SW) » : son rendu OpenGL exige des
+ *   extensions d'OpenGL de bureau (absentes d'OpenGL ES : écran noir), et LibretroDroid n'a pas Vulkan.
  */
 internal object GameOptionDefaults {
     fun forGame(core: String, game: java.io.File): Map<String, String> = when {
         core == "cap32" && game.extension.equals("cpr", ignoreCase = true) -> mapOf("cap32_model" to "6128+ (experimental)")
+        core == "pcsx2" -> mapOf("pcsx2_renderer" to "Software (SW)")
         else -> emptyMap()
     }
 }

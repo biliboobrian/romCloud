@@ -11,6 +11,13 @@ import com.romcloud.app.data.Player
 object LibretroPlayers {
 
     const val ID_PREFIX = "libretrodroid."
+
+    /**
+     * Cœurs proposés avant les autres cœurs du système, quel que soit l'ordre des modèles :
+     * PlayStation 2 -> LRPS2 (pcsx2, rendu logiciel), seul à afficher une image avec LibretroDroid
+     * (Play! s'arrête ou se bloque, pcee2 n'a que Vulkan).
+     */
+    private val PREFERRED_CORES = listOf("pcsx2")
     private val VALID_CORE = Regex("[A-Za-z0-9_]+")
 
     /**
@@ -31,6 +38,7 @@ object LibretroPlayers {
         val added = system.players
             .mapNotNull { p -> coreOf(p)?.takeIf { VALID_CORE.matches(it) }?.let { it to p } }
             .distinctBy { it.first }
+            .sortedBy { (core, _) -> if (core in PREFERRED_CORES) 0 else 1 }
             .map { (core, template) ->
                 Player(
                     name = "LibretroDroid - $core",
