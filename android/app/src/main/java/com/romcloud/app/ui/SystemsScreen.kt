@@ -1,5 +1,9 @@
 package com.romcloud.app.ui
 
+import androidx.activity.compose.BackHandler
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -75,6 +79,27 @@ fun SystemsScreen(
     // Champ ouvert si une recherche est en cours (ex. au retour de la fiche d'un jeu).
     var searching by rememberSaveable { mutableStateOf(search.active) }
     val searchFocus = remember { FocusRequester() }
+
+    // Retour : ferme d'abord la recherche, puis demande confirmation avant de quitter l'application.
+    val activity = LocalContext.current as Activity
+    var askQuit by remember { mutableStateOf(false) }
+    BackHandler {
+        if (searching) {
+            viewModel.setQuery("")
+            searching = false
+        } else {
+            askQuit = true
+        }
+    }
+    if (askQuit) {
+        AlertDialog(
+            onDismissRequest = { askQuit = false },
+            title = { Text(stringResource(R.string.quit_app_title)) },
+            text = { Text(stringResource(R.string.quit_app_text)) },
+            confirmButton = { TextButton(onClick = { activity.finish() }) { Text(stringResource(R.string.action_quit)) } },
+            dismissButton = { TextButton(onClick = { askQuit = false }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
 
     // Au retour dans l'application (ex. après une partie), re-vérifie les jeux présents.
     val lifecycle = LocalLifecycleOwner.current.lifecycle

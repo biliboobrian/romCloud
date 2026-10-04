@@ -126,6 +126,9 @@
     <string name="settings_language">Langue</string>
     <string name="language_system">Système</string>
     <string name="settings_emulators">Émulateurs</string>
+    <string name="quit_app_title">Quitter RomCloud ?</string>
+    <string name="quit_app_text">L’application va être fermée.</string>
+    <string name="action_quit">Quitter</string>
     <string name="quit_on_exit">Fermer RetroArch en quittant le jeu</string>
     <string name="quit_on_exit_on">✓ Fermer RetroArch en quittant le jeu</string>
     <string name="quit_on_exit_hint">Recommandé : évite l’écran noir au lancement suivant. Quitter RetroArch en cours de partie (bouton Accueil, applications récentes) ferme alors le jeu — sauvegardez avant.</string>

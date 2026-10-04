@@ -131,6 +131,9 @@
     <string name="language_fr" translatable="false">Français</string>
     <string name="language_en" translatable="false">English</string>
     <string name="settings_emulators">Emulators</string>
+    <string name="quit_app_title">Quit RomCloud?</string>
+    <string name="quit_app_text">The application will be closed.</string>
+    <string name="action_quit">Quit</string>
     <string name="quit_on_exit">Close RetroArch when leaving the game</string>
     <string name="quit_on_exit_on">✓ Close RetroArch when leaving the game</string>
     <string name="quit_on_exit_hint">Recommended: avoids a black screen on the next launch. Leaving RetroArch during a game (Home button, recent apps) then closes the game — save first.</string>
