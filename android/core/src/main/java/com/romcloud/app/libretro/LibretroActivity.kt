@@ -508,7 +508,8 @@ class LibretroActivity : ComponentActivity() {
         axisButtons.clear()
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    override fun dispatchKeyEvent(original: KeyEvent): Boolean {
+        val event = gamepadButtonEvent(original)
         mappingSession?.let { session ->
             return session.onKey(event) || super.dispatchKeyEvent(event)
         }
@@ -529,6 +530,20 @@ class LibretroActivity : ComponentActivity() {
         sendButton(event.action, key, GamepadInput.port(event))
         if (showTouchPad && event.isFromSource(InputDevice.SOURCE_GAMEPAD)) showTouchPad = false
         return true
+    }
+
+    /**
+     * Touche Retour ou Menu envoyée par un bouton de manette (DualShock 3 en Bluetooth : Rond ou
+     * Select) : remplacée par ce bouton, pour qu'il serve au jeu au lieu d'ouvrir le menu.
+     */
+    private fun gamepadButtonEvent(event: KeyEvent): KeyEvent {
+        val device = event.device ?: return event
+        if (!GamepadInput.isGamepad(device)) return event
+        val button = GamepadInput.buttonOfSystemKey(event.keyCode, event.scanCode) ?: return event
+        return KeyEvent(
+            event.downTime, event.eventTime, event.action, button, event.repeatCount,
+            event.metaState, event.deviceId, event.scanCode, event.flags, event.source,
+        )
     }
 
     /**
