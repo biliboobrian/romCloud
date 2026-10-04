@@ -204,6 +204,22 @@ class LibretroActivity : ComponentActivity() {
                     )
                 }
             }
+            // Fichiers système du cœur (Dolphin : dolphin-emu/Sys), téléchargés au premier lancement ;
+            // en cas d'échec, le jeu est lancé quand même.
+            val systemDir = File(intent.getStringExtra(EXTRA_SYSTEM_DIR) ?: filesDir.absolutePath)
+            if (cores.systemFilesMissing(core, systemDir)) {
+                val text = getString(R.string.libretro_downloading_system_files, core)
+                phase = Phase.Loading(text)
+                runCatching {
+                    cores.downloadSystemFiles(core, systemDir) { bytes, total ->
+                        phase = Phase.Loading(
+                            text,
+                            fraction = if (total > 0) bytes.toFloat() / total else null,
+                            detail = if (total > 0) "${formatSize(bytes)} / ${formatSize(total)}" else formatSize(bytes),
+                        )
+                    }
+                }.onFailure { if (it is CancellationException) throw it }
+            }
             val game = if (RomArchives.needsExtraction(core, rom)) {
                 phase = Phase.Loading(getString(R.string.libretro_preparing))
                 withContext(Dispatchers.IO) { RomArchives.extract(rom, File(cacheDir, "libretro-rom")) }
@@ -254,7 +270,7 @@ class LibretroActivity : ComponentActivity() {
      * Chemin du cœur donné à LibretroDroid. Certains cœurs sont chargés par l'adaptateur audio_shim,
      * qui lit le chemin du cœur réel dans l'environnement : son envoyé échantillon par échantillon
      * (canal ignoré par LibretroDroid : jeu muet), regroupé en lots ; image du cœur restée noire
-     * à l'affichage par LibretroDroid (flycast), copiée à l'écran par l'adaptateur ; boutons lus d'un
+     * à l'affichage par LibretroDroid (flycast, dolphin), copiée à l'écran par l'adaptateur ; boutons lus d'un
      * coup (masque ignoré par LibretroDroid : aucun bouton, LRPS2), masque reconstitué par l'adaptateur.
      */
     private fun corePath(coreFile: File): String {
@@ -892,8 +908,8 @@ class LibretroActivity : ComponentActivity() {
         private const val AUDIO_SHIM = "libromcloud_audio_shim.so"
         /** Cœurs dont le son passe par retro_audio_sample (un échantillon à la fois). */
         private val SAMPLE_AUDIO_CORES = setOf("cap32")
-        /** Cœurs dont l'image reste noire avec LibretroDroid (Dreamcast) : copiée à l'écran par l'adaptateur. */
-        private val BLIT_CORES = setOf("flycast")
+        /** Cœurs dont l'image reste noire avec LibretroDroid (Dreamcast, GameCube) : copiée à l'écran par l'adaptateur. */
+        private val BLIT_CORES = setOf("flycast", "dolphin")
         /** Cœurs qui lisent les boutons d'un coup (RETRO_DEVICE_ID_JOYPAD_MASK) : masque reconstitué par l'adaptateur. */
         private val INPUT_MASK_CORES = setOf("pcsx2")
 

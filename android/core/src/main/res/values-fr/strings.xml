@@ -278,6 +278,7 @@
     <string name="libretro_core_on_demand">téléchargé au premier lancement</string>
     <string name="libretro_downloading_core">Téléchargement du cœur %1$s…</string>
     <string name="libretro_preparing">Préparation du jeu…</string>
+    <string name="libretro_downloading_system_files">Téléchargement des fichiers système de %1$s…</string>
     <string name="core_not_found">Le cœur %1$s n’est pas disponible pour %2$s sur le buildbot libretro.</string>
     <string name="core_unsupported_abi">Le processeur de cet appareil n’est pas pris en charge par les cœurs libretro.</string>
     <string name="core_invalid_archive">Archive invalide pour le cœur %1$s.</string>
