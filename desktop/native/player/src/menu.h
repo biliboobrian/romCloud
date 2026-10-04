@@ -6,6 +6,8 @@
 #include <SDL.h>
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "canvas.h"
 
@@ -36,6 +38,11 @@ class Menu {
 
   /** Écran des touches du clavier. */
   void openKeys();
+  /**
+   * Boutons proposés dans l'écran des touches (ceux de la console) : « bouton[=nom] » séparés par
+   * des virgules (--buttons) ; vide : tous les boutons du RetroPad.
+   */
+  void setButtons(const std::string& spec);
   /** Écran des touches en attente d'une touche pour le bouton choisi. */
   bool waitingKey() const { return open_ && waitingKey_; }
   /** Touche appuyée pendant l'attente : attribuée, sauf Échap (annule) et touches réservées. */
@@ -67,7 +74,8 @@ class Menu {
   int optionTab_ = 0;  // onglet (type d'options) affiché
   int optionSelected_ = 0;
   mutable int optionScroll_ = 0;
-  int keySelected_ = 0;  // 0 : « Touches par défaut », puis les boutons
+  std::vector<std::pair<unsigned, std::string>> keyRows_;  // bouton RetroPad, nom (vide : nom par défaut)
+  int keySelected_ = 0;  // 0 : « Touches par défaut », puis keyRows_
   bool waitingKey_ = false;
   std::string keyMessage_;  // touche refusée
 };
