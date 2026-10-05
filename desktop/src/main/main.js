@@ -9,6 +9,7 @@ const launcher = require('./launcher');
 const keyboard = require('./keyboard');
 const builtin = require('./builtin');
 const screencast = require('./screencast');
+const account = require('./account');
 const { createUpdater } = require('./updater');
 
 const updater = createUpdater({ app });
@@ -81,6 +82,19 @@ handle('launcher:play', (system, game, options) => launcher.play(system, game, o
 handle('launcher:resumable', (system, game) => launcher.resumable(system, game));
 handle('launcher:resumableIds', (system, games) => launcher.resumableIds(system, games));
 handle('launcher:check', (system) => launcher.check(system));
+handle('launcher:resumableOnline', (system, game) => launcher.resumableOnline(system, game));
+// Profil du joueur : connexion, temps de jeu, erreurs signalées à l'administration.
+handle('account:state', () => account.state());
+handle('account:register', (username, password) => account.register(username, password));
+handle('account:login', (username, password) => account.login(username, password));
+handle('account:logout', () => account.logout());
+handle('account:playtime', () => account.playtime());
+handle('account:reportError', (report) => account.reportError(report || {}));
+account.onChange(() => win?.webContents.send('account:update'));
+process.on('uncaughtException', (err) => {
+  console.error(err);
+  account.reportError({ context: 'main', message: err.message, details: err.stack });
+});
 handle('launcher:describe', (system, game) => launcher.describe(system, game));
 handle('emulators:list', () => launcher.listEmulators());
 handle('emulators:detect', () => launcher.detectEmulators());

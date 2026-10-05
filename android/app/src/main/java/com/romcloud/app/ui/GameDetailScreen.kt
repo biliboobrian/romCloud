@@ -130,6 +130,8 @@ fun GameDetailScreen(
                     ).forEach {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    PlaytimeLabel(gamePlaytime(game.id), Modifier.padding(top = 4.dp))
+                    state.onlineSave?.let { OnlineSaveLabel(it) }
                 }
             }
 

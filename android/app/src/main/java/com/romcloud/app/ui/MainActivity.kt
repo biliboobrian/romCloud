@@ -116,7 +116,11 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
                 onOpenSystem = { nav.navigate("games/$it") },
                 onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
                 onOpenSettings = { nav.navigate("settings") },
+                onOpenProfile = { nav.navigate("profile") },
             )
+        }
+        composable("profile") {
+            ProfileScreen(viewModel = viewModel { ProfileViewModel(app) }, onBack = { nav.popBackStack() })
         }
         composable(
             "games/{systemId}",

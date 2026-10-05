@@ -12,6 +12,8 @@ coil = "2.7.0"
 junit = "4.13.2"
 tvMaterial = "1.0.1"
 libretrodroid = "0.14.0"
+codeScanner = "16.1.0"
+zxing = "3.5.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -31,6 +33,10 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tvMaterial" }
 libretrodroid = { group = "com.github.Swordfish90", name = "LibretroDroid", version.ref = "libretrodroid" }
+# Lecteur de QR code des services Google Play (téléphone : connexion d'une TV au profil).
+play-services-code-scanner = { group = "com.google.android.gms", name = "play-services-code-scanner", version.ref = "codeScanner" }
+# Génération du QR code de connexion (TV).
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

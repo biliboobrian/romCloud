@@ -113,12 +113,12 @@ class GameLauncher(private val context: Context, private val settings: Settings)
      * Lance le jeu avec l'émulateur choisi ([resume] : reprend la partie sauvegardée, émulateur
      * intégré). Sans modèle d'émulateur (système personnalisé), ouvre le sélecteur d'applications.
      */
-    fun launch(activityContext: Context, system: GameSystem, file: File, player: Player?, resume: Boolean = false) {
+    fun launch(activityContext: Context, system: GameSystem, file: File, player: Player?, resume: Boolean = false, gameId: Long = 0) {
         if (!file.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, file.absolutePath))
 
         // Émulateur intégré : le cœur est téléchargé si besoin par l'activité de jeu elle-même.
         player?.libretroCore?.let { core ->
-            val intent = LibretroActivity.intent(activityContext, system.id, core, file, settings.config.value.biosDir, resume)
+            val intent = LibretroActivity.intent(activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId)
             if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             activityContext.startActivity(intent)
             return

@@ -11,6 +11,7 @@ import com.romcloud.app.data.BiosFile
 import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
+import com.romcloud.app.data.OnlineSave
 import com.romcloud.app.data.Player
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.LaunchException
@@ -49,12 +50,16 @@ fun RomCloudApp.play(
         }
     }
     return try {
-        launcher.launch(activity, system, file, player, resume)
+        launcher.launch(activity, system, file, player, resume, game.id)
+        // Émulateur externe : temps de jeu compté jusqu'au retour dans l'application (l'émulateur
+        // intégré compte lui-même le temps de la partie affichée).
+        if (player?.libretroCore == null) account.startExternalSession(game.id)
         null
     } catch (e: MissingEmulatorException) {
         missingEmulator.value = e.emulator
         null
     } catch (e: LaunchException) {
+        account.reportError("launch:${system.id}", e.message ?: "launch", game.fileName)
         e.message
     }
 }
@@ -317,6 +322,8 @@ class GameDetailViewModel(
         val missingBios: List<BiosFile> = emptyList(),
         /** Partie sauvegardée dans l'émulateur intégré : « Reprendre » avant « Jouer ». */
         val canResume: Boolean = false,
+        /** État de sauvegarde en ligne du profil (émulateur intégré), récupéré au lancement s'il est plus récent. */
+        val onlineSave: OnlineSave? = null,
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -349,7 +356,9 @@ class GameDetailViewModel(
             val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(s.bios) }
             val selected = app.launcher.selectedPlayer(system, game.fileName)
             val file = app.library.fileFor(system, game)
-            val canResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(file, selected) }
+            val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(file, selected) }
+            val online = selected?.libretroCore?.let { core -> app.account.saves(game.id).find { it.core == core && it.kind == "state" } }
+            val canResume = localResume || (downloaded && online != null)
             _state.update {
                 it.copy(
                     downloaded = downloaded,
@@ -360,6 +369,7 @@ class GameDetailViewModel(
                     retroArchInfo = selected?.let(app.launcher::retroArchInfo),
                     missingBios = missingBios,
                     canResume = canResume,
+                    onlineSave = online,
                 )
             }
         }

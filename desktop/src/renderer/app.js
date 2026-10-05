@@ -24,6 +24,8 @@
     history: [],
     focusedGameId: null,
     cast: { status: 'idle', device: null, error: null },
+    account: { signedIn: false }, // profil du joueur sur le serveur
+    playtime: {}, // temps de jeu du profil : { [gameId]: secondes }
   };
 
   // ---------------------------------------------------------------------------
@@ -49,6 +51,8 @@
     open: 'M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z',
     cast: 'M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z',
     castOn: 'M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm18-7H5v1.63c3.96 1.28 7.09 4.41 8.37 8.37H19V7zM1 10v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11zm20-7H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z',
+    user: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
+    timer: 'M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61 1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z',
     pad: 'M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z',
   };
   const icon = (name, size = 20) => `<svg class="icon" viewBox="0 0 24 24" style="width:${size}px;height:${size}px"><path d="${ICONS[name]}"/></svg>`;
@@ -181,14 +185,117 @@
   // Bouton de diffusion sur un Chromecast, placé avant celui des paramètres sur chaque écran.
   const castBtnInner = () => icon(S.cast.status === 'idle' ? 'cast' : 'castOn');
   const castBtnTitle = () => (S.cast.status === 'idle' ? t('cast.button') : t('cast.active', { name: S.cast.device?.name || '' }));
+  // Bouton du profil (à gauche de celui des paramètres) : coloré quand un joueur est connecté.
+  const profileTitle = () => (S.account.signedIn ? t('profile.signedInAs', { name: S.account.username }) : t('profile.button'));
+  const profileBtn = () => `<button class="icon-btn${S.account.signedIn ? ' signed-in' : ''}" data-action="profile" title="${esc(profileTitle())}">${icon('user')}</button>`;
   const settingsBtn = () => `<button class="icon-btn${S.cast.status === 'idle' ? '' : ' casting'}" data-action="cast" title="${esc(castBtnTitle())}">${castBtnInner()}</button>`
+    + profileBtn()
     + `<button class="icon-btn" data-action="settings" title="${esc(t('app.settings'))}">${icon('gear')}</button>`;
 
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-action]');
     if (el?.dataset.action === 'settings') go({ name: 'settings' });
     if (el?.dataset.action === 'cast') openCast();
+    if (el?.dataset.action === 'profile') openProfile();
   });
+
+  // ---------------------------------------------------------------------------
+  // Profil du joueur : connexion, temps de jeu, sauvegardes en ligne
+  // ---------------------------------------------------------------------------
+
+  /** Durée lisible : « 3 h 05 », « 12 min », « moins d'une minute ». */
+  function formatDuration(seconds) {
+    const s = Math.round(seconds || 0);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h) return t('profile.hours', { h, m: String(m).padStart(2, '0') });
+    return m ? t('profile.minutes', { m }) : t('profile.lessThanMinute');
+  }
+
+  /** Temps de jeu du profil pour ce jeu (bannière, fiche) ; vide s'il n'y a jamais joué. */
+  function playtimeHtml(game) {
+    const seconds = S.playtime[game.id];
+    if (!S.account.signedIn || !seconds) return '';
+    return `<div class="playtime">${icon('timer', 16)} ${esc(t('profile.playtime', { time: formatDuration(seconds) }))}</div>`;
+  }
+
+  function paintProfileButtons() {
+    for (const el of $$('[data-action="profile"]')) {
+      el.classList.toggle('signed-in', S.account.signedIn);
+      el.title = profileTitle();
+    }
+  }
+
+  /** Profil et temps de jeu relus (connexion, fin de partie) ; l'écran affiché est mis à jour. */
+  async function refreshAccount() {
+    S.account = await call(rc.account.state).catch(() => ({ signedIn: false }));
+    S.playtime = S.account.signedIn ? await call(rc.account.playtime).catch(() => ({})) : {};
+    paintProfileButtons();
+    if (S.route.name === 'games') renderHero();
+    if (S.route.name === 'game' && !$('#modalRoot').innerHTML) renderGame();
+  }
+
+  function openProfile(tab = 'login') {
+    if (S.account.signedIn) {
+      const a = S.account;
+      modal({
+        title: t('profile.title'),
+        body: `<div class="profile-head">${icon('user', 40)}<div><h4>${esc(a.username)}</h4>
+            ${a.offline ? `<span class="muted">${esc(t('profile.offline'))}</span>`
+            : `<span class="muted">${esc(a.playSeconds ? t('profile.stats', { time: formatDuration(a.playSeconds), n: a.gamesPlayed }) : t('profile.noPlay'))}</span>`}</div></div>
+          <p class="muted">${esc(t('profile.cloudHint'))}</p>`,
+        buttons: [
+          { label: t('profile.logout'), kind: 'danger', left: true, onClick: async () => { await call(rc.account.logout); toast(t('profile.loggedOut')); } },
+          { label: t('app.close'), kind: 'primary' },
+        ],
+      });
+      return;
+    }
+    if (!S.settings.serverUrl) return toast(t('app.configure'), { type: 'error' });
+    const creating = tab === 'register';
+    const root = modal({
+      title: t('profile.title'),
+      body: `<div class="line">${['login', 'register'].map((k) => `<button class="chip${k === tab ? ' selected' : ''}" data-profile-tab="${k}">${esc(t(`profile.${k}`))}</button>`).join('')}</div>
+        <p class="muted">${esc(t(creating ? 'profile.registerHint' : 'profile.loginHint'))}</p>
+        <form id="profileForm" class="profile-form">
+          <label>${esc(t('profile.username'))}<input type="text" id="profileUser" autocomplete="username" maxlength="32"></label>
+          <label>${esc(t('profile.password'))}<input type="password" id="profilePass" autocomplete="${creating ? 'new-password' : 'current-password'}"></label>
+          ${creating ? `<label>${esc(t('profile.confirm'))}<input type="password" id="profilePass2" autocomplete="new-password"></label>` : ''}
+          <p class="bad hidden" id="profileError"></p>
+          <button type="submit" class="hidden"></button>
+        </form>`,
+      buttons: [
+        { label: t('app.cancel'), kind: 'ghost' },
+        { label: t(creating ? 'profile.create' : 'profile.signIn'), kind: 'primary', keepOpen: true, onClick: () => submit() },
+      ],
+    });
+    for (const el of $$('[data-profile-tab]', root)) el.onclick = () => openProfile(el.dataset.profileTab);
+    $('#profileUser', root).focus();
+    $('#profileForm', root).onsubmit = (e) => {
+      e.preventDefault();
+      submit();
+    };
+    async function submit() {
+      const username = $('#profileUser', root).value.trim();
+      const password = $('#profilePass', root).value;
+      const error = $('#profileError', root);
+      const fail = (message) => {
+        error.textContent = message;
+        error.classList.remove('hidden');
+      };
+      if (!username || !password) return fail(t('profile.required'));
+      if (creating && password !== $('#profilePass2', root).value) return fail(t('profile.mismatch'));
+      try {
+        await call(creating ? rc.account.register : rc.account.login, username, password);
+      } catch (err) {
+        return fail(err.message);
+      }
+      root.innerHTML = '';
+      toast(t(creating ? 'profile.created' : 'profile.welcome', { name: username }));
+    }
+  }
+
+  rc.account.onUpdate(() => refreshAccount());
 
   // ---------------------------------------------------------------------------
   // Diffusion de l'écran sur un Chromecast
@@ -676,6 +783,7 @@
         <h2>${esc(game.title)}</h2>
         <div class="muted">${esc([year(game), mainGenre(game), game.players ? `${game.players} 👤` : null, formatSize(game.size)].filter(Boolean).join('  ·  '))}</div>
         ${statusLine}
+        ${playtimeHtml(game)}
         ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
         <div class="actions">
           ${resume ? `<button class="btn primary" id="heroResume">${icon('play', 18)} ${esc(t('action.resume'))}</button>` : ''}
@@ -734,6 +842,7 @@
       if (result?.manual) showManualLaunch(result);
     } catch (err) {
       const key = err.info?.key;
+      rc.account.reportError({ context: `launch:${system.id}`, message: err.message, details: game.fileName });
       if (key === 'errors.emulatorMissing') {
         showEmulatorMissing(err.info.vars.id);
       } else if (key === 'errors.retroarchMissing' || key === 'errors.coreMissing') {
@@ -978,14 +1087,17 @@
       return;
     }
     const downloaded = new Set(await call(rc.library.downloaded, [system], [game]));
-    const [emu, localPath, missingBios, emulators, command, resumable] = await Promise.all([
+    const [emu, localPath, missingBios, emulators, command, localResume, online] = await Promise.all([
       call(rc.launcher.options, system),
       call(rc.library.path, system, game),
       system.biosCount ? call(rc.bios.missing, system).catch(() => []) : [],
       call(rc.emulators.list),
       call(rc.launcher.describe, system, game),
       call(rc.launcher.resumable, system, game),
+      S.account.signedIn ? call(rc.launcher.resumableOnline, system, game).catch(() => null) : null,
     ]);
+    // Partie à reprendre : état sur ce PC ou sauvegarde en ligne (récupérée au lancement si plus récente).
+    const resumable = localResume || Boolean(online);
     if (S.route.name !== 'game' || S.route.gameId !== gameId) return;
     const st = statusOf(game, downloaded);
     const cover = mediaUrl(game, 'boxart');
@@ -1030,6 +1142,8 @@
           <span class="system-name">${esc(system.name.toUpperCase())}</span>
           <h2>${esc(game.title)}</h2>
           <div class="muted">${meta.map(esc).join('  ·  ')}</div>
+          ${playtimeHtml(game)}
+          ${online ? `<div class="muted">${icon('cloud', 16)} ${esc(t('profile.onlineSave', { device: online.device || '?', date: new Date(online.savedAt).toLocaleString(window.I18N.language) }))}</div>` : ''}
           ${st.kind === 'downloaded' ? `<div class="ok">${esc(t('detail.onPc'))}</div>` : ''}
           ${st.kind === 'failed' ? `<div class="error">${esc(t('status.failed', { error: st.error }))}</div>` : ''}
           ${st.kind === 'remote' ? `<div class="muted">${esc(t('detail.mustDownload'))}</div>` : ''}
@@ -1337,6 +1451,10 @@
     if (e.key === 'Escape' && $('#modalRoot').innerHTML) $('#modalRoot').innerHTML = '';
     else if ((e.key === 'Escape' || (e.altKey && e.key === 'ArrowLeft')) && S.route.name !== 'systems' && !e.target.matches('input')) back();
   });
+  // Erreurs de l'interface signalées à l'administration (avec le profil connecté).
+  window.addEventListener('error', (e) => rc.account.reportError({ context: 'ui', message: e.message, details: e.error?.stack }));
+  window.addEventListener('unhandledrejection', (e) => rc.account.reportError({ context: 'ui', message: String(e.reason?.message || e.reason), details: e.reason?.stack }));
+
   // Au retour dans l'application (fin de partie), met à jour les jeux présents.
   window.addEventListener('focus', async () => {
     await refreshDownloaded();
@@ -1399,6 +1517,8 @@
     $('#backBtn').title = t('app.back');
     S.downloads = await call(rc.downloads.states);
     S.cast = await call(rc.cast.state);
+    S.account = await call(rc.account.state).catch(() => ({ signedIn: false }));
+    if (S.account.signedIn) S.playtime = await call(rc.account.playtime).catch(() => ({}));
     render();
     checkUpdate();
     if (S.settings.serverUrl) await loadSystems();

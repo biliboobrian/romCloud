@@ -205,6 +205,7 @@ private fun HeroBanner(
                 )
                 val meta = listOfNotNull(game.year, game.mainGenre, formatSize(game.size)).joinToString(" · ")
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                PlaytimeLabel(gamePlaytime(game.id))
                 if (!compact) game.description?.let { HeroDescription(it, maxLines = 3) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Partie sauvegardée : « Reprendre » d'abord, puis « Jouer » (comme la fiche du jeu).
