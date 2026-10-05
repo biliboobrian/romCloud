@@ -69,6 +69,7 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.play.services.code.scanner)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)

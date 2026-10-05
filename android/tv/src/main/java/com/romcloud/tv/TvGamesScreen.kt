@@ -69,6 +69,8 @@ import com.romcloud.app.ui.RowLabels
 import com.romcloud.app.ui.carouselRows
 import com.romcloud.app.ui.formatSize
 import com.romcloud.app.ui.pickFeatured
+import com.romcloud.app.ui.PlaytimeLabel
+import com.romcloud.app.ui.gamePlaytime
 import com.romcloud.core.R
 
 @Composable
@@ -333,6 +335,7 @@ private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        PlaytimeLabel(gamePlaytime(game.id), color = MaterialTheme.colorScheme.primary)
         when (status) {
             LocalStatus.Downloaded -> Text(
                 stringResource(if (resumable) R.string.tv_resume_hint else R.string.tv_ready),

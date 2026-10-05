@@ -81,6 +81,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.romcloud.app.AppLanguage
+import com.romcloud.app.RomCloudApp
 import com.romcloud.app.ui.CastDialog
 import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
@@ -149,6 +150,24 @@ class LibretroActivity : ComponentActivity() {
     private val stateFile by lazy { stateFile(this, core, rom) }
     /** Reprendre la partie : l'état sauvegardé est chargé dès la première image. */
     private val resume by lazy { intent.getBooleanExtra(EXTRA_RESUME, false) }
+    /** Jeu du serveur (temps de jeu et sauvegardes en ligne du profil) ; 0 = inconnu. */
+    private val gameId by lazy { intent.getLongExtra(EXTRA_GAME_ID, 0L) }
+    private val account by lazy { (application as RomCloudApp).account }
+    /** Sauvegardes synchronisées avec le profil : état de la partie et mémoire du jeu. */
+    private val saveFiles by lazy { mapOf("state" to stateFile, "sram" to sramFile) }
+    private val sessionStart = System.currentTimeMillis()
+    /** Temps de jeu de la session : partie affichée, menu fermé (ms), et début de la période en cours. */
+    private var playedMillis = 0L
+    private var playingSince = 0L
+
+    private fun startPlayClock() {
+        if (playingSince == 0L && gameReady && !menuOpen) playingSince = System.currentTimeMillis()
+    }
+
+    private fun stopPlayClock() {
+        if (playingSince != 0L) playedMillis += System.currentTimeMillis() - playingSince
+        playingSince = 0L
+    }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLanguage.wrap(newBase))
@@ -226,6 +245,11 @@ class LibretroActivity : ComponentActivity() {
                     }
                 }.onFailure { if (it is CancellationException) throw it }
             }
+            // Profil connecté : sauvegardes en ligne plus récentes (partie continuée sur un autre appareil).
+            if (gameId > 0 && account.state.value.signedIn) {
+                phase = Phase.Loading(getString(R.string.libretro_syncing_saves))
+                runCatching { account.downloadNewer(gameId, core, saveFiles) }.onFailure { if (it is CancellationException) throw it }
+            }
             val game = if (RomArchives.needsExtraction(core, rom)) {
                 phase = Phase.Loading(getString(R.string.libretro_preparing))
                 withContext(Dispatchers.IO) { RomArchives.extract(rom, File(cacheDir, "libretro-rom")) }
@@ -237,6 +261,7 @@ class LibretroActivity : ComponentActivity() {
             throw e
         } catch (e: Exception) {
             phase = Phase.Failed(e.message ?: getString(R.string.libretro_error_generic))
+            account.reportError("libretro:$core", e.message ?: e.javaClass.name, rom.name)
         }
     }
 
@@ -265,6 +290,7 @@ class LibretroActivity : ComponentActivity() {
             view.getGLRetroEvents().collect {
                 if (it is GLRetroView.GLRetroEvents.FrameRendered && !gameReady) {
                     gameReady = true
+                    startPlayClock()
                     selectControllers(view)
                     if (resume) resumeGame()
                 }
@@ -318,6 +344,7 @@ class LibretroActivity : ComponentActivity() {
             GLRetroView.ERROR_GL_NOT_COMPATIBLE -> phase = Phase.Failed(getString(R.string.libretro_error_gl))
             else -> phase = Phase.Failed(getString(R.string.libretro_error_generic))
         }
+        (phase as? Phase.Failed)?.let { account.reportError("libretro:$core", it.message, "${rom.name} (code $code)") }
         gameReady = false
         menuOpen = false
         retroView?.let { container.removeView(it) }
@@ -328,6 +355,7 @@ class LibretroActivity : ComponentActivity() {
     private fun openMenu() {
         if (menuOpen) return
         releaseButtons()
+        stopPlayClock()
         menuOpen = true
         retroView?.apply {
             audioEnabled = false
@@ -344,19 +372,28 @@ class LibretroActivity : ComponentActivity() {
             onResume()
             audioEnabled = true
         }
+        startPlayClock()
     }
 
     override fun onResume() {
         super.onResume()
         // LibretroDroid relance l'émulation après onResume() : on la suspend de nouveau si le menu est ouvert.
         window.decorView.post { if (menuOpen) retroView?.onPause() }
+        startPlayClock()
     }
 
     override fun onPause() {
         super.onPause()
+        stopPlayClock()
         // L'émulation est déjà en pause ici (LibretroDroid suit le cycle de vie de l'activité).
         saveSram()
-        if (isFinishing) CrashReports.endSession(this)
+        if (isFinishing) {
+            CrashReports.endSession(this)
+            // Processus de jeu arrêté juste après : temps de jeu et sauvegardes mis en file,
+            // envoyés au serveur par l'application au retour.
+            account.recordPlaytime(gameId, playedMillis / 1000, sendNow = false)
+            account.queueUploads(gameId, core, saveFiles, sessionStart - 2000)
+        }
     }
 
     override fun onDestroy() {
@@ -950,6 +987,7 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_SYSTEM_DIR = "systemDir"
         private const val EXTRA_SYSTEM = "system"
         private const val EXTRA_RESUME = "resume"
+        private const val EXTRA_GAME_ID = "gameId"
         private const val RETRO_DEVICE_JOYPAD = 1
         private const val RETRO_DEVICE_MASK = 0xff
         private const val AUDIO_SHIM = "libromcloud_audio_shim.so"
@@ -969,12 +1007,13 @@ class LibretroActivity : ComponentActivity() {
          * [systemDir] : dossier des BIOS (dossier « system » libretro) ;
          * [resume] : reprend la partie à son état sauvegardé.
          */
-        fun intent(context: Context, systemId: String, core: String, rom: File, systemDir: String, resume: Boolean = false): Intent =
+        fun intent(context: Context, systemId: String, core: String, rom: File, systemDir: String, resume: Boolean = false, gameId: Long = 0): Intent =
             Intent(context, LibretroActivity::class.java)
                 .putExtra(EXTRA_SYSTEM, systemId)
                 .putExtra(EXTRA_CORE, core)
                 .putExtra(EXTRA_ROM, rom.absolutePath)
                 .putExtra(EXTRA_SYSTEM_DIR, systemDir)
                 .putExtra(EXTRA_RESUME, resume)
+                .putExtra(EXTRA_GAME_ID, gameId)
     }
 }

@@ -89,6 +89,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                 }
                 is DownloadEvent.Failed -> {
                     app.autoLaunch.remove(event.game.id)
+                    app.account.reportError("download:${event.game.systemId}", event.message, event.game.fileName)
                     launch { snackbar.showSnackbar(I18n.get(R.string.download_failed_game, event.game.title, event.message)) }
                 }
             }
@@ -217,9 +218,14 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
     var crash by remember { mutableStateOf<CrashReport?>(null) }
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Retour dans l'application (fin de partie) : temps de jeu et sauvegardes envoyés au profil.
+            app.account.onAppResumed()
             // Laisse au processus de jeu le temps de se terminer après une sortie normale.
             delay(1500)
-            withContext(Dispatchers.IO) { CrashReports.takePending(activity) }?.let { crash = it }
+            withContext(Dispatchers.IO) { CrashReports.takePending(activity) }?.let {
+                crash = it
+                app.account.reportError("libretro-crash:${it.core}", "${it.game} (${it.core})", it.text.take(20000))
+            }
         }
     }
     crash?.let { report ->

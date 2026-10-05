@@ -12,6 +12,7 @@
     <h1>RomCloud</h1>
     <div class="topbar-right">
       <span id="scraperState" class="pill"></span>
+      <button class="btn ghost" id="usersBtn" data-i18n="app.users"></button>
       <button class="btn ghost" id="apksBtn" data-i18n="app.apks"></button>
       <button class="btn ghost" id="jobsBtn"><span data-i18n="app.jobs"></span> <span id="jobsCount" class="count hidden">0</span></button>
       <select id="langSelect" class="lang-select" data-i18n-title="app.language" data-i18n-aria-label="app.language"></select>
@@ -246,6 +247,25 @@
         <span data-i18n="bios.add"></span>
         <input type="file" id="biosInput" multiple hidden>
       </label>
+    </div>
+  </dialog>
+
+  <!-- Utilisateurs : profils des joueurs, connexions, erreurs des applications -->
+  <dialog id="usersDialog" class="dialog wide">
+    <form method="dialog" class="dialog-head">
+      <h3 data-i18n="users.title"></h3>
+      <button class="icon-btn" data-i18n-aria-label="app.close">✕</button>
+    </form>
+    <div class="tabs">
+      <button class="tab active" data-users-tab="users" data-i18n="users.tabUsers"></button>
+      <button class="tab" data-users-tab="logins" data-i18n="users.tabLogins"></button>
+      <button class="tab" data-users-tab="errors" data-i18n="users.tabErrors"></button>
+    </div>
+    <div class="dup-body" id="usersContent"></div>
+    <div class="dup-foot">
+      <span class="muted" data-i18n="users.hint"></span>
+      <button class="btn primary" id="userCreateBtn" data-i18n="users.create"></button>
+      <button class="btn danger hidden" id="errorsClearBtn" data-i18n="users.clearErrors"></button>
     </div>
   </dialog>
 

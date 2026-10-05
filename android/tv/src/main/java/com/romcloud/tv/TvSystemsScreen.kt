@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.romcloud.app.data.DownloadState
@@ -51,6 +53,7 @@ import com.romcloud.app.ui.LocalStatus
 import com.romcloud.app.ui.SystemBadge
 import com.romcloud.app.ui.SystemsViewModel
 import com.romcloud.app.ui.pluralString
+import com.romcloud.app.ui.accountState
 import com.romcloud.core.R
 
 @Composable
@@ -62,6 +65,7 @@ fun TvSystemsScreen(
     onOpenSystem: (String) -> Unit,
     onOpenGame: (systemId: String, gameId: Long) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenProfile: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
@@ -135,6 +139,17 @@ fun TvSystemsScreen(
                 Icon(Icons.Filled.Refresh, null, modifier = IconSize)
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.action_refresh))
+            }
+            Spacer(Modifier.width(SmallGap))
+            // Profil du joueur, à côté des paramètres : nom du profil une fois connecté.
+            val account = accountState()
+            Button(onClick = onOpenProfile) {
+                Icon(
+                    Icons.Filled.AccountCircle, null, modifier = IconSize,
+                    tint = if (account.signedIn) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(if (account.signedIn) account.username else stringResource(R.string.profile_button))
             }
             Spacer(Modifier.width(SmallGap))
             Button(onClick = onOpenSettings, modifier = Modifier.focusRequester(settingsFocus)) {

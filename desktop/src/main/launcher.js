@@ -16,6 +16,7 @@ const catalog = require('./catalog');
 const { AppError } = require('./api');
 const { tokenize, coreOf, cores } = require('./emulators');
 const builtin = require('./builtin');
+const account = require('./account');
 
 // ---------------------------------------------------------------------------
 // Émulateurs du catalogue : emplacement sur le PC et ligne de commande
@@ -83,12 +84,15 @@ function setEmulatorArgs(id, args) {
   return listEmulators();
 }
 
-function spawnDetached(exe, args) {
+/** Lance un programme ; [game] : jeu lancé, dont le temps de jeu est compté jusqu'à sa fermeture. */
+function spawnDetached(exe, args, game = null) {
   const cwd = path.dirname(exe);
   return new Promise((resolve, reject) => {
     const child = spawn(exe, args, { cwd: fs.existsSync(cwd) ? cwd : undefined, detached: true, stdio: 'ignore' });
     child.once('error', (err) => reject(new AppError('errors.launchFailed', { detail: err.message })));
     child.once('spawn', () => {
+      const started = Date.now();
+      if (game) child.once('exit', () => account.addPlaytime(game.id, (Date.now() - started) / 1000));
       child.unref();
       resolve();
     });
@@ -232,6 +236,19 @@ function resumable(system, game) {
   }
 }
 
+/** Partie à reprendre depuis une sauvegarde en ligne (moteur intégré, profil connecté). */
+async function resumableOnline(system, game) {
+  let plan;
+  try {
+    plan = prepare(system, game);
+  } catch {
+    return null;
+  }
+  if (!plan.builtin) return null;
+  const save = (await account.saves(game.id)).find((s) => s.core === plan.core && s.kind === 'state');
+  return save ? { device: save.device, savedAt: save.savedAt } : null;
+}
+
 /**
  * Lance le jeu (`resume` : reprend la partie sauvegardée, moteur intégré). Renvoie
  * { manual: true, emulator, file } quand l'émulateur a été ouvert seul (l'interface indique
@@ -248,11 +265,11 @@ async function play(system, game, { resume = false } = {}) {
     if (error) throw new AppError('errors.noDefaultApp', { detail: error });
     return { manual: false };
   }
-  await spawnDetached(plan.exe, plan.manual ? [] : plan.args);
+  await spawnDetached(plan.exe, plan.manual ? [] : plan.args, plan.manual ? null : game);
   return plan.manual ? { manual: true, emulator: plan.emulator, file: plan.file } : { manual: false };
 }
 
 module.exports = {
-  tokenize, coreOf, cores, options, choose, coreDll, prepare, describe, check, resumable, resumableIds, play,
+  tokenize, coreOf, cores, options, choose, coreDll, prepare, describe, check, resumable, resumableIds, resumableOnline, play,
   listEmulators, detectEmulators, setEmulatorPath, setEmulatorArgs, launchEmulator,
 };

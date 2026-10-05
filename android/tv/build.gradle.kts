@@ -71,6 +71,7 @@ dependencies {
     implementation(project(":core"))
     implementation(libs.tv.material)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.zxing.core)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
 }

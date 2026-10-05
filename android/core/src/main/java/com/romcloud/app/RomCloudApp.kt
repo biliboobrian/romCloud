@@ -3,6 +3,7 @@ package com.romcloud.app
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import com.romcloud.app.data.Account
 import com.romcloud.app.data.ApiClient
 import com.romcloud.app.data.ApkInstaller
 import com.romcloud.app.data.AppUpdater
@@ -48,6 +49,9 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         private set
     lateinit var updater: AppUpdater
         private set
+    /** Profil du joueur : temps de jeu, sauvegardes en ligne, erreurs signalées. */
+    lateinit var account: Account
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -60,6 +64,21 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         launcher = GameLauncher(this, settings)
         apkInstaller = ApkInstaller(this, api, appScope)
         updater = AppUpdater(this, api)
+        account = Account(this, api, appScope)
+        // Plantage de l'application : signalé à l'administration au lancement suivant.
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                getSharedPreferences("romcloud_account", MODE_PRIVATE).edit()
+                    .putString("pendingCrash", "${error.javaClass.name}: ${error.message}\n${error.stackTraceToString().take(8000)}")
+                    .commit()
+            }
+            previous?.uncaughtException(thread, error)
+        }
+        getSharedPreferences("romcloud_account", MODE_PRIVATE).getString("pendingCrash", null)?.let { crash ->
+            getSharedPreferences("romcloud_account", MODE_PRIVATE).edit().remove("pendingCrash").apply()
+            account.reportError("crash", crash.lineSequence().first(), crash)
+        }
         DownloadService.createChannel(this)
     }
 

@@ -1,5 +1,6 @@
 // Interface d'administration RomCloud (vanilla JS, sans build).
 import { LANGUAGES, applyTranslations, formatSize, getLanguage, setLanguage, t } from './i18n.js';
+import { initUsers } from './users.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1099,4 +1100,5 @@ applyTranslations();
 setupLanguageSelect();
 updatePlatformSelection();
 bindEvents();
+initUsers({ api, guard, toast, escapeHtml });
 init();

@@ -33,6 +33,7 @@ import androidx.tv.material3.SurfaceDefaults
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.ui.GameDetailViewModel
+import com.romcloud.app.ui.ProfileViewModel
 import com.romcloud.app.ui.GamesViewModel
 import com.romcloud.app.ui.LaunchDialogs
 import com.romcloud.app.ui.SystemsViewModel
@@ -89,7 +90,11 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                         onOpenSystem = { nav.navigate("games/$it") },
                         onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
                         onOpenSettings = { nav.navigate("settings") },
+                        onOpenProfile = { nav.navigate("profile") },
                     )
+                }
+                composable("profile") {
+                    TvProfileScreen(viewModel = viewModel { ProfileViewModel(app) }, onMessage = message)
                 }
                 composable(
                     "games/{systemId}",

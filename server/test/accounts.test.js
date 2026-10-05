@@ -1,0 +1,133 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+process.env.DATA_DIR = path.join(os.tmpdir(), `romcloud-accounts-test-${process.pid}`);
+const accounts = await import('../src/accounts.js');
+const { access, routeMethod } = await import('../src/api.js');
+const { db } = await import('../src/db.js');
+
+db.prepare("INSERT INTO systems (id, name, shortname, folder) VALUES ('snes', 'Super Nintendo', 'snes', 'snes')").run();
+const gameId = Number(db.prepare("INSERT INTO games (system_id, file_name, size, mtime, title) VALUES ('snes', 'zelda.sfc', 1, 0, 'Zelda')").run().lastInsertRowid);
+
+const phone = { device: 'Pixel 8', platform: 'android', appVersion: '1.0', ip: '10.0.0.2', userAgent: 'okhttp' };
+const tv = { device: 'Shield', platform: 'androidtv', appVersion: '1.0', ip: '10.0.0.3', userAgent: 'okhttp' };
+
+const status = (fn) => {
+  try {
+    fn();
+  } catch (err) {
+    return err.status;
+  }
+  return 200;
+};
+
+test('mot de passe haché et vérifié', () => {
+  const stored = accounts.hashPassword('secret1');
+  assert.match(stored, /^scrypt\$/);
+  assert.ok(accounts.verifyPassword('secret1', stored));
+  assert.ok(!accounts.verifyPassword('secret2', stored));
+});
+
+test('profil : la clé des applications suffit ; utilisateurs et journaux : administration', () => {
+  const keys = { apiKey: 'app', adminKey: 'admin' };
+  assert.equal(access(routeMethod('POST', '/account/login'), 'app', keys), 'ok');
+  assert.equal(access(routeMethod('PUT', '/account/saves/1/snes9x/state'), 'app', keys), 'ok');
+  assert.equal(access(routeMethod('GET', '/users'), 'app', keys), 'admin-required');
+  assert.equal(access(routeMethod('GET', '/logs/errors'), 'admin', keys), 'ok');
+  assert.equal(access(routeMethod('POST', '/systems'), 'app', keys), 'admin-required');
+});
+
+test('création de compte, connexion, session, déconnexion', () => {
+  const { token, user } = accounts.register('Alice', 'secret1', phone);
+  assert.equal(user.username, 'Alice');
+  assert.equal(status(() => accounts.register('alice', 'secret1', phone)), 409); // insensible à la casse
+  assert.equal(status(() => accounts.register('al', 'secret1', phone)), 400);
+  assert.equal(status(() => accounts.register('bob', '123', phone)), 400);
+
+  const auth = accounts.authenticate(token, phone);
+  assert.equal(auth.user.id, user.id);
+  assert.equal(accounts.authenticate('faux', phone), null);
+
+  assert.equal(status(() => accounts.login('alice', 'mauvais', phone)), 401);
+  const second = accounts.login('ALICE', 'secret1', tv);
+  assert.notEqual(second.token, token);
+  accounts.logout(accounts.authenticate(second.token, tv), tv);
+  assert.equal(accounts.authenticate(second.token, tv), null);
+
+  const detail = accounts.adminUserDetail(user.id);
+  assert.equal(detail.sessions.length, 1);
+  assert.deepEqual(detail.logins.map((e) => [e.event, e.success]), [['logout', true], ['login', true], ['login', false], ['register', true]]);
+});
+
+test('trop de tentatives : connexion bloquée', () => {
+  accounts.createUser('carol', 'secret1');
+  for (let i = 0; i < 10; i++) assert.equal(status(() => accounts.login('carol', 'non', phone)), 401);
+  assert.equal(status(() => accounts.login('carol', 'secret1', phone)), 429);
+});
+
+test('compte désactivé : sessions fermées, connexion refusée', () => {
+  const { token, user } = accounts.register('dave', 'secret1', phone);
+  accounts.adminUpdateUser(user.id, { disabled: true });
+  assert.equal(accounts.authenticate(token, phone), null);
+  assert.equal(status(() => accounts.login('dave', 'secret1', phone)), 403);
+});
+
+test('TV connectée par QR code validé depuis le téléphone', () => {
+  const { token } = accounts.login('alice', 'secret1', phone);
+  const pair = accounts.createPair(tv);
+  assert.match(pair.code, /^[A-Z2-9]{8}$/);
+  assert.equal(accounts.pollPair(pair.code, pair.secret).status, 'pending');
+  assert.equal(status(() => accounts.pollPair(pair.code, 'mauvais')), 403);
+  assert.equal(accounts.pairInfo(pair.code.toLowerCase()).device, 'Shield');
+
+  accounts.approvePair(pair.code, accounts.authenticate(token, phone), phone);
+  const result = accounts.pollPair(pair.code, pair.secret);
+  assert.equal(result.status, 'approved');
+  assert.equal(result.user.username, 'Alice');
+  assert.equal(accounts.authenticate(result.token, tv).user.username, 'Alice');
+  // Jeton remis une seule fois.
+  assert.equal(accounts.pollPair(pair.code, pair.secret).status, 'expired');
+});
+
+test('temps de jeu cumulé par jeu', () => {
+  const { user } = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
+  accounts.addPlaytime(user.id, gameId, 600);
+  const p = accounts.addPlaytime(user.id, gameId, 1200.4);
+  assert.equal(p.seconds, 1800);
+  assert.equal(p.sessions, 2);
+  assert.equal(status(() => accounts.addPlaytime(user.id, 999999, 10)), 404);
+  assert.equal(status(() => accounts.addPlaytime(user.id, gameId, -5)), 400);
+  assert.equal(accounts.adminListUsers().find((u) => u.id === user.id).playSeconds, 1800);
+});
+
+test('sauvegardes en ligne : enregistrées, relues, remplacées, supprimées', () => {
+  const { user } = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
+  assert.equal(status(() => accounts.getSave(user.id, gameId, 'snes9x', 'state')), 404);
+  assert.equal(status(() => accounts.putSave(user.id, gameId, '../x', 'state', Buffer.from('a'), 1, phone)), 400);
+  assert.equal(status(() => accounts.putSave(user.id, gameId, 'snes9x', 'autre', Buffer.from('a'), 1, phone)), 400);
+
+  accounts.putSave(user.id, gameId, 'snes9x', 'state', Buffer.from('v1'), 1000, phone);
+  const saved = accounts.putSave(user.id, gameId, 'snes9x', 'state', Buffer.from('v2'), 2000, tv);
+  assert.equal(saved.savedAt, new Date(2000).toISOString());
+  assert.equal(saved.device, 'Shield');
+  const { file } = accounts.getSave(user.id, gameId, 'snes9x', 'state');
+  assert.equal(fs.readFileSync(file, 'utf8'), 'v2');
+  assert.equal(accounts.listSaves(user.id, gameId).length, 1);
+
+  accounts.deleteSave(user.id, gameId, 'snes9x', 'state');
+  assert.equal(accounts.listSaves(user.id).length, 0);
+  assert.ok(!fs.existsSync(file));
+});
+
+test('erreurs des applications, avec ou sans joueur', () => {
+  const auth = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
+  accounts.logError({ message: 'Cœur introuvable', context: 'launch', details: 'stack' }, auth, phone);
+  accounts.logError({ message: 'Anonyme' }, null, tv);
+  assert.equal(status(() => accounts.logError({}, null, tv)), 400);
+  const log = accounts.adminErrorLog();
+  assert.deepEqual(log.slice(0, 2).map((e) => [e.message, e.username]), [['Anonyme', null], ['Cœur introuvable', 'Alice']]);
+  assert.equal(accounts.adminUserDetail(auth.user.id).errors.length, 1);
+});

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import multer from 'multer';
+import * as accounts from './accounts.js';
 import { addApk, apkFilePath, deleteApk, emulatorPackages, listApks, requireApk, updateApk } from './apks.js';
 import { addBiosFiles, biosFilePath, deleteBios, requireBios, systemBios } from './bios.js';
 import { config, screenscraperEnabled } from './config.js';
@@ -89,10 +90,20 @@ export function access(method, given, { apiKey, adminKey }) {
   return keyMatches(given, apiKey) ? 'admin-required' : 'denied';
 }
 
+/**
+ * Niveau d'une route : profil du joueur (/account : la clé des applications suffit, même pour
+ * enregistrer) ; utilisateurs et journaux (/users, /logs : administration, même en lecture).
+ */
+export function routeMethod(method, routePath) {
+  if (routePath.startsWith('/account/')) return 'GET';
+  if (routePath.startsWith('/users') || routePath.startsWith('/logs')) return 'POST';
+  return method;
+}
+
 api.use((req, res, next) => {
   const auth = req.get('authorization') || '';
   const given = auth.startsWith('Bearer ') ? auth.slice(7) : req.get('x-api-key') || req.query.key;
-  const result = access(req.method, given, config);
+  const result = access(routeMethod(req.method, req.path), given, config);
   if (result === 'ok') return next();
   if (result === 'admin-required') return res.status(403).json({ error: token('errors.adminKey'), code: 'errors.adminKey' });
   res.status(401).json({ error: token('errors.apiKey') });
@@ -391,6 +402,107 @@ api.get('/jobs', (req, res) => res.json(listJobs()));
 
 api.delete('/jobs/:id', (req, res) => {
   if (!cancelJob(req.params.id)) throw new HttpError(404, 'errors.unknownJob');
+  res.status(204).end();
+});
+
+// ---- Profil du joueur (session : en-tête X-RomCloud-Session) ----
+const sessionToken = (req) => req.get('x-romcloud-session') || '';
+const userAuth = (req) => accounts.authenticate(sessionToken(req), accounts.clientInfo(req));
+
+/** Route réservée à un joueur connecté : req.auth = { user, sessionId }. */
+function signedIn(req, res, next) {
+  req.auth = userAuth(req);
+  if (!req.auth) return res.status(401).json({ error: token('errors.signedOut'), code: 'errors.signedOut' });
+  next();
+}
+
+api.post('/account/register', (req, res) => {
+  const b = req.body || {};
+  res.status(201).json(accounts.register(b.username, b.password, accounts.clientInfo(req, b)));
+});
+
+api.post('/account/login', (req, res) => {
+  const b = req.body || {};
+  res.json(accounts.login(b.username, b.password, accounts.clientInfo(req, b)));
+});
+
+api.post('/account/logout', signedIn, (req, res) => {
+  accounts.logout(req.auth, accounts.clientInfo(req));
+  res.status(204).end();
+});
+
+api.get('/account/me', signedIn, (req, res) => {
+  const playtime = accounts.listPlaytime(req.auth.user.id);
+  res.json({
+    user: req.auth.user,
+    playSeconds: playtime.reduce((n, p) => n + p.seconds, 0),
+    gamesPlayed: playtime.length,
+  });
+});
+
+api.post('/account/password', signedIn, (req, res) => {
+  accounts.changePassword(req.auth, req.body?.current, req.body?.password);
+  res.status(204).end();
+});
+
+// Connexion d'une TV : elle affiche un QR code ; un téléphone connecté le scanne et valide.
+api.post('/account/pair', (req, res) => res.status(201).json(accounts.createPair(accounts.clientInfo(req, req.body || {}))));
+api.get('/account/pair/:code', (req, res) => {
+  if (req.query.secret !== undefined) return res.json(accounts.pollPair(req.params.code, req.query.secret));
+  res.json(accounts.pairInfo(req.params.code));
+});
+api.post('/account/pair/:code/approve', signedIn, (req, res) => {
+  res.json(accounts.approvePair(req.params.code, req.auth, accounts.clientInfo(req)));
+});
+
+api.get('/account/playtime', signedIn, (req, res) => res.json(accounts.listPlaytime(req.auth.user.id)));
+api.post('/account/playtime', signedIn, (req, res) => {
+  res.json(accounts.addPlaytime(req.auth.user.id, req.body?.gameId, req.body?.seconds));
+});
+
+api.get('/account/saves', signedIn, (req, res) => res.json(accounts.listSaves(req.auth.user.id, req.query.gameId)));
+api.get('/account/saves/:gameId/:core/:kind', signedIn, (req, res) => {
+  const { file, save } = accounts.getSave(req.auth.user.id, req.params.gameId, req.params.core, req.params.kind);
+  res.set('X-Saved-At', save.savedAt);
+  res.sendFile(file);
+});
+api.put(
+  '/account/saves/:gameId/:core/:kind',
+  signedIn,
+  express.raw({ type: () => true, limit: '1024mb' }),
+  (req, res) => {
+    const { gameId, core, kind } = req.params;
+    res.json(accounts.putSave(req.auth.user.id, gameId, core, kind, req.body, req.get('x-saved-at'), accounts.clientInfo(req)));
+  },
+);
+api.delete('/account/saves/:gameId/:core/:kind', signedIn, (req, res) => {
+  accounts.deleteSave(req.auth.user.id, req.params.gameId, req.params.core, req.params.kind);
+  res.status(204).end();
+});
+
+// Erreur rencontrée par une application (avec ou sans joueur connecté).
+api.post('/account/errors', (req, res) => {
+  accounts.logError(req.body, userAuth(req), accounts.clientInfo(req, req.body || {}));
+  res.status(204).end();
+});
+
+// ---- Administration des utilisateurs et journaux ----
+api.get('/users', (req, res) => res.json(accounts.adminListUsers()));
+api.post('/users', (req, res) => res.status(201).json(accounts.createUser(req.body?.username, req.body?.password)));
+api.get('/users/:id', (req, res) => res.json(accounts.adminUserDetail(req.params.id)));
+api.put('/users/:id', (req, res) => res.json(accounts.adminUpdateUser(req.params.id, req.body || {})));
+api.delete('/users/:id', (req, res) => {
+  accounts.adminDeleteUser(req.params.id);
+  res.status(204).end();
+});
+api.delete('/users/:id/sessions/:sessionId', (req, res) => {
+  accounts.adminRevokeSession(req.params.id, req.params.sessionId);
+  res.status(204).end();
+});
+api.get('/logs/logins', (req, res) => res.json(accounts.adminLoginLog(req.query.limit)));
+api.get('/logs/errors', (req, res) => res.json(accounts.adminErrorLog(req.query.limit)));
+api.delete('/logs/errors', (req, res) => {
+  accounts.adminClearErrors();
   res.status(204).end();
 });
 

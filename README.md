@@ -186,6 +186,16 @@ L’interface est disponible en **français** et en **anglais** : menu de langue
 7. **BIOS** (bouton dans la vue d’un système) : liste les BIOS **attendus par les cœurs RetroArch** des émulateurs du système (fiches [libretro-core-info](https://github.com/libretro/libretro-core-info) : chemin, requis ou facultatif, MD5 de référence) et les fichiers envoyés, avec contrôle des empreintes (MD5 et SHA1). Glissez les fichiers via *Ajouter des BIOS* : un fichier nommé comme un BIOS attendu est rangé dans le bon sous-dossier (ex. `dc_boot.bin` → `dc/dc_boot.bin`), ou utilisez *Envoyer…* sur la ligne d’un BIOS. Certains cœurs attendent un **dossier** (PCSX2 : `pcsx2/bios` et `pcsx2/resources`) : *Envoyer un .zip…* sur sa ligne envoie une archive de son contenu, extraite sur le serveur (chaque fichier devient un BIOS du dossier, téléchargé par les applications). Un .zip envoyé auparavant à la place d’un dossier est extrait automatiquement. Les MD5 de référence viennent de ces fiches, complétés par [`server/bios-hashes.json`](server/bios-hashes.json) (MD5 ou SHA1 par nom de fichier, dont les BIOS PlayStation `scph5500/5501/5502` v3.0 dont Beetle PSX contrôle le SHA1), complétable sans reconstruire l’image par un fichier `DATA_DIR/bios-hashes.json` de même format (`{ "scph5501.bin": ["490f66…", "0555c6…"] }`). **Un BIOS dont l’empreinte est connue est refusé à l’envoi s’il n’y correspond pas** ; un BIOS sans empreinte connue est accepté. Les fichiers sont stockés dans `DATA_DIR/bios/<système>/`. Les applications proposent ensuite de les télécharger avec le jeu.
 8. **Émulateurs Android** (bouton en haut de l’écran) : liste les émulateurs utilisés par les modèles de vos systèmes (paquet Android, systèmes, lien Play Store) et les **APK** envoyés sur le serveur. Le paquet et la version sont lus dans chaque APK ; un seul APK par paquet (une nouvelle version remplace la précédente). Les APK sont stockés dans `DATA_DIR/apks/`. Les applications Android proposent ensuite d’installer l’émulateur manquant depuis le serveur RomCloud ou depuis le Play Store.
 9. Cliquer sur un jeu permet d'éditer ses informations, remplacer ses images, le télécharger ou le supprimer.
+10. **Utilisateurs** (bouton en haut de l’écran) : profils des joueurs créés depuis les applications (ou ici, *Créer un utilisateur*). Pour chaque profil : renommer, nouveau mot de passe (les appareils connectés sont déconnectés), désactiver, supprimer ; **appareils connectés** (nom, plateforme, version de l’application, adresse IP, dernière activité, connexion par mot de passe ou QR code — *Déconnecter* ferme une session), **temps de jeu par jeu**, **sauvegardes en ligne** et **erreurs** signalées par ses appareils. Onglets *Connexions* (toutes les connexions, réussies ou non, avec le motif d’un échec : mot de passe incorrect, utilisateur inconnu, compte désactivé, trop de tentatives) et *Erreurs des applications* (lancement impossible, téléchargement échoué, plantage de l’émulateur intégré ou de l’application, avec les détails). Réservé à la clé d’administration.
+
+#### Profils des joueurs
+
+Une icône de profil, à côté des paramètres, permet de **créer un compte** ou de **se connecter** (Windows, Android). **Android TV** propose la connexion par mot de passe ou un **QR code** : dans l’application du téléphone déjà connecté, *Profil › Connecter une TV › Scanner le QR code* (lecteur des services Google Play, ou *Saisir le code* affiché sous le QR code), puis *Connecter* : la TV est connectée au même profil. Le profil garde :
+
+- le **temps de jeu par jeu**, affiché dans la bannière de la liste des jeux et dans la fiche du jeu (émulateur intégré : temps de la partie affichée, menu fermé ; émulateurs externes : du lancement au retour dans RomCloud ; parties de moins de 10 s ignorées ; envoyé plus tard si le serveur est injoignable) ;
+- les **sauvegardes en ligne de l’émulateur intégré** (état de la partie et mémoire du jeu, par cœur) : envoyées en quittant le jeu, récupérées avant de jouer si elles sont plus récentes — une partie commencée sur la TV continue sur le téléphone ou le PC (même cœur ; un état d’une autre version du cœur peut être refusé). La fiche du jeu indique la sauvegarde en ligne et propose *Reprendre*.
+
+Mots de passe hachés (scrypt), jetons de session aléatoires (seule leur empreinte est stockée), 10 tentatives échouées par quart d’heure et par nom d’utilisateur. Sauvegardes dans `DATA_DIR/saves/<utilisateur>/<jeu>/`.
 
 ### Configuration (`.env`)
 
@@ -209,7 +219,7 @@ L’interface est disponible en **français** et en **anglais** : menu de langue
 
 ### API
 
-Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <clé>` (ou `?key=`) quand une clé est définie : `API_KEY` pour les lectures (GET), `ADMIN_KEY` (ou `API_KEY` seule) pour les modifications ; une clé en lecture seule reçoit `403` sur une modification.
+Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <clé>` (ou `?key=`) quand une clé est définie : `API_KEY` pour les lectures (GET), `ADMIN_KEY` (ou `API_KEY` seule) pour les modifications ; une clé en lecture seule reçoit `403` sur une modification. Exceptions : `/api/account/*` (profil du joueur) accepte `API_KEY` même pour enregistrer ; `/api/users` et `/api/logs` exigent la clé d’administration même en lecture.
 
 | Méthode | Route | Description |
 |---|---|---|
@@ -238,6 +248,17 @@ Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <clé>` (ou 
 | POST | `/api/games/:id/scrape` | `{ "source": "auto\|screenscraper\|libretro" }` |
 | POST | `/api/systems/:id/scrape` | Tâche de fond `{ "onlyMissing": true }` |
 | GET/DELETE | `/api/jobs[/:id]` | Suivi / annulation des tâches |
+| POST | `/api/account/register` · `/api/account/login` | `{ "username", "password" }` → `{ token, user }` (appareil : en-têtes `X-RomCloud-Device`, `X-RomCloud-Platform`, `X-RomCloud-Version`) |
+| POST · GET | `/api/account/logout` · `/api/account/me` | Session : en-tête `X-RomCloud-Session: <token>` ; `401` `errors.signedOut` si elle est fermée |
+| POST · GET | `/api/account/pair` · `/api/account/pair/:code?secret=` | TV : demande de connexion (`code`, `secret`) puis attente (`pending`, `approved` + jeton, `expired`) |
+| GET · POST | `/api/account/pair/:code` · `/api/account/pair/:code/approve` | Téléphone connecté : appareil derrière le code, puis validation |
+| GET · POST | `/api/account/playtime` | Temps de jeu par jeu · `{ "gameId", "seconds" }` ajoute une partie |
+| GET | `/api/account/saves?gameId=` | Sauvegardes en ligne (`core`, `kind` : `state` ou `sram`, `savedAt`, appareil) |
+| GET/PUT/DELETE | `/api/account/saves/:gameId/:core/:kind` | Fichier de sauvegarde (PUT : corps binaire, `X-Saved-At` = date du fichier en ms) |
+| POST | `/api/account/errors` | `{ "message", "context", "details" }` : erreur d’une application (avec ou sans session) |
+| GET/POST · GET/PUT/DELETE | `/api/users` · `/api/users/:id` | Administration des profils (détail : sessions, connexions, temps de jeu, sauvegardes, erreurs) |
+| DELETE | `/api/users/:id/sessions/:sessionId` | Déconnecte un appareil |
+| GET · GET/DELETE | `/api/logs/logins` · `/api/logs/errors` | Journal des connexions · des erreurs (`DELETE` : effacer) |
 
 Tests : `npm test`.
 

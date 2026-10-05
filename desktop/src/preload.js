@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('romcloud', {
     resumable: call('launcher:resumable'),
     resumableIds: call('launcher:resumableIds'),
     check: call('launcher:check'),
+    resumableOnline: call('launcher:resumableOnline'),
     describe: call('launcher:describe'),
   },
   emulators: {
@@ -40,6 +41,15 @@ contextBridge.exposeInMainWorld('romcloud', {
   shell: { showItem: call('shell:showItem'), openExternal: call('shell:openExternal') },
   keyboard: { layout: call('keyboard:layout'), save: call('keyboard:save') },
   app: { version: call('app:version') },
+  account: {
+    state: call('account:state'),
+    register: call('account:register'),
+    login: call('account:login'),
+    logout: call('account:logout'),
+    playtime: call('account:playtime'),
+    reportError: call('account:reportError'),
+    onUpdate: (fn) => ipcRenderer.on('account:update', () => fn()),
+  },
   cast: {
     discover: call('cast:discover'),
     start: call('cast:start'),

@@ -63,6 +63,9 @@ import com.romcloud.app.ui.DownloadedGreen
 import com.romcloud.app.ui.GameDetailViewModel
 import com.romcloud.app.ui.RetroArchHelpDialog
 import com.romcloud.app.ui.formatSize
+import com.romcloud.app.ui.PlaytimeLabel
+import com.romcloud.app.ui.gamePlaytime
+import com.romcloud.app.ui.OnlineSaveLabel
 import com.romcloud.core.R
 
 @Composable
@@ -134,6 +137,8 @@ fun TvGameDetailScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                PlaytimeLabel(gamePlaytime(game.id), color = MaterialTheme.colorScheme.primary)
+                state.onlineSave?.let { OnlineSaveLabel(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 
                 // État local
                 when {

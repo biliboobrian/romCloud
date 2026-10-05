@@ -221,6 +221,20 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .job progress { width: 100%; }
 .job .err { color: var(--danger); font-size: 12px; }
 
+/* ---- Utilisateurs ---- */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th { text-align: left; font-weight: 600; color: var(--muted); background: var(--surface-2); padding: 7px 10px; white-space: nowrap; }
+.table td { padding: 7px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+.table tr.clickable { cursor: pointer; }
+.table tr.clickable:hover td { background: var(--surface-2); }
+.table tr.disabled td { opacity: 0.6; }
+.table code { font-size: 12px; }
+.error-cell { word-break: break-word; }
+.error-cell pre { white-space: pre-wrap; font-size: 11px; max-height: 240px; overflow: auto; margin: 6px 0 0; }
+.user-head { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.user-head h4 { font-size: 18px; margin: 4px 0 0; }
+
 .toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
 .toast { background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 8px; box-shadow: var(--shadow); max-width: 360px; }
 .toast.error { background: var(--danger); color: #fff; }

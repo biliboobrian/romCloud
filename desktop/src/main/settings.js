@@ -19,6 +19,8 @@ function defaults() {
     emulatorArgs: {}, // { [id]: arguments personnalisés, vide = ceux du catalogue }
     emulatorsDetectedAt: '', // date de la dernière recherche des émulateurs sur le PC
     retroarchHelpDismissed: false,
+    session: null, // profil connecté : { token, username, userId }
+    pendingPlaytime: [], // temps de jeu pas encore envoyé (serveur injoignable) : [{ gameId, seconds }]
   };
 }
 

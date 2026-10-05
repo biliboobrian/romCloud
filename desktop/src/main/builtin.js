@@ -12,6 +12,7 @@ const zip = require('./zip');
 const libretro = require('./libretro');
 const keyboard = require('./keyboard');
 const { AppError } = require('./api');
+const account = require('./account');
 
 const root = () => path.join(app.getPath('userData'), 'libretro');
 const safe = (s) => String(s).replace(/[^A-Za-z0-9._-]/g, '_');
@@ -103,14 +104,21 @@ function saveKeys(keys) {
 /** État de sauvegarde du jeu dans le moteur (« Sauvegarder et quitter », F2…). */
 const statePath = (core, file) => path.join(root(), 'states', core, `${path.parse(file).name}.state`);
 
+/** Sauvegarde du jeu (mémoire de la cartouche) écrite par le moteur : nom de la ROM lancée. */
+const sramPath = (core, rom) => path.join(root(), 'saves', core, `${path.parse(rom).name}.srm`);
+
 /**
  * Lance le jeu dans le moteur intégré (le cœur est téléchargé avant si besoin) ; `resume` :
- * reprend la partie à son état de sauvegarde.
+ * reprend la partie à son état de sauvegarde. Profil connecté : les sauvegardes en ligne plus
+ * récentes (partie continuée sur un autre appareil) sont récupérées avant, et à la fermeture du
+ * moteur, le temps de jeu est compté et les sauvegardes modifiées sont envoyées au serveur.
  */
 async function launch(system, game, file, core, { resume = false } = {}) {
   if (!available()) throw new AppError('errors.playerMissing', { path: playerPath() });
   const dll = await ensureCore(core);
   const rom = prepareRom(core, file);
+  const saveFiles = { state: statePath(core, file), sram: sramPath(core, rom) };
+  await account.downloadNewer(game.id, core, saveFiles);
   const base = root();
   const args = libretro.playerArgs({
     dll,
@@ -139,8 +147,25 @@ async function launch(system, game, file, core, { resume = false } = {}) {
       fs.closeSync(log); // le moteur a sa propre copie du fichier journal
     }
     child.once('error', (err) => reject(new AppError('errors.launchFailed', { detail: err.message })));
-    child.once('spawn', () => resolve());
+    child.once('spawn', () => {
+      const started = Date.now();
+      child.once('exit', (code) => {
+        account.addPlaytime(game.id, (Date.now() - started) / 1000);
+        account.uploadChanged(game.id, core, saveFiles, started - 2000);
+        if (code) account.reportError({ context: `player:${core}`, message: `romcloud-player exit code ${code}`, details: lastLog(base) });
+      });
+      resolve();
+    });
   });
+}
+
+/** Fin du journal du moteur (jointe à l'erreur signalée quand il s'arrête sur une erreur). */
+function lastLog(base) {
+  try {
+    return fs.readFileSync(path.join(base, 'player.log'), 'utf8').slice(-4000);
+  } catch {
+    return undefined;
+  }
 }
 
 module.exports = { playerPath, available, coreInstalled, ensureCore, prepareRom, statePath, launch, loadKeys, saveKeys };
