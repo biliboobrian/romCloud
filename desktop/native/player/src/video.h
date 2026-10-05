@@ -10,6 +10,17 @@
 
 #include "libretro.h"
 
+/**
+ * Filtre d'image (pixels de la console agrandis à l'écran) : pixels nets, lissage net (pixels nets,
+ * transition lissée sur un pixel de l'écran : ni flou ni pixels inégaux), lissage bilinéaire, écran
+ * cathodique (lignes de balayage), écran LCD (grille).
+ */
+enum class Filter { Pixels, Sharp, Smooth, Crt, Lcd };
+constexpr int kFilterCount = 5;
+/** Identifiant mémorisé dans les réglages (« sharp »…) et inverse (lissage net par défaut). */
+const char* filterId(Filter filter);
+Filter filterFromId(const std::string& id);
+
 class Video {
  public:
   /** Crée la fenêtre et un contexte OpenGL adapté au cœur ; appelé après retro_load_game. */
@@ -35,8 +46,8 @@ class Video {
 
   void toggleFullscreen();
   bool fullscreen() const { return fullscreen_; }
-  void setSmooth(bool smooth) { smooth_ = smooth; }
-  bool smooth() const { return smooth_; }
+  void setFilter(Filter filter) { filter_ = filter; }
+  Filter filter() const { return filter_; }
   SDL_Window* window() const { return window_; }
 
  private:
@@ -49,10 +60,10 @@ class Video {
   SDL_GLContext context_ = nullptr;
   bool coreProfile_ = false;
   bool fullscreen_ = true;
-  bool smooth_ = false;
+  Filter filter_ = Filter::Sharp;
 
   unsigned program_ = 0, vao_ = 0, vbo_ = 0;
-  int uniformTexture_ = -1, uniformAlpha_ = -1;
+  int uniformTexture_ = -1, uniformAlpha_ = -1, uniformMode_ = -1, uniformSize_ = -1, uniformScale_ = -1;
   unsigned frameTexture_ = 0, overlayTexture_ = 0;
   int textureWidth_ = 0, textureHeight_ = 0;
   unsigned fbo_ = 0, fboTexture_ = 0, fboDepth_ = 0;

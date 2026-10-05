@@ -37,6 +37,7 @@
   X(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation)                          \
   X(PFNGLUNIFORM1IPROC, glUniform1i)                                            \
   X(PFNGLUNIFORM1FPROC, glUniform1f)                                            \
+  X(PFNGLUNIFORM2FPROC, glUniform2f)                                            \
   X(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer)                        \
   X(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray)                \
   X(PFNGLGENFRAMEBUFFERSPROC, glGenFramebuffers)                                \
@@ -266,18 +267,57 @@ static const char* kVertex150 =
     "#version 150\n"
     "in vec2 a_pos; in vec2 a_uv; out vec2 v_uv;\n"
     "void main() { v_uv = a_uv; gl_Position = vec4(a_pos, 0.0, 1.0); }\n";
+// Filtre d'image (u_mode : rang dans Filter) ; u_size : taille de la texture en pixels, u_scale :
+// pixels de l'écran par pixel de l'image. Lissage net (et base de l'écran cathodique) d'après
+// « sharp-bilinear-simple » de libretro : chaque pixel reste net, seule sa bordure est lissée.
+#define FILTER_FUNCTION                                                                  \
+  "uniform int u_mode; uniform vec2 u_size; uniform vec2 u_scale;\n"                     \
+  "vec4 filtered(sampler2D tex, vec2 uv) {\n"                                            \
+  "  if (u_mode == 0 || u_mode == 2) return TEX(tex, uv);\n"                             \
+  "  vec2 texel = uv * u_size;\n"                                                        \
+  "  vec2 centerDist = fract(texel) - 0.5;\n"                                            \
+  "  vec4 c = TEX(tex, uv);\n"                                                           \
+  "  if (u_mode != 4) {\n"                                                               \
+  "    vec2 range = max(vec2(0.0), 0.5 - 0.5 / u_scale);\n"                              \
+  "    vec2 f = (centerDist - clamp(centerDist, -range, range)) * u_scale + 0.5;\n"      \
+  "    c = TEX(tex, (floor(texel) + f) / u_size);\n"                                     \
+  "  }\n"                                                                                \
+  "  if (u_mode == 3 && u_scale.y >= 2.0)\n"                                             \
+  "    c.rgb *= mix(0.55, 1.1, sin(3.14159265 * fract(texel.y)));\n"                     \
+  "  if (u_mode == 4 && min(u_scale.x, u_scale.y) >= 3.0) {\n"                           \
+  "    vec2 line = step(vec2(1.0) - 1.0 / u_scale, fract(texel));\n"                     \
+  "    c.rgb *= 1.0 - 0.35 * max(line.x, line.y);\n"                                     \
+  "  }\n"                                                                                \
+  "  return c;\n"                                                                        \
+  "}\n"
+
 static const char* kFragment150 =
     "#version 150\n"
+    "#define TEX texture\n"
+    FILTER_FUNCTION
     "in vec2 v_uv; uniform sampler2D u_tex; uniform float u_alpha; out vec4 o_color;\n"
-    "void main() { vec4 c = texture(u_tex, v_uv); o_color = vec4(c.rgb, mix(1.0, c.a, u_alpha)); }\n";
+    "void main() { vec4 c = filtered(u_tex, v_uv); o_color = vec4(c.rgb, mix(1.0, c.a, u_alpha)); }\n";
 static const char* kVertex120 =
     "#version 120\n"
     "attribute vec2 a_pos; attribute vec2 a_uv; varying vec2 v_uv;\n"
     "void main() { v_uv = a_uv; gl_Position = vec4(a_pos, 0.0, 1.0); }\n";
 static const char* kFragment120 =
     "#version 120\n"
+    "#define TEX texture2D\n"
+    FILTER_FUNCTION
     "varying vec2 v_uv; uniform sampler2D u_tex; uniform float u_alpha;\n"
-    "void main() { vec4 c = texture2D(u_tex, v_uv); gl_FragColor = vec4(c.rgb, mix(1.0, c.a, u_alpha)); }\n";
+    "void main() { vec4 c = filtered(u_tex, v_uv); gl_FragColor = vec4(c.rgb, mix(1.0, c.a, u_alpha)); }\n";
+
+static const char* kFilterIds[kFilterCount] = {"pixels", "sharp", "smooth", "crt", "lcd"};
+
+const char* filterId(Filter filter) { return kFilterIds[(int)filter]; }
+
+Filter filterFromId(const std::string& id) {
+  for (int i = 0; i < kFilterCount; i++) {
+    if (id == kFilterIds[i]) return (Filter)i;
+  }
+  return Filter::Sharp;
+}
 
 static GLuint compile(GLenum type, const char* source) {
   GLuint shader = p_glCreateShader(type);
@@ -314,6 +354,9 @@ bool Video::createProgram() {
   }
   uniformTexture_ = p_glGetUniformLocation(program_, "u_tex");
   uniformAlpha_ = p_glGetUniformLocation(program_, "u_alpha");
+  uniformMode_ = p_glGetUniformLocation(program_, "u_mode");
+  uniformSize_ = p_glGetUniformLocation(program_, "u_size");
+  uniformScale_ = p_glGetUniformLocation(program_, "u_scale");
   if (p_glGenVertexArrays) p_glGenVertexArrays(1, &vao_);
   p_glGenBuffers(1, &vbo_);
   return true;
@@ -414,8 +457,11 @@ void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight,
     float x1 = w / winW, y1 = h / winH;  // demi-taille en coordonnées normalisées
 
     float u1, v1, vTop, vBottom;
+    float texW, texH;
     if (frameIsHw_) {
       glBindTexture(GL_TEXTURE_2D, fboTexture_);
+      texW = (float)fboWidth_;
+      texH = (float)fboHeight_;
       u1 = (float)frameWidth_ / fboWidth_;
       v1 = (float)frameHeight_ / fboHeight_;
       bool bottomLeft = g.hw.bottom_left_origin;
@@ -423,12 +469,19 @@ void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight,
       vBottom = bottomLeft ? 0.0f : v1;
     } else {
       glBindTexture(GL_TEXTURE_2D, frameTexture_);
+      texW = (float)textureWidth_;
+      texH = (float)textureHeight_;
       u1 = (float)frameWidth_ / textureWidth_;
       v1 = (float)frameHeight_ / textureHeight_;
       vTop = 0.0f;
       vBottom = v1;
     }
-    GLint filter = smooth_ ? GL_LINEAR : GL_NEAREST;
+    // Pixels de l'écran par pixel de l'image (axes de l'image échangés par un quart de tour).
+    float scaleX = ((g.rotation & 1) ? h : w) / frameWidth_, scaleY = ((g.rotation & 1) ? w : h) / frameHeight_;
+    p_glUniform1i(uniformMode_, (int)filter_);
+    p_glUniform2f(uniformSize_, texW, texH);
+    p_glUniform2f(uniformScale_, scaleX, scaleY);
+    GLint filter = filter_ == Filter::Pixels || filter_ == Filter::Lcd ? GL_NEAREST : GL_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -470,6 +523,7 @@ void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight,
     Vertex quad[4] = {{-x1, y1, 0, 0}, {-x1, -y1, 0, 1}, {x1, y1, 1, 0}, {x1, -y1, 1, 1}};
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    p_glUniform1i(uniformMode_, (int)Filter::Smooth);  // menu : sans effet
     p_glUniform1f(uniformAlpha_, 1.0f);
     drawQuad(quad);
     glDisable(GL_BLEND);

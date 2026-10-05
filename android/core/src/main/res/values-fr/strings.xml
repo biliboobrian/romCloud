@@ -303,6 +303,12 @@
     <string name="libretro_no_state">Aucun état sauvegardé pour ce jeu</string>
     <string name="libretro_state_error">Impossible de sauvegarder ou de charger l’état</string>
     <string name="libretro_menu_core_options">Options du cœur</string>
+    <string name="libretro_menu_filter">Image : %1$s</string>
+    <string name="libretro_filter_pixels">pixels nets</string>
+    <string name="libretro_filter_sharp">lissage net</string>
+    <string name="libretro_filter_smooth">lissage</string>
+    <string name="libretro_filter_crt">écran cathodique</string>
+    <string name="libretro_filter_lcd">écran LCD</string>
     <string name="libretro_options_title">Options du cœur %1$s</string>
     <string name="libretro_options_hint">Mémorisées pour ce système et appliquées à ses prochains jeux. Certaines options ne s’appliquent qu’après avoir redémarré le jeu.</string>
     <string name="libretro_options_none">Ce cœur n’a pas d’options.</string>
