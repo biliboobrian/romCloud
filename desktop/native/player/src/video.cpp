@@ -255,6 +255,34 @@ void Video::allocateHwFramebuffer() {
   logf("Framebuffer du cœur : %dx%d", fboWidth_, fboHeight_);
 }
 
+/** Image intermédiaire à la taille de l'affichage (FSR) ; faux si elle n'a pas pu être créée. */
+bool Video::preparePostTarget(int width, int height) {
+  if (width <= 0 || height <= 0) return false;
+  if (!postFbo_) {
+    p_glGenFramebuffers(1, &postFbo_);
+    glGenTextures(1, &postTexture_);
+  }
+  GLint previous = 0;
+  glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous);
+  if (width != postWidth_ || height != postHeight_) {
+    postWidth_ = width;
+    postHeight_ = height;
+    glBindTexture(GL_TEXTURE_2D, postTexture_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    p_glBindFramebuffer(GL_FRAMEBUFFER, postFbo_);
+    p_glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, postTexture_, 0);
+    postOk_ = p_glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    if (!postOk_) logf("Image intermédiaire FSR incomplète (%dx%d)", width, height);
+    p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previous);
+  }
+  return postOk_;
+}
+
 void Video::onGeometryChanged() {
   if (context_ && g.hwRender) allocateHwFramebuffer();
 }
@@ -270,21 +298,166 @@ static const char* kVertex150 =
 // Filtre d'image (u_mode : rang dans Filter) ; u_size : taille de la texture en pixels, u_scale :
 // pixels de l'écran par pixel de l'image. Lissage net (et base de l'écran cathodique) d'après
 // « sharp-bilinear-simple » de libretro : chaque pixel reste net, seule sa bordure est lissée.
+// Modes (rang dans Filter) : 0 pixels, 1 lissage net, 2 doux (bicubique Catmull-Rom), 3 bilinéaire,
+// 4 EPX / Scale2x, 5 cathodique, 6 cathodique + masque RGB (grille d'ouverture), 7 LCD, 8 xBR
+// (niveau 1 : angles des contours redessinés en diagonale), 9 FSR 1 EASU (agrandissement suivant la
+// direction des contours, d'après AMD FidelityFX Super Resolution 1), 10 FSR 1 RCAS (netteté
+// adaptée au contraste, seconde passe sur l'image agrandie).
+#define FILTER_EXTRA \
+  "float lum(vec3 c) { return c.g + 0.5 * (c.r + c.b); }\n" \
+  "vec3 at(sampler2D tex, vec2 p) { return TEX(tex, (p + 0.5) / u_size).rgb; }\n" \
+  "float diff(vec3 a, vec3 b) { return dot(abs(a - b), vec3(0.299, 0.587, 0.114)); }\n" \
+  "vec4 xbr(sampler2D tex, vec2 uv) {\n" \
+  "  vec2 texel = uv * u_size;\n" \
+  "  vec2 p = floor(texel);\n" \
+  "  vec2 fp = fract(texel) - 0.5;\n" \
+  "  vec2 s = vec2(fp.x >= 0.0 ? 1.0 : -1.0, fp.y >= 0.0 ? 1.0 : -1.0);\n" \
+  "  vec3 E = at(tex, p), F = at(tex, p + vec2(s.x, 0.0)), H = at(tex, p + vec2(0.0, s.y)), I = at(tex, p + s);\n" \
+  "  vec3 B = at(tex, p - vec2(0.0, s.y)), D = at(tex, p - vec2(s.x, 0.0));\n" \
+  "  vec3 C = at(tex, p + vec2(s.x, -s.y)), G = at(tex, p + vec2(-s.x, s.y));\n" \
+  "  vec3 F4 = at(tex, p + vec2(2.0 * s.x, 0.0)), H5 = at(tex, p + vec2(0.0, 2.0 * s.y));\n" \
+  "  vec3 I4 = at(tex, p + vec2(2.0 * s.x, s.y)), I5 = at(tex, p + vec2(s.x, 2.0 * s.y));\n" \
+  "  float d1 = diff(E, C) + diff(E, G) + diff(I, F4) + diff(I, H5) + 4.0 * diff(H, F);\n" \
+  "  float d2 = diff(H, D) + diff(H, I5) + diff(F, B) + diff(F, I4) + 4.0 * diff(E, I);\n" \
+  "  if (d1 >= d2 || diff(E, F) < 0.004 || diff(E, H) < 0.004) return vec4(E, 1.0);\n" \
+  "  vec3 edge = diff(E, F) <= diff(E, H) ? F : H;\n" \
+  "  float aa = 1.0 / max(min(u_scale.x, u_scale.y), 1.0);\n" \
+  "  float t = dot(fp, s);\n" \
+  "  return vec4(mix(E, edge, smoothstep(0.5 - aa, 0.5 + aa, t)), 1.0);\n" \
+  "}\n" \
+  "void easuSet(inout vec2 dir, inout float len, float w, float lA, float lB, float lC, float lD, float lE) {\n" \
+  "  float lenX = max(abs(lD - lC), abs(lC - lB));\n" \
+  "  lenX = lenX > 0.0 ? 1.0 / lenX : 0.0;\n" \
+  "  float dirX = lD - lB;\n" \
+  "  dir.x += dirX * w;\n" \
+  "  lenX = clamp(abs(dirX) * lenX, 0.0, 1.0);\n" \
+  "  len += lenX * lenX * w;\n" \
+  "  float lenY = max(abs(lE - lC), abs(lC - lA));\n" \
+  "  lenY = lenY > 0.0 ? 1.0 / lenY : 0.0;\n" \
+  "  float dirY = lE - lA;\n" \
+  "  dir.y += dirY * w;\n" \
+  "  lenY = clamp(abs(dirY) * lenY, 0.0, 1.0);\n" \
+  "  len += lenY * lenY * w;\n" \
+  "}\n" \
+  "void easuTap(inout vec3 aC, inout float aW, vec2 off, vec2 dir, vec2 len2, float lob, float clp, vec3 c) {\n" \
+  "  vec2 v = vec2(off.x * dir.x + off.y * dir.y, off.x * (-dir.y) + off.y * dir.x) * len2;\n" \
+  "  float d2 = min(dot(v, v), clp);\n" \
+  "  float wB = 0.4 * d2 - 1.0;\n" \
+  "  float wA = lob * d2 - 1.0;\n" \
+  "  wB *= wB;\n" \
+  "  wA *= wA;\n" \
+  "  wB = 1.5625 * wB - 0.5625;\n" \
+  "  float w = wB * wA;\n" \
+  "  aC += c * w;\n" \
+  "  aW += w;\n" \
+  "}\n" \
+  "vec4 easu(sampler2D tex, vec2 uv) {\n" \
+  "  vec2 pp = uv * u_size - 0.5;\n" \
+  "  vec2 fp = floor(pp);\n" \
+  "  pp -= fp;\n" \
+  "  vec3 b = at(tex, fp + vec2(0.0, -1.0)), c = at(tex, fp + vec2(1.0, -1.0));\n" \
+  "  vec3 e = at(tex, fp + vec2(-1.0, 0.0)), f = at(tex, fp), g = at(tex, fp + vec2(1.0, 0.0)), h = at(tex, fp + vec2(2.0, 0.0));\n" \
+  "  vec3 i = at(tex, fp + vec2(-1.0, 1.0)), j = at(tex, fp + vec2(0.0, 1.0)), k = at(tex, fp + vec2(1.0, 1.0)), l = at(tex, fp + vec2(2.0, 1.0));\n" \
+  "  vec3 n = at(tex, fp + vec2(0.0, 2.0)), o = at(tex, fp + vec2(1.0, 2.0));\n" \
+  "  vec2 dir = vec2(0.0);\n" \
+  "  float len = 0.0;\n" \
+  "  easuSet(dir, len, (1.0 - pp.x) * (1.0 - pp.y), lum(b), lum(e), lum(f), lum(g), lum(j));\n" \
+  "  easuSet(dir, len, pp.x * (1.0 - pp.y), lum(c), lum(f), lum(g), lum(h), lum(k));\n" \
+  "  easuSet(dir, len, (1.0 - pp.x) * pp.y, lum(f), lum(i), lum(j), lum(k), lum(n));\n" \
+  "  easuSet(dir, len, pp.x * pp.y, lum(g), lum(j), lum(k), lum(l), lum(o));\n" \
+  "  float dirR = dot(dir, dir);\n" \
+  "  if (dirR < 1.0 / 32768.0) dir = vec2(1.0, 0.0); else dir *= inversesqrt(dirR);\n" \
+  "  len = len * 0.5;\n" \
+  "  len *= len;\n" \
+  "  float stretch = dot(dir, dir) / max(abs(dir.x), abs(dir.y));\n" \
+  "  vec2 len2 = vec2(1.0 + (stretch - 1.0) * len, 1.0 - 0.5 * len);\n" \
+  "  float lob = 0.5 + ((1.0 / 4.0 - 0.04) - 0.5) * len;\n" \
+  "  float clp = 1.0 / lob;\n" \
+  "  vec3 aC = vec3(0.0);\n" \
+  "  float aW = 0.0;\n" \
+  "  easuTap(aC, aW, vec2(0.0, -1.0) - pp, dir, len2, lob, clp, b);\n" \
+  "  easuTap(aC, aW, vec2(1.0, -1.0) - pp, dir, len2, lob, clp, c);\n" \
+  "  easuTap(aC, aW, vec2(-1.0, 1.0) - pp, dir, len2, lob, clp, i);\n" \
+  "  easuTap(aC, aW, vec2(0.0, 1.0) - pp, dir, len2, lob, clp, j);\n" \
+  "  easuTap(aC, aW, vec2(0.0, 0.0) - pp, dir, len2, lob, clp, f);\n" \
+  "  easuTap(aC, aW, vec2(-1.0, 0.0) - pp, dir, len2, lob, clp, e);\n" \
+  "  easuTap(aC, aW, vec2(1.0, 1.0) - pp, dir, len2, lob, clp, k);\n" \
+  "  easuTap(aC, aW, vec2(2.0, 1.0) - pp, dir, len2, lob, clp, l);\n" \
+  "  easuTap(aC, aW, vec2(2.0, 0.0) - pp, dir, len2, lob, clp, h);\n" \
+  "  easuTap(aC, aW, vec2(1.0, 0.0) - pp, dir, len2, lob, clp, g);\n" \
+  "  easuTap(aC, aW, vec2(1.0, 2.0) - pp, dir, len2, lob, clp, o);\n" \
+  "  easuTap(aC, aW, vec2(0.0, 2.0) - pp, dir, len2, lob, clp, n);\n" \
+  "  vec3 mn = min(min(f, g), min(j, k));\n" \
+  "  vec3 mx = max(max(f, g), max(j, k));\n" \
+  "  return vec4(clamp(aC / aW, mn, mx), 1.0);\n" \
+  "}\n" \
+  "vec4 rcas(sampler2D tex, vec2 uv) {\n" \
+  "  vec2 px = 1.0 / u_size;\n" \
+  "  vec3 b = TEX(tex, uv - vec2(0.0, px.y)).rgb, d = TEX(tex, uv - vec2(px.x, 0.0)).rgb, e = TEX(tex, uv).rgb;\n" \
+  "  vec3 f = TEX(tex, uv + vec2(px.x, 0.0)).rgb, h = TEX(tex, uv + vec2(0.0, px.y)).rgb;\n" \
+  "  vec3 mn4 = min(min(b, d), min(f, h));\n" \
+  "  vec3 mx4 = max(max(b, d), max(f, h));\n" \
+  "  vec3 hitMin = min(mn4, e) / (4.0 * mx4 + 1e-5);\n" \
+  "  vec3 hitMax = (1.0 - max(mx4, e)) / (4.0 * mn4 - 4.0 - 1e-5);\n" \
+  "  vec3 lobeRGB = max(-hitMin, hitMax);\n" \
+  "  float lobe = max(-0.1875, min(max(lobeRGB.r, max(lobeRGB.g, lobeRGB.b)), 0.0)) * 0.87;\n" \
+  "  return vec4((lobe * (b + d + f + h) + e) / (4.0 * lobe + 1.0), 1.0);\n" \
+  "}\n"
+
 #define FILTER_FUNCTION                                                                  \
   "uniform int u_mode; uniform vec2 u_size; uniform vec2 u_scale;\n"                     \
+  FILTER_EXTRA                                                                           \
+  "float catmullRom(float x) {\n"                                                        \
+  "  x = abs(x);\n"                                                                      \
+  "  if (x < 1.0) return (1.5 * x - 2.5) * x * x + 1.0;\n"                               \
+  "  if (x < 2.0) return ((-0.5 * x + 2.5) * x - 4.0) * x + 2.0;\n"                      \
+  "  return 0.0;\n"                                                                      \
+  "}\n"                                                                                  \
+  "bool same(vec4 a, vec4 b) { return distance(a.rgb, b.rgb) < 0.02; }\n"                \
   "vec4 filtered(sampler2D tex, vec2 uv) {\n"                                            \
-  "  if (u_mode == 0 || u_mode == 2) return TEX(tex, uv);\n"                             \
+  "  if (u_mode == 0 || u_mode == 3) return TEX(tex, uv);\n"                             \
+  "  if (u_mode == 8) return xbr(tex, uv);\n"                                            \
+  "  if (u_mode == 9) return easu(tex, uv);\n"                                           \
+  "  if (u_mode == 10) return rcas(tex, uv);\n"                                          \
   "  vec2 texel = uv * u_size;\n"                                                        \
+  "  if (u_mode == 2) {\n"                                                               \
+  "    vec2 base = floor(texel - 0.5) + 0.5;\n"                                          \
+  "    vec2 f = texel - base;\n"                                                         \
+  "    vec4 sum = vec4(0.0);\n"                                                          \
+  "    for (int j = -1; j <= 2; j++) for (int i = -1; i <= 2; i++) {\n"                  \
+  "      float w = catmullRom(f.x - float(i)) * catmullRom(f.y - float(j));\n"           \
+  "      sum += TEX(tex, (base + vec2(float(i), float(j))) / u_size) * w;\n"             \
+  "    }\n"                                                                              \
+  "    return clamp(sum, 0.0, 1.0);\n"                                                   \
+  "  }\n"                                                                                \
+  "  if (u_mode == 4) {\n"                                                               \
+  "    vec2 p = floor(texel) + 0.5;\n"                                                   \
+  "    vec4 P = TEX(tex, p / u_size);\n"                                                 \
+  "    vec4 A = TEX(tex, (p + vec2(0.0, -1.0)) / u_size);\n"                             \
+  "    vec4 B = TEX(tex, (p + vec2(1.0, 0.0)) / u_size);\n"                              \
+  "    vec4 C = TEX(tex, (p + vec2(-1.0, 0.0)) / u_size);\n"                             \
+  "    vec4 D = TEX(tex, (p + vec2(0.0, 1.0)) / u_size);\n"                              \
+  "    vec2 q = step(vec2(0.5), fract(texel));\n"                                        \
+  "    if (q.x < 0.5 && q.y < 0.5) return (same(C, A) && !same(C, D) && !same(A, B)) ? A : P;\n" \
+  "    if (q.y < 0.5) return (same(A, B) && !same(A, C) && !same(B, D)) ? B : P;\n"      \
+  "    if (q.x < 0.5) return (same(D, C) && !same(D, B) && !same(C, A)) ? C : P;\n"      \
+  "    return (same(B, D) && !same(B, A) && !same(D, C)) ? D : P;\n"                     \
+  "  }\n"                                                                                \
   "  vec2 centerDist = fract(texel) - 0.5;\n"                                            \
   "  vec4 c = TEX(tex, uv);\n"                                                           \
-  "  if (u_mode != 4) {\n"                                                               \
+  "  if (u_mode != 7) {\n"                                                               \
   "    vec2 range = max(vec2(0.0), 0.5 - 0.5 / u_scale);\n"                              \
   "    vec2 f = (centerDist - clamp(centerDist, -range, range)) * u_scale + 0.5;\n"      \
   "    c = TEX(tex, (floor(texel) + f) / u_size);\n"                                     \
   "  }\n"                                                                                \
-  "  if (u_mode == 3 && u_scale.y >= 2.0)\n"                                             \
+  "  if ((u_mode == 5 || u_mode == 6) && u_scale.y >= 2.0)\n"                            \
   "    c.rgb *= mix(0.55, 1.1, sin(3.14159265 * fract(texel.y)));\n"                     \
-  "  if (u_mode == 4 && min(u_scale.x, u_scale.y) >= 3.0) {\n"                           \
+  "  if (u_mode == 6) {\n"                                                               \
+  "    float m = mod(floor(gl_FragCoord.x), 3.0);\n"                                     \
+  "    vec3 mask = m < 1.0 ? vec3(1.0, 0.7, 0.7) : m < 2.0 ? vec3(0.7, 1.0, 0.7) : vec3(0.7, 0.7, 1.0);\n" \
+  "    c.rgb = min(c.rgb * mask * 1.3, vec3(1.0));\n"                                    \
+  "  }\n"                                                                                \
+  "  if (u_mode == 7 && min(u_scale.x, u_scale.y) >= 3.0) {\n"                           \
   "    vec2 line = step(vec2(1.0) - 1.0 / u_scale, fract(texel));\n"                     \
   "    c.rgb *= 1.0 - 0.35 * max(line.x, line.y);\n"                                     \
   "  }\n"                                                                                \
@@ -308,7 +481,17 @@ static const char* kFragment120 =
     "varying vec2 v_uv; uniform sampler2D u_tex; uniform float u_alpha;\n"
     "void main() { vec4 c = filtered(u_tex, v_uv); gl_FragColor = vec4(c.rgb, mix(1.0, c.a, u_alpha)); }\n";
 
-static const char* kFilterIds[kFilterCount] = {"pixels", "sharp", "smooth", "crt", "lcd"};
+static const char* kFilterIds[kFilterCount] = {"pixels", "sharp", "soft", "smooth", "epx", "crt", "crtmask", "lcd", "xbr", "fsr"};
+// Ordre du menu : lissages, agrandisseurs (EPX, xBR, FSR), puis imitations d'écrans.
+static const Filter kFilterOrder[kFilterCount] = {Filter::Pixels, Filter::Sharp, Filter::Soft, Filter::Smooth, Filter::Epx,
+                                                  Filter::Xbr, Filter::Fsr, Filter::Crt, Filter::CrtMask, Filter::Lcd};
+
+Filter nextFilter(Filter filter) {
+  for (int i = 0; i < kFilterCount; i++) {
+    if (kFilterOrder[i] == filter) return kFilterOrder[(i + 1) % kFilterCount];
+  }
+  return Filter::Sharp;
+}
 
 const char* filterId(Filter filter) { return kFilterIds[(int)filter]; }
 
@@ -481,7 +664,10 @@ void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight,
     p_glUniform1i(uniformMode_, (int)filter_);
     p_glUniform2f(uniformSize_, texW, texH);
     p_glUniform2f(uniformScale_, scaleX, scaleY);
-    GLint filter = filter_ == Filter::Pixels || filter_ == Filter::Lcd ? GL_NEAREST : GL_LINEAR;
+    // Échantillons au centre des pixels (bicubique, EPX, LCD, pixels nets) : filtrage au plus proche.
+    bool nearest = filter_ == Filter::Pixels || filter_ == Filter::Soft || filter_ == Filter::Epx || filter_ == Filter::Lcd ||
+                   filter_ == Filter::Xbr || filter_ == Filter::Fsr;
+    GLint filter = nearest ? GL_NEAREST : GL_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -499,7 +685,27 @@ void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight,
     // Bande de triangles : haut-gauche, bas-gauche, haut-droit, bas-droit.
     Vertex quad[4] = {corner(0), corner(3), corner(1), corner(2)};
     p_glUniform1f(uniformAlpha_, 0.0f);
-    drawQuad(quad);
+    int outW = (int)(w + 0.5f), outH = (int)(h + 0.5f);
+    if (filter_ == Filter::Fsr && preparePostTarget(outW, outH)) {
+      // FSR 1 : agrandissement (EASU) dans une image à la taille de l'affichage, puis netteté (RCAS)
+      // en la dessinant à l'écran.
+      p_glBindFramebuffer(GL_FRAMEBUFFER, postFbo_);
+      glViewport(0, 0, outW, outH);
+      p_glUniform1i(uniformMode_, 9);
+      Vertex full[4];
+      for (int i = 0; i < 4; i++) full[i] = Vertex{quad[i].x / x1, quad[i].y / y1, quad[i].u, quad[i].v};
+      drawQuad(full);
+      p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      glViewport(0, 0, winW, winH);
+      glBindTexture(GL_TEXTURE_2D, postTexture_);
+      p_glUniform1i(uniformMode_, 10);
+      p_glUniform2f(uniformSize_, (float)outW, (float)outH);
+      // Image rendue de bas en haut (origine OpenGL) : haut de l'écran = v 1.
+      Vertex out[4] = {{-x1, y1, 0, 1}, {-x1, -y1, 0, 0}, {x1, y1, 1, 1}, {x1, -y1, 1, 0}};
+      drawQuad(out);
+    } else {
+      drawQuad(quad);
+    }
   }
 
   if (overlay) {

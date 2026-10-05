@@ -28,9 +28,14 @@ static const struct {
     // Noms courts : les entrées du menu sont coupées vers 14 caractères.
     {"filter_pixels", "pixels", "pixels"},
     {"filter_sharp", "nette", "sharp"},
+    {"filter_soft", "douce", "soft"},
     {"filter_smooth", "lissée", "smooth"},
+    {"filter_epx", "EPX", "EPX"},
     {"filter_crt", "CRT", "CRT"},
+    {"filter_crtmask", "CRT+", "CRT+"},
     {"filter_lcd", "LCD", "LCD"},
+    {"filter_xbr", "xBR", "xBR"},
+    {"filter_fsr", "FSR", "FSR"},
     {"fullscreen", "Plein écran", "Fullscreen"},
     {"save_quit", "Sauvegarder et quitter", "Save and quit"},
     {"quit", "Quitter", "Quit"},
@@ -145,7 +150,8 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::Disk:
       return tr("disk") + " : " + std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
     case Item::Filter: {
-      static const char* names[] = {"filter_pixels", "filter_sharp", "filter_smooth", "filter_crt", "filter_lcd"};
+      static const char* names[] = {"filter_pixels", "filter_sharp", "filter_soft", "filter_smooth", "filter_epx",
+                                    "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr"};
       return tr("filter") + " : " + tr(names[state.filter]);
     }
     case Item::Fullscreen: return tr("fullscreen") + " : " + tr(state.fullscreen ? "yes" : "no");

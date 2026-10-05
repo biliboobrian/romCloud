@@ -11,12 +11,16 @@
 #include "libretro.h"
 
 /**
- * Filtre d'image (pixels de la console agrandis à l'écran) : pixels nets, lissage net (pixels nets,
- * transition lissée sur un pixel de l'écran : ni flou ni pixels inégaux), lissage bilinéaire, écran
- * cathodique (lignes de balayage), écran LCD (grille).
+ * Filtre d'image (pixels de la console agrandis à l'écran), dans l'ordre du menu : pixels nets,
+ * lissage net (pixels nets, transition lissée sur un pixel de l'écran : ni flou ni pixels inégaux),
+ * lissage doux (bicubique), lissage bilinéaire, EPX (Scale2x : contours du pixel art arrondis),
+ * écran cathodique (lignes de balayage), écran cathodique avec masque RGB, écran LCD (grille).
+ * Le rang sert de numéro de mode au shader (u_mode).
  */
-enum class Filter { Pixels, Sharp, Smooth, Crt, Lcd };
-constexpr int kFilterCount = 5;
+enum class Filter { Pixels, Sharp, Soft, Smooth, Epx, Crt, CrtMask, Lcd, Xbr, Fsr };
+constexpr int kFilterCount = 10;
+/** Filtre suivant dans l'ordre du menu (lissages, agrandisseurs, écrans). */
+Filter nextFilter(Filter filter);
 /** Identifiant mémorisé dans les réglages (« sharp »…) et inverse (lissage net par défaut). */
 const char* filterId(Filter filter);
 Filter filterFromId(const std::string& id);
@@ -55,6 +59,7 @@ class Video {
   bool loadFunctions();
   bool createProgram();
   void allocateHwFramebuffer();
+  bool preparePostTarget(int width, int height);
 
   SDL_Window* window_ = nullptr;
   SDL_GLContext context_ = nullptr;
@@ -67,6 +72,10 @@ class Video {
   unsigned frameTexture_ = 0, overlayTexture_ = 0;
   int textureWidth_ = 0, textureHeight_ = 0;
   unsigned fbo_ = 0, fboTexture_ = 0, fboDepth_ = 0;
+  // Image intermédiaire de FSR (agrandissement, puis netteté à l'écran).
+  unsigned postFbo_ = 0, postTexture_ = 0;
+  int postWidth_ = 0, postHeight_ = 0;
+  bool postOk_ = false;
   int fboWidth_ = 0, fboHeight_ = 0;
 
   // Dernière image reçue.

@@ -248,7 +248,7 @@ void Player::onMenuAction(MenuAction action) {
       break;
     case MenuAction::NextFilter:
       // Visible aussitôt derrière le menu ; mémorisé pour le système.
-      video_.setFilter((Filter)(((int)video_.filter() + 1) % kFilterCount));
+      video_.setFilter(nextFilter(video_.filter()));
       g.options.setSetting("romcloud_filter", filterId(video_.filter()));
       break;
     case MenuAction::ToggleFullscreen: video_.toggleFullscreen(); break;
