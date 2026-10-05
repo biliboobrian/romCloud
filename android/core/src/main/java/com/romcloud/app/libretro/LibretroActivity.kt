@@ -140,8 +140,9 @@ class LibretroActivity : ComponentActivity() {
     private val systemId by lazy { intent.getStringExtra(EXTRA_SYSTEM).orEmpty() }
     private val optionsStore by lazy { CoreOptionsStore(this) }
     private val videoFilters by lazy { VideoFilterStore(this) }
-    /** Filtre d'image du système (lissage), changé depuis le menu. */
+    /** Filtre d'image du système (lissage), changé depuis le menu ; [filterPicker] : liste affichée. */
     private var videoFilter by mutableStateOf(VideoFilter.DEFAULT)
+    private var filterPicker by mutableStateOf(false)
     /** Disposition de la manette tactile propre à la console. */
     private val padLayout by lazy { PadLayouts.forGame(systemId, core) }
     private val rom by lazy { File(intent.getStringExtra(EXTRA_ROM).orEmpty()) }
@@ -199,6 +200,7 @@ class LibretroActivity : ComponentActivity() {
             when {
                 phase != Phase.Running -> finish()
                 mappingSession != null -> mappingSession = null
+                filterPicker -> filterPicker = false
                 editing != null -> editing = null
                 options != null -> options = null
                 menuOpen -> closeMenu()
@@ -368,6 +370,7 @@ class LibretroActivity : ComponentActivity() {
         options = null
         editing = null
         mappingSession = null
+        filterPicker = false
         retroView?.apply {
             onResume()
             audioEnabled = true
@@ -679,6 +682,8 @@ class LibretroActivity : ComponentActivity() {
                     val session = mappingSession
                     if (menuOpen && session != null) {
                         MappingScreen(session)
+                    } else if (menuOpen && filterPicker) {
+                        FilterPicker()
                     } else if (menuOpen && edited != null) {
                         ValuePicker(edited)
                     } else if (menuOpen && opts != null) {
@@ -727,14 +732,7 @@ class LibretroActivity : ComponentActivity() {
                     add(stringResource(R.string.libretro_menu_load_state) to ::loadState)
                     add(stringResource(R.string.libretro_menu_reset) to ::reset)
                     add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
-                    // Appui : filtre suivant, appliqué à la reprise du jeu (rendu suspendu par le menu).
-                    add(
-                        stringResource(R.string.libretro_menu_filter, stringResource(videoFilter.label)) to {
-                            videoFilter = videoFilter.next
-                            videoFilters.save(systemId, videoFilter)
-                            retroView?.shader = videoFilter.shader()
-                        },
-                    )
+                    add(stringResource(R.string.libretro_menu_filter, stringResource(videoFilter.label)) to { filterPicker = true })
                 }
                 if (!isTv) {
                     add(
@@ -952,6 +950,44 @@ class LibretroActivity : ComponentActivity() {
                         modifier = Modifier
                             .then(if (selected) Modifier.focusRequester(focus) else Modifier)
                             .clickable { setOption(option, value) },
+                    )
+                }
+            }
+        }
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    }
+
+    /**
+     * Choix du filtre d'image : appliqué et jeu repris aussitôt (le rendu est suspendu tant que le
+     * menu est ouvert), pour voir le résultat ; le menu permet d'en essayer un autre.
+     */
+    @Composable
+    private fun FilterPicker() {
+        val focus = remember { FocusRequester() }
+        Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                Modifier.fillMaxSize().safeDrawingPadding(),
+                state = rememberLazyListState(initialFirstVisibleItemIndex = videoFilter.ordinal),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            ) {
+                item {
+                    Text(stringResource(R.string.libretro_filter_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
+                }
+                items(VideoFilter.entries) { filter ->
+                    val selected = filter == videoFilter
+                    ListItem(
+                        headlineContent = { Text(stringResource(filter.label).replaceFirstChar { it.uppercase() }) },
+                        supportingContent = { Text(stringResource(filter.description), style = MaterialTheme.typography.bodySmall) },
+                        leadingContent = { RadioButton(selected = selected, onClick = null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier
+                            .then(if (selected) Modifier.focusRequester(focus) else Modifier)
+                            .clickable {
+                                videoFilter = filter
+                                videoFilters.save(systemId, filter)
+                                retroView?.shader = filter.shader()
+                                closeMenu()
+                            },
                     )
                 }
             }
