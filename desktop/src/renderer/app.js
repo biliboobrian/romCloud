@@ -544,6 +544,18 @@
     const details = (g) => openGameDetail(g.systemId, g.id);
     // Carrousel : clic sur un jeu -> affiché dans la bannière ; liste : fiche du jeu.
     bindCards(main, games, details, S.settings.view === 'list' ? details : selectGame);
+    if (S.settings.view !== 'list') {
+      // Manette : le jeu sélectionné s'affiche dans la bannière ; A passe à son bouton « Jouer ».
+      for (const el of $$('.game-card[data-card]', main)) {
+        const game = games.find((g) => g.id === Number(el.dataset.card));
+        el.addEventListener('focus', () => S.focusedGameId !== game.id && selectGame(game));
+        el.addEventListener('padactivate', (e) => {
+          e.preventDefault();
+          selectGame(game);
+          ($('#heroResume') || $('#heroMain'))?.focus();
+        });
+      }
+    }
     for (const el of $$('[data-resume]', main)) {
       const game = games.find((g) => g.id === Number(el.dataset.resume));
       el.onclick = (e) => {
@@ -1231,6 +1243,9 @@
   $('#backBtn').innerHTML = icon('back');
   $('#backBtn').title = t('app.back');
   $('#backBtn').onclick = back;
+  // Navigation à la manette ; touches rappelées à la première utilisation.
+  window.RomCloudGamepad.start();
+  document.addEventListener('padconnected', () => toast(t('pad.connected'), { duration: 8000 }));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && $('#modalRoot').innerHTML) $('#modalRoot').innerHTML = '';
     else if ((e.key === 'Escape' || (e.altKey && e.key === 'ArrowLeft')) && S.route.name !== 'systems' && !e.target.matches('input')) back();

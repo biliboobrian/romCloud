@@ -21,6 +21,7 @@
       'app.searchResults': '{n} result(s) for “{q}”',
       'app.games': '{n} game(s)',
       'app.configure': 'Configure the server in the Settings.',
+      'pad.connected': 'Controller detected: D-pad / stick to move, A to select, B to go back, X game details, Y search, LB / RB filters.',
 
       'games.search': 'Search…',
       'games.subtitle': '{n} game(s) · {d} downloaded',
@@ -267,6 +268,7 @@
       'app.searchResults': '{n} résultat(s) pour « {q} »',
       'app.games': '{n} jeu(x)',
       'app.configure': 'Configurez le serveur dans les Paramètres.',
+      'pad.connected': 'Manette détectée : croix / stick pour se déplacer, A pour valider, B pour revenir, X fiche du jeu, Y recherche, LB / RB filtres.',
 
       'games.search': 'Rechercher…',
       'games.subtitle': '{n} jeu(x) · {d} téléchargé(s)',
