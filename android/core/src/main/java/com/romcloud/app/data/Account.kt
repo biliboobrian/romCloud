@@ -89,6 +89,12 @@ data class AccountState(
 class Account(private val context: Context, private val api: ApiClient, private val scope: CoroutineScope) {
 
     private val prefs = context.getSharedPreferences("romcloud_account", Context.MODE_PRIVATE)
+    /**
+     * Travail en attente (temps de jeu, sauvegardes à envoyer) : un fichier par élément. Partagé avec
+     * le processus de l'émulateur intégré, contrairement aux préférences, gardées en mémoire par
+     * chaque processus (ce qu'écrit l'un n'est pas relu par l'autre).
+     */
+    private val queueDir = File(context.filesDir, "account-queue")
     private val json get() = api.json
     private val flushLock = Mutex()
 
@@ -241,10 +247,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
      */
     fun recordPlaytime(gameId: Long, seconds: Long, sendNow: Boolean = true) {
         if (token == null || gameId <= 0 || seconds < MIN_PLAY_SECONDS) return
-        synchronized(prefs) {
-            val pending = prefs.getString(KEY_PENDING_PLAY, "").orEmpty()
-            prefs.edit().putString(KEY_PENDING_PLAY, "$pending$gameId:$seconds;").commit()
-        }
+        enqueue("play-${System.currentTimeMillis()}-${System.nanoTime()}", "$gameId:$seconds")
         _playtime.value = _playtime.value + (gameId to ((_playtime.value[gameId] ?: 0) + seconds))
         if (sendNow) scope.launch { refresh() }
     }
@@ -314,71 +317,85 @@ class Account(private val context: Context, private val api: ApiClient, private 
         return updated
     }
 
-    /**
-     * Après la partie (processus de l'émulateur intégré) : les fichiers modifiés depuis [since] sont
-     * mis en file d'envoi ; l'application les envoie au retour ([flush]).
-     */
-    fun queueUploads(gameId: Long, core: String, files: Map<String, File>, since: Long) {
-        if (token == null) return
-        val entries = files.filter { (_, f) -> f.isFile && f.length() > 0 && f.lastModified() >= since }
-            .map { (kind, f) -> "$gameId|$core|$kind|${f.absolutePath}" }
-        if (entries.isEmpty()) return
-        synchronized(prefs) {
-            val current = prefs.getStringSet(KEY_PENDING_SAVES, emptySet()).orEmpty()
-            prefs.edit().putStringSet(KEY_PENDING_SAVES, current + entries).commit()
-        }
+    /** Ajoute un élément à la file (écrit d'un bloc : jamais lu à moitié par l'autre processus). */
+    private fun enqueue(name: String, content: String) {
+        queueDir.mkdirs()
+        val tmp = File(queueDir, ".$name.tmp")
+        tmp.writeText(content)
+        tmp.renameTo(File(queueDir, name))
     }
 
-    /** Envoie le temps de jeu et les sauvegardes en attente (serveur joignable). */
-    suspend fun flush() {
+    private fun queued(prefix: String): List<File> =
+        queueDir.listFiles { f -> f.name.startsWith(prefix) }.orEmpty().sortedBy { it.name }
+
+    /**
+     * Sauvegardes de l'émulateur intégré à envoyer : les fichiers modifiés depuis [since]. Une seule
+     * entrée par jeu, cœur et type (le fichier le plus récent est envoyé). [sendNow] : envoi tout de
+     * suite depuis ce processus (partie en cours) ; sinon par l'application, au retour ([flush]).
+     */
+    fun queueUploads(gameId: Long, core: String, files: Map<String, File>, since: Long, sendNow: Boolean = false) {
+        if (token == null || gameId <= 0) return
+        val changed = files.filter { (_, f) -> f.isFile && f.length() > 0 && f.lastModified() >= since }
+        if (changed.isEmpty()) return
+        for ((kind, file) in changed) enqueue(saveEntryName(gameId, core, kind), file.absolutePath)
+        if (sendNow) scope.launch { flush(savesOnly = true) }
+    }
+
+    private fun saveEntryName(gameId: Long, core: String, kind: String) = "save-$gameId-$kind-" + core.replace(Regex("[^A-Za-z0-9._]"), "_")
+
+    /**
+     * Envoie le temps de jeu et les sauvegardes en attente (serveur joignable). [savesOnly] :
+     * processus de l'émulateur intégré (le temps de jeu n'est envoyé que par l'application, pour ne
+     * jamais être compté deux fois).
+     */
+    suspend fun flush(savesOnly: Boolean = false) {
         if (token == null) return
         flushLock.withLock {
-            val play = prefs.getString(KEY_PENDING_PLAY, "").orEmpty()
-            if (play.isNotEmpty()) {
-                val left = StringBuilder()
-                for (item in play.split(';').filter { it.isNotBlank() }) {
-                    val (gameId, seconds) = item.split(':').let { it[0].toLong() to it[1].toLong() }
-                    try {
-                        execute(request("/api/account/playtime").post(jsonBody("gameId" to gameId, "seconds" to seconds)))
-                    } catch (e: ApiException) {
-                        // Refus du serveur (jeu supprimé…) : abandonné.
-                    } catch (e: IOException) {
-                        left.append(item).append(';')
+            withContext(Dispatchers.IO) {
+                if (!savesOnly) {
+                    for (entry in queued("play-")) {
+                        val parts = runCatching { entry.readText().split(':') }.getOrNull()
+                        val gameId = parts?.getOrNull(0)?.toLongOrNull()
+                        val seconds = parts?.getOrNull(1)?.toLongOrNull()
+                        if (gameId == null || seconds == null) {
+                            entry.delete()
+                            continue
+                        }
+                        try {
+                            execute(request("/api/account/playtime").post(jsonBody("gameId" to gameId, "seconds" to seconds)))
+                            entry.delete()
+                        } catch (e: ApiException) {
+                            // Refus du serveur (jeu supprimé…) : abandonné.
+                            entry.delete()
+                        } catch (e: IOException) {
+                            // réessayé au prochain retour dans l'application
+                        }
                     }
                 }
-                synchronized(prefs) {
-                    // Parties ajoutées pendant l'envoi : gardées.
-                    val now = prefs.getString(KEY_PENDING_PLAY, "").orEmpty()
-                    prefs.edit().putString(KEY_PENDING_PLAY, left.toString() + now.removePrefix(play)).commit()
-                }
-            }
-            val saves = prefs.getStringSet(KEY_PENDING_SAVES, emptySet()).orEmpty()
-            val done = mutableSetOf<String>()
-            for (entry in saves) {
-                val (gameId, core, kind, path) = entry.split('|', limit = 4)
-                val file = File(path)
-                if (!file.isFile) {
-                    done += entry
-                    continue
-                }
-                try {
-                    execute(
-                        request(savePath(gameId.toLong(), core, kind))
-                            .header("X-Saved-At", file.lastModified().toString())
-                            .put(file.asRequestBody(BINARY)),
-                        timeoutSeconds = 300,
-                    )
-                    done += entry
-                } catch (e: ApiException) {
-                    done += entry
-                    reportError("saves:$kind", e.message ?: "upload", file.name)
-                } catch (e: IOException) {
-                    // réessayé au prochain retour dans l'application
-                }
-            }
-            if (done.isNotEmpty()) {
-                synchronized(prefs) {
-                    prefs.edit().putStringSet(KEY_PENDING_SAVES, prefs.getStringSet(KEY_PENDING_SAVES, emptySet()).orEmpty() - done).commit()
+                for (entry in queued("save-")) {
+                    val (gameId, kind, core) = entry.name.removePrefix("save-").split('-', limit = 3)
+                    val path = runCatching { entry.readText() }.getOrNull()
+                    val file = path?.let(::File)
+                    if (file == null || !file.isFile) {
+                        entry.delete()
+                        continue
+                    }
+                    val modified = entry.lastModified()
+                    try {
+                        execute(
+                            request(savePath(gameId.toLong(), core, kind))
+                                .header("X-Saved-At", file.lastModified().toString())
+                                .put(file.asRequestBody(BINARY)),
+                            timeoutSeconds = 300,
+                        )
+                        // Nouvelle sauvegarde mise en file pendant l'envoi : gardée pour le prochain.
+                        if (entry.lastModified() == modified) entry.delete()
+                    } catch (e: ApiException) {
+                        entry.delete()
+                        reportError("saves:$kind", e.message ?: "upload", file.name)
+                    } catch (e: IOException) {
+                        // réessayé au prochain retour dans l'application
+                    }
                 }
             }
         }
@@ -404,8 +421,6 @@ class Account(private val context: Context, private val api: ApiClient, private 
         private const val KEY_TOKEN = "token"
         private const val KEY_USER = "username"
         private const val KEY_USER_ID = "userId"
-        private const val KEY_PENDING_PLAY = "pendingPlaytime"
-        private const val KEY_PENDING_SAVES = "pendingSaves"
         private const val KEY_EXTERNAL_GAME = "externalGame"
         private const val KEY_EXTERNAL_START = "externalStart"
         /** Parties plus courtes ignorées (jeu quitté aussitôt, lancement raté). */

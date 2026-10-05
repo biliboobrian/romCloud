@@ -424,6 +424,8 @@ class LibretroActivity : ComponentActivity() {
             val bytes = view.serializeState(false)
             stateFile.parentFile?.mkdirs()
             stateFile.writeBytes(bytes)
+            // Profil connecté : état envoyé au serveur tout de suite (partie en cours).
+            account.queueUploads(gameId, core, mapOf("state" to stateFile), sessionStart, sendNow = true)
             getString(R.string.libretro_state_saved)
         }.getOrElse { getString(R.string.libretro_state_error) }
         closeMenu()
