@@ -236,12 +236,12 @@ test('fiches metadat libretro : par nom, CRC et numéro de série', () => {
     '\trom ( name "Gran Turismo.bin" size 1 crc 392ab7b5 md5 x )',
     ')',
   ].join('\n'));
-  assert.equal(index.bySerial.get('SCES-02028').fields.rumble, '1');
+  assert.equal(index.bySerial.get('SCES02028').fields.rumble, '1');
   assert.equal(index.byName.get('ape escape (france)').fields.rumble, '1');
   const gt = index.byCrc.get('392AB7B5');
   assert.equal(gt.name, 'Gran Turismo (Europe) (En,Fr,De,Es,It)');
   assert.equal(gt.fields.region, 'Europe');
-  assert.equal(index.bySerial.get('SCES-00984'), gt);
+  assert.equal(index.bySerial.get('SCES00984'), gt);
 });
 
 const { zipEntries, zipMainEntry } = await import('../src/scraper/rom-identity.js');
@@ -329,4 +329,50 @@ test('jeu d\'arcade renommé : retrouvé par les CRC des fichiers de l\'archive'
   assert.equal(identifyArcade([{ crc32: '9036d879' }, { crc32: 'aaaaaaaa' }], index), null);
   assert.equal(isArcadeSystem({ libretroName: 'SNK - Neo Geo' }), true);
   assert.equal(isArcadeSystem({ libretroName: 'Nintendo - Game Boy', shortname: 'gb' }), false);
+});
+
+const { serialFromFileName, serialKey } = await import('../src/scraper/serial.js');
+
+test('numéro de série PlayStation lu dans le nom de fichier', () => {
+  // Identifiant de contenu PS Vita (nom d'un dump NoNpDrm / VPK).
+  assert.equal(serialFromFileName('EP0001-PCSB00040_00-ASPHALTINJECTION.vpk'), 'PCSB-00040');
+  assert.equal(serialFromFileName('EP0001-PCSB00040 00-ASPHALTINJECTION.zip'), 'PCSB-00040');
+  assert.equal(serialFromFileName('UP9000-PCSA00011_00-UNCHARTED0000001'), 'PCSA-00011');
+  // Numéro seul, avec ou sans tiret, entre crochets ; format PS2.
+  assert.equal(serialFromFileName('PCSE00120.vpk'), 'PCSE-00120');
+  assert.equal(serialFromFileName('Lumines [ULES-00151].iso'), 'ULES-00151');
+  assert.equal(serialFromFileName('SLUS_200.62.iso'), 'SLUS-20062');
+  // Pas de numéro de série.
+  assert.equal(serialFromFileName('Super Mario World (USA).sfc'), null);
+  assert.equal(serialFromFileName('1943 - The Battle of Midway.zip'), null);
+  assert.equal(serialKey('PCSB-00040'), serialKey('pcsb00040'));
+});
+
+test('titre provisoire d’un identifiant de contenu PS Vita : son libellé', () => {
+  assert.equal(titleFromFileName('EP0001-PCSB00040_00-ASPHALTINJECTION.vpk'), 'ASPHALTINJECTION');
+});
+
+test('titre d’un homebrew : auteur, version et article rejeté', () => {
+  assert.equal(titleFromFileName('Adventures of Gus and Rob V2, The by Mickey McMurray.ngc'), 'The Adventures of Gus and Rob');
+  assert.equal(titleFromFileName('Legend of Zelda, The.nes'), 'The Legend of Zelda');
+  // « by » suivi d'un seul mot : partie du titre.
+  assert.equal(titleFromFileName('Stand by Me.gb'), 'Stand by Me');
+});
+
+test('ScreenScraper : recherche par titre (homebrew), titre identique seulement', async () => {
+  const { searchScreenScraper } = await import('../src/scraper/screenscraper.js');
+  const jeux = [
+    { id: '7', noms: [{ region: 'wor', text: 'Gus and Rob Deluxe' }] },
+    { id: '8', noms: [{ region: 'wor', text: 'Adventures of Gus and Rob, The' }], medias: [{ type: 'box-2D', region: 'wor', url: 'https://x/gus.png' }] },
+  ];
+  const calls = mockFetch(200, { response: { jeux } });
+  const meta = await searchScreenScraper({ system: { id: 'ngpc', shortname: 'ngpc' }, title: 'The Adventures of Gus and Rob' });
+  assert.equal(meta.title, 'Adventures of Gus and Rob, The');
+  assert.equal(meta.media.boxart, 'https://x/gus.png');
+  const url = new URL(calls[0]);
+  assert.match(url.pathname, /jeuRecherche/);
+  assert.equal(url.searchParams.get('recherche'), 'The Adventures of Gus and Rob');
+  // Aucun nom identique : rien plutôt qu'un autre jeu.
+  mockFetch(200, { response: { jeux: [jeux[0]] } });
+  assert.equal(await searchScreenScraper({ system: {}, title: 'The Adventures of Gus and Rob' }), null);
 });

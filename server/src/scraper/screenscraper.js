@@ -2,11 +2,14 @@
 // (SCREENSCRAPER_DEV_ID / SCREENSCRAPER_DEV_PASSWORD) ; le compte utilisateur
 // (SCREENSCRAPER_USER / SCREENSCRAPER_PASSWORD) est facultatif mais augmente les quotas.
 import { config } from '../config.js';
+import { serialFromFileName } from './serial.js';
 import { I18nError } from '../i18n.js';
 import { compactDetails } from './details.js';
+import { normalize } from './libretro.js';
 import { SCREENSCRAPER_SYSTEM_IDS } from '../screenscraper-systems.js';
 
 const API = 'https://api.screenscraper.fr/api2/jeuInfos.php';
+const SEARCH_API = 'https://api.screenscraper.fr/api2/jeuRecherche.php';
 
 export class QuotaError extends I18nError {
   name = 'QuotaError';
@@ -114,7 +117,40 @@ function parseGame(jeu) {
  * @param {{ system: object, fileName: string, size: number, crc32?: string, md5?: string }} rom
  * @returns {Promise<null | object>} null si le jeu est introuvable.
  */
+/**
+ * Recherche par titre (jeuRecherche) : homebrew ou fichier renommé, inconnus par leur nom de fichier
+ * et leur empreinte. Seul un jeu dont un des noms correspond exactement au titre est retenu.
+ */
+export async function searchScreenScraper({ system, title }) {
+  const s = config.screenscraper;
+  if (!s.devId || !s.devPassword || !title) return null;
+  const wanted = normalize(title);
+  if (!wanted) return null;
+  const params = new URLSearchParams({ devid: s.devId, devpassword: s.devPassword, softname: s.softName, output: 'json', recherche: title });
+  if (s.user) params.set('ssid', s.user);
+  if (s.password) params.set('sspassword', s.password);
+  const systemId = system.screenscraperId || SCREENSCRAPER_SYSTEM_IDS[system.shortname] || SCREENSCRAPER_SYSTEM_IDS[system.id];
+  if (systemId) params.set('systemeid', String(systemId));
+  const res = await fetch(`${SEARCH_API}?${params}`, { headers: { 'User-Agent': s.softName } });
+  const body = await res.text();
+  if (res.status === 404) return null;
+  if (res.status === 429 || res.status === 430 || res.status === 431) {
+    throw new QuotaError('scrape.ssQuota', { status: res.status, detail: body.trim().slice(0, 200) });
+  }
+  if (!res.ok) throw new I18nError('scrape.ssError', { status: res.status, detail: body.trim().slice(0, 200) });
+  let json;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    throw new I18nError('scrape.ssUnreadable', { detail: body.trim().slice(0, 200) });
+  }
+  const games = (Array.isArray(json?.response?.jeux) ? json.response.jeux : []).filter((j) => j?.id);
+  const match = games.find((j) => (Array.isArray(j.noms) ? j.noms : []).some((n) => n?.text && normalize(n.text) === wanted));
+  return match ? parseGame(match) : null;
+}
+
 export async function scrapeScreenScraper({ system, fileName, size, crc32, md5 }) {
+  const serial = serialFromFileName(fileName);
   const s = config.screenscraper;
   if (!s.devId || !s.devPassword) throw new I18nError('scrape.ssNotConfigured');
   const params = new URLSearchParams({
@@ -133,6 +169,9 @@ export async function scrapeScreenScraper({ system, fileName, size, crc32, md5 }
   if (systemId) params.set('systemeid', String(systemId));
   if (crc32) params.set('crc', crc32.toUpperCase());
   if (md5) params.set('md5', md5);
+  // Numéro de série du nom de fichier (identifiant de contenu PS Vita, PSP…) : identifie le jeu
+  // quand le nom n'est pas un titre.
+  if (serial) params.set('serialnum', serial);
 
   const res = await fetch(`${API}?${params}`, { headers: { 'User-Agent': s.softName } });
   const body = await res.text();

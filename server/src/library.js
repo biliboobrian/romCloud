@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
 import { fileNameDetails, mergeDetails, parseStoredDetails } from './scraper/details.js';
+import { contentIdLabel } from './scraper/serial.js';
 import { listSystems, requireSystem, systemDir } from './systems.js';
 
 // Fichiers ignorés lors du scan : fichiers cachés, envois en cours, métadonnées diverses.
@@ -19,13 +20,21 @@ export function acceptsFileName(system, name) {
 }
 
 export function titleFromFileName(fileName) {
+  // Identifiant de contenu PS Vita / PSP (« EP0001-PCSB00040_00-ASPHALTINJECTION ») : son libellé.
+  const label = contentIdLabel(fileName);
+  if (label) return label;
   const base = fileName.replace(/\.[^.]+$/, '');
   const cleaned = base
     .replace(/\s*[([][^)\]]*[)\]]/g, '')
     .replace(/_/g, ' ')
-    .replace(/\s+v\d+(?:\.\d+)*\s*$/i, '')
+    // Homebrew : auteur en fin de nom (« … by Mickey McMurray », prénom et nom).
+    .replace(/\s+by\s+[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*)+\s*$/, '')
+    // Version (« v1.004 », « V2 ») en fin de titre ou avant l'article (« Gus and Rob V2, The »).
+    .replace(/\s+v\d+(?:\.\d+)*(?=\s*(?:,|$))/i, '')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    // Article rejeté à la fin, à la No-Intro : « Adventures of Gus and Rob, The » -> « The Adventures… ».
+    .replace(/^(.+), (The|A|An)$/, '$2 $1');
   return cleaned || base;
 }
 

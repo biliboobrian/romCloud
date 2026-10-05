@@ -3,13 +3,13 @@ import path from 'node:path';
 import { config, screenscraperEnabled } from '../config.js';
 import { I18nError } from '../i18n.js';
 import { db } from '../db.js';
-import { ensureHashes, gameFilePath, gameMediaDir, getGameRow, requireGameRow, rowToGame } from '../library.js';
+import { ensureHashes, gameFilePath, gameMediaDir, getGameRow, requireGameRow, rowToGame, titleFromFileName } from '../library.js';
 import { requireSystem } from '../systems.js';
 import { mergeDetails, parseStoredDetails } from './details.js';
 import { libretroMetadata, scrapeLibretro, titleFromLibretroName } from './libretro.js';
 import { zipEntries, zipMainEntry } from './rom-identity.js';
 import { findArcadeGame, isArcadeSystem } from './arcade.js';
-import { scrapeScreenScraper } from './screenscraper.js';
+import { scrapeScreenScraper, searchScreenScraper } from './screenscraper.js';
 import { scrapeLaunchBox } from './launchbox.js';
 import { scrapeWikipedia, wikidataFacts } from './wikipedia.js';
 
@@ -78,6 +78,8 @@ export async function scrapeGame(gameId, source = 'auto') {
         crc32: row.crc32,
         md5: row.md5,
       });
+      // Inconnu par son fichier (homebrew, fichier renommé) : recherche par titre.
+      if (!meta && !arcade) meta = await searchScreenScraper({ system, title: titleFromFileName(row.file_name) });
       if (meta) usedSources.push('screenscraper');
     } catch (err) {
       if (source === 'screenscraper' || err.name === 'QuotaError') {
@@ -147,7 +149,7 @@ export async function scrapeGame(gameId, source = 'auto') {
   };
   if (source !== 'screenscraper') {
     try {
-      const lb = await scrapeLaunchBox({ system, titles: [meta?.title, row.title, inner && titleFromLibretroName(inner.name)] });
+      const lb = await scrapeLaunchBox({ system, titles: [meta?.title, row.title, titleFromFileName(row.file_name), inner && titleFromLibretroName(inner.name)] });
       if (lb) applyLaunchBox(lb);
     } catch (err) {
       errors.push(err.message);
@@ -161,7 +163,9 @@ export async function scrapeGame(gameId, source = 'auto') {
     try {
       const unidentified = !meta;
       const wiki = await scrapeWikipedia({
-        title: meta?.title || row.title,
+        // Titre tiré du nom de fichier par les règles actuelles (jeu ajouté avec une version
+        // précédente : auteur, version ou article encore dans son titre).
+        title: meta?.title || (row.title === row.file_name.replace(/\.[^.]+$/, '') ? titleFromFileName(row.file_name) : row.title),
         system: system.name,
         languages: config.screenscraper.languages,
         loose: unidentified,
