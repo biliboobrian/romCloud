@@ -1,5 +1,6 @@
 import { I18nError } from '../i18n.js';
 import { compactDetails } from './details.js';
+import { serialFromFileName, serialKey } from './serial.js';
 
 // Scraper basé sur les miniatures Libretro (https://thumbnails.libretro.com) :
 // gratuit et sans compte, fournit jaquette, capture et écran-titre (pas de texte).
@@ -108,7 +109,8 @@ export function parseMetaDat(text) {
     const title = entry.name && normalize(entry.name);
     if (title && !index.byTitle.has(title)) index.byTitle.set(title, entry);
     if (entry.crc && !index.byCrc.has(entry.crc)) index.byCrc.set(entry.crc, entry);
-    if (serial && !index.bySerial.has(serial)) index.bySerial.set(serial, entry);
+    // Numéro de série sous sa forme compacte (« PCSB00040 ») : retrouvé quelle que soit son écriture.
+    if (serial && !index.bySerial.has(serialKey(serial))) index.bySerial.set(serialKey(serial), entry);
   };
   for (const line of text.split('\n')) {
     if (/^game \(/.test(line)) {
@@ -198,9 +200,14 @@ export async function scrapeLibretro({ system, fileName, crc32 }) {
   if (!found) {
     // Nom introuvable : la DAT du système donne le titre à partir du CRC (ROM renommée ou nom
     // No-Intro obsolète), ou du nom court façon MAME ("2020bb.zip").
-    const { byRom, byCrc } = await datIndex(system.libretroName);
+    const { byRom, byCrc, meta } = await datIndex(system.libretroName);
     const gameName = (crc32 && byCrc.get(crc32.toUpperCase())) || byRom.get(baseName.toLowerCase());
     if (gameName) found = await findImages(system.libretroName, gameName);
+    // Nom qui n'est pas un titre (identifiant de contenu PS Vita « EP0001-PCSB00040_00-… ») :
+    // numéro de série du nom de fichier.
+    const serial = serialFromFileName(fileName);
+    const bySerial = serial && meta.bySerial.get(serialKey(serial))?.name;
+    if (!found && bySerial) found = await findImages(system.libretroName, bySerial);
   }
   if (!found) return null;
   const { box, snap, title } = found;
@@ -238,12 +245,14 @@ export async function libretroMetadata({ system, fileName, crc32 }) {
   const base = fileName.replace(/\.[^.]+$/, '').toLowerCase();
   const crc = crc32 ? crc32.toUpperCase() : null;
   const { meta: main } = await datIndex(system.libretroName);
-  const game = (crc && main.byCrc.get(crc)) || main.byName.get(base) || main.byTitle.get(normalize(fileName)) || null;
+  const fileSerial = serialFromFileName(fileName);
+  const game = (crc && main.byCrc.get(crc)) || main.byName.get(base) || main.byTitle.get(normalize(fileName))
+    || (fileSerial && main.bySerial.get(serialKey(fileSerial))) || null;
   const names = [...new Set([game?.name?.toLowerCase(), base].filter(Boolean))];
-  const serial = game?.serial || game?.fields.serial || null;
+  const serial = game?.serial || game?.fields.serial || fileSerial;
   const files = await metaFiles(system.libretroName);
   const find = (index) =>
-    (crc && index.byCrc.get(crc)) || names.map((n) => index.byName.get(n)).find(Boolean) || (serial && index.bySerial.get(serial)) || null;
+    (crc && index.byCrc.get(crc)) || names.map((n) => index.byName.get(n)).find(Boolean) || (serial && index.bySerial.get(serialKey(serial))) || null;
   const value = (file, key) => find(files[file])?.fields[key] ?? null;
 
   // Année : fiche « releaseyear », sinon la DAT principale (TOSEC la donne souvent).
