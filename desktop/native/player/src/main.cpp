@@ -196,7 +196,7 @@ void Player::changeDisk(int direction) {
 
 MenuState Player::menuState() const {
   MenuState s;
-  s.smooth = video_.smooth();
+  s.filter = (int)video_.filter();
   s.fullscreen = video_.fullscreen();
   if (g.hasDiskControl && g.disk.get_num_images) {
     s.diskCount = (int)g.disk.get_num_images();
@@ -246,9 +246,10 @@ void Player::onMenuAction(MenuAction action) {
         closeMenu();
       }
       break;
-    case MenuAction::ToggleSmooth:
-      video_.setSmooth(!video_.smooth());
-      g.options.setSetting("romcloud_smooth", video_.smooth() ? "true" : "false");
+    case MenuAction::NextFilter:
+      // Visible aussitôt derrière le menu ; mémorisé pour le système.
+      video_.setFilter((Filter)(((int)video_.filter() + 1) % kFilterCount));
+      g.options.setSetting("romcloud_filter", filterId(video_.filter()));
       break;
     case MenuAction::ToggleFullscreen: video_.toggleFullscreen(); break;
     case MenuAction::DiskNext: changeDisk(1); break;
@@ -410,7 +411,10 @@ int Player::run() {
     return fail(error);
   }
 
-  video_.setSmooth(g.options.setting("romcloud_smooth", "false") == "true");
+  // Filtre d'image du système ; ancien réglage « lissage » (oui / non) repris s'il n'y en a pas.
+  const std::string oldSmooth = g.options.setting("romcloud_smooth", "") == "true" ? "smooth" : "pixels";
+  const bool hasOld = !g.options.setting("romcloud_smooth", "").empty();
+  video_.setFilter(filterFromId(g.options.setting("romcloud_filter", hasOld ? oldSmooth : "sharp")));
   const int testFrames = args_.testFrames.empty() ? 0 : std::max(1, atoi(args_.testFrames.c_str()));
   if (!video_.create("RomCloud — " + title(), !args_.windowed && !testFrames, testFrames > 0 && !args_.testWindow, error)) {
     g.api.unload_game();

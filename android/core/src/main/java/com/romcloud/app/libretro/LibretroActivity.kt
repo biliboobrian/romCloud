@@ -138,6 +138,9 @@ class LibretroActivity : ComponentActivity() {
     private val core by lazy { intent.getStringExtra(EXTRA_CORE).orEmpty() }
     private val systemId by lazy { intent.getStringExtra(EXTRA_SYSTEM).orEmpty() }
     private val optionsStore by lazy { CoreOptionsStore(this) }
+    private val videoFilters by lazy { VideoFilterStore(this) }
+    /** Filtre d'image du système (lissage), changé depuis le menu. */
+    private var videoFilter by mutableStateOf(VideoFilter.DEFAULT)
     /** Disposition de la manette tactile propre à la console. */
     private val padLayout by lazy { PadLayouts.forGame(systemId, core) }
     private val rom by lazy { File(intent.getStringExtra(EXTRA_ROM).orEmpty()) }
@@ -250,6 +253,8 @@ class LibretroActivity : ComponentActivity() {
             variables = (GameOptionDefaults.forGame(core, game) + optionsStore.load(systemId))
                 .map { (key, value) -> Variable(key, value) }.toTypedArray()
             preferLowLatencyAudio = true
+            videoFilter = videoFilters.load(systemId)
+            shader = videoFilter.shader()
         }
         val view = GLRetroView(this, data).apply { isFocusable = false }
         retroView = view
@@ -683,6 +688,14 @@ class LibretroActivity : ComponentActivity() {
                     add(stringResource(R.string.libretro_menu_load_state) to ::loadState)
                     add(stringResource(R.string.libretro_menu_reset) to ::reset)
                     add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
+                    // Appui : filtre suivant, appliqué à la reprise du jeu (rendu suspendu par le menu).
+                    add(
+                        stringResource(R.string.libretro_menu_filter, stringResource(videoFilter.label)) to {
+                            videoFilter = videoFilter.next
+                            videoFilters.save(systemId, videoFilter)
+                            retroView?.shader = videoFilter.shader()
+                        },
+                    )
                 }
                 if (!isTv) {
                     add(

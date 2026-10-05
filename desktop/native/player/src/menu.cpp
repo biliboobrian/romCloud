@@ -24,7 +24,13 @@ static const struct {
     {"reset", "Redémarrer le jeu", "Restart game"},
     {"options", "Options du cœur", "Core options"},
     {"disk", "Disque", "Disc"},
-    {"smooth", "Lissage de l'image", "Smooth image"},
+    {"filter", "Image", "Image"},
+    // Noms courts : les entrées du menu sont coupées vers 14 caractères.
+    {"filter_pixels", "pixels", "pixels"},
+    {"filter_sharp", "nette", "sharp"},
+    {"filter_smooth", "lissée", "smooth"},
+    {"filter_crt", "CRT", "CRT"},
+    {"filter_lcd", "LCD", "LCD"},
     {"fullscreen", "Plein écran", "Fullscreen"},
     {"save_quit", "Sauvegarder et quitter", "Save and quit"},
     {"quit", "Quitter", "Quit"},
@@ -122,9 +128,9 @@ int Menu::itemCount(const MenuState& state) const { return state.diskCount > 1 ?
 
 Menu::Item Menu::itemAt(int index, const MenuState& state) const {
   static const Item withDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options, Item::Keys,
-                                  Item::Disk, Item::Smooth, Item::Fullscreen, Item::SaveQuit, Item::Quit};
+                                  Item::Disk, Item::Filter, Item::Fullscreen, Item::SaveQuit, Item::Quit};
   static const Item withoutDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options,
-                                     Item::Keys, Item::Smooth, Item::Fullscreen, Item::SaveQuit, Item::Quit};
+                                     Item::Keys, Item::Filter, Item::Fullscreen, Item::SaveQuit, Item::Quit};
   return state.diskCount > 1 ? withDisk[index] : withoutDisk[index];
 }
 
@@ -138,7 +144,10 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::Keys: return tr("keys");
     case Item::Disk:
       return tr("disk") + " : " + std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
-    case Item::Smooth: return tr("smooth") + " : " + tr(state.smooth ? "yes" : "no");
+    case Item::Filter: {
+      static const char* names[] = {"filter_pixels", "filter_sharp", "filter_smooth", "filter_crt", "filter_lcd"};
+      return tr("filter") + " : " + tr(names[state.filter]);
+    }
     case Item::Fullscreen: return tr("fullscreen") + " : " + tr(state.fullscreen ? "yes" : "no");
     case Item::SaveQuit: return tr("save_quit");
     case Item::Quit: return tr("quit");
@@ -180,7 +189,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
   }
 
   // Entrées sur deux colonnes, lues ligne par ligne : haut / bas changent de ligne, gauche /
-  // droite de colonne (disque, lissage et plein écran changent avec A / Entrée).
+  // droite de colonne (disque, filtre d'image et plein écran changent avec A / Entrée).
   int count = itemCount(state);
   selected_ = std::min(selected_, count - 1);
   Item item = itemAt(selected_, state);
@@ -215,7 +224,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
           openKeys();
           return MenuAction::None;
         case Item::Disk: return MenuAction::DiskNext;
-        case Item::Smooth: return MenuAction::ToggleSmooth;
+        case Item::Filter: return MenuAction::NextFilter;
         case Item::Fullscreen: return MenuAction::ToggleFullscreen;
         case Item::SaveQuit: return MenuAction::SaveQuit;
         case Item::Quit: return MenuAction::Quit;

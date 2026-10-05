@@ -1,6 +1,6 @@
 // Menu du moteur (Échap, bouton central de la manette ou Start + Select) : reprendre, états de
 // sauvegarde, redémarrage, options du cœur (un onglet par type), touches du clavier, disque,
-// lissage, plein écran, sauvegarder et quitter, quitter.
+// filtre d'image, plein écran, sauvegarder et quitter, quitter.
 #pragma once
 
 #include <SDL.h>
@@ -13,11 +13,11 @@
 
 enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext };
 
-enum class MenuAction { None, Resume, SaveState, LoadState, Reset, SaveQuit, Quit, ToggleSmooth, ToggleFullscreen, DiskNext, DiskPrev };
+enum class MenuAction { None, Resume, SaveState, LoadState, Reset, SaveQuit, Quit, NextFilter, ToggleFullscreen, DiskNext, DiskPrev };
 
 /** État affiché par le menu (fourni par la boucle principale). */
 struct MenuState {
-  bool smooth = false;
+  int filter = 1;  // Filter (video.h) : lissage net par défaut
   bool fullscreen = true;
   int diskIndex = -1;  // -1 : pas de changement de disque
   int diskCount = 0;
@@ -56,7 +56,7 @@ class Menu {
 
  private:
   enum class Screen { Main, Options, Keys };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Disk, Smooth, Fullscreen, SaveQuit, Quit };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Disk, Filter, Fullscreen, SaveQuit, Quit };
 
   int itemCount(const MenuState& state) const;
   Item itemAt(int index, const MenuState& state) const;
