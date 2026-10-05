@@ -366,4 +366,15 @@
     <string name="libretro_updating_core">Updating the %1$s core…</string>
     <string name="libretro_crash_reset">Reset the core</string>
     <string name="libretro_crash_reset_done">The %1$s core will be downloaded again, with its default options, at the next launch.</string>
+    <!-- Diffusion de l'écran (Chromecast) -->
+    <string name="cast_button">Cast the screen</string>
+    <string name="cast_title">Cast the screen to a Chromecast</string>
+    <string name="cast_text">Android mirrors the whole screen and the sound on the TV, games included (built-in emulator or other emulators). The phone and the Chromecast must be on the same Wi-Fi network.</string>
+    <string name="cast_active">Casting to %1$s. Open the casting screen again to stop it.</string>
+    <string name="cast_system">Choose a device</string>
+    <string name="cast_smart_view">Smart View</string>
+    <string name="cast_google_home">Google Home</string>
+    <string name="cast_install_home">Install Google Home</string>
+    <string name="cast_quick_settings">Tip: the “Cast” or “Screen cast” tile of the quick settings (swipe down from the top of the screen) also starts casting. In Google Home: select the Chromecast, then “Cast my screen”.</string>
+    <string name="cast_unavailable">This device does not offer screen casting.</string>
 </resources>

@@ -359,4 +359,15 @@
     <string name="libretro_updating_core">Mise à jour du cœur %1$s…</string>
     <string name="libretro_crash_reset">Réinitialiser le cœur</string>
     <string name="libretro_crash_reset_done">Le cœur %1$s sera téléchargé à nouveau, avec ses options par défaut, au prochain lancement.</string>
+    <!-- Diffusion de l'écran (Chromecast) -->
+    <string name="cast_button">Caster l’écran</string>
+    <string name="cast_title">Caster l’écran sur un Chromecast</string>
+    <string name="cast_text">Android recopie tout l’écran et le son sur le téléviseur, jeux compris (émulateur intégré ou autres émulateurs). Le téléphone et le Chromecast doivent être sur le même réseau Wi-Fi.</string>
+    <string name="cast_active">Diffusion sur %1$s. Rouvrez l’écran de diffusion pour l’arrêter.</string>
+    <string name="cast_system">Choisir un appareil</string>
+    <string name="cast_smart_view">Smart View</string>
+    <string name="cast_google_home">Google Home</string>
+    <string name="cast_install_home">Installer Google Home</string>
+    <string name="cast_quick_settings">Astuce : la vignette « Caster » ou « Diffuser l’écran » des réglages rapides (glisser depuis le haut de l’écran) lance aussi la diffusion. Dans Google Home : choisissez le Chromecast, puis « Caster mon écran ».</string>
+    <string name="cast_unavailable">Cet appareil ne propose pas la diffusion de l’écran.</string>
 </resources>

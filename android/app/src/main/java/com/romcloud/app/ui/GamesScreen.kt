@@ -212,6 +212,7 @@ fun GamesScreen(
                     }) {
                         Icon(if (searching) Icons.Filled.Close else Icons.Filled.Search, stringResource(R.string.action_search))
                     }
+                    if (!searching) CastButton()
                 },
             )
         },
