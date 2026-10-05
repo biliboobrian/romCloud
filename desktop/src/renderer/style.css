@@ -175,6 +175,11 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .row-track::-webkit-scrollbar { height: 8px; }
 .row-track::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .row-track .game-card { width: 150px; flex-shrink: 0; }
+/* Rangée glissée à la souris (clic maintenu) : suit le pointeur sans animation. */
+.row-track { cursor: grab; }
+.row-track.dragging { cursor: grabbing; scroll-behavior: auto; user-select: none; }
+.row-track.gliding { scroll-behavior: auto; }
+.row-track.dragging .game-card { pointer-events: none; }
 .list { display: flex; flex-direction: column; }
 .list-row { display: flex; align-items: center; gap: 16px; padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 8px; }
 .list-row:hover { background: var(--surface); }

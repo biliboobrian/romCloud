@@ -720,19 +720,7 @@
         ${rows.map((r) => `<section class="row"><h3>${esc(r.title)} <span class="count">· ${r.games.length}</span></h3>
           <div class="row-track">${r.games.map((g) => cardHtml(g, S.games.downloaded)).join('')}</div></section>`).join('')}
       </div>`;
-      // Molette verticale -> défilement horizontal des rangées
-      for (const track of $$('.row-track', main)) {
-        track.addEventListener('wheel', (e) => {
-          if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && track.scrollWidth > track.clientWidth) {
-            const atStart = track.scrollLeft <= 0 && e.deltaY < 0;
-            const atEnd = track.scrollLeft + track.clientWidth >= track.scrollWidth - 1 && e.deltaY > 0;
-            if (!atStart && !atEnd) {
-              e.preventDefault();
-              track.scrollLeft += e.deltaY;
-            }
-          }
-        }, { passive: false });
-      }
+      bindCarouselMouse(main);
       renderHero();
     }
     const details = (g) => openGameDetail(g.systemId, g.id);
@@ -756,6 +744,89 @@
         e.stopPropagation(); // pas la fiche du jeu (clic sur la ligne)
         playChecked(systemById(game.systemId), game, { resume: true });
       };
+    }
+  }
+
+  /**
+   * Souris dans le carrousel : chaque cran de molette passe à la rangée suivante ou précédente
+   * (alignée sous la bannière fixe) ; un clic maintenu fait glisser une rangée de côté, avec un
+   * peu d'élan au lâcher. Un glisser n'ouvre pas le jeu sous le pointeur.
+   */
+  function bindCarouselMouse(main) {
+    const carousel = $('.carousel', main);
+    const head = $('.carousel-head', main);
+    const rows = $$('.row', main);
+    if (!carousel || !rows.length) return;
+
+    let wheelLock = 0;
+    carousel.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) < Math.abs(e.deltaX) || e.ctrlKey) return;
+      e.preventDefault();
+      // Un cran par geste : les pavés tactiles envoient une rafale d'évènements.
+      const now = Date.now();
+      if (now < wheelLock) return;
+      wheelLock = now + 280;
+      const top = head ? head.offsetHeight : 0;
+      // Rangée en haut de la zone visible (sous la bannière), puis la voisine.
+      const offset = (row) => row.offsetTop - top;
+      const current = rows.findIndex((row) => offset(row) >= main.scrollTop - 4);
+      const index = current === -1 ? rows.length - 1 : current;
+      const atRow = Math.abs(offset(rows[index]) - main.scrollTop) <= 4;
+      const target = e.deltaY > 0 ? (atRow ? index + 1 : index) : index - 1;
+      const next = Math.max(0, Math.min(rows.length - 1, target));
+      main.scrollTo({ top: next === 0 && e.deltaY < 0 ? 0 : offset(rows[next]), behavior: 'smooth' });
+    }, { passive: false });
+
+    for (const track of $$('.row-track', main)) {
+      let drag = null; // { x, left, moved, samples }
+      let glide = 0;
+      track.addEventListener('dragstart', (e) => e.preventDefault()); // pas de fantôme des jaquettes
+      track.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || e.pointerType !== 'mouse') return;
+        cancelAnimationFrame(glide);
+        track.classList.remove('gliding');
+        drag = { x: e.clientX, left: track.scrollLeft, moved: false, samples: [[e.timeStamp, e.clientX]] };
+      });
+      track.addEventListener('pointermove', (e) => {
+        if (!drag) return;
+        const dx = e.clientX - drag.x;
+        if (!drag.moved && Math.abs(dx) < 6) return;
+        if (!drag.moved) {
+          drag.moved = true;
+          track.setPointerCapture(e.pointerId);
+          track.classList.add('dragging'); // défilement immédiat (pas d'animation) et curseur
+        }
+        track.scrollLeft = drag.left - dx;
+        drag.samples = [...drag.samples, [e.timeStamp, e.clientX]].slice(-5);
+      });
+      const end = (e) => {
+        if (!drag) return;
+        const { moved, samples } = drag;
+        drag = null;
+        if (!moved) return;
+        track.releasePointerCapture?.(e.pointerId);
+        // Le clic qui suit le relâchement ne doit pas sélectionner la carte sous le pointeur.
+        track.addEventListener('click', (c) => { c.stopPropagation(); c.preventDefault(); }, { capture: true, once: true });
+        track.classList.remove('dragging');
+        track.classList.add('gliding'); // défilement direct pendant l'élan
+        // Élan : vitesse des derniers déplacements, amortie.
+        const [t0, x0] = samples[0];
+        const [t1, x1] = samples[samples.length - 1];
+        let speed = t1 > t0 ? (x1 - x0) / (t1 - t0) : 0; // px/ms
+        let last = performance.now();
+        const step = (now) => {
+          const dt = now - last;
+          last = now;
+          track.scrollLeft -= speed * dt;
+          speed *= Math.pow(0.95, dt / 16);
+          if (Math.abs(speed) > 0.02) glide = requestAnimationFrame(step);
+          else track.classList.remove('gliding');
+        };
+        if (Math.abs(speed) > 0.1) glide = requestAnimationFrame(step);
+        else track.classList.remove('gliding');
+      };
+      track.addEventListener('pointerup', end);
+      track.addEventListener('pointercancel', end);
     }
   }
 
