@@ -26,6 +26,20 @@ class GamepadMappingTest {
     }
 
     @Test
+    fun `etapes d'apres la manette de la console`() {
+        // Mega Drive : rangée du bas d'abord, ni Select ni stick droit.
+        val genesis = mappingSteps(PadLayouts.forGame("genesis", "")).mapNotNull { it.label }
+        assertEquals(listOf("A", "B", "C", "X", "Y", "Z", "START"), genesis)
+        // Nintendo 64 : boutons C sur le stick droit.
+        val n64 = mappingSteps(PadLayouts.forGame("n64", "")).filter { it.stick != null }
+        assertEquals(listOf("C▶" to StickAxis.X, "C▼" to StickAxis.Y), n64.map { it.label to it.stick })
+        // PlayStation : L3, R3 et stick droit ; PSP : ni l'un ni l'autre.
+        val psx = mappingSteps(PadLayouts.forGame("psx", ""))
+        assertTrue(psx.any { it.retroKey == KeyEvent.KEYCODE_BUTTON_THUMBR } && psx.count { it.stick != null } == 2)
+        assertTrue(mappingSteps(PadLayouts.forGame("psp", "")).none { it.stick != null || it.label == "L3" })
+    }
+
+    @Test
     fun `gachette au repos a -1`() {
         val l2 = AxisButton(axis = 17, rest = -1f, direction = 1f, retroKey = KeyEvent.KEYCODE_BUTTON_L2)
         assertFalse(l2.isPressed(-1f))

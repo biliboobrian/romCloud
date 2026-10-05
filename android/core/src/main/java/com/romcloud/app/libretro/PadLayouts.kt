@@ -38,6 +38,8 @@ internal data class PadLayout(
     val dpad: Boolean = true,
     /** Stick analogique (Nintendo 64, Dreamcast, PSP) : au-dessus de la croix s'il y en a une. */
     val stick: Boolean = false,
+    /** Deux sticks cliquables (L3 / R3) : configurés sur une manette physique. */
+    val thumbs: Boolean = false,
 ) {
     val width: Dp get() = buttons.maxOf { it.x + it.size }
     val height: Dp get() = buttons.maxOf { it.y + it.size }
@@ -98,6 +100,7 @@ internal object PadLayouts {
         buttons = diamond("X" to X, "A" to A, "B" to B, "Y" to Y),
         left = listOf(Shoulder("L2", L2, 60.dp), Shoulder("L", L1)),
         right = listOf(Shoulder("R", R1), Shoulder("R2", R2, 60.dp)),
+        thumbs = true,
     )
 
     private val NES = PadLayout(buttons = diagonal("B" to B, "A" to A, colors = listOf(RED, RED)))
@@ -110,9 +113,10 @@ internal object PadLayouts {
         buttons = diamond("△" to X, "○" to A, "✕" to B, "□" to Y, listOf(GREEN, RED, BLUE, PINK)),
         left = listOf(Shoulder("L2", L2, 60.dp), Shoulder("L1", L1)),
         right = listOf(Shoulder("R1", R1), Shoulder("R2", R2, 60.dp)),
+        thumbs = true,
     )
     /** PSP : croix et stick (de nombreux jeux se jouent au stick). */
-    private val PSP = PLAYSTATION.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)), stick = true)
+    private val PSP = PLAYSTATION.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)), stick = true, thumbs = false)
 
     /** Mega Drive 6 boutons : A B C en bas, X Y Z en haut ; Mode = Select (masqué). */
     private val GENESIS = PadLayout(

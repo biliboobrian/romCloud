@@ -330,16 +330,6 @@
     <string name="pad_down">Croix : bas</string>
     <string name="pad_left">Croix : gauche</string>
     <string name="pad_right">Croix : droite</string>
-    <string name="pad_b">B : bouton du bas (✕ sur PlayStation)</string>
-    <string name="pad_a">A : bouton de droite (○ sur PlayStation)</string>
-    <string name="pad_y">Y : bouton de gauche (□ sur PlayStation)</string>
-    <string name="pad_x">X : bouton du haut (△ sur PlayStation)</string>
-    <string name="pad_l1">L / L1</string>
-    <string name="pad_r1">R / R1</string>
-    <string name="pad_l2">L2 (gâchette gauche)</string>
-    <string name="pad_r2">R2 (gâchette droite)</string>
-    <string name="pad_select">Select</string>
-    <string name="pad_start">Start</string>
     <string name="pad_l3">L3 (appui sur le stick gauche)</string>
     <string name="pad_r3">R3 (appui sur le stick droit)</string>
     <string name="pad_right_stick_x">Stick droit : poussez-le vers la droite</string>
