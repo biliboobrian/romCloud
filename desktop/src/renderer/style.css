@@ -211,6 +211,14 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .key-btn.selected { border-color: var(--accent); color: var(--accent); }
 .key-btn.unset { color: var(--muted); }
 
+/* ---- Navigation à la manette : cadre sur l'élément sélectionné ---- */
+body.pad-nav :focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+body.pad-nav .game-card:focus { outline: none; }
+body.pad-nav .game-card:focus .cover { transform: scale(1.04); box-shadow: var(--shadow); outline-color: var(--accent); }
+body.pad-nav .system-card:focus { outline: none; border-color: var(--accent); transform: translateY(-3px); box-shadow: var(--shadow); }
+body.pad-nav .list-row:focus { outline: none; background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+[data-card]:focus, [data-system]:focus { outline: none; }
+
 /* ---- Fenêtres, notifications ---- */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 20; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: min(560px, calc(100vw - 40px)); max-height: calc(100vh - 60px); display: flex; flex-direction: column; box-shadow: var(--shadow); }
