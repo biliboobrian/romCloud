@@ -140,6 +140,7 @@ fun SystemsScreen(
                     }
                     if (!searching) {
                         IconButton(onClick = viewModel::refresh) { Icon(Icons.Filled.Refresh, stringResource(R.string.action_refresh)) }
+                        CastButton()
                         IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.action_settings)) }
                     }
                 },

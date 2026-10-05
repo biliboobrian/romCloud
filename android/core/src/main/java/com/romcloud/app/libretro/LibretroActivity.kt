@@ -81,6 +81,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.romcloud.app.AppLanguage
+import com.romcloud.app.ui.CastDialog
 import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
 import com.swordfish.libretrodroid.GLRetroView
@@ -121,6 +122,8 @@ class LibretroActivity : ComponentActivity() {
     private var optionTab by mutableStateOf(0)
     /** Configuration de manette en cours (depuis le menu). */
     private var mappingSession by mutableStateOf<MappingSession?>(null)
+    // Fenêtre « Caster l'écran » (recopie sur un Chromecast par Android).
+    private var showCast by mutableStateOf(false)
 
     private val gamepadMappings by lazy { GamepadMappings(this, systemId) }
     /** Boutons RetroPad enfoncés par joueur, et ceux enfoncés par une gâchette analogique. */
@@ -638,6 +641,7 @@ class LibretroActivity : ComponentActivity() {
                         OptionsScreen(opts)
                     } else if (menuOpen) {
                         PauseMenu()
+                        if (showCast) CastDialog(onDismiss = { showCast = false })
                     } else if (showTouchPad) {
                         TouchGamepad(
                             layout = padLayout,
@@ -696,6 +700,7 @@ class LibretroActivity : ComponentActivity() {
                         }
                     },
                 )
+                if (!isTv) add(stringResource(R.string.cast_button) to { showCast = true })
                 if (gameReady) add(stringResource(R.string.libretro_menu_save_quit) to ::saveAndQuit)
                 add(stringResource(R.string.libretro_menu_quit) to ::finish)
             }

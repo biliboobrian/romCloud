@@ -8,6 +8,7 @@ const downloads = require('./downloads');
 const launcher = require('./launcher');
 const keyboard = require('./keyboard');
 const builtin = require('./builtin');
+const screencast = require('./screencast');
 const { createUpdater } = require('./updater');
 
 const updater = createUpdater({ app });
@@ -37,6 +38,11 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+  // La fenêtre cachée de capture (diffusion sur un Chromecast) ne doit pas garder l'application ouverte.
+  win.on('closed', () => {
+    win = null;
+    app.quit();
   });
 }
 
@@ -100,6 +106,13 @@ handle('keyboard:layout', () => ({
 }));
 handle('keyboard:save', (keys) => builtin.saveKeys(keys));
 handle('app:version', () => app.getVersion());
+// Diffusion de l'écran sur un Chromecast.
+handle('cast:discover', () => screencast.discover());
+handle('cast:start', (device) => screencast.start(device));
+handle('cast:stop', () => screencast.stop());
+handle('cast:state', () => screencast.state());
+screencast.init({ mainWindow: () => win });
+screencast.onChange((state) => win?.webContents.send('cast:update', state));
 // Mise à jour : vérifiée au chargement de l'interface ; installation sur confirmation.
 handle('update:check', () => updater.check());
 handle('update:install', () => updater.install((bytes, total) => win?.webContents.send('update:progress', { bytes, total })));
@@ -123,4 +136,5 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
   });
   app.on('window-all-closed', () => app.quit());
+  app.on('before-quit', () => screencast.stop());
 }

@@ -23,6 +23,7 @@
     route: { name: 'systems' },
     history: [],
     focusedGameId: null,
+    cast: { status: 'idle', device: null, error: null },
   };
 
   // ---------------------------------------------------------------------------
@@ -46,6 +47,8 @@
     folder: 'M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
     trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
     open: 'M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z',
+    cast: 'M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z',
+    castOn: 'M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm18-7H5v1.63c3.96 1.28 7.09 4.41 8.37 8.37H19V7zM1 10v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11zm20-7H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z',
     pad: 'M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z',
   };
   const icon = (name, size = 20) => `<svg class="icon" viewBox="0 0 24 24" style="width:${size}px;height:${size}px"><path d="${ICONS[name]}"/></svg>`;
@@ -175,11 +178,95 @@
     $('#banners').insertAdjacentHTML('beforeend', `<div class="banner${error ? ' error' : ''}">${esc(text)}</div>`);
   }
 
-  const settingsBtn = () => `<button class="icon-btn" data-action="settings" title="${esc(t('app.settings'))}">${icon('gear')}</button>`;
+  // Bouton de diffusion sur un Chromecast, placé avant celui des paramètres sur chaque écran.
+  const castBtnInner = () => icon(S.cast.status === 'idle' ? 'cast' : 'castOn');
+  const castBtnTitle = () => (S.cast.status === 'idle' ? t('cast.button') : t('cast.active', { name: S.cast.device?.name || '' }));
+  const settingsBtn = () => `<button class="icon-btn${S.cast.status === 'idle' ? '' : ' casting'}" data-action="cast" title="${esc(castBtnTitle())}">${castBtnInner()}</button>`
+    + `<button class="icon-btn" data-action="settings" title="${esc(t('app.settings'))}">${icon('gear')}</button>`;
 
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-action]');
     if (el?.dataset.action === 'settings') go({ name: 'settings' });
+    if (el?.dataset.action === 'cast') openCast();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Diffusion de l'écran sur un Chromecast
+  // ---------------------------------------------------------------------------
+
+  function paintCastButtons() {
+    for (const el of $$('[data-action="cast"]')) {
+      el.innerHTML = castBtnInner();
+      el.title = castBtnTitle();
+      el.classList.toggle('casting', S.cast.status !== 'idle');
+    }
+  }
+
+  function openCast() {
+    if (S.cast.status !== 'idle') {
+      modal({
+        title: t('cast.title'),
+        body: `<p>${esc(t(S.cast.status === 'casting' ? 'cast.active' : 'cast.connecting', { name: S.cast.device?.name || '' }))}</p>
+          <p class="muted">${esc(t('cast.hint'))}</p>`,
+        buttons: [
+          { label: t('app.close'), kind: 'ghost' },
+          { label: t('cast.stop'), kind: 'primary', onClick: () => call(rc.cast.stop).catch(() => {}) },
+        ],
+      });
+      return;
+    }
+    const root = modal({
+      title: t('cast.title'),
+      body: `<div id="castDevices"></div><p class="muted">${esc(t('cast.hint'))}</p>`,
+      buttons: [
+        { label: t('cast.search'), kind: 'ghost', left: true, keepOpen: true, onClick: () => scan() },
+        { label: t('app.cancel'), kind: 'ghost' },
+      ],
+    });
+    async function scan() {
+      const list = $('#castDevices', root);
+      if (!list) return;
+      list.innerHTML = `<p>${esc(t('cast.searching'))}</p>`;
+      let devices = [];
+      try {
+        devices = await call(rc.cast.discover);
+      } catch (err) {
+        list.innerHTML = `<p class="bad">${esc(err.message)}</p>`;
+        return;
+      }
+      if (!$('#castDevices', root)) return; // fenêtre fermée pendant la recherche
+      if (!devices.length) {
+        list.innerHTML = `<p>${esc(t('cast.none'))}</p>`;
+        return;
+      }
+      list.innerHTML = `<div class="cast-devices">${devices.map((d, i) => `<button class="btn cast-device" data-device="${i}">
+        ${icon('cast', 18)}<span><b>${esc(d.name)}</b>${d.model ? `<span class="muted"> · ${esc(d.model)}</span>` : ''}</span></button>`).join('')}</div>`;
+      for (const el of $$('[data-device]', list)) {
+        el.onclick = () => {
+          root.innerHTML = '';
+          startCast(devices[Number(el.dataset.device)]);
+        };
+      }
+    }
+    scan();
+  }
+
+  async function startCast(device) {
+    toast(t('cast.connecting', { name: device.name }));
+    try {
+      await call(rc.cast.start, device);
+      toast(t('cast.started', { name: device.name }));
+    } catch (err) {
+      toast(err.message, { type: 'error', duration: 12000 });
+    }
+  }
+
+  rc.cast.onUpdate((state) => {
+    const was = S.cast.status;
+    S.cast = state;
+    paintCastButtons();
+    if (state.error && state.status === 'idle' && was !== 'idle') toast(errorText(state.error), { type: 'error', duration: 12000 });
+    else if (was === 'casting' && state.status === 'idle') toast(t('cast.stopped'));
   });
 
   // ---------------------------------------------------------------------------
@@ -1311,6 +1398,7 @@
     window.I18N.setLanguage(S.settings.effectiveLanguage);
     $('#backBtn').title = t('app.back');
     S.downloads = await call(rc.downloads.states);
+    S.cast = await call(rc.cast.state);
     render();
     checkUpdate();
     if (S.settings.serverUrl) await loadSystems();

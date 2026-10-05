@@ -61,6 +61,9 @@ svg.icon { width: 20px; height: 20px; fill: currentColor; flex-shrink: 0; }
   display: inline-flex; align-items: center; justify-content: center;
 }
 .icon-btn:hover { background: var(--surface-2); }
+.icon-btn.casting { color: var(--accent); }
+.cast-devices { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.cast-device { display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; }
 .chip {
   border: 1px solid var(--border); background: transparent; color: var(--text); border-radius: 999px;
   padding: 6px 14px; cursor: pointer; font: inherit; font-size: 13px; white-space: nowrap;
