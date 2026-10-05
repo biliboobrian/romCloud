@@ -54,6 +54,7 @@ import com.romcloud.app.ui.SystemBadge
 import com.romcloud.app.ui.SystemsViewModel
 import com.romcloud.app.ui.pluralString
 import com.romcloud.app.ui.accountState
+import com.romcloud.app.ui.quitApp
 import com.romcloud.core.R
 
 @Composable
@@ -94,7 +95,7 @@ fun TvSystemsScreen(
             title = stringResource(R.string.quit_app_title),
             text = stringResource(R.string.quit_app_text),
             confirm = stringResource(R.string.action_quit),
-            onConfirm = { activity.finish() },
+            onConfirm = { quitApp(activity) },
             onDismiss = { askQuit = false },
         )
     }
