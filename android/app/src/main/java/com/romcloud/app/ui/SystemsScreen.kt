@@ -99,7 +99,7 @@ fun SystemsScreen(
             onDismissRequest = { askQuit = false },
             title = { Text(stringResource(R.string.quit_app_title)) },
             text = { Text(stringResource(R.string.quit_app_text)) },
-            confirmButton = { TextButton(onClick = { activity.finish() }) { Text(stringResource(R.string.action_quit)) } },
+            confirmButton = { TextButton(onClick = { quitApp(activity) }) { Text(stringResource(R.string.action_quit)) } },
             dismissButton = { TextButton(onClick = { askQuit = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
