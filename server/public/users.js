@@ -147,24 +147,26 @@ function renderDetail(box, d) {
         <button class="btn small danger" data-delete>${e(t('users.delete'))}</button>
       </div>
     </div>
-    <h4>${e(t('users.sessionsTitle'))}</h4>
+    <div class="user-grid">
+      <section class="user-section"><h4>${e(t('users.sessionsTitle'))}</h4>
     ${table([t('users.device'), t('users.method'), t('users.since'), t('users.lastSeen'), t('users.ip'), ''], d.sessions.map((s) => `<tr>
       <td>${e(device(s))}</td><td>${e(t(`users.method.${s.method}`))}</td><td>${e(formatDate(s.createdAt))}</td>
       <td>${e(formatDate(s.lastSeenAt))}</td><td><code>${e(s.ip || '–')}</code></td>
-      <td><button class="btn small danger" data-revoke="${s.id}">${e(t('users.revoke'))}</button></td></tr>`), t('users.noSessions'))}
-    <h4>${e(t('users.playtimeTitle'))}</h4>
+      <td><button class="btn small danger" data-revoke="${s.id}">${e(t('users.revoke'))}</button></td></tr>`), t('users.noSessions'))}</section>
+      <section class="user-section"><h4>${e(t('users.playtimeTitle'))}</h4>
     ${table([t('users.game'), t('users.playtime'), t('users.sessionsCount'), t('users.lastPlayed')], d.playtime.map((p) => `<tr>
       <td><strong>${e(p.title || `#${p.gameId}`)}</strong><br><span class="muted">${e(p.system || '')}</span></td>
-      <td>${e(formatDuration(p.seconds))}</td><td>${p.sessions}</td><td>${e(formatDate(p.lastPlayedAt))}</td></tr>`), t('users.noPlaytime'))}
-    <h4>${e(t('users.savesTitle'))}</h4>
+      <td>${e(formatDuration(p.seconds))}</td><td>${p.sessions}</td><td>${e(formatDate(p.lastPlayedAt))}</td></tr>`), t('users.noPlaytime'))}</section>
+      <section class="user-section"><h4>${e(t('users.savesTitle'))}</h4>
     ${table([t('users.game'), t('users.saveKind'), t('users.size'), t('users.savedAt'), t('users.device')], d.saves.map((s) => `<tr>
       <td><strong>${e(s.title || `#${s.gameId}`)}</strong><br><span class="muted">${e([s.system, s.core].filter(Boolean).join(' · '))}</span></td>
       <td>${e(t(`users.kind.${s.kind}`))}</td><td>${e(formatSize(s.size))}</td><td>${e(formatDate(s.savedAt))}</td>
-      <td>${e(device(s))}</td></tr>`), t('users.noSaves'))}
-    <h4>${e(t('users.loginsTitle'))}</h4>
-    ${table([t('users.date'), t('users.eventCol'), t('users.device'), t('users.ip')], loginRows(d.logins, false), t('users.noLogins'))}
-    <h4>${e(t('users.errorsTitle'))}</h4>
-    ${table([t('users.date'), t('users.device'), t('users.message')], errorRows(d.errors, false), t('users.noErrors'))}`;
+      <td>${e(device(s))}</td></tr>`), t('users.noSaves'))}</section>
+      <section class="user-section"><h4>${e(t('users.loginsTitle'))}</h4>
+    ${table([t('users.date'), t('users.eventCol'), t('users.device'), t('users.ip')], loginRows(d.logins, false), t('users.noLogins'))}</section>
+      <section class="user-section"><h4>${e(t('users.errorsTitle'))}</h4>
+    ${table([t('users.date'), t('users.device'), t('users.message')], errorRows(d.errors, false), t('users.noErrors'))}</section>
+    </div>`;
 
   $('[data-back]', box).onclick = () => {
     detailId = null;
