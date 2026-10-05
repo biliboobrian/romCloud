@@ -122,7 +122,7 @@ class LibretroActivity : ComponentActivity() {
     /** Configuration de manette en cours (depuis le menu). */
     private var mappingSession by mutableStateOf<MappingSession?>(null)
 
-    private val gamepadMappings by lazy { GamepadMappings(this) }
+    private val gamepadMappings by lazy { GamepadMappings(this, systemId) }
     /** Boutons RetroPad enfoncés par joueur, et ceux enfoncés par une gâchette analogique. */
     private val heldButtons = HashMap<Int, MutableSet<Int>>()
     private val axisButtons = HashMap<Int, MutableSet<Int>>()
@@ -690,7 +690,7 @@ class LibretroActivity : ComponentActivity() {
                 }
                 add(
                     stringResource(R.string.libretro_menu_gamepad) to {
-                        mappingSession = MappingSession(gamepadMappings) { message ->
+                        mappingSession = MappingSession(gamepadMappings, mappingSteps(padLayout)) { message ->
                             toast = getString(message)
                             mappingSession = null
                         }
@@ -728,40 +728,54 @@ class LibretroActivity : ComponentActivity() {
 
     @Composable
     private fun MappingScreen(session: MappingSession) {
+        // Manette de la console dessinée à côté des consignes (en dessous sur écran étroit).
+        val preview = @Composable { PadPreview(padLayout, session.step.takeIf { session.deviceName != null }, session.done) }
+        val wide = LocalConfiguration.current.screenWidthDp >= 600
         Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
-            Centered {
-                Text(stringResource(R.string.pad_config_title), style = MaterialTheme.typography.titleMedium)
-                val name = session.deviceName
-                val step = session.step
-                if (name == null) {
-                    Text(stringResource(R.string.pad_config_press_any), textAlign = TextAlign.Center)
-                } else {
-                    Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (step != null) {
-                        Text(
-                            stringResource(R.string.pad_config_step, session.stepIndex + 1, MappingStep.entries.size),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        Text(
-                            stringResource(step.label),
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center,
-                        )
-                        Text(
-                            stringResource(if (step.stick) R.string.pad_config_hint_stick else R.string.pad_config_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            textAlign = TextAlign.Center,
-                        )
+            Row(
+                Modifier.fillMaxSize().safeDrawingPadding(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (wide) preview()
+                Centered {
+                    Text(stringResource(R.string.pad_config_title), style = MaterialTheme.typography.titleMedium)
+                    val name = session.deviceName
+                    val step = session.step
+                    if (name == null) {
+                        Text(stringResource(R.string.pad_config_press_any), textAlign = TextAlign.Center)
+                    } else {
+                        Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (step != null) {
+                            Text(
+                                stringResource(R.string.pad_config_step, session.stepIndex + 1, session.steps.size),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            Text(
+                                step.label ?: stringResource(step.labelRes),
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                textAlign = TextAlign.Center,
+                            )
+                            if (step.label != null && step.labelRes != 0) {
+                                Text(stringResource(step.labelRes), textAlign = TextAlign.Center)
+                            }
+                            Text(
+                                stringResource(if (step.stick != null) R.string.pad_config_hint_stick else R.string.pad_config_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        session.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
                     }
-                    session.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (name != null) {
-                        TextButton(onClick = session::skip) { Text(stringResource(R.string.action_skip)) }
-                        TextButton(onClick = session::resetDevice) { Text(stringResource(R.string.pad_config_default)) }
+                    if (!wide) preview()
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (name != null) {
+                            TextButton(onClick = session::skip) { Text(stringResource(R.string.action_skip)) }
+                            TextButton(onClick = session::resetDevice) { Text(stringResource(R.string.pad_config_default)) }
+                        }
+                        FocusedButton(stringResource(R.string.action_cancel), { mappingSession = null })
                     }
-                    FocusedButton(stringResource(R.string.action_cancel), { mappingSession = null })
                 }
             }
         }

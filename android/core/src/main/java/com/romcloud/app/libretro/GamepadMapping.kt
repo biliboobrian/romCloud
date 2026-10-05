@@ -35,30 +35,51 @@ internal data class GamepadMapping(
     }
 }
 
-/** Étapes de la configuration : boutons RetroPad (disposition Super Nintendo) puis stick droit. */
-internal enum class MappingStep(@StringRes val label: Int, val retroKey: Int = 0, val stick: Boolean = false) {
-    UP(R.string.pad_up, KeyEvent.KEYCODE_DPAD_UP),
-    DOWN(R.string.pad_down, KeyEvent.KEYCODE_DPAD_DOWN),
-    LEFT(R.string.pad_left, KeyEvent.KEYCODE_DPAD_LEFT),
-    RIGHT(R.string.pad_right, KeyEvent.KEYCODE_DPAD_RIGHT),
-    B(R.string.pad_b, KeyEvent.KEYCODE_BUTTON_B),
-    A(R.string.pad_a, KeyEvent.KEYCODE_BUTTON_A),
-    Y(R.string.pad_y, KeyEvent.KEYCODE_BUTTON_Y),
-    X(R.string.pad_x, KeyEvent.KEYCODE_BUTTON_X),
-    L1(R.string.pad_l1, KeyEvent.KEYCODE_BUTTON_L1),
-    R1(R.string.pad_r1, KeyEvent.KEYCODE_BUTTON_R1),
-    L2(R.string.pad_l2, KeyEvent.KEYCODE_BUTTON_L2),
-    R2(R.string.pad_r2, KeyEvent.KEYCODE_BUTTON_R2),
-    SELECT(R.string.pad_select, KeyEvent.KEYCODE_BUTTON_SELECT),
-    START(R.string.pad_start, KeyEvent.KEYCODE_BUTTON_START),
-    L3(R.string.pad_l3, KeyEvent.KEYCODE_BUTTON_THUMBL),
-    R3(R.string.pad_r3, KeyEvent.KEYCODE_BUTTON_THUMBR),
-    RIGHT_STICK_X(R.string.pad_right_stick_x, stick = true),
-    RIGHT_STICK_Y(R.string.pad_right_stick_y, stick = true),
+/** Axe du stick droit demandé par une étape de la configuration. */
+internal enum class StickAxis { X, Y }
+
+/**
+ * Étape de la configuration : un bouton de la console (libellé [label] de sa manette, bouton
+ * RetroPad [retroKey]) ou un axe du stick droit ([stick]) ; [labelRes] le décrit (croix, stick).
+ */
+internal data class MappingStep(
+    val label: String? = null,
+    @StringRes val labelRes: Int = 0,
+    val retroKey: Int = 0,
+    val stick: StickAxis? = null,
+)
+
+/**
+ * Étapes de la configuration pour la manette d'une console ([layout]) : croix, boutons (rangée du
+ * bas d'abord), tranches, Select / Start, puis sticks. Boutons C de la Nintendo 64 : stick droit.
+ */
+internal fun mappingSteps(layout: PadLayout): List<MappingStep> = buildList {
+    add(MappingStep(labelRes = R.string.pad_up, retroKey = KeyEvent.KEYCODE_DPAD_UP))
+    add(MappingStep(labelRes = R.string.pad_down, retroKey = KeyEvent.KEYCODE_DPAD_DOWN))
+    add(MappingStep(labelRes = R.string.pad_left, retroKey = KeyEvent.KEYCODE_DPAD_LEFT))
+    add(MappingStep(labelRes = R.string.pad_right, retroKey = KeyEvent.KEYCODE_DPAD_RIGHT))
+    layout.buttons.filter { it.rightStick == null }
+        .sortedWith(compareByDescending<PadButton> { it.y }.thenBy { it.x })
+        .forEach { add(MappingStep(it.label, retroKey = it.key)) }
+    (layout.left.reversed() + layout.right).forEach { add(MappingStep(it.label, retroKey = it.key)) }
+    layout.select?.let { add(MappingStep(it, retroKey = KeyEvent.KEYCODE_BUTTON_SELECT)) }
+    layout.start?.let { add(MappingStep(it, retroKey = KeyEvent.KEYCODE_BUTTON_START)) }
+    if (layout.thumbs) {
+        add(MappingStep("L3", R.string.pad_l3, KeyEvent.KEYCODE_BUTTON_THUMBL))
+        add(MappingStep("R3", R.string.pad_r3, KeyEvent.KEYCODE_BUTTON_THUMBR))
+    }
+    val cButtons = layout.buttons.mapNotNull { b -> b.rightStick?.let { b.label to it } }
+    if (cButtons.isNotEmpty() || layout.thumbs) {
+        add(MappingStep(cButtons.firstOrNull { it.second.x > 0 }?.first, R.string.pad_right_stick_x, stick = StickAxis.X))
+        add(MappingStep(cButtons.firstOrNull { it.second.y > 0 }?.first, R.string.pad_right_stick_y, stick = StickAxis.Y))
+    }
 }
 
-/** Configurations mémorisées par modèle de manette (fabricant, produit, nom). */
-internal class GamepadMappings(context: Context) {
+/**
+ * Configurations mémorisées par console ([systemId]) et modèle de manette (fabricant, produit, nom).
+ * Sans configuration pour la console : celle faite pour toutes les consoles (anciennes versions).
+ */
+internal class GamepadMappings(context: Context, private val systemId: String) {
 
     private val prefs = context.getSharedPreferences("libretro_gamepads", Context.MODE_PRIVATE)
     private val cache = HashMap<String, GamepadMapping?>()
@@ -66,21 +87,32 @@ internal class GamepadMappings(context: Context) {
 
     fun keyOf(device: InputDevice) = "${device.vendorId}:${device.productId}:${device.name}"
 
+    private fun systemKey(deviceKey: String) = if (systemId.isEmpty()) deviceKey else "$systemId/$deviceKey"
+
     fun get(device: InputDevice): GamepadMapping? {
         val key = keyOf(device)
-        return cache.getOrPut(key) {
-            prefs.getString(key, null)?.let { runCatching { json.decodeFromString(GamepadMapping.serializer(), it) }.getOrNull() }
-        }
+        return cache.getOrPut(key) { load(systemKey(key)) ?: load(key) }
     }
+
+    private fun load(prefKey: String): GamepadMapping? =
+        prefs.getString(prefKey, null)?.let { runCatching { json.decodeFromString(GamepadMapping.serializer(), it) }.getOrNull() }
 
     fun save(deviceKey: String, mapping: GamepadMapping) {
         cache[deviceKey] = mapping
         // commit() : le processus de jeu est arrêté brutalement en quittant.
-        prefs.edit().putString(deviceKey, json.encodeToString(GamepadMapping.serializer(), mapping)).commit()
+        prefs.edit().putString(systemKey(deviceKey), json.encodeToString(GamepadMapping.serializer(), mapping)).commit()
     }
 
+    /**
+     * Correspondance par défaut d'Android pour cette console : configuration vide, qui masque aussi
+     * celle faite pour toutes les consoles.
+     */
     fun clear(deviceKey: String) {
-        cache[deviceKey] = null
-        prefs.edit().remove(deviceKey).commit()
+        if (systemId.isEmpty()) {
+            cache[deviceKey] = null
+            prefs.edit().remove(deviceKey).commit()
+        } else {
+            save(deviceKey, GamepadMapping())
+        }
     }
 }

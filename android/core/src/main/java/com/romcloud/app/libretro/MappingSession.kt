@@ -14,13 +14,15 @@ import kotlin.math.roundToInt
 import kotlin.math.sign
 
 /**
- * Configuration d'une manette, étape par étape ([MappingStep]) : l'utilisateur appuie sur chaque
- * bouton demandé (touche ou gâchette analogique), puis pousse le stick droit. La première manette
+ * Configuration d'une manette pour une console, étape par étape ([steps], d'après la manette de la
+ * console) : l'utilisateur appuie sur chaque bouton demandé (touche ou gâchette analogique), puis
+ * pousse le stick droit. La première manette
  * utilisée est celle configurée ; appuyer de nouveau sur la dernière touche passe l'étape.
  * [onDone] reçoit le message à afficher en fin de configuration.
  */
 internal class MappingSession(
     private val mappings: GamepadMappings,
+    val steps: List<MappingStep>,
     private val onDone: (messageRes: Int) -> Unit,
 ) {
     var deviceName by mutableStateOf<String?>(null)
@@ -31,7 +33,11 @@ internal class MappingSession(
     var message by mutableStateOf<Int?>(null)
         private set
 
-    val step: MappingStep? get() = MappingStep.entries.getOrNull(stepIndex)
+    /** Étapes dont le bouton a été attribué (pas celles passées). */
+    var done by mutableStateOf(emptySet<MappingStep>())
+        private set
+
+    val step: MappingStep? get() = steps.getOrNull(stepIndex)
 
     private var deviceId: Int? = null
     private var deviceKey: String? = null
@@ -75,12 +81,13 @@ internal class MappingSession(
         val current = step ?: return true
         when {
             code == lastKey -> skip()
-            current.stick -> Unit
+            current.stick != null -> Unit
             code in keys -> message = R.string.pad_already_used
             else -> {
                 keys[code] = current.retroKey
                 lastKey = code
                 settling = true
+                done += current
                 next()
             }
         }
@@ -113,10 +120,10 @@ internal class MappingSession(
             if (abs(delta(axis)) > 0.6f) candidate = axis to sign(delta(axis))
         } else if (abs(delta(pending.first)) < 0.3f) {
             val (axis, direction) = pending
-            when (current) {
-                MappingStep.RIGHT_STICK_X -> rightX = axis to (direction < 0)
-                MappingStep.RIGHT_STICK_Y -> rightY = axis to (direction < 0)
-                else -> {
+            when (current.stick) {
+                StickAxis.X -> rightX = axis to (direction < 0)
+                StickAxis.Y -> rightY = axis to (direction < 0)
+                null -> {
                     axes += AxisButton(axis, rest[axis] ?: 0f, direction, current.retroKey)
                     // Certaines manettes envoient aussi une touche pour la gâchette : même bouton.
                     heldKeys.filterNot { it in keys }.forEach { keys[it] = current.retroKey }
@@ -124,6 +131,7 @@ internal class MappingSession(
                 }
             }
             lastKey = null
+            done += current
             next()
         }
         return true
@@ -148,7 +156,7 @@ internal class MappingSession(
         candidate = null
         message = null
         stepIndex++
-        if (stepIndex < MappingStep.entries.size) return
+        if (stepIndex < steps.size) return
         mappings.save(
             deviceKey ?: return,
             GamepadMapping(
