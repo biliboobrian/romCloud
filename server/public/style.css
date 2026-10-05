@@ -234,6 +234,16 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .error-cell pre { white-space: pre-wrap; font-size: 11px; max-height: 240px; overflow: auto; margin: 6px 0 0; }
 .user-head { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .user-head h4 { font-size: 18px; margin: 4px 0 0; }
+/* Fenêtre des utilisateurs : large et haute ; détail d'un profil sur deux colonnes. */
+#usersDialog { width: min(1600px, calc(100vw - 32px)); height: calc(100vh - 40px); }
+#usersDialog[open] { display: flex; flex-direction: column; }
+#usersDialog .dup-body { flex: 1; max-height: none; }
+.user-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; align-items: start; }
+.user-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.user-section h4 { margin: 0; }
+.user-section .table-wrap { max-height: 42vh; overflow: auto; }
+.user-section .table th { position: sticky; top: 0; z-index: 1; }
+@media (max-width: 1100px) { .user-grid { grid-template-columns: minmax(0, 1fr); } }
 
 .toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
 .toast { background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 8px; box-shadow: var(--shadow); max-width: 360px; }
