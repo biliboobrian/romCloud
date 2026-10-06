@@ -1,7 +1,6 @@
 package com.romcloud.app.stream
 
 import android.graphics.Bitmap
-import android.graphics.Paint
 import android.graphics.Rect
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
@@ -65,13 +64,15 @@ class StreamSender(
     private val surfaceLock = Any()
     private var inputSurface: Surface? = null
     private var captureThread: HandlerThread? = null
+    private var captureHandler: Handler? = null
+    private var renderer: EncoderRenderer? = null
 
     fun start() {
         running = true
         thread(name = "stream-connect") {
             try {
                 connectAndRun()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w(TAG, "stream failed", e)
                 if (connected) finish(null) else finish(e.message ?: e.javaClass.simpleName, describe(e))
             }
@@ -217,20 +218,20 @@ class StreamSender(
         startCapture(width, height)
     }
 
-    /** Copie l'image du jeu (au plus [FPS] fois par seconde) sur la surface de l'encodeur. */
+    /**
+     * Copie l'image du jeu (au plus [FPS] fois par seconde) puis la dessine sur la surface de
+     * l'encodeur (OpenGL ES, [EncoderRenderer]), le tout sur le thread « stream-capture ».
+     */
     private fun startCapture(width: Int, height: Int) {
         val handlerThread = HandlerThread("stream-capture").also { it.start() }
         captureThread = handlerThread
         val handler = Handler(handlerThread.looper)
+        captureHandler = handler
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val destination = Rect(0, 0, width, height)
-        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
 
         fun draw() = synchronized(surfaceLock) {
-            val surface = inputSurface ?: return@synchronized
-            val canvas = runCatching { surface.lockHardwareCanvas() }.getOrNull() ?: return@synchronized
-            canvas.drawBitmap(bitmap, null, destination, paint)
-            surface.unlockCanvasAndPost(canvas)
+            if (inputSurface == null) return@synchronized
+            renderer?.draw(bitmap, System.nanoTime())
         }
 
         lateinit var capture: () -> Unit
@@ -243,14 +244,37 @@ class StreamSender(
                 return@capture
             }
             val area = StreamProtocol.gameArea(view.width, view.height, aspect())
-            runCatching {
+            try {
                 PixelCopy.request(view, Rect(area.left, area.top, area.right, area.bottom), bitmap, { result ->
-                    if (result == PixelCopy.SUCCESS && running) draw()
-                    handler.postAtTime(capture, began + FRAME_MS)
+                    try {
+                        if (result == PixelCopy.SUCCESS && running) draw()
+                        handler.postAtTime(capture, began + FRAME_MS)
+                    } catch (e: Throwable) {
+                        fail(e)
+                    }
                 }, handler)
-            }.onFailure { handler.postDelayed(capture, 200) }
+            } catch (e: IllegalArgumentException) {
+                // Surface du jeu indisponible un instant (rotation, retour au premier plan).
+                handler.postDelayed(capture, 200)
+            }
         }
-        handler.post(capture)
+        handler.post {
+            try {
+                synchronized(surfaceLock) {
+                    val surface = inputSurface ?: return@post
+                    renderer = EncoderRenderer(surface, width, height)
+                }
+                capture()
+            } catch (e: Throwable) {
+                fail(e)
+            }
+        }
+    }
+
+    /** Erreur pendant la diffusion : arrêt de la diffusion (le jeu continue), cause signalée. */
+    private fun fail(e: Throwable) {
+        Log.w(TAG, "stream error", e)
+        finish(I18n.get(R.string.stream_error, e.message ?: e.javaClass.simpleName), describe(e))
     }
 
     private fun sendVideo(codec: MediaCodec) {
@@ -270,8 +294,10 @@ class StreamSender(
                 }
                 codec.releaseOutputBuffer(index, false)
             }
-        } catch (_: Exception) {
-            finish(null)
+        } catch (e: IOException) {
+            finish(null) // TV déconnectée
+        } catch (e: Throwable) {
+            if (running) fail(e)
         } finally {
             synchronized(surfaceLock) {
                 runCatching { codec.stop() }
@@ -302,8 +328,10 @@ class StreamSender(
                 }
                 send(StreamProtocol.AUDIO, System.nanoTime() / 1000, bytes, count * 2)
             }
-        } catch (_: Exception) {
-            finish(null)
+        } catch (e: IOException) {
+            finish(null) // TV déconnectée
+        } catch (e: Throwable) {
+            if (running) fail(e)
         }
     }
 
@@ -317,6 +345,13 @@ class StreamSender(
         running = false
         StreamTap.setCapture(enabled = false, muteLocal = false)
         runCatching { socket?.close() }
+        // Contexte OpenGL libéré sur son thread, avant l'arrêt de celui-ci.
+        captureHandler?.post {
+            synchronized(surfaceLock) {
+                runCatching { renderer?.release() }
+                renderer = null
+            }
+        }
         captureThread?.quitSafely()
         main.post { onEvent(Event.Stopped(error, details)) }
     }

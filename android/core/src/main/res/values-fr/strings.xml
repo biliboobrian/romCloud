@@ -451,6 +451,7 @@
     <string name="stream_failed">Diffusion sur la TV impossible : %1$s</string>
     <string name="stream_unreachable">%1$s est injoignable : le téléphone et la TV doivent être sur le même réseau.</string>
     <string name="stream_refused">%1$s a refusé la diffusion.</string>
+    <string name="stream_error">erreur de diffusion (%1$s)</string>
     <string name="stream_menu_stop">Arrêter la diffusion sur la TV</string>
     <string name="stream_menu_start">Diffuser sur %1$s</string>
     <string name="stream_tv_from">Jeu diffusé depuis %1$s</string>
