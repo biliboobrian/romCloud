@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -51,6 +52,9 @@ class TvActivity : ComponentActivity() {
         setContent {
             TvTheme { TvRoot(app, this) }
         }
+        // Application au premier plan : prête à recevoir un jeu diffusé depuis un téléphone du profil.
+        val streamHost = TvStreamHost(this, app)
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { streamHost.run() } }
     }
 }
 

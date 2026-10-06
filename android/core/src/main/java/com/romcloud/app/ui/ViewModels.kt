@@ -13,6 +13,7 @@ import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.OnlineSave
 import com.romcloud.app.data.Player
+import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulator
@@ -41,6 +42,7 @@ fun RomCloudApp.play(
     game: Game,
     emulatorClosed: Boolean = false,
     resume: Boolean = false,
+    stream: StreamReceiver? = null,
 ): String? {
     val file = library.fileFor(system, game)
     val player = launcher.selectedPlayer(system, game.fileName)
@@ -51,7 +53,7 @@ fun RomCloudApp.play(
         }
     }
     return try {
-        launcher.launch(activity, system, file, player, resume, game.id)
+        launcher.launch(activity, system, file, player, resume, game.id, stream)
         // Émulateur externe : temps de jeu compté jusqu'au retour dans l'application (l'émulateur
         // intégré compte lui-même le temps de la partie affichée).
         if (player?.libretroCore == null) account.startExternalSession(game.id)
@@ -352,7 +354,11 @@ class GameDetailViewModel(
         val canResume: Boolean = false,
         /** État de sauvegarde en ligne du profil (émulateur intégré), récupéré au lancement s'il est plus récent. */
         val onlineSave: OnlineSave? = null,
-    )
+        /** TV du profil allumées avec RomCloud ouvert : « Jouer sur la TV » (émulateur intégré). */
+        val tvs: List<StreamReceiver> = emptyList(),
+    ) {
+        val canStream: Boolean get() = downloaded && selectedPlayer?.libretroCore != null && tvs.isNotEmpty()
+    }
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -369,6 +375,16 @@ class GameDetailViewModel(
         }
         viewModelScope.launch {
             app.downloader.events.collect { if (it is DownloadEvent.Completed && it.system.id == systemId) refreshLocal() }
+        }
+        // TV du profil prêtes à recevoir (allumées, RomCloud ouvert) : relues régulièrement (téléphone).
+        if (!app.account.isTv) viewModelScope.launch {
+            while (true) {
+                if (app.account.state.value.signedIn) {
+                    val tvs = app.account.streamReceivers()
+                    _state.update { it.copy(tvs = tvs) }
+                }
+                delay(TV_POLL_MS)
+            }
         }
     }
 
@@ -449,11 +465,15 @@ class GameDetailViewModel(
         }
     }
 
-    /** [resume] : reprend la partie sauvegardée dans l'émulateur intégré. */
-    fun play(activity: Activity, resume: Boolean = false): String? {
+    /** [resume] : reprend la partie sauvegardée dans l'émulateur intégré ; [tv] : diffusée sur cette TV. */
+    fun play(activity: Activity, resume: Boolean = false, tv: StreamReceiver? = null): String? {
         val s = _state.value
         val system = s.system ?: return I18n.get(R.string.err_system_not_found)
         val game = s.game ?: return I18n.get(R.string.game_not_found)
-        return app.play(activity, system, game, resume = resume)
+        return app.play(activity, system, game, resume = resume, stream = tv)
+    }
+
+    private companion object {
+        const val TV_POLL_MS = 15_000L
     }
 }

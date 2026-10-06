@@ -457,6 +457,16 @@ api.post('/account/pair/:code/approve', signedIn, (req, res) => {
   res.json(accounts.approvePair(req.params.code, req.auth, accounts.clientInfo(req)));
 });
 
+// Diffusion d'un jeu sur une TV du même profil (la TV s'annonce tant que l'application est ouverte).
+api.put('/account/stream/receiver', signedIn, (req, res) => {
+  res.json(accounts.announceReceiver(req.auth, req.body || {}, accounts.clientInfo(req)));
+});
+api.delete('/account/stream/receiver', signedIn, (req, res) => {
+  accounts.withdrawReceiver(req.auth);
+  res.status(204).end();
+});
+api.get('/account/stream/receivers', signedIn, (req, res) => res.json(accounts.listReceivers(req.auth)));
+
 api.get('/account/playtime', signedIn, (req, res) => res.json(accounts.listPlaytime(req.auth.user.id)));
 api.post('/account/playtime', signedIn, (req, res) => {
   res.json(accounts.addPlaytime(req.auth.user.id, req.body?.gameId, req.body?.seconds));

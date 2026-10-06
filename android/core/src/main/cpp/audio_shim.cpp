@@ -9,15 +9,20 @@
 //   laissé par le cœur). Après l'affichage de LibretroDroid, l'image est copiée à l'écran
 //   (glBlitFramebuffer), centrée à ses proportions dans la zone d'affichage de LibretroDroid ;
 // - boutons lus d'un coup (RETRO_DEVICE_ID_JOYPAD_MASK, comme LRPS2) : LibretroDroid traite cette
-//   demande comme un bouton (toujours relâché) ; le masque est reconstitué bouton par bouton.
+//   demande comme un bouton (toujours relâché) ; le masque est reconstitué bouton par bouton ;
+// - diffusion sur une TV (tous les cœurs passent alors par l'adaptateur) : le son est copié dans une
+//   file lue par l'application (StreamTap, JNI) et peut être coupé sur le téléphone (silence envoyé à
+//   LibretroDroid, même cadence d'émulation) ; proportions de l'image et fréquence du son exposées.
 // Pas de bibliothèque C++ (ni STL, ni variable statique locale) : rien d'autre à embarquer.
 
 #include <GLES3/gl3.h>
 #include <android/log.h>
+#include <jni.h>
 #include <dlfcn.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define LOG_TAG "RomCloudShim"
 #define EXPORT extern "C" __attribute__((visibility("default")))
@@ -72,8 +77,31 @@ static size_t pending_frames = 0;
 static size_t pending_capacity = 0;
 static audio_sample_batch_t batch = nullptr;
 
+// Diffusion : copie du son (section « Diffusion » en fin de fichier) et son coupé sur le téléphone.
+static void tap(const int16_t *data, size_t frames);
+static bool mute_local = false;
+static int16_t *silence = nullptr;
+static size_t silence_frames = 0;
+
+/** Lot transmis à LibretroDroid (silence de même durée si le son est coupé sur le téléphone). */
+static size_t deliver(const int16_t *data, size_t frames) {
+    tap(data, frames);
+    if (__atomic_load_n(&mute_local, __ATOMIC_RELAXED)) {
+        if (frames > silence_frames) {
+            auto grown = static_cast<int16_t *>(realloc(silence, frames * 2 * sizeof(int16_t)));
+            if (grown) {
+                silence = grown;
+                memset(silence, 0, frames * 2 * sizeof(int16_t));
+                silence_frames = frames;
+            }
+        }
+        if (frames <= silence_frames) data = silence;
+    }
+    return batch ? batch(data, frames) : frames;
+}
+
 static void flush() {
-    if (pending_frames && batch) batch(pending, pending_frames);
+    if (pending_frames) deliver(pending, pending_frames);
     pending_frames = 0;
 }
 
@@ -93,7 +121,7 @@ static void on_sample(int16_t left, int16_t right) {
 /** Lot envoyé par le cœur lui-même : après les échantillons isolés reçus avant lui. */
 static size_t on_batch(const int16_t *data, size_t frames) {
     flush();
-    return batch ? batch(data, frames) : frames;
+    return deliver(data, frames);
 }
 
 CORE_FN(void, retro_set_audio_sample, (audio_sample_t cb))
@@ -142,6 +170,14 @@ struct retro_game_geometry {
     unsigned base_width, base_height, max_width, max_height;
     float aspect_ratio;
 };
+struct retro_system_timing {
+    double fps, sample_rate;
+};
+struct retro_av_info {
+    retro_game_geometry geometry;
+    retro_system_timing timing;
+};
+static double sample_rate = 0;
 typedef uintptr_t (*get_current_framebuffer_t)();
 struct retro_hw_render_callback {
     int context_type;
@@ -182,6 +218,7 @@ static bool on_environment(unsigned cmd, void *data) {
     } else if (cmd == SET_SYSTEM_AV_INFO || cmd == SET_GEOMETRY) {
         // retro_system_av_info commence par sa géométrie.
         on_geometry(static_cast<const retro_game_geometry *>(data));
+        if (cmd == SET_SYSTEM_AV_INFO) sample_rate = static_cast<const retro_av_info *>(data)->timing.sample_rate;
     }
     return handled;
 }
@@ -235,6 +272,7 @@ EXPORT void retro_get_system_av_info(retro_system_av_info *info) {
     real_retro_get_system_av_info()(info);
     // retro_system_av_info commence par sa géométrie.
     on_geometry(reinterpret_cast<const retro_game_geometry *>(info));
+    sample_rate = reinterpret_cast<const retro_av_info *>(info)->timing.sample_rate;
 }
 FORWARD(void, retro_set_input_poll, (input_poll_t cb), (cb))
 // --- Boutons lus d'un coup (RETRO_DEVICE_ID_JOYPAD_MASK) ---
@@ -259,3 +297,54 @@ EXPORT void retro_set_input_state(input_state_t cb) {
     frontend_input = cb;
     real_retro_set_input_state()(on_input_state);
 }
+
+// --- Diffusion sur une TV (StreamTap) ---
+
+// File circulaire du son copié (gauche, droite entrelacés) : écrite par le thread d'émulation, lue
+// par le thread de diffusion ; pleine, les nouveaux échantillons sont perdus.
+const size_t RING_SAMPLES = 1 << 17;  // ~1,4 s en stéréo à 48 kHz
+static int16_t ring[RING_SAMPLES];
+static size_t ring_write = 0, ring_read = 0;  // compteurs croissants (modulo RING_SAMPLES à l'usage)
+static bool capturing = false;
+
+static void tap(const int16_t *data, size_t frames) {
+    if (!__atomic_load_n(&capturing, __ATOMIC_ACQUIRE) || !data) return;
+    size_t write = __atomic_load_n(&ring_write, __ATOMIC_RELAXED);
+    size_t read = __atomic_load_n(&ring_read, __ATOMIC_ACQUIRE);
+    size_t count = frames * 2;
+    if (count > RING_SAMPLES - (write - read)) count = (RING_SAMPLES - (write - read)) & ~(size_t)1;
+    for (size_t i = 0; i < count; i++) ring[(write + i) & (RING_SAMPLES - 1)] = data[i];
+    __atomic_store_n(&ring_write, write + count, __ATOMIC_RELEASE);
+}
+
+#define JNI_FN(ret, name) EXPORT JNIEXPORT ret JNICALL Java_com_romcloud_app_stream_StreamTap_##name
+
+/** Le cœur passe-t-il par l'adaptateur (son copiable) ? */
+JNI_FN(jboolean, nativeActive)(JNIEnv *, jobject) { return core != nullptr; }
+
+/** Copie du son (file vidée au démarrage) ; [mute] : silence sur le téléphone. */
+JNI_FN(void, nativeSetCapture)(JNIEnv *, jobject, jboolean enabled, jboolean mute) {
+    if (enabled) __atomic_store_n(&ring_read, __atomic_load_n(&ring_write, __ATOMIC_ACQUIRE), __ATOMIC_RELEASE);
+    __atomic_store_n(&capturing, (bool)enabled, __ATOMIC_RELEASE);
+    __atomic_store_n(&mute_local, (bool)(enabled && mute), __ATOMIC_RELAXED);
+}
+
+/** Échantillons disponibles copiés dans [buffer] (nombre pair : gauche, droite) ; renvoie leur nombre. */
+JNI_FN(jint, nativeRead)(JNIEnv *env, jobject, jshortArray buffer) {
+    size_t read = __atomic_load_n(&ring_read, __ATOMIC_RELAXED);
+    size_t write = __atomic_load_n(&ring_write, __ATOMIC_ACQUIRE);
+    size_t count = write - read;
+    size_t capacity = (size_t)env->GetArrayLength(buffer) & ~(size_t)1;
+    if (count > capacity) count = capacity;
+    if (!count) return 0;
+    jshort *out = env->GetShortArrayElements(buffer, nullptr);
+    for (size_t i = 0; i < count; i++) out[i] = ring[(read + i) & (RING_SAMPLES - 1)];
+    env->ReleaseShortArrayElements(buffer, out, 0);
+    __atomic_store_n(&ring_read, read + count, __ATOMIC_RELEASE);
+    return (jint)count;
+}
+
+JNI_FN(jdouble, nativeSampleRate)(JNIEnv *, jobject) { return sample_rate; }
+
+/** Proportions de l'image du jeu (largeur / hauteur), 0 si inconnues. */
+JNI_FN(jfloat, nativeAspectRatio)(JNIEnv *, jobject) { return aspect_ratio; }

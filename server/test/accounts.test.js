@@ -92,6 +92,31 @@ test('TV connectée par QR code validé depuis le téléphone', () => {
   assert.equal(accounts.pollPair(pair.code, pair.secret).status, 'expired');
 });
 
+test('diffusion : TV du profil proposées au téléphone, pas aux autres profils', () => {
+  const phoneAuth = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
+  const tvAuth = accounts.authenticate(accounts.login('alice', 'secret1', tv).token, tv);
+  const key = 'a'.repeat(32);
+  assert.equal(status(() => accounts.announceReceiver(phoneAuth, { addresses: ['10.0.0.2'], port: 5000, key }, phone)), 400);
+  assert.equal(status(() => accounts.announceReceiver(tvAuth, { addresses: [], port: 5000, key }, tv)), 400);
+  accounts.announceReceiver(tvAuth, { addresses: ['10.0.0.3'], port: 41000, key, width: 3840, height: 2160 }, tv);
+
+  const [receiver, ...others] = accounts.listReceivers(phoneAuth);
+  assert.equal(others.length, 0);
+  assert.deepEqual(receiver.addresses, ['10.0.0.3']);
+  assert.equal(receiver.port, 41000);
+  assert.equal(receiver.key, key);
+  assert.equal(receiver.device, 'Shield');
+  assert.equal(receiver.height, 2160);
+  // La TV ne se voit pas elle-même ; un autre profil ne la voit pas.
+  assert.equal(accounts.listReceivers(tvAuth).length, 0);
+  accounts.createUser('bob', 'secret1');
+  const bobAuth = accounts.authenticate(accounts.login('bob', 'secret1', phone).token, phone);
+  assert.equal(accounts.listReceivers(bobAuth).length, 0);
+
+  accounts.withdrawReceiver(tvAuth);
+  assert.equal(accounts.listReceivers(phoneAuth).length, 0);
+});
+
 test('temps de jeu cumulé par jeu', () => {
   const { user } = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
   accounts.addPlaytime(user.id, gameId, 600);
