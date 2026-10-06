@@ -2,6 +2,8 @@ package com.romcloud.tv
 
 import android.app.Activity
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.stream.StreamProtocol
 import com.romcloud.core.R
@@ -44,6 +46,7 @@ class TvStreamHost(private val activity: Activity, private val app: RomCloudApp)
     }
 
     private suspend fun serve() = withContext(Dispatchers.IO) {
+        var lastProblem: String? = null
         val server = bind()
         port = server.localPort
         val (width, height) = screenSize()
@@ -52,9 +55,15 @@ class TvStreamHost(private val activity: Activity, private val app: RomCloudApp)
                 launch {
                     while (isActive) {
                         val addresses = localAddresses()
-                        if (addresses.isNotEmpty()) {
+                        val problem = if (addresses.isEmpty()) {
+                            "no local IPv4 address"
+                        } else {
                             runCatching { app.account.announceReceiver(addresses, server.localPort, key, width, height) }
+                                .exceptionOrNull()?.let { "announce: ${it.message ?: it.javaClass.name}" }
                         }
+                        // Annonce impossible : signalée une fois (journal des erreurs de l'administration).
+                        if (problem != null && problem != lastProblem) app.account.reportError("stream-tv", problem, addresses.joinToString())
+                        lastProblem = problem
                         delay(ANNOUNCE_INTERVAL_MS)
                     }
                 }
@@ -137,15 +146,30 @@ class TvStreamHost(private val activity: Activity, private val app: RomCloudApp)
         return w to h
     }
 
-    /** Adresses IPv4 de la TV sur le réseau local (Wi-Fi, Ethernet). */
-    private fun localAddresses(): List<String> = runCatching {
-        NetworkInterface.getNetworkInterfaces().toList()
-            .filter { it.isUp && !it.isLoopback && !it.isVirtual }
-            .flatMap { it.inetAddresses.toList() }
+    /**
+     * Adresses IPv4 de la TV sur le réseau local (Wi-Fi, Ethernet) : réseaux connus d'Android, puis
+     * interfaces réseau si besoin (liste parfois restreinte selon les versions d'Android).
+     */
+    private fun localAddresses(): List<String> {
+        val manager = activity.getSystemService(ConnectivityManager::class.java)
+        @Suppress("DEPRECATION")
+        val fromNetworks = runCatching {
+            manager?.allNetworks.orEmpty()
+                .filter { manager?.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) != true }
+                .flatMap { manager?.getLinkProperties(it)?.linkAddresses.orEmpty() }
+                .map { it.address }
+        }.getOrDefault(emptyList())
+        val fromInterfaces = runCatching {
+            NetworkInterface.getNetworkInterfaces().toList()
+                .filter { it.isUp && !it.isLoopback && !it.isVirtual }
+                .flatMap { it.inetAddresses.toList() }
+        }.getOrDefault(emptyList())
+        return (fromNetworks + fromInterfaces)
             .filterIsInstance<Inet4Address>()
             .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress }
             .mapNotNull { it.hostAddress }
-    }.getOrDefault(emptyList())
+            .distinct()
+    }
 
     private companion object {
         /** Clé à présenter par le téléphone : la même tant que l'application tourne. */

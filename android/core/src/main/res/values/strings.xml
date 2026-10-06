@@ -458,6 +458,7 @@
     <string name="stream_failed">Unable to stream to the TV: %1$s</string>
     <string name="stream_unreachable">%1$s cannot be reached: the phone and the TV must be on the same network.</string>
     <string name="stream_refused">%1$s refused the stream.</string>
+    <string name="stream_error">streaming error (%1$s)</string>
     <string name="stream_menu_stop">Stop streaming to the TV</string>
     <string name="stream_menu_start">Stream to %1$s</string>
     <string name="stream_tv_from">Game streamed from %1$s</string>
