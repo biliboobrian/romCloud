@@ -21,6 +21,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
 import java.net.Inet4Address
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
@@ -43,8 +44,8 @@ class TvStreamHost(private val activity: Activity, private val app: RomCloudApp)
     }
 
     private suspend fun serve() = withContext(Dispatchers.IO) {
-        val server = ServerSocket(0)
-        val key = ByteArray(16).also(SecureRandom()::nextBytes).joinToString("") { "%02x".format(it) }
+        val server = bind()
+        port = server.localPort
         val (width, height) = screenSize()
         try {
             coroutineScope {
@@ -96,6 +97,7 @@ class TvStreamHost(private val activity: Activity, private val app: RomCloudApp)
             }
             val hello = json.decodeFromString(StreamProtocol.Hello.serializer(), input.readUTF())
             if (hello.version != StreamProtocol.VERSION || !MessageDigest.isEqual(hello.key.toByteArray(), key.toByteArray())) {
+                app.account.reportError("stream-tv", "refused ${hello.device}: " + if (hello.version != StreamProtocol.VERSION) "version ${hello.version}" else "key")
                 reply(StreamProtocol.Welcome(ok = false))
                 socket.close()
                 return
@@ -109,9 +111,21 @@ class TvStreamHost(private val activity: Activity, private val app: RomCloudApp)
             reply(StreamProtocol.Welcome(ok = true, width = width, height = height))
             socket.soTimeout = 0
             activity.runOnUiThread { activity.startActivity(Intent(activity, TvStreamActivity::class.java)) }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             runCatching { socket.close() }
+            app.account.reportError("stream-tv", e.message ?: e.javaClass.name, e.stackTraceToString().take(6000))
         }
+    }
+
+    /**
+     * Port d'écoute : le même tant que l'application tourne (le téléphone a pu le lire sur le serveur
+     * juste avant que la TV ne quitte puis ne retrouve le premier plan), sinon un port libre.
+     */
+    private fun bind(): ServerSocket {
+        if (port > 0) {
+            runCatching { return ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(port)) } }
+        }
+        return ServerSocket(0)
     }
 
     /** Définition de l'écran de la TV (mode d'affichage physique, 4K comprise). */
@@ -134,6 +148,9 @@ class TvStreamHost(private val activity: Activity, private val app: RomCloudApp)
     }.getOrDefault(emptyList())
 
     private companion object {
+        /** Clé à présenter par le téléphone : la même tant que l'application tourne. */
+        val key: String = ByteArray(16).also(SecureRandom()::nextBytes).joinToString("") { "%02x".format(it) }
+        @Volatile var port = 0
         const val ANNOUNCE_INTERVAL_MS = 20_000L
         const val HANDSHAKE_TIMEOUT_MS = 8000
     }

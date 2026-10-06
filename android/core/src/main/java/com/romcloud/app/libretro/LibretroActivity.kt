@@ -96,6 +96,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -120,6 +121,8 @@ class LibretroActivity : ComponentActivity() {
     private var menuOpen by mutableStateOf(false)
     private var showTouchPad by mutableStateOf(false)
     private var toast by mutableStateOf<String?>(null)
+    /** Durée d'affichage du message (plus longue pour une erreur à lire en entier). */
+    private var toastMillis = TOAST_MS
     /** Écran « Options du cœur » du menu (null = fermé) et option dont on choisit la valeur. */
     private var options by mutableStateOf<List<CoreOption>?>(null)
     private var editing by mutableStateOf<CoreOption?>(null)
@@ -429,7 +432,11 @@ class LibretroActivity : ComponentActivity() {
     private fun startStreaming(view: GLRetroView, target: StreamReceiver) {
         if (streamSender != null) return
         toast = getString(R.string.stream_connecting, target.name)
-        streamSender = StreamSender(view, target, account.deviceName, rom.nameWithoutExtension) { event ->
+        // TV revenue au premier plan depuis le lancement : port et clé relus sur le serveur.
+        val refresh = {
+            runBlocking { account.streamReceivers() }.let { tvs -> tvs.find { it.id == target.id } ?: tvs.find { it.name == target.name } }
+        }
+        streamSender = StreamSender(view, target, account.deviceName, rom.nameWithoutExtension, refresh) { event ->
             when (event) {
                 StreamSender.Event.Connected -> {
                     streamingTo = target.name
@@ -438,7 +445,11 @@ class LibretroActivity : ComponentActivity() {
                 is StreamSender.Event.Stopped -> {
                     streamSender = null
                     streamingTo = null
-                    if (!isFinishing) toast = event.error?.let { getString(R.string.stream_failed, it) } ?: getString(R.string.stream_stopped)
+                    event.error?.let { account.reportError("stream:$core", it, event.details) }
+                    if (!isFinishing) {
+                        if (event.error != null) toastMillis = ERROR_TOAST_MS
+                        toast = event.error?.let { getString(R.string.stream_failed, it) } ?: getString(R.string.stream_stopped)
+                    }
                 }
             }
         }.also { it.start() }
@@ -765,8 +776,9 @@ class LibretroActivity : ComponentActivity() {
             }
             toast?.let { text ->
                 LaunchedEffect(text) {
-                    delay(2000)
+                    delay(toastMillis)
                     toast = null
+                    toastMillis = TOAST_MS
                 }
                 Surface(
                     color = Color.Black.copy(alpha = 0.7f),
@@ -1095,6 +1107,8 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_RESUME = "resume"
         private const val EXTRA_GAME_ID = "gameId"
         private const val EXTRA_STREAM = "stream"
+        private const val TOAST_MS = 2000L
+        private const val ERROR_TOAST_MS = 8000L
         private const val RETRO_DEVICE_JOYPAD = 1
         private const val RETRO_DEVICE_MASK = 0xff
         private const val AUDIO_SHIM = "libromcloud_audio_shim.so"

@@ -22,6 +22,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.romcloud.app.AppLanguage
+import com.romcloud.app.RomCloudApp
 import com.romcloud.app.stream.StreamProtocol
 import com.romcloud.core.R
 import java.io.DataInputStream
@@ -84,7 +85,14 @@ class TvStreamActivity : ComponentActivity(), SurfaceHolder.Callback {
     override fun surfaceCreated(holder: SurfaceHolder) {
         val s = session ?: return
         if (player != null) return
-        player = Player(s, holder.surface, onFormat = { format -> runOnUiThread { fit(format.width, format.height) } }, onEnd = { runOnUiThread { finish() } })
+        val account = (application as RomCloudApp).account
+        player = Player(
+            s,
+            holder.surface,
+            onFormat = { format -> runOnUiThread { fit(format.width, format.height) } },
+            onError = { e -> account.reportError("stream-tv", e.message ?: e.javaClass.name, "${s.device}: " + e.stackTraceToString().take(6000)) },
+            onEnd = { runOnUiThread { finish() } },
+        )
             .also { it.start() }
     }
 
@@ -121,6 +129,7 @@ class TvStreamActivity : ComponentActivity(), SurfaceHolder.Callback {
         private val session: Session,
         private val surface: Surface,
         private val onFormat: (StreamProtocol.Format) -> Unit,
+        private val onError: (Exception) -> Unit,
         private val onEnd: () -> Unit,
     ) {
         @Volatile private var running = true
@@ -163,8 +172,9 @@ class TvStreamActivity : ComponentActivity(), SurfaceHolder.Callback {
                         }
                     }
                 }
-            } catch (_: Exception) {
-                // Connexion fermée (téléphone ou Retour) ou flux invalide : fin de la diffusion.
+            } catch (e: Exception) {
+                // Connexion fermée (téléphone ou Retour) : fin normale ; autre erreur (décodeur…) signalée.
+                if (running && e !is java.io.IOException) onError(e)
             } finally {
                 running = false
                 runCatching { session.socket.close() }
