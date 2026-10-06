@@ -41,6 +41,10 @@ contextBridge.exposeInMainWorld('romcloud', {
   shell: { showItem: call('shell:showItem'), openExternal: call('shell:openExternal') },
   keyboard: { layout: call('keyboard:layout'), save: call('keyboard:save') },
   app: { version: call('app:version') },
+  player: {
+    resetCore: call('player:resetCore'),
+    onCrash: (fn) => ipcRenderer.on('player:crashed', (_e, crash) => fn(crash)),
+  },
   account: {
     state: call('account:state'),
     register: call('account:register'),

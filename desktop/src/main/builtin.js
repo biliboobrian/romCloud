@@ -104,6 +104,25 @@ function saveKeys(keys) {
 /** État de sauvegarde du jeu dans le moteur (« Sauvegarder et quitter », F2…). */
 const statePath = (core, file) => path.join(root(), 'states', core, `${path.parse(file).name}.state`);
 
+const optionsFile = (systemId) => path.join(root(), 'options', `${safe(systemId)}.cfg`);
+
+let crashListener = () => {};
+/** Moteur arrêté sur une erreur (plantage du cœur, jeu qui ne démarre pas) : l'interface propose de réinitialiser. */
+function onCrash(fn) {
+  crashListener = fn;
+}
+
+/**
+ * Réinitialise un cœur après un plantage : sa DLL est supprimée (téléchargée à nouveau au prochain
+ * lancement, éventuellement corrigée sur le buildbot) et les options du cœur mémorisées pour le
+ * système sont effacées (valeurs par défaut).
+ */
+function resetCore(systemId, core) {
+  if (!libretro.validCore(core)) throw new AppError('errors.coreInvalid', { core });
+  fs.rmSync(coreFile(core), { force: true });
+  if (systemId) fs.rmSync(optionsFile(systemId), { force: true });
+}
+
 /** Sauvegarde du jeu (mémoire de la cartouche) écrite par le moteur : nom de la ROM lancée. */
 const sramPath = (core, rom) => path.join(root(), 'saves', core, `${path.parse(rom).name}.srm`);
 
@@ -127,7 +146,7 @@ async function launch(system, game, file, core, { resume = false } = {}) {
     saveDir: path.join(base, 'saves', core),
     stateDir: path.join(base, 'states', core),
     stateName: path.parse(file).name,
-    optionsFile: path.join(base, 'options', `${safe(system.id)}.cfg`),
+    optionsFile: optionsFile(system.id),
     title: game.title || path.parse(file).name,
     language: settings.language(),
     windowed: false,
@@ -152,7 +171,11 @@ async function launch(system, game, file, core, { resume = false } = {}) {
       child.once('exit', (code) => {
         account.addPlaytime(game.id, (Date.now() - started) / 1000);
         account.uploadChanged(game.id, core, saveFiles, started - 2000);
-        if (code) account.reportError({ context: `player:${core}`, message: `romcloud-player exit code ${code}`, details: lastLog(base) });
+        if (code) {
+          const log = lastLog(base);
+          account.reportError({ context: `player:${core}`, message: `romcloud-player exit code ${code}`, details: log });
+          crashListener({ system: { id: system.id, name: system.name }, game: { id: game.id, title: game.title }, core, code, log });
+        }
       });
       resolve();
     });
@@ -168,4 +191,4 @@ function lastLog(base) {
   }
 }
 
-module.exports = { playerPath, available, coreInstalled, ensureCore, prepareRom, statePath, launch, loadKeys, saveKeys };
+module.exports = { playerPath, available, coreInstalled, ensureCore, prepareRom, statePath, launch, loadKeys, saveKeys, onCrash, resetCore };
