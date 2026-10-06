@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.PixelCopy
 import android.view.Surface
 import android.view.SurfaceView
@@ -37,16 +38,21 @@ import kotlin.concurrent.thread
  */
 class StreamSender(
     private val view: SurfaceView,
-    private val target: StreamReceiver,
+    private var target: StreamReceiver,
     private val device: String,
     private val title: String,
+    /** Informations de la TV relues sur le serveur (port ou clé changés depuis le lancement) ; appelé hors du thread principal. */
+    private val refreshTarget: () -> StreamReceiver?,
     private val onEvent: (Event) -> Unit,
 ) {
     sealed interface Event {
         data object Connected : Event
 
-        /** Diffusion terminée ; [error] : échec de la connexion à la TV (null : arrêt normal). */
-        data class Stopped(val error: String?) : Event
+        /**
+         * Diffusion terminée ; [error] : échec de la connexion à la TV (null : arrêt normal),
+         * [details] : cause complète (journal des erreurs de l'administration).
+         */
+        data class Stopped(val error: String?, val details: String? = null) : Event
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -66,7 +72,8 @@ class StreamSender(
             try {
                 connectAndRun()
             } catch (e: Exception) {
-                finish(if (connected) null else e.message ?: e.javaClass.simpleName)
+                Log.w(TAG, "stream failed", e)
+                if (connected) finish(null) else finish(e.message ?: e.javaClass.simpleName, describe(e))
             }
         }
     }
@@ -74,33 +81,65 @@ class StreamSender(
     /** Arrête la diffusion (le jeu continue sur le téléphone, avec son). */
     fun stop() = finish(null)
 
+    /** Échec de la connexion ou refus de la TV : un nouvel essai est possible avec des informations relues. */
+    private class HandshakeException(message: String, cause: Throwable? = null) : IOException(message, cause)
+
+    /** Cause complète d'un échec, pour le journal des erreurs. */
+    private fun describe(e: Throwable): String =
+        "TV ${target.name} ${target.addresses.joinToString()} port ${target.port} (${target.width}x${target.height})\n" +
+            e.stackTraceToString().take(6000)
+
     private fun connect(): Socket {
+        val failures = mutableListOf<String>()
         for (address in target.addresses) {
             val s = Socket()
             try {
                 s.tcpNoDelay = true
                 s.connect(InetSocketAddress(address, target.port), CONNECT_TIMEOUT_MS)
                 return s
-            } catch (_: IOException) {
+            } catch (e: IOException) {
                 runCatching { s.close() }
+                failures += "$address:${target.port} (${e.message ?: e.javaClass.simpleName})"
             }
         }
-        throw IOException(I18n.get(R.string.stream_unreachable, target.name))
+        throw HandshakeException(I18n.get(R.string.stream_unreachable, target.name) + "\n" + failures.joinToString("\n"))
+    }
+
+    /** Connexion et présentation de la clé ; renvoie la connexion acceptée et la réponse de la TV. */
+    private fun handshake(): Triple<Socket, DataInputStream, StreamProtocol.Welcome> {
+        val s = connect()
+        try {
+            val input = DataInputStream(BufferedInputStream(s.getInputStream()))
+            val out = DataOutputStream(s.getOutputStream())
+            val json = StreamProtocol.json
+            out.writeUTF(json.encodeToString(StreamProtocol.Hello.serializer(), StreamProtocol.Hello(key = target.key, device = device, title = title)))
+            out.flush()
+            s.soTimeout = HANDSHAKE_TIMEOUT_MS
+            val welcome = json.decodeFromString(StreamProtocol.Welcome.serializer(), input.readUTF())
+            s.soTimeout = 0
+            if (!welcome.ok) throw HandshakeException(welcome.error ?: I18n.get(R.string.stream_refused, target.name))
+            return Triple(s, input, welcome)
+        } catch (e: Exception) {
+            runCatching { s.close() }
+            throw e as? HandshakeException
+                ?: HandshakeException(I18n.get(R.string.stream_refused, target.name) + " (${e.message ?: e.javaClass.simpleName})", e)
+        }
     }
 
     private fun connectAndRun() {
-        val s = connect()
+        val (s, input, welcome) = try {
+            handshake()
+        } catch (e: HandshakeException) {
+            // TV revenue au premier plan, redémarrée… : port ou clé relus sur le serveur, un nouvel essai.
+            val fresh = refreshTarget()?.takeIf { it.port != target.port || it.key != target.key || it.addresses != target.addresses }
+                ?: throw e
+            target = fresh
+            handshake()
+        }
         socket = s
         if (!running) throw IOException("stopped")
-        val input = DataInputStream(BufferedInputStream(s.getInputStream()))
         val out = DataOutputStream(BufferedOutputStream(s.getOutputStream(), 64 * 1024))
         val json = StreamProtocol.json
-        out.writeUTF(json.encodeToString(StreamProtocol.Hello.serializer(), StreamProtocol.Hello(key = target.key, device = device, title = title)))
-        out.flush()
-        s.soTimeout = HANDSHAKE_TIMEOUT_MS
-        val welcome = json.decodeFromString(StreamProtocol.Welcome.serializer(), input.readUTF())
-        s.soTimeout = 0
-        if (!welcome.ok) throw IOException(welcome.error ?: I18n.get(R.string.stream_refused, target.name))
 
         val tvWidth = welcome.width.takeIf { it > 0 } ?: target.width ?: 0
         val tvHeight = welcome.height.takeIf { it > 0 } ?: target.height ?: 0
@@ -148,18 +187,30 @@ class StreamSender(
 
     // ---- Image ----
 
-    private fun startVideo(width: Int, height: Int) {
-        val format = MediaFormat.createVideoFormat(MIME, width, height).apply {
+    private fun videoFormat(width: Int, height: Int, lowLatency: Boolean) =
+        MediaFormat.createVideoFormat(MIME, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, (width.toLong() * height * FPS / 8).toInt().coerceIn(MIN_BITRATE, MAX_BITRATE))
             setInteger(MediaFormat.KEY_FRAME_RATE, FPS)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
-            setInteger(MediaFormat.KEY_PRIORITY, 0) // temps réel
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setInteger(MediaFormat.KEY_LATENCY, 1)
+            if (lowLatency) {
+                setInteger(MediaFormat.KEY_PRIORITY, 0) // temps réel
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setInteger(MediaFormat.KEY_LATENCY, 1)
+            }
         }
-        val codec = MediaCodec.createEncoderByType(MIME)
-        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+
+    private fun startVideo(width: Int, height: Int) {
+        var codec = MediaCodec.createEncoderByType(MIME)
+        try {
+            codec.configure(videoFormat(width, height, lowLatency = true), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        } catch (e: Exception) {
+            // Réglages de faible latence refusés par cet encodeur : format de base.
+            Log.w(TAG, "low-latency encoder format refused", e)
+            codec.release()
+            codec = MediaCodec.createEncoderByType(MIME)
+            codec.configure(videoFormat(width, height, lowLatency = false), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        }
         inputSurface = codec.createInputSurface()
         codec.start()
         thread(name = "stream-video") { sendVideo(codec) }
@@ -261,13 +312,13 @@ class StreamSender(
         synchronized(writeLock) { StreamProtocol.writePacket(out, type, ptsUs, data, length) }
     }
 
-    private fun finish(error: String?) {
+    private fun finish(error: String?, details: String? = null) {
         if (!finished.compareAndSet(false, true)) return
         running = false
         StreamTap.setCapture(enabled = false, muteLocal = false)
         runCatching { socket?.close() }
         captureThread?.quitSafely()
-        main.post { onEvent(Event.Stopped(error)) }
+        main.post { onEvent(Event.Stopped(error, details)) }
     }
 
     private companion object {
@@ -276,7 +327,8 @@ class StreamSender(
         const val FRAME_MS = 1000L / FPS
         const val MIN_BITRATE = 4_000_000
         const val MAX_BITRATE = 16_000_000
-        const val CONNECT_TIMEOUT_MS = 3000
+        const val TAG = "RomCloudStream"
+        const val CONNECT_TIMEOUT_MS = 5000
         const val HANDSHAKE_TIMEOUT_MS = 8000
     }
 }
