@@ -66,6 +66,7 @@ import com.romcloud.app.ui.formatSize
 import com.romcloud.app.ui.PlaytimeLabel
 import com.romcloud.app.ui.gamePlaytime
 import com.romcloud.app.ui.OnlineSaveLabel
+import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.core.R
 
 @Composable
@@ -230,6 +231,7 @@ fun TvGameDetailScreen(
                 TvGameInfo(gameFacts(game))
             }
         }
+        OfflineBadge(Modifier.align(Alignment.TopEnd).padding(top = 27.dp, end = 48.dp), size = 40.dp, explainOnClick = false)
     }
 
     if (pickEmulator) {

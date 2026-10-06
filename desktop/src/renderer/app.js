@@ -26,6 +26,8 @@
     cast: { status: 'idle', device: null, error: null },
     account: { signedIn: false }, // profil du joueur sur le serveur
     playtime: {}, // temps de jeu du profil : { [gameId]: secondes }
+    connectivity: { online: true, pending: 0 }, // serveur joignable ; envois en attente
+    localSystems: new Set(), // systèmes avec des jeux sur le PC (seuls affichés hors ligne)
   };
 
   // ---------------------------------------------------------------------------
@@ -39,6 +41,7 @@
     search: 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
     close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
     play: 'M8 5v14l11-7z',
+    cloudOff: 'M19.35 10.04A7.49 7.49 0 0 0 12 4c-1.48 0-2.85.43-4.01 1.17l1.46 1.46A5.497 5.497 0 0 1 17.5 11v.5H19c1.66 0 3 1.34 3 3 0 1.13-.64 2.11-1.56 2.62l1.45 1.45C23.16 17.16 24 15.68 24 14c0-2.64-2.05-4.78-4.65-4.96zM3 5.27l2.75 2.74C2.56 8.15 0 10.77 0 14c0 3.31 2.69 6 6 6h11.73l2 2L21 20.73 4.27 4 3 5.27zM7.73 10l8 8H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h1.73z',
     cloud: 'M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z',
     check: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
     error: 'M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z',
@@ -188,7 +191,10 @@
   // Bouton du profil (à gauche de celui des paramètres) : coloré quand un joueur est connecté.
   const profileTitle = () => (S.account.signedIn ? t('profile.signedInAs', { name: S.account.username }) : t('profile.button'));
   const profileBtn = () => `<button class="icon-btn${S.account.signedIn ? ' signed-in' : ''}" data-action="profile" title="${esc(profileTitle())}">${icon('user')}</button>`;
-  const settingsBtn = () => `<button class="icon-btn${S.cast.status === 'idle' ? '' : ' casting'}" data-action="cast" title="${esc(castBtnTitle())}">${castBtnInner()}</button>`
+  // Pastille « hors ligne », placée avant ces boutons sur chaque écran.
+  const offlineTitle = () => [t('offline.badge'), S.connectivity.pending ? t('offline.pending', { n: S.connectivity.pending }) : ''].filter(Boolean).join(' ');
+  const offlineBadge = () => `<span class="offline-badge${S.connectivity.online ? ' hidden' : ''}" data-offline title="${esc(offlineTitle())}">${icon('cloudOff', 20)}</span>`;
+  const settingsBtn = () => offlineBadge() + `<button class="icon-btn${S.cast.status === 'idle' ? '' : ' casting'}" data-action="cast" title="${esc(castBtnTitle())}">${castBtnInner()}</button>`
     + profileBtn()
     + `<button class="icon-btn" data-action="settings" title="${esc(t('app.settings'))}">${icon('gear')}</button>`;
 
@@ -295,7 +301,54 @@
     }
   }
 
-  rc.account.onUpdate(() => refreshAccount());
+  rc.account.onUpdate(() => {
+    refreshAccount();
+    call(rc.connectivity.state).then(paintConnectivity).catch(() => {});
+  });
+
+  // ---------------------------------------------------------------------------
+  // Connexion au serveur : pastille « hors ligne », synchronisation au retour
+  // ---------------------------------------------------------------------------
+
+  function paintConnectivity(state) {
+    S.connectivity = { online: state.online, pending: state.pending || 0 };
+    for (const el of $$('[data-offline]')) {
+      el.classList.toggle('hidden', state.online);
+      el.title = offlineTitle();
+    }
+  }
+
+  /** Écran affiché redessiné après un changement de connexion. */
+  function rerenderLists() {
+    if (S.route.name === 'systems') renderSystems();
+    else if (S.route.name === 'games') renderGames();
+  }
+
+  rc.connectivity.onUpdate(async (state) => {
+    const wasOnline = S.connectivity.online;
+    paintConnectivity(state);
+    if (state.synced) toast(t('offline.synced', { n: state.synced }));
+    if (wasOnline === state.online) return;
+    if (state.online) {
+      // Listes complètes relues sur le serveur.
+      toast(t('offline.back'));
+      await loadSystems();
+      if (S.games.systemId) await loadGames();
+      rerenderLists();
+    } else {
+      // Sans attendre une nouvelle requête : seuls les jeux du PC restent proposés.
+      toast(t('offline.lost'), { type: 'error' });
+      S.systemsOffline = true;
+      S.games.offline = true;
+      if (S.search.query) S.search.offline = true;
+      await refreshLocalSystems();
+      rerenderLists();
+    }
+  });
+
+  // Réseau du PC coupé ou rétabli : le serveur est sondé aussitôt.
+  window.addEventListener('online', () => rc.connectivity.check());
+  window.addEventListener('offline', () => rc.connectivity.check());
 
   // ---------------------------------------------------------------------------
   // Moteur intégré arrêté sur une erreur : réinitialiser le cœur
@@ -426,12 +479,20 @@
       S.systems = r.data;
       S.systemsOffline = r.offline;
       S.systemsError = null;
+      if (r.offline) await refreshLocalSystems();
     } catch (err) {
       S.systemsError = err.message;
     }
     S.systemsLoading = false;
     if (S.route.name === 'systems') renderSystems();
   }
+
+  async function refreshLocalSystems() {
+    S.localSystems = new Set(await call(rc.library.systemsWithGames, S.systems).catch(() => []));
+  }
+
+  /** Systèmes proposés : hors ligne, seulement ceux dont des jeux sont sur le PC. */
+  const visibleSystems = () => (S.systemsOffline ? S.systems.filter((s) => S.localSystems.has(s.id)) : S.systems);
 
   let searchTimer = null;
   function setSearch(query) {
@@ -483,12 +544,13 @@
     }
     if (S.search.query.trim()) return renderSearchResults();
     if (S.systemsOffline) banner(t('app.offline'));
-    if (!S.systems.length) {
+    const systems = visibleSystems();
+    if (!systems.length) {
       const text = S.systemsLoading ? t('app.loading') : S.systemsError ? t('app.unreachable', { detail: S.systemsError }) : t('app.noSystems');
       main.innerHTML = `<div class="centered"><p>${esc(text)}</p>${S.systemsError ? `<button class="btn" data-action="settings">${esc(t('app.settings'))}</button>` : ''}</div>`;
       return;
     }
-    main.innerHTML = `<div class="page"><div class="systems-grid">${S.systems.map((s) => {
+    main.innerHTML = `<div class="page"><div class="systems-grid">${systems.map((s) => {
       const img = systemImageUrl(s);
       return `<div class="system-card" data-system="${esc(s.id)}">
         <div class="img">${img ? `<img src="${esc(img)}" alt="">` : `<span class="short">${esc(s.shortname.toUpperCase())}</span>`}</div>
@@ -503,14 +565,16 @@
     const main = $('#main');
     const s = S.search;
     if (s.offline) banner(t('app.searchOffline'));
-    if (!s.results.length) {
+    // Hors ligne : seuls les jeux présents sur le PC peuvent être lancés.
+    const results = s.offline ? s.results.filter((g) => s.downloaded.has(g.id)) : s.results;
+    if (!results.length) {
       const text = s.loading ? t('app.loading') : s.error ? s.error : t('app.searchNone', { q: s.query });
       main.innerHTML = `<div class="centered"><p>${esc(text)}</p></div>`;
       return;
     }
-    main.innerHTML = `<div class="page"><p class="muted">${esc(t('app.searchResults', { n: s.results.length, q: s.query }))}</p>
-      <div class="cards-grid">${s.results.map((g) => cardHtml(g, s.downloaded, { badge: true })).join('')}</div></div>`;
-    bindCards(main, s.results, (g) => openGameDetail(g.systemId, g.id));
+    main.innerHTML = `<div class="page"><p class="muted">${esc(t('app.searchResults', { n: results.length, q: s.query }))}</p>
+      <div class="cards-grid">${results.map((g) => cardHtml(g, s.downloaded, { badge: true })).join('')}</div></div>`;
+    bindCards(main, results, (g) => openGameDetail(g.systemId, g.id));
   }
 
   // ---------------------------------------------------------------------------
@@ -606,6 +670,7 @@
     return S.games.list.filter((g) => {
       if (q && !g.title.toLowerCase().includes(q) && !g.fileName.toLowerCase().includes(q)) return false;
       if (!Criteria.matches(g, S.games.criteria)) return false;
+      if (S.games.offline) return S.games.downloaded.has(g.id); // hors ligne : jeux du PC seulement
       if (S.games.filter === 'downloaded') return S.games.downloaded.has(g.id);
       if (S.games.filter === 'remote') return !S.games.downloaded.has(g.id);
       return true;
@@ -698,7 +763,7 @@
       title: system?.name || '',
       subtitle: t('games.subtitle', { n: S.games.list.length, d: S.games.downloaded.size }),
       center: `<div class="games-toolbar">
-        ${['all', 'downloaded', 'remote'].map((k) => `<button class="chip${f === k ? ' selected' : ''}" data-filter="${k}">${esc(t(`filter.${k}`))}</button>`).join('')}
+        ${(S.games.offline ? [] : ['all', 'downloaded', 'remote']).map((k) => `<button class="chip${f === k ? ' selected' : ''}" data-filter="${k}">${esc(t(`filter.${k}`))}</button>`).join('')}
         ${criteriaChip()}
         <input type="search" class="search-box" id="gameSearch" placeholder="${esc(t('games.search'))}" value="${esc(S.games.query)}" style="width:240px">
       </div>`,
@@ -1630,6 +1695,7 @@
     S.downloads = await call(rc.downloads.states);
     S.cast = await call(rc.cast.state);
     S.account = await call(rc.account.state).catch(() => ({ signedIn: false }));
+    S.connectivity = await call(rc.connectivity.state).catch(() => S.connectivity);
     if (S.account.signedIn) S.playtime = await call(rc.account.playtime).catch(() => ({}));
     render();
     checkUpdate();

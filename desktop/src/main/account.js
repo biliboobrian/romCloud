@@ -1,13 +1,14 @@
 // Profil du joueur sur le serveur : connexion, temps de jeu par jeu, sauvegardes en ligne du moteur
 // intégré (reprise sur un autre appareil) et erreurs signalées à l'administration. La session (jeton)
-// est gardée dans les réglages ; les durées de jeu non envoyées (serveur injoignable) attendent dans
-// les réglages et partent à la connexion suivante.
+// est gardée dans les réglages ; les durées de jeu et les sauvegardes non envoyées (serveur
+// injoignable) attendent dans les réglages et partent dès le retour de la connexion ([flush]).
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app } = require('electron');
 const settings = require('./settings');
 const { AppError, headers } = require('./api');
+const connectivity = require('./connectivity');
 
 /** Parties plus courtes ignorées (jeu quitté aussitôt, lancement raté). */
 const MIN_PLAY_SECONDS = 10;
@@ -49,8 +50,10 @@ async function call(apiPath, { method = 'GET', body, raw, extraHeaders = {}, tim
   try {
     res = await fetch(serverUrl + apiPath, { method, headers: h, body: payload, signal: AbortSignal.timeout(timeout) });
   } catch (err) {
+    connectivity.markOffline();
     throw new AppError('errors.unreachable', { detail: err.cause?.code || err.message });
   }
+  connectivity.markOnline();
   if (res.status === 204) return null;
   if (!res.ok) {
     let data = {};
@@ -78,7 +81,7 @@ async function call(apiPath, { method = 'GET', body, raw, extraHeaders = {}, tim
 
 function remember({ token, user }) {
   settings.save({ session: { token, username: user.username, userId: user.id } });
-  flushPlaytime().catch(() => {});
+  flush().catch(() => {});
   listener();
   return state();
 }
@@ -192,28 +195,84 @@ async function downloadNewer(gameId, core, files) {
   return updated;
 }
 
-/** Après la partie : les fichiers modifiés depuis [since] (ms) sont envoyés au serveur. */
+/** Envoie une sauvegarde ; renvoie false si le serveur est injoignable (à réessayer plus tard). */
+async function sendSave({ gameId, core, kind, file }) {
+  if (!fs.existsSync(file)) return true;
+  const { mtimeMs, size } = fs.statSync(file);
+  if (!size) return true;
+  try {
+    await call(savePath(gameId, core, kind), {
+      method: 'PUT',
+      body: fs.readFileSync(file),
+      extraHeaders: { 'X-Saved-At': String(Math.round(mtimeMs)) },
+      timeout: 300000,
+    });
+  } catch (err) {
+    if (err.key === 'errors.unreachable') return false;
+    reportError({ context: `saves:${kind}`, message: err.message });
+  }
+  return true;
+}
+
+const otherSaves = (entry) => (settings.load().pendingSaves || [])
+  .filter((p) => p.gameId !== entry.gameId || p.core !== entry.core || p.kind !== entry.kind);
+
+/** Sauvegarde gardée faute de serveur (une seule entrée par jeu, cœur et type : le fichier est relu à l'envoi). */
+function queueSave(entry) {
+  settings.save({ pendingSaves: [...otherSaves(entry), entry] });
+}
+
+/** Après la partie : les fichiers modifiés depuis [since] (ms) sont envoyés au serveur (ou mis en attente). */
 async function uploadChanged(gameId, core, files, since) {
   if (!session()) return [];
   const sent = [];
+  let queued = false;
   for (const kind of KINDS) {
     const file = files[kind];
     if (!file || !fs.existsSync(file)) continue;
     const { mtimeMs, size } = fs.statSync(file);
     if (mtimeMs < since || !size) continue;
-    try {
-      await call(savePath(gameId, core, kind), {
-        method: 'PUT',
-        body: fs.readFileSync(file),
-        extraHeaders: { 'X-Saved-At': String(Math.round(mtimeMs)) },
-        timeout: 300000,
-      });
+    const entry = { gameId, core, kind, file };
+    if (await sendSave(entry)) {
       sent.push(kind);
-    } catch (err) {
-      reportError({ context: `saves:${kind}`, message: err.message });
+      if (otherSaves(entry).length !== (settings.load().pendingSaves || []).length) settings.save({ pendingSaves: otherSaves(entry) });
+    } else {
+      queueSave(entry);
+      queued = true;
     }
   }
+  if (queued) listener();
   return sent;
+}
+
+let flushing = null;
+
+/**
+ * Envoie le travail en attente (temps de jeu, sauvegardes faites hors ligne) ; renvoie le nombre
+ * de sauvegardes envoyées. Un seul envoi à la fois.
+ */
+function flush() {
+  flushing ||= (async () => {
+    if (!session()) return 0;
+    await flushPlaytime();
+    let sent = 0;
+    for (const entry of settings.load().pendingSaves || []) {
+      if (!(await sendSave(entry))) break; // serveur de nouveau injoignable : le reste attend
+      sent += 1;
+      settings.save({ pendingSaves: otherSaves(entry) });
+    }
+    if (sent) listener();
+    return sent;
+  })().finally(() => {
+    flushing = null;
+  });
+  return flushing;
+}
+
+/** Nombre d'envois en attente (sauvegardes et durées de jeu). */
+function pendingCount() {
+  const s = settings.load();
+  return (s.pendingSaves || []).length + (s.pendingPlaytime || []).length;
 }
 
 /** Sauvegardes en ligne du jeu (fiche du jeu) : [{ core, kind, savedAt, device, … }]. */
@@ -236,4 +295,6 @@ function reportError({ context, message, details }) {
   call('/api/account/errors', { method: 'POST', body: { context, message: String(message), details }, timeout: 8000 }).catch(() => {});
 }
 
-module.exports = { onChange, register, login, logout, state, playtime, addPlaytime, downloadNewer, uploadChanged, saves, reportError, MIN_PLAY_SECONDS };
+module.exports = {
+  onChange, register, login, logout, state, playtime, addPlaytime, downloadNewer, uploadChanged, saves, reportError, flush, pendingCount, MIN_PLAY_SECONDS,
+};

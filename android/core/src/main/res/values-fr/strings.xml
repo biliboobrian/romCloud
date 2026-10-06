@@ -23,8 +23,13 @@
     <!-- États communs -->
     <string name="loading">Chargement…</string>
     <string name="banner_storage">Autorisez l’accès aux fichiers dans les paramètres pour pouvoir télécharger des ROMs.</string>
-    <string name="banner_offline_full">Hors ligne — liste en cache. Seuls les jeux déjà téléchargés peuvent être lancés.</string>
-    <string name="banner_offline">Hors ligne — liste en cache.</string>
+    <string name="banner_offline_full">Hors ligne — seuls les jeux déjà téléchargés sont affichés.</string>
+    <string name="banner_offline">Hors ligne — seuls les jeux déjà téléchargés sont affichés.</string>
+    <string name="offline_badge">Hors ligne : seuls les jeux téléchargés sont disponibles. Les sauvegardes seront synchronisées dès que le serveur sera de nouveau joignable.</string>
+    <plurals name="offline_synced">
+        <item quantity="one">%1$d sauvegarde synchronisée avec le serveur</item>
+        <item quantity="other">%1$d sauvegardes synchronisées avec le serveur</item>
+    </plurals>
     <string name="server_unreachable">Impossible de joindre le serveur :\n%1$s</string>
     <string name="server_unreachable_tv">Impossible de joindre le serveur :\n%1$s\n\nVérifiez l’adresse dans les Paramètres.</string>
     <string name="no_systems">Aucun système sur le serveur.\nAjoutez-en depuis l’interface web.</string>
@@ -177,7 +182,7 @@
     <string name="search_all_hint">Rechercher dans tous les jeux…</string>
     <string name="search_all_title">Rechercher dans tous les systèmes</string>
     <string name="search_no_results">Aucun jeu trouvé pour « %1$s »</string>
-    <string name="search_offline">Hors ligne — recherche limitée aux listes déjà ouvertes.</string>
+    <string name="search_offline">Hors ligne — recherche limitée aux jeux téléchargés.</string>
     <plurals name="search_results">
         <item quantity="one">%1$d résultat pour « %2$s »</item>
         <item quantity="other">%1$d résultats pour « %2$s »</item>

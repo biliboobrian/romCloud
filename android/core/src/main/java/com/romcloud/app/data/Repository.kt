@@ -3,14 +3,24 @@ package com.romcloud.app.data
 import com.romcloud.app.launch.LibretroPlayers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
+/** Jeux téléchargés et leur système, gardés pour être listés hors ligne. */
+@Serializable
+private data class DownloadedIndex(
+    val systems: Map<String, GameSystem> = emptyMap(),
+    val games: Map<Long, Game> = emptyMap(),
+)
+
 /**
  * Accès aux listes de systèmes et de jeux. Chaque réponse du serveur est mise en cache
  * sur l'appareil, ce qui permet de parcourir et lancer les jeux déjà téléchargés hors ligne.
+ * Les jeux téléchargés sont aussi notés à part ([rememberDownloaded]) : ils restent listés hors
+ * ligne même si la liste de leur système n'a jamais été mise en cache (jeu trouvé par la recherche).
  */
 class Repository(private val api: ApiClient, private val cacheDir: File) {
 
@@ -43,20 +53,66 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
         }
     }
 
-    suspend fun systems(): Loaded<List<GameSystem>> {
-        val loaded = loadWithCache("systems.json", api::systemsRaw) {
-            api.json.decodeFromString(systemListSerializer, it)
-                .map { system -> LibretroPlayers.addTo(system.withUniquePlayerIds()) }
+    private fun downloadedIndex(): DownloadedIndex = runCatching {
+        api.json.decodeFromString(DownloadedIndex.serializer(), cacheFile(DOWNLOADED).readText())
+    }.getOrDefault(DownloadedIndex())
+
+    /** Note un jeu téléchargé (et son système) pour le lister hors ligne. */
+    @Synchronized
+    fun rememberDownloaded(system: GameSystem, game: Game) {
+        val index = downloadedIndex()
+        val next = DownloadedIndex(index.systems + (system.id to system), index.games + (game.id to game))
+        runCatching { cacheFile(DOWNLOADED).writeText(api.json.encodeToString(DownloadedIndex.serializer(), next)) }
+    }
+
+    /**
+     * Hors ligne : la liste en cache (ou rien, si elle ne l'a jamais été) est complétée par les
+     * éléments [extra] de l'index des jeux téléchargés.
+     */
+    private suspend fun <T> withDownloaded(
+        load: suspend () -> Loaded<List<T>>,
+        extra: (DownloadedIndex) -> List<T>,
+        key: (T) -> Any,
+    ): Loaded<List<T>> {
+        val loaded = try {
+            load()
+        } catch (e: IOException) {
+            val known = withContext(Dispatchers.IO) { extra(downloadedIndex()) }
+            if (known.isEmpty()) throw e
+            return Loaded(known, offline = true, error = e.message)
         }
+        if (!loaded.offline) return loaded
+        val ids = loaded.data.mapTo(HashSet(), key)
+        val more = withContext(Dispatchers.IO) { extra(downloadedIndex()) }.filter { key(it) !in ids }
+        return if (more.isEmpty()) loaded else loaded.copy(data = loaded.data + more)
+    }
+
+    suspend fun systems(): Loaded<List<GameSystem>> {
+        val loaded = withDownloaded(
+            load = {
+                loadWithCache("systems.json", api::systemsRaw) {
+                    api.json.decodeFromString(systemListSerializer, it)
+                        .map { system -> LibretroPlayers.addTo(system.withUniquePlayerIds()) }
+                }
+            },
+            extra = { it.systems.values.toList() },
+            key = { it.id },
+        )
         systemsMemory.clear()
         loaded.data.forEach { systemsMemory[it.id] = it }
         return loaded
     }
 
     suspend fun games(systemId: String): Loaded<List<Game>> {
-        val loaded = loadWithCache("games-${safeName(systemId)}.json", { api.gamesRaw(systemId) }) {
-            api.json.decodeFromString(gameListSerializer, it)
-        }
+        val loaded = withDownloaded(
+            load = {
+                loadWithCache("games-${safeName(systemId)}.json", { api.gamesRaw(systemId) }) {
+                    api.json.decodeFromString(gameListSerializer, it)
+                }
+            },
+            extra = { index -> index.games.values.filter { it.systemId == systemId } },
+            key = { it.id },
+        )
         gamesMemory[systemId] = loaded.data
         return loaded
     }
@@ -87,7 +143,8 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
 
     /**
      * Recherche dans tous les systèmes. Hors ligne : recherche dans les listes de jeux déjà
-     * mises en cache (systèmes ouverts au moins une fois), avec la même règle que le serveur.
+     * mises en cache (systèmes ouverts au moins une fois) et les jeux téléchargés, avec la même
+     * règle que le serveur.
      */
     suspend fun search(query: String): Loaded<List<Game>> {
         try {
@@ -96,9 +153,10 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
             val words = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
             val cached = withContext(Dispatchers.IO) {
                 File(cacheDir, "api-cache").listFiles { f -> f.name.startsWith("games-") }.orEmpty()
-                    .flatMap { f -> runCatching { api.json.decodeFromString(gameListSerializer, f.readText()) }.getOrDefault(emptyList()) }
+                    .flatMap { f -> runCatching { api.json.decodeFromString(gameListSerializer, f.readText()) }.getOrDefault(emptyList()) } +
+                    downloadedIndex().games.values
             }
-            val results = cached
+            val results = cached.distinctBy { it.id }
                 .filter { g -> words.all { w -> g.title.lowercase().contains(w) || g.fileName.lowercase().contains(w) } }
                 .sortedBy { it.title.lowercase() }
             return Loaded(results, offline = true, error = e.message)
@@ -111,4 +169,8 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
     }
 
     private fun safeName(s: String) = s.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+    private companion object {
+        const val DOWNLOADED = "downloaded.json"
+    }
 }

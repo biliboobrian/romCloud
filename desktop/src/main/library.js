@@ -37,6 +37,17 @@ function downloadedIds(systems, games) {
   return games.filter((g) => sizes.get(`${g.systemId}/${g.fileName}`) === g.size).map((g) => g.id);
 }
 
+/** Systèmes dont le dossier contient au moins un fichier de jeu (seuls affichés hors ligne). */
+function systemsWithGames(systems) {
+  return systems.filter((system) => {
+    try {
+      return fs.readdirSync(systemDir(system), { withFileTypes: true }).some((e) => e.isFile() && !e.name.endsWith('.part'));
+    } catch {
+      return false;
+    }
+  }).map((s) => s.id);
+}
+
 /** Emplacement d'un BIOS : <dossier BIOS>\<chemin relatif, sous-dossiers compris>. */
 const biosFile = (bios) => path.join(settings.biosDir(), ...bios.path.split('/').filter((p) => p && p !== '.' && p !== '..'));
 
@@ -55,4 +66,4 @@ function remove(system, game) {
   fs.rmSync(fileFor(system, game), { force: true });
 }
 
-module.exports = { systemDir, fileFor, isDownloaded, downloadedIds, remove, biosFile, missingBios };
+module.exports = { systemDir, fileFor, isDownloaded, downloadedIds, systemsWithGames, remove, biosFile, missingBios };

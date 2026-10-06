@@ -344,12 +344,13 @@ class Account(private val context: Context, private val api: ApiClient, private 
     private fun saveEntryName(gameId: Long, core: String, kind: String) = "save-$gameId-$kind-" + core.replace(Regex("[^A-Za-z0-9._]"), "_")
 
     /**
-     * Envoie le temps de jeu et les sauvegardes en attente (serveur joignable). [savesOnly] :
-     * processus de l'émulateur intégré (le temps de jeu n'est envoyé que par l'application, pour ne
-     * jamais être compté deux fois).
+     * Envoie le temps de jeu et les sauvegardes en attente (serveur joignable) ; renvoie le nombre
+     * de sauvegardes envoyées. [savesOnly] : processus de l'émulateur intégré (le temps de jeu n'est
+     * envoyé que par l'application, pour ne jamais être compté deux fois).
      */
-    suspend fun flush(savesOnly: Boolean = false) {
-        if (token == null) return
+    suspend fun flush(savesOnly: Boolean = false): Int {
+        if (token == null) return 0
+        var sent = 0
         flushLock.withLock {
             withContext(Dispatchers.IO) {
                 if (!savesOnly) {
@@ -388,17 +389,19 @@ class Account(private val context: Context, private val api: ApiClient, private 
                                 .put(file.asRequestBody(BINARY)),
                             timeoutSeconds = 300,
                         )
+                        sent++
                         // Nouvelle sauvegarde mise en file pendant l'envoi : gardée pour le prochain.
                         if (entry.lastModified() == modified) entry.delete()
                     } catch (e: ApiException) {
                         entry.delete()
                         reportError("saves:$kind", e.message ?: "upload", file.name)
                     } catch (e: IOException) {
-                        // réessayé au prochain retour dans l'application
+                        // réessayé au retour de la connexion ou dans l'application
                     }
                 }
             }
         }
+        return sent
     }
 
     // -------------------------------------------------------------------------

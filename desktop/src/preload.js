@@ -11,7 +11,17 @@ contextBridge.exposeInMainWorld('romcloud', {
     games: call('api:games'),
     search: call('api:search'),
   },
-  library: { downloaded: call('library:downloaded'), path: call('library:path'), remove: call('library:remove') },
+  library: {
+    downloaded: call('library:downloaded'),
+    path: call('library:path'),
+    remove: call('library:remove'),
+    systemsWithGames: call('library:systemsWithGames'),
+  },
+  connectivity: {
+    state: call('connectivity:state'),
+    check: call('connectivity:check'),
+    onUpdate: (fn) => ipcRenderer.on('connectivity:update', (_e, state) => fn(state)),
+  },
   bios: { missing: call('bios:missing') },
   downloads: {
     start: call('downloads:start'),

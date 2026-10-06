@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { app } = require('electron');
 const settings = require('./settings');
+const connectivity = require('./connectivity');
 
 class AppError extends Error {
   /** Erreur traduite côté interface : `key` (dictionnaire de l'app) ou message du serveur. */
@@ -25,12 +26,16 @@ function headers(apiKey) {
 
 async function request(apiPath, { serverUrl, apiKey } = settings.load()) {
   if (!serverUrl) throw new AppError('errors.noServer');
+  // Seul le serveur configuré compte pour l'état de connexion (pas une adresse en cours de test).
+  const tracked = serverUrl === settings.load().serverUrl;
   let res;
   try {
     res = await fetch(serverUrl + apiPath, { headers: headers(apiKey), signal: AbortSignal.timeout(10000) });
   } catch (err) {
+    if (tracked) connectivity.markOffline();
     throw new AppError('errors.unreachable', { detail: err.cause?.code || err.message });
   }
+  if (tracked) connectivity.markOnline();
   const text = await res.text();
   if (!res.ok) {
     let serverMessage = null;
@@ -45,6 +50,16 @@ async function request(apiPath, { serverUrl, apiKey } = settings.load()) {
   return text;
 }
 
+const isUnreachable = (err) => err.key === 'errors.unreachable' || err.key === 'errors.noServer';
+
+function readJson(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
 /** Charge une liste et la met en cache ; hors ligne, renvoie la dernière version en cache. */
 async function loadWithCache(name, apiPath) {
   try {
@@ -53,7 +68,7 @@ async function loadWithCache(name, apiPath) {
     fs.writeFileSync(cacheFile(name), text);
     return { data: JSON.parse(text), offline: false };
   } catch (err) {
-    if (err.key !== 'errors.unreachable' && err.key !== 'errors.noServer') throw err;
+    if (!isUnreachable(err)) throw err;
     if (fs.existsSync(cacheFile(name))) {
       return { data: JSON.parse(fs.readFileSync(cacheFile(name), 'utf8')), offline: true };
     }
@@ -61,8 +76,42 @@ async function loadWithCache(name, apiPath) {
   }
 }
 
-const systems = () => loadWithCache('systems.json', '/api/systems');
-const games = (systemId) => loadWithCache(`games-${safeName(systemId)}.json`, `/api/systems/${encodeURIComponent(systemId)}/games`);
+// Jeux téléchargés (et leur système) : gardés à part pour être listés hors ligne, même si la liste
+// de leur système n'a jamais été mise en cache (jeu téléchargé depuis la recherche globale).
+const downloadedFile = () => cacheFile('downloaded.json');
+const downloadedIndex = () => readJson(downloadedFile(), { systems: {}, games: {} });
+
+function rememberDownloaded(system, game) {
+  const index = downloadedIndex();
+  index.systems[system.id] = system;
+  index.games[game.id] = game;
+  fs.mkdirSync(cacheDir(), { recursive: true });
+  fs.writeFileSync(downloadedFile(), JSON.stringify(index));
+}
+
+/** Hors ligne : la liste en cache (ou rien) est complétée par les éléments [extra] de l'index des jeux téléchargés. */
+async function withDownloaded(load, extra) {
+  let result;
+  let error = null;
+  try {
+    result = await load();
+  } catch (err) {
+    if (!isUnreachable(err)) throw err;
+    result = { data: [], offline: true };
+    error = err;
+  }
+  if (!result.offline) return result;
+  const known = new Set(result.data.map((x) => x.id));
+  const data = [...result.data, ...extra().filter((x) => !known.has(x.id))];
+  if (!data.length && error) throw error;
+  return { data, offline: true };
+}
+
+const systems = () => withDownloaded(() => loadWithCache('systems.json', '/api/systems'), () => Object.values(downloadedIndex().systems));
+const games = (systemId) => withDownloaded(
+  () => loadWithCache(`games-${safeName(systemId)}.json`, `/api/systems/${encodeURIComponent(systemId)}/games`),
+  () => Object.values(downloadedIndex().games).filter((g) => g.systemId === systemId),
+);
 
 /** BIOS du système sur le serveur (liste vide si le système n'en a pas ou si le serveur est injoignable). */
 async function bios(system) {
@@ -82,7 +131,7 @@ async function search(query) {
   } catch (err) {
     if (err.key !== 'errors.unreachable') throw err;
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-    const all = fs.existsSync(cacheDir())
+    const cached = fs.existsSync(cacheDir())
       ? fs.readdirSync(cacheDir())
         .filter((f) => f.startsWith('games-'))
         .flatMap((f) => {
@@ -93,7 +142,8 @@ async function search(query) {
           }
         })
       : [];
-    const data = all
+    const byId = new Map([...Object.values(downloadedIndex().games), ...cached].map((g) => [g.id, g]));
+    const data = [...byId.values()]
       .filter((g) => words.every((w) => g.title.toLowerCase().includes(w) || g.fileName.toLowerCase().includes(w)))
       .sort((a, b) => a.title.localeCompare(b.title));
     return { data, offline: true };
@@ -108,4 +158,4 @@ async function test(serverUrl, apiKey) {
   return info;
 }
 
-module.exports = { AppError, request, systems, games, search, test, headers, bios };
+module.exports = { AppError, request, systems, games, search, test, headers, bios, rememberDownloaded };

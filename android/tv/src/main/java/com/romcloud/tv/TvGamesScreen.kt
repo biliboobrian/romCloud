@@ -65,6 +65,7 @@ import com.romcloud.app.ui.GameFilter
 import com.romcloud.app.ui.criteriaSections
 import com.romcloud.app.ui.GamesViewModel
 import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.RowLabels
 import com.romcloud.app.ui.carouselRows
 import com.romcloud.app.ui.formatSize
@@ -149,9 +150,12 @@ fun TvGamesScreen(
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f, fill = false),
                 )
-                GameFilter.entries.forEach { f ->
+                OfflineBadge(size = 40.dp, explainOnClick = false)
+                Spacer(Modifier.weight(1f))
+                // Hors ligne : seuls les jeux de l'appareil sont listés, les filtres n'ont pas lieu d'être.
+                if (!state.offline) GameFilter.entries.forEach { f ->
                     FilterChip(selected = state.filter == f, onClick = { viewModel.setFilter(f) }) { Text(stringResource(f.label)) }
                 }
                 if (!state.facets.isEmpty) {

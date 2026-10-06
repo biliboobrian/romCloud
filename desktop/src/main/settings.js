@@ -21,6 +21,7 @@ function defaults() {
     retroarchHelpDismissed: false,
     session: null, // profil connecté : { token, username, userId }
     pendingPlaytime: [], // temps de jeu pas encore envoyé (serveur injoignable) : [{ gameId, seconds }]
+    pendingSaves: [], // sauvegardes du moteur intégré pas encore envoyées : [{ gameId, core, kind, file }]
   };
 }
 

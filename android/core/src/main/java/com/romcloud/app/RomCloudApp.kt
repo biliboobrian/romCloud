@@ -1,12 +1,16 @@
 package com.romcloud.app
 
 import android.app.Application
+import android.os.Build
+import android.widget.Toast
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.romcloud.app.data.Account
 import com.romcloud.app.data.ApiClient
 import com.romcloud.app.data.ApkInstaller
 import com.romcloud.app.data.AppUpdater
+import com.romcloud.app.data.Connectivity
+import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.DownloadService
 import com.romcloud.app.data.Downloader
 import com.romcloud.app.data.LocalLibrary
@@ -15,9 +19,14 @@ import com.romcloud.app.data.Settings
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.GameLauncher
 import com.romcloud.app.launch.MissingEmulator
+import com.romcloud.core.R
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class RomCloudApp : Application(), ImageLoaderFactory {
@@ -52,6 +61,9 @@ class RomCloudApp : Application(), ImageLoaderFactory {
     /** Profil du joueur : temps de jeu, sauvegardes en ligne, erreurs signalées. */
     lateinit var account: Account
         private set
+    /** Serveur joignable ou non (pastille « hors ligne », synchronisation au retour de la connexion). */
+    lateinit var connectivity: Connectivity
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -65,6 +77,9 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         apkInstaller = ApkInstaller(this, api, appScope)
         updater = AppUpdater(this, api)
         account = Account(this, api, appScope)
+        connectivity = Connectivity(this, api, appScope)
+        // Processus de l'émulateur intégré : ni suivi de la connexion, ni envoi du temps de jeu.
+        if (isMainProcess()) watchConnection()
         // Plantage de l'application : signalé à l'administration au lancement suivant.
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
@@ -82,10 +97,49 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         DownloadService.createChannel(this)
     }
 
-    /** Coil partage le client OkHttp (et donc la clé d'API) pour charger les jaquettes. */
+    private fun isMainProcess(): Boolean {
+        val name = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getProcessName()
+        } else {
+            runCatching { File("/proc/self/cmdline").readText().trim(' ', '\u0000') }.getOrNull()
+        }
+        return name == null || name == packageName
+    }
+
+    /**
+     * Retour de la connexion : sauvegardes et temps de jeu en attente envoyés, profil relu. Les jeux
+     * téléchargés sont notés pour rester listés hors ligne.
+     */
+    private fun watchConnection() {
+        connectivity.start()
+        appScope.launch {
+            connectivity.reconnected.collect {
+                val synced = account.flush()
+                account.refresh()
+                if (synced > 0) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@RomCloudApp, I18n.plural(R.plurals.offline_synced, synced, synced), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+        appScope.launch {
+            downloader.events.collect { event ->
+                if (event is DownloadEvent.Completed && event.romIncluded) {
+                    withContext(Dispatchers.IO) { repository.rememberDownloaded(event.system, event.game) }
+                }
+            }
+        }
+    }
+
+    /**
+     * Coil partage le client OkHttp (et donc la clé d'API) pour charger les jaquettes. Leurs adresses
+     * changent avec le jeu (?v=…) : le cache disque est utilisé sans revalidation, donc aussi hors ligne.
+     */
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
             .okHttpClient(api.http)
+            .respectCacheHeaders(false)
             .crossfade(true)
             .build()
 }

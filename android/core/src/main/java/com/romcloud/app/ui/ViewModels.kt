@@ -24,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -101,6 +102,24 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
         viewModelScope.launch {
             app.downloader.events.collect { if (it is DownloadEvent.Completed) refreshSearchLocal() }
         }
+        viewModelScope.launch {
+            app.connectivity.online.drop(1).collect { online ->
+                if (online) {
+                    refresh() // listes complètes relues sur le serveur
+                } else {
+                    // Sans attendre une nouvelle requête : seuls les jeux de l'appareil restent proposés.
+                    val systems = withLocalGames(_state.value.systems)
+                    _state.update { it.copy(systems = systems, offline = true) }
+                    _search.update { s -> if (s.active) s.copy(results = s.results.filter { it.id in s.downloaded }, offline = true) else s }
+                }
+            }
+        }
+    }
+
+    /** Hors ligne : seuls les systèmes dont des jeux sont sur l'appareil sont affichés. */
+    private suspend fun withLocalGames(systems: List<GameSystem>): List<GameSystem> {
+        val ids = withContext(Dispatchers.IO) { app.library.systemsWithGames(systems) }
+        return systems.filter { it.id in ids }
     }
 
     fun refresh() {
@@ -108,7 +127,8 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
             _state.update { it.copy(loading = true) }
             _state.value = try {
                 val loaded = app.repository.systems()
-                UiState(loading = false, systems = loaded.data, offline = loaded.offline, error = loaded.error)
+                val systems = if (loaded.offline) withLocalGames(loaded.data) else loaded.data
+                UiState(loading = false, systems = systems, offline = loaded.offline, error = loaded.error)
             } catch (e: Exception) {
                 _state.value.copy(loading = false, error = e.message ?: I18n.get(R.string.err_connection))
             }
@@ -136,10 +156,12 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
             _search.update { it.copy(loading = true) }
             _search.value = try {
                 val loaded = app.repository.search(query.trim())
+                val downloaded = downloadedAmong(loaded.data)
                 SearchState(
                     query = query,
-                    results = loaded.data,
-                    downloaded = downloadedAmong(loaded.data),
+                    // Hors ligne : seuls les jeux présents sur l'appareil peuvent être lancés.
+                    results = if (loaded.offline) loaded.data.filter { it.id in downloaded } else loaded.data,
+                    downloaded = downloaded,
                     offline = loaded.offline,
                     error = loaded.error,
                 )
@@ -198,10 +220,11 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
             get() = games.filter { g ->
                 (query.isBlank() || g.title.contains(query, true) || g.fileName.contains(query, true)) &&
                     criteria.matches(g) &&
-                    when (filter) {
-                        GameFilter.ALL -> true
-                        GameFilter.DOWNLOADED -> g.id in downloaded
-                        GameFilter.REMOTE -> g.id !in downloaded
+                    when {
+                        offline -> g.id in downloaded // hors ligne : jeux de l'appareil seulement
+                        filter == GameFilter.ALL -> true
+                        filter == GameFilter.DOWNLOADED -> g.id in downloaded
+                        else -> g.id !in downloaded
                     }
             }
     }
@@ -215,6 +238,11 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         refresh()
         viewModelScope.launch {
             app.downloader.events.collect { if (it is DownloadEvent.Completed && it.system.id == systemId) refreshLocal() }
+        }
+        viewModelScope.launch {
+            app.connectivity.online.drop(1).collect { online ->
+                if (online) refresh() else _state.update { it.copy(offline = true) }
+            }
         }
     }
 

@@ -361,7 +361,9 @@ api.get('/games/:id/media/:type', (req, res) => {
   if (!MEDIA_TYPES.includes(type)) throw new HttpError(404, 'errors.unknownMediaType');
   const row = requireGameRow(req.params.id);
   if (!row[type]) throw new HttpError(404, 'errors.noMedia');
-  res.sendFile(path.join(gameMediaDir(row.id), row[type]), { maxAge: '1h' });
+  // Adresse versionnée par les applications (?v=updatedAt) : mise en cache longue, ce qui garde
+  // les jaquettes des jeux déjà vus affichables hors ligne.
+  res.sendFile(path.join(gameMediaDir(row.id), row[type]), { maxAge: '30d' });
 });
 
 api.put(

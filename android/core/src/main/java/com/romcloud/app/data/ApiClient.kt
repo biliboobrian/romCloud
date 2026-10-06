@@ -23,6 +23,13 @@ class ApiClient(private val settings: Settings) {
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
     /**
+     * Serveur configuré joint (true) ou injoignable (false), d'après chaque requête qui lui est
+     * adressée : suivi par [Connectivity].
+     */
+    @Volatile
+    var onReachability: (Boolean) -> Unit = {}
+
+    /**
      * Requêtes destinées au serveur configuré (y compris les images Coil) : clé d'API et langue
      * de l'application (le serveur renvoie ses messages d'erreur dans cette langue).
      */
@@ -34,7 +41,13 @@ class ApiClient(private val settings: Settings) {
         if (!sameServer) return@Interceptor chain.proceed(request)
         val builder = request.newBuilder().header("Accept-Language", I18n.language())
         if (config.apiKey.isNotEmpty()) builder.header("Authorization", "Bearer ${config.apiKey}")
-        chain.proceed(builder.build())
+        try {
+            chain.proceed(builder.build()).also { onReachability(true) }
+        } catch (e: IOException) {
+            // Requête annulée (téléchargement interrompu…) : ne dit rien de la connexion.
+            if (!chain.call().isCanceled()) onReachability(false)
+            throw e
+        }
     }
 
     val http: OkHttpClient = OkHttpClient.Builder()

@@ -10,6 +10,7 @@ const keyboard = require('./keyboard');
 const builtin = require('./builtin');
 const screencast = require('./screencast');
 const account = require('./account');
+const connectivity = require('./connectivity');
 const { createUpdater } = require('./updater');
 
 const updater = createUpdater({ app });
@@ -68,6 +69,7 @@ handle('api:search', (query) => api.search(query));
 handle('library:downloaded', (systems, games) => library.downloadedIds(systems, games));
 handle('library:path', (system, game) => library.fileFor(system, game));
 handle('library:remove', (system, game) => library.remove(system, game));
+handle('library:systemsWithGames', (systems) => library.systemsWithGames(systems));
 // BIOS du système absents du PC (téléchargés avec le jeu si l'utilisateur le demande).
 handle('bios:missing', async (system) => library.missingBios(await api.bios(system)));
 handle('downloads:start', (system, game, options) => {
@@ -94,6 +96,20 @@ handle('account:logout', () => account.logout());
 handle('account:playtime', () => account.playtime());
 handle('account:reportError', (report) => account.reportError(report || {}));
 account.onChange(() => win?.webContents.send('account:update'));
+// Connexion au serveur : hors ligne, seuls les jeux téléchargés sont proposés ; à son retour, les
+// sauvegardes et durées de jeu en attente sont envoyées.
+const connectivityState = () => ({ online: connectivity.isOnline(), pending: account.pendingCount() });
+handle('connectivity:state', () => connectivityState());
+handle('connectivity:check', async () => {
+  await connectivity.probe();
+  return connectivityState();
+});
+connectivity.onChange(async (online) => {
+  win?.webContents.send('connectivity:update', connectivityState());
+  if (!online) return;
+  const synced = await account.flush().catch(() => 0);
+  win?.webContents.send('connectivity:update', { ...connectivityState(), synced });
+});
 process.on('uncaughtException', (err) => {
   console.error(err);
   account.reportError({ context: 'main', message: err.message, details: err.stack });
@@ -151,6 +167,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     updater.cleanup();
     createWindow();
+    account.flush().catch(() => {}); // travail laissé en attente à la dernière fermeture
   });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', () => screencast.stop());
