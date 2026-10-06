@@ -6,7 +6,7 @@ const { pipeline } = require('node:stream/promises');
 const { Transform } = require('node:stream');
 const settings = require('./settings');
 const library = require('./library');
-const { AppError, headers } = require('./api');
+const { AppError, headers, rememberDownloaded } = require('./api');
 
 const active = new Map(); // gameId -> { controller, state }
 let notify = () => {};
@@ -48,6 +48,11 @@ async function start(system, game, { bios = [], includeRom = true } = {}) {
     }
     if (includeRom) {
       await fetchTo(`${serverUrl}/api/games/${game.id}/file`, library.fileFor(system, game), game.size, controller.signal, progress);
+      try {
+        rememberDownloaded(system, game); // listé hors ligne
+      } catch (err) {
+        console.error(err);
+      }
     }
     active.delete(game.id);
     update(game.id, null, { type: 'completed', systemId: system.id, gameId: game.id, title: game.title, romIncluded: includeRom });

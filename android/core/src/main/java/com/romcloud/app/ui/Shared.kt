@@ -1,22 +1,27 @@
 package com.romcloud.app.ui
 
 import androidx.annotation.PluralsRes
+import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,8 +33,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.romcloud.app.I18n
+import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.GameSystem
 import com.romcloud.core.R
@@ -38,6 +45,31 @@ import java.util.Locale
 // Éléments communs aux applications téléphone et TV.
 
 val DownloadedGreen = Color(0xFF2EB872)
+val OfflineAmber = Color(0xFFF0B429)
+
+/**
+ * Pastille « hors ligne » de la barre du haut, affichée tant que le serveur est injoignable : seuls
+ * les jeux téléchargés sont proposés, les sauvegardes partent au retour de la connexion.
+ * [explainOnClick] : un appui affiche l'explication (téléphone ; pas sur TV, hors du parcours au D-pad).
+ */
+@Composable
+fun OfflineBadge(modifier: Modifier = Modifier, size: Dp = 32.dp, explainOnClick: Boolean = true) {
+    val context = LocalContext.current
+    val app = context.applicationContext as RomCloudApp
+    val online by app.connectivity.online.collectAsStateWithLifecycle()
+    if (online) return
+    val description = stringResource(R.string.offline_badge)
+    Box(
+        modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(OfflineAmber.copy(alpha = 0.16f))
+            .then(if (explainOnClick) Modifier.clickable { Toast.makeText(context, description, Toast.LENGTH_LONG).show() } else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Filled.CloudOff, contentDescription = description, tint = OfflineAmber, modifier = Modifier.size(size * 0.6f))
+    }
+}
 
 /**
  * Logo de la console d'un jeu, en surimpression sur sa carte (résultats de recherche) :

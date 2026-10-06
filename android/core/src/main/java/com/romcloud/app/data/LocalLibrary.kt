@@ -30,6 +30,12 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         return games.filter { sizes[it.fileName] == it.size }.map { it.id }.toSet()
     }
 
+    /** Systèmes dont le dossier contient au moins un fichier de jeu (seuls affichés hors ligne). */
+    fun systemsWithGames(systems: List<GameSystem>): Set<String> =
+        systems.filter { system ->
+            systemDir(system).listFiles()?.any { it.isFile && !it.name.endsWith(".part") } == true
+        }.mapTo(mutableSetOf()) { it.id }
+
     /** Emplacement d'un BIOS : <dossier BIOS>/<chemin relatif, sous-dossiers compris>. */
     fun biosFile(bios: BiosFile) = File(
         settings.config.value.biosDir,

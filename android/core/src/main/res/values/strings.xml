@@ -24,8 +24,13 @@
     <!-- États communs -->
     <string name="loading">Loading…</string>
     <string name="banner_storage">Allow file access in the settings to download ROMs.</string>
-    <string name="banner_offline_full">Offline — cached list. Only games already downloaded can be launched.</string>
-    <string name="banner_offline">Offline — cached list.</string>
+    <string name="banner_offline_full">Offline — only the games already downloaded are shown.</string>
+    <string name="banner_offline">Offline — only the games already downloaded are shown.</string>
+    <string name="offline_badge">Offline: only downloaded games are available. Saves will be synced as soon as the server is reachable again.</string>
+    <plurals name="offline_synced">
+        <item quantity="one">%1$d save synced with the server</item>
+        <item quantity="other">%1$d saves synced with the server</item>
+    </plurals>
     <string name="server_unreachable">Unable to reach the server:\n%1$s</string>
     <string name="server_unreachable_tv">Unable to reach the server:\n%1$s\n\nCheck the address in the Settings.</string>
     <string name="no_systems">No system on the server.\nAdd some from the web interface.</string>
@@ -183,7 +188,7 @@
     <string name="search_all_hint">Search all games…</string>
     <string name="search_all_title">Search all systems</string>
     <string name="search_no_results">No game found for “%1$s”</string>
-    <string name="search_offline">Offline — search limited to the lists already opened.</string>
+    <string name="search_offline">Offline — search limited to the downloaded games.</string>
     <plurals name="search_results">
         <item quantity="one">%1$d result for “%2$s”</item>
         <item quantity="other">%1$d results for “%2$s”</item>

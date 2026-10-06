@@ -50,6 +50,7 @@ import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.SystemBadge
 import com.romcloud.app.ui.SystemsViewModel
 import com.romcloud.app.ui.pluralString
@@ -114,6 +115,7 @@ fun TvSystemsScreen(
     Column(Modifier.fillMaxSize().padding(TvSafePadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("RomCloud", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+            OfflineBadge(Modifier.padding(start = 16.dp), size = 40.dp, explainOnClick = false)
             Spacer(Modifier.weight(1f))
             if (search.active) {
                 // Recherche en cours : modifier ou effacer

@@ -132,6 +132,7 @@ fun SystemsScreen(
                     }
                 },
                 actions = {
+                    OfflineBadge(Modifier.padding(horizontal = 4.dp))
                     IconButton(onClick = {
                         if (searching) viewModel.setQuery("")
                         searching = !searching

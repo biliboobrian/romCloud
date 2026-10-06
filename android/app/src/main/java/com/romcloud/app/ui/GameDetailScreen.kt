@@ -97,6 +97,7 @@ fun GameDetailScreen(
             TopAppBar(
                 title = { Text(state.system?.name ?: "") },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) } },
+                actions = { OfflineBadge(Modifier.padding(end = 12.dp)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },

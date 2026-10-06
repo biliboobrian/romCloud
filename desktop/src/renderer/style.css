@@ -63,6 +63,12 @@ svg.icon { width: 20px; height: 20px; fill: currentColor; flex-shrink: 0; }
 .icon-btn:hover { background: var(--surface-2); }
 .icon-btn.casting { color: var(--accent); }
 .icon-btn.signed-in { color: var(--accent); }
+/* Pastille « hors ligne » de la barre du haut (seuls les jeux téléchargés sont proposés). */
+.offline-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  color: #f0b429; background: rgba(240, 180, 41, 0.14); cursor: help;
+}
 .playtime { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 600; }
 .profile-head { display: flex; align-items: center; gap: 14px; }
 .profile-head svg { color: var(--accent); }

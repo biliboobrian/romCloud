@@ -109,7 +109,8 @@ fun GamesScreen(
     // Recherche avancée (genre, décennie, joueurs…) : panneau ouvert par le bouton « Filtres ».
     var showCriteria by rememberSaveable { mutableStateOf(false) }
     val filters = @Composable {
-        GameFilter.entries.forEach { f ->
+        // Hors ligne : seuls les jeux de l'appareil sont listés, les filtres n'ont pas lieu d'être.
+        if (!state.offline) GameFilter.entries.forEach { f ->
             FilterChip(
                 selected = state.filter == f,
                 onClick = { viewModel.setFilter(f) },
@@ -197,6 +198,7 @@ fun GamesScreen(
                     }
                 },
                 actions = {
+                    OfflineBadge(Modifier.padding(horizontal = 4.dp))
                     if (landscape) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(end = 8.dp)) {
                             filters()
