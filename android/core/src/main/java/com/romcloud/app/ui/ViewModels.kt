@@ -255,13 +255,18 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
                 val system = app.repository.system(systemId)
                 val loaded = app.repository.games(systemId)
                 val bios = system?.let { app.repository.bios(it) }.orEmpty()
+                // Jeux de l'appareil connus avant d'afficher la liste : la rangée « Téléchargés »
+                // est en tête dès le premier affichage (pas insérée au-dessus de la liste déjà affichée).
+                val local = system?.let { localState(it, loaded.data, bios) }
                 _state.update {
                     it.copy(
                         loading = false, system = system, games = loaded.data, facets = GameFacets.of(loaded.data),
                         offline = loaded.offline, error = loaded.error, bios = bios,
+                        downloaded = local?.downloaded ?: it.downloaded,
+                        missingBios = local?.missingBios ?: it.missingBios,
+                        resumable = local?.resumable ?: it.resumable,
                     )
                 }
-                refreshLocal()
             } catch (e: Exception) {
                 _state.update { it.copy(loading = false, error = e.message ?: I18n.get(R.string.err_connection)) }
             }
@@ -273,16 +278,22 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         val s = _state.value
         val system = s.system ?: return
         viewModelScope.launch {
-            val (ids, missing, resumable) = withContext(Dispatchers.IO) {
-                val ids = app.library.downloadedIds(system, s.games)
-                val resumable = s.games.filter { it.id in ids }.filter { game ->
-                    app.launcher.canResume(app.library.fileFor(system, game), app.launcher.selectedPlayer(system, game.fileName))
-                }.mapTo(mutableSetOf()) { it.id }
-                Triple(ids, app.library.missingBios(s.bios), resumable)
-            }
-            _state.update { it.copy(downloaded = ids, missingBios = missing, resumable = resumable) }
+            val local = localState(system, s.games, s.bios)
+            _state.update { it.copy(downloaded = local.downloaded, missingBios = local.missingBios, resumable = local.resumable) }
         }
     }
+
+    private class LocalState(val downloaded: Set<Long>, val missingBios: List<BiosFile>, val resumable: Set<Long>)
+
+    /** Jeux présents sur l'appareil, BIOS manquants et parties à reprendre (lecture des dossiers). */
+    private suspend fun localState(system: GameSystem, games: List<Game>, bios: List<BiosFile>): LocalState =
+        withContext(Dispatchers.IO) {
+            val ids = app.library.downloadedIds(system, games)
+            val resumable = games.filter { it.id in ids }.filter { game ->
+                app.launcher.canResume(app.library.fileFor(system, game), app.launcher.selectedPlayer(system, game.fileName))
+            }.mapTo(mutableSetOf()) { it.id }
+            LocalState(ids, app.library.missingBios(bios), resumable)
+        }
 
     fun setQuery(q: String) = _state.update { it.copy(query = q) }
     fun setFilter(f: GameFilter) = _state.update { it.copy(filter = f) }

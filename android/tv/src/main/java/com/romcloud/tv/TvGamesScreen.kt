@@ -394,6 +394,11 @@ private fun GameRows(
         restored = true
     }
 
+    // Rangée ajoutée en tête (premier jeu téléchargé du système) : liste remontée tant que
+    // l'utilisateur n'a pas fait défiler (Compose la garde sinon sur l'ancienne première rangée).
+    LaunchedEffect(rows.firstOrNull()?.title) {
+        if (columnState.firstVisibleItemIndex <= 1) columnState.scrollToItem(0)
+    }
     LazyColumn(
         state = columnState,
         contentPadding = PaddingValues(bottom = 48.dp),
