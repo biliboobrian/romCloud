@@ -83,6 +83,9 @@ handle('launcher:resumable', (system, game) => launcher.resumable(system, game))
 handle('launcher:resumableIds', (system, games) => launcher.resumableIds(system, games));
 handle('launcher:check', (system) => launcher.check(system));
 handle('launcher:resumableOnline', (system, game) => launcher.resumableOnline(system, game));
+// Moteur intégré arrêté sur une erreur : l'interface propose de réinitialiser le cœur.
+handle('player:resetCore', (systemId, core) => builtin.resetCore(systemId, core));
+builtin.onCrash((crash) => win?.webContents.send('player:crashed', crash));
 // Profil du joueur : connexion, temps de jeu, erreurs signalées à l'administration.
 handle('account:state', () => account.state());
 handle('account:register', (username, password) => account.register(username, password));

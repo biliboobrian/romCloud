@@ -298,6 +298,45 @@
   rc.account.onUpdate(() => refreshAccount());
 
   // ---------------------------------------------------------------------------
+  // Moteur intégré arrêté sur une erreur : réinitialiser le cœur
+  // ---------------------------------------------------------------------------
+
+  /** Supprime le cœur (téléchargé à nouveau au lancement suivant) et ses options pour ce système. */
+  async function resetCore(systemId, core) {
+    try {
+      await call(rc.player.resetCore, systemId, core);
+      toast(t('crash.resetDone', { core }), { duration: 7000 });
+    } catch (err) {
+      toast(err.message, { type: 'error' });
+    }
+    if (S.route.name === 'game') renderGame();
+  }
+
+  function confirmResetCore(systemId, core) {
+    modal({
+      title: t('crash.resetTitle', { core }),
+      body: `<p>${esc(t('crash.resetText', { core }))}</p>`,
+      buttons: [
+        { label: t('app.cancel'), kind: 'ghost' },
+        { label: t('crash.reset'), kind: 'danger', onClick: () => resetCore(systemId, core) },
+      ],
+    });
+  }
+
+  rc.player.onCrash((crash) => {
+    modal({
+      title: t('crash.title'),
+      body: `<p>${esc(t('crash.text', { game: crash.game.title || '', core: crash.core, code: crash.code > 255 ? `0x${(crash.code >>> 0).toString(16).toUpperCase()}` : crash.code }))}</p>
+        <p class="muted">${esc(t('crash.hint'))}</p>
+        ${crash.log ? `<details><summary class="muted">${esc(t('crash.log'))}</summary><pre class="mono crash-log">${esc(crash.log)}</pre></details>` : ''}`,
+      buttons: [
+        { label: t('app.close'), kind: 'ghost' },
+        { label: t('crash.reset'), kind: 'primary', onClick: () => resetCore(crash.system.id, crash.core) },
+      ],
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Diffusion de l'écran sur un Chromecast
   // ---------------------------------------------------------------------------
 
@@ -1228,6 +1267,7 @@
             ${selected.kind === 'custom' ? `<label class="muted">${esc(t('detail.command'))}</label>
               <input type="text" id="emuCommand" value="${esc(emu.command)}" placeholder="${esc(t('detail.commandHint'))}">` : ''}
             ${selected.kind === 'retroarch' ? `<div><button class="btn ghost" id="raHelpBtn">${icon('info', 18)} ${esc(t('detail.configureRetroArch'))}</button></div>` : ''}
+            ${selected.kind === 'builtin' && selected.installed ? `<div><button class="btn ghost" id="resetCoreBtn">${icon('refresh', 18)} ${esc(t('crash.reset'))}</button></div>` : ''}
             ${catalogEmu ? emulatorBlock(catalogEmu) : ''}
             ${command ? `<div class="muted small">${esc(t('emulator.command'))}</div><div class="mono">${esc(command)}</div>` : ''}
           </div>
@@ -1249,6 +1289,7 @@
     $('#cancelBtn')?.addEventListener('click', () => rc.downloads.cancel(game.id));
     $('#folderBtn')?.addEventListener('click', () => rc.shell.showItem(localPath));
     $('#raHelpBtn')?.addEventListener('click', () => showRetroArchHelp(system));
+    $('#resetCoreBtn')?.addEventListener('click', () => confirmResetCore(system.id, selected.core));
     if (catalogEmu) bindEmulatorBlock($('#main'), catalogEmu, () => renderGame());
     $('#deleteBtn')?.addEventListener('click', () => modal({
       title: t('detail.deleteTitle'),
