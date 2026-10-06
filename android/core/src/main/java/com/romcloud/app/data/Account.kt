@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -69,6 +70,23 @@ data class PairStatus(val status: String, val token: String? = null, val user: A
 
 @Serializable
 data class PairInfo(val device: String? = null, val platform: String? = null)
+
+/**
+ * TV du profil prête à recevoir un jeu diffusé (application RomCloud ouverte) : adresses sur le
+ * réseau local, port d'écoute, clé à présenter et définition de son écran.
+ */
+@Serializable
+data class StreamReceiver(
+    val id: Long,
+    val device: String? = null,
+    val addresses: List<String>,
+    val port: Int,
+    val key: String,
+    val width: Int? = null,
+    val height: Int? = null,
+) {
+    val name: String get() = device?.takeIf { it.isNotBlank() } ?: "Android TV"
+}
 
 /** Profil affiché : [signedIn] et, une fois relu sur le serveur, ses totaux ([offline] : non relu). */
 data class AccountState(
@@ -235,6 +253,37 @@ class Account(private val context: Context, private val api: ApiClient, private 
     /** Téléphone : connecte l'appareil du code à ce profil. */
     suspend fun approvePair(code: String) {
         execute(request("/api/account/pair/${normalizeCode(code)}/approve").post(jsonBody()))
+    }
+
+    // -------------------------------------------------------------------------
+    // Diffusion d'un jeu du téléphone sur une TV du profil
+    // -------------------------------------------------------------------------
+
+    /** TV : s'annonce prête à recevoir (à renouveler toutes les quelques secondes). */
+    suspend fun announceReceiver(addresses: List<String>, port: Int, key: String, width: Int, height: Int) {
+        if (token == null) return
+        val body = buildJsonObject {
+            put("addresses", JsonArray(addresses.map(::JsonPrimitive)))
+            put("port", JsonPrimitive(port))
+            put("key", JsonPrimitive(key))
+            put("width", JsonPrimitive(width))
+            put("height", JsonPrimitive(height))
+        }.toString().toRequestBody(JSON)
+        execute(request("/api/account/stream/receiver").put(body), 10)
+    }
+
+    /** TV : application quittée, plus proposée aux téléphones. */
+    suspend fun withdrawReceiver() {
+        if (token == null) return
+        runCatching { execute(request("/api/account/stream/receiver").delete(), 5) }
+    }
+
+    /** Téléphone : TV du profil allumées avec RomCloud ouvert (vide sans profil ou hors ligne). */
+    suspend fun streamReceivers(): List<StreamReceiver> {
+        if (token == null) return emptyList()
+        return runCatching {
+            json.decodeFromString(ListSerializer(StreamReceiver.serializer()), execute(request("/api/account/stream/receivers"), 8))
+        }.getOrDefault(emptyList())
     }
 
     // -------------------------------------------------------------------------

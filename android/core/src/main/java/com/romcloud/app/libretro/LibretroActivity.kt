@@ -82,6 +82,10 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.data.StreamReceiver
+import com.romcloud.app.stream.StreamProtocol
+import com.romcloud.app.stream.StreamSender
+import com.romcloud.app.stream.StreamTap
 import com.romcloud.app.ui.CastDialog
 import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
@@ -125,6 +129,12 @@ class LibretroActivity : ComponentActivity() {
     private var mappingSession by mutableStateOf<MappingSession?>(null)
     // Fenêtre « Caster l'écran » (recopie sur un Chromecast par Android).
     private var showCast by mutableStateOf(false)
+    /** TV du profil choisie pour diffuser le jeu (« Jouer sur la TV »), diffusion en cours et nom de la TV. */
+    private val streamTarget by lazy {
+        intent.getStringExtra(EXTRA_STREAM)?.let { runCatching { StreamProtocol.json.decodeFromString(StreamReceiver.serializer(), it) }.getOrNull() }
+    }
+    private var streamSender: StreamSender? = null
+    private var streamingTo by mutableStateOf<String?>(null)
 
     private val gamepadMappings by lazy { GamepadMappings(this, systemId) }
     /** Boutons RetroPad enfoncés par joueur, et ceux enfoncés par une gâchette analogique. */
@@ -295,6 +305,7 @@ class LibretroActivity : ComponentActivity() {
                     startPlayClock()
                     selectControllers(view)
                     if (resume) resumeGame()
+                    streamTarget?.let { startStreaming(view, it) }
                 }
             }
         }
@@ -316,7 +327,11 @@ class LibretroActivity : ComponentActivity() {
         if (core == "play" && !hasAllFilesAccess()) {
             Os.setenv("EXTERNAL_STORAGE", File(filesDir, "libretro/play").apply { mkdirs() }.absolutePath, true)
         }
-        if (core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES && core !in INPUT_MASK_CORES) return coreFile.absolutePath
+        // Diffusion sur une TV : tous les cœurs passent par l'adaptateur, qui copie le son. Sa
+        // bibliothèque est chargée avant le cœur (même instance pour LibretroDroid et StreamTap).
+        val streaming = streamTarget != null
+        if (streaming) StreamTap.load()
+        if (!streaming && core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES && core !in INPUT_MASK_CORES) return coreFile.absolutePath
         Os.setenv("ROMCLOUD_SHIM_CORE", coreFile.absolutePath, true)
         Os.setenv("ROMCLOUD_SHIM_BLIT", if (core in BLIT_CORES) "1" else "0", true)
         // Bibliothèques non extraites de l'APK : dlopen les trouve par leur seul nom.
@@ -391,6 +406,7 @@ class LibretroActivity : ComponentActivity() {
         // L'émulation est déjà en pause ici (LibretroDroid suit le cycle de vie de l'activité).
         saveSram()
         if (isFinishing) {
+            stopStreaming()
             CrashReports.endSession(this)
             // Processus de jeu arrêté juste après : temps de jeu et sauvegardes mis en file,
             // envoyés au serveur par l'application au retour.
@@ -406,6 +422,32 @@ class LibretroActivity : ComponentActivity() {
             CrashReports.endSession(this)
             Process.killProcess(Process.myPid())
         }
+    }
+
+    // ---- Diffusion sur une TV du profil : image et son sur la TV, manette tactile sur le téléphone ----
+
+    private fun startStreaming(view: GLRetroView, target: StreamReceiver) {
+        if (streamSender != null) return
+        toast = getString(R.string.stream_connecting, target.name)
+        streamSender = StreamSender(view, target, account.deviceName, rom.nameWithoutExtension) { event ->
+            when (event) {
+                StreamSender.Event.Connected -> {
+                    streamingTo = target.name
+                    toast = getString(R.string.stream_started, target.name)
+                }
+                is StreamSender.Event.Stopped -> {
+                    streamSender = null
+                    streamingTo = null
+                    if (!isFinishing) toast = event.error?.let { getString(R.string.stream_failed, it) } ?: getString(R.string.stream_stopped)
+                }
+            }
+        }.also { it.start() }
+    }
+
+    private fun stopStreaming() {
+        streamSender?.stop()
+        streamSender = null
+        streamingTo = null
     }
 
     /** Appelé seulement émulation en pause : les appels se font hors du thread d'émulation. */
@@ -707,6 +749,20 @@ class LibretroActivity : ComponentActivity() {
                     }
                 }
             }
+            // Diffusion en cours : rappel discret (vue superposée, absente de l'image envoyée à la TV).
+            streamingTo?.takeIf { phase == Phase.Running && !menuOpen }?.let { name ->
+                Surface(
+                    color = Color.Black.copy(alpha = 0.55f),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.stream_on_tv, name),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+            }
             toast?.let { text ->
                 LaunchedEffect(text) {
                     delay(2000)
@@ -751,6 +807,18 @@ class LibretroActivity : ComponentActivity() {
                     },
                 )
                 if (!isTv) add(stringResource(R.string.cast_button) to { showCast = true })
+                val target = streamTarget
+                if (streamSender != null) {
+                    add(stringResource(R.string.stream_menu_stop) to {
+                        stopStreaming()
+                        closeMenu()
+                    })
+                } else if (target != null && gameReady) {
+                    add(stringResource(R.string.stream_menu_start, target.name) to {
+                        retroView?.let { startStreaming(it, target) }
+                        closeMenu()
+                    })
+                }
                 if (gameReady) add(stringResource(R.string.libretro_menu_save_quit) to ::saveAndQuit)
                 add(stringResource(R.string.libretro_menu_quit) to ::finish)
             }
@@ -1026,6 +1094,7 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_SYSTEM = "system"
         private const val EXTRA_RESUME = "resume"
         private const val EXTRA_GAME_ID = "gameId"
+        private const val EXTRA_STREAM = "stream"
         private const val RETRO_DEVICE_JOYPAD = 1
         private const val RETRO_DEVICE_MASK = 0xff
         private const val AUDIO_SHIM = "libromcloud_audio_shim.so"
@@ -1043,9 +1112,19 @@ class LibretroActivity : ComponentActivity() {
         /**
          * [systemId] : système du jeu (options du cœur mémorisées par système) ;
          * [systemDir] : dossier des BIOS (dossier « system » libretro) ;
-         * [resume] : reprend la partie à son état sauvegardé.
+         * [resume] : reprend la partie à son état sauvegardé ;
+         * [stream] : TV du profil sur laquelle diffuser le jeu.
          */
-        fun intent(context: Context, systemId: String, core: String, rom: File, systemDir: String, resume: Boolean = false, gameId: Long = 0): Intent =
+        fun intent(
+            context: Context,
+            systemId: String,
+            core: String,
+            rom: File,
+            systemDir: String,
+            resume: Boolean = false,
+            gameId: Long = 0,
+            stream: StreamReceiver? = null,
+        ): Intent =
             Intent(context, LibretroActivity::class.java)
                 .putExtra(EXTRA_SYSTEM, systemId)
                 .putExtra(EXTRA_CORE, core)
@@ -1053,5 +1132,6 @@ class LibretroActivity : ComponentActivity() {
                 .putExtra(EXTRA_SYSTEM_DIR, systemDir)
                 .putExtra(EXTRA_RESUME, resume)
                 .putExtra(EXTRA_GAME_ID, gameId)
+                .putExtra(EXTRA_STREAM, stream?.let { StreamProtocol.json.encodeToString(StreamReceiver.serializer(), it) })
     }
 }

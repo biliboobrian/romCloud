@@ -437,4 +437,23 @@
     <string name="tv_profile_qr_code">Ou saisissez le code : %1$s</string>
     <string name="tv_profile_qr_error">QR code indisponible : %1$s</string>
     <string name="libretro_syncing_saves">Récupération de la sauvegarde en ligne…</string>
+    <!-- Diffusion d'un jeu du téléphone sur une TV du profil -->
+    <string name="stream_play_on_tv">Jouer sur la TV</string>
+    <string name="stream_resume_on_tv">Reprendre sur la TV</string>
+    <string name="stream_play_on_named_tv">Jouer sur %1$s</string>
+    <string name="stream_resume_on_named_tv">Reprendre sur %1$s</string>
+    <string name="stream_choose_tv">Choisir une TV</string>
+    <string name="stream_tv_hint">L’image et le son passent sur la TV ; le téléphone sert de manette.</string>
+    <string name="stream_connecting">Connexion à %1$s…</string>
+    <string name="stream_started">Jeu diffusé sur %1$s</string>
+    <string name="stream_on_tv">Sur la TV : %1$s</string>
+    <string name="stream_stopped">Diffusion sur la TV arrêtée</string>
+    <string name="stream_failed">Diffusion sur la TV impossible : %1$s</string>
+    <string name="stream_unreachable">%1$s est injoignable : le téléphone et la TV doivent être sur le même réseau.</string>
+    <string name="stream_refused">%1$s a refusé la diffusion.</string>
+    <string name="stream_menu_stop">Arrêter la diffusion sur la TV</string>
+    <string name="stream_menu_start">Diffuser sur %1$s</string>
+    <string name="stream_tv_from">Jeu diffusé depuis %1$s</string>
+    <string name="stream_tv_busy">La TV affiche déjà un jeu.</string>
+    <string name="stream_tv_back_hint">Retour : arrêter la diffusion</string>
 </resources>

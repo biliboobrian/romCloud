@@ -1,7 +1,8 @@
 // Profils des joueurs : comptes (mot de passe haché avec scrypt), sessions par appareil (jeton
 // aléatoire, seul son empreinte SHA-256 est stockée), connexion d'une TV par QR code validé depuis un
-// téléphone déjà connecté, temps de jeu par jeu, sauvegardes en ligne (état et mémoire du jeu) et
-// erreurs signalées par les applications. Administration : liste, détail et journaux.
+// téléphone déjà connecté, temps de jeu par jeu, sauvegardes en ligne (état et mémoire du jeu),
+// TV prêtes à recevoir un jeu diffusé depuis un téléphone du même profil, et erreurs signalées par
+// les applications. Administration : liste, détail et journaux.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,6 +18,8 @@ const MIN_PASSWORD = 6;
 const MAX_FAILURES = 10;
 const FAILURE_WINDOW_MINUTES = 15;
 const PAIR_TTL_MS = 5 * 60 * 1000;
+/** Une TV qui ne s'est pas annoncée depuis ce délai n'est plus proposée (application fermée, TV éteinte). */
+const RECEIVER_TTL_MS = 45 * 1000;
 /** Une session pour une durée de jeu ne peut pas déclarer plus de 24 h. */
 const MAX_PLAY_SECONDS = 24 * 3600;
 export const SAVE_KINDS = ['state', 'sram'];
@@ -208,6 +211,51 @@ export function pollPair(code, secret) {
   if (!pair.result) return { status: 'pending' };
   pairs.delete(key);
   return { status: 'approved', ...pair.result };
+}
+
+// ---------------------------------------------------------------------------
+// Diffusion d'un jeu du téléphone sur une TV du même profil
+// ---------------------------------------------------------------------------
+
+// TV prêtes à recevoir, par session (en mémoire : elles se réannoncent toutes les quelques secondes).
+const receivers = new Map();
+
+function pruneReceivers(now = Date.now()) {
+  for (const [id, r] of receivers) if (r.seenAt + RECEIVER_TTL_MS < now) receivers.delete(id);
+}
+
+const ADDRESS_RE = /^[0-9a-f.:%a-z]{2,64}$/i;
+
+/**
+ * La TV (application ouverte) s'annonce : adresses sur le réseau local, port d'écoute et clé que le
+ * téléphone devra présenter. Réservé aux sessions TV.
+ */
+export function announceReceiver(auth, body, client) {
+  if (client.platform !== 'androidtv') throw new HttpError(400, 'errors.streamTvOnly');
+  const addresses = (Array.isArray(body?.addresses) ? body.addresses : []).map(String).filter((a) => ADDRESS_RE.test(a)).slice(0, 8);
+  const port = Number(body?.port);
+  const key = String(body?.key ?? '');
+  if (!addresses.length || !Number.isInteger(port) || port < 1 || port > 65535 || !/^[0-9a-f]{16,128}$/i.test(key)) {
+    throw new HttpError(400, 'errors.streamReceiver');
+  }
+  pruneReceivers();
+  receivers.set(auth.sessionId, {
+    userId: auth.user.id, device: client.device, addresses, port, key, width: Number(body.width) || null, height: Number(body.height) || null, seenAt: Date.now(),
+  });
+  return { ttlSeconds: RECEIVER_TTL_MS / 1000 };
+}
+
+/** La TV quitte l'application : plus proposée. */
+export function withdrawReceiver(auth) {
+  receivers.delete(auth.sessionId);
+}
+
+/** TV allumées (application ouverte) du profil, hors l'appareil qui demande. */
+export function listReceivers(auth) {
+  pruneReceivers();
+  return [...receivers]
+    .filter(([id, r]) => r.userId === auth.user.id && id !== auth.sessionId)
+    .map(([id, r]) => ({ id, device: r.device, addresses: r.addresses, port: r.port, key: r.key, width: r.width, height: r.height }));
 }
 
 // ---------------------------------------------------------------------------

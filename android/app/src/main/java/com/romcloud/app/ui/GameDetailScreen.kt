@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -86,6 +87,8 @@ fun GameDetailScreen(
     val activity = LocalContext.current as Activity
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
+    // Plusieurs TV du profil allumées : choix de celle qui affiche le jeu.
+    var chooseTv by remember { mutableStateOf(false) }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
@@ -181,6 +184,35 @@ fun GameDetailScreen(
                                 Icon(Icons.Filled.Delete, stringResource(R.string.delete_from_device))
                             }
                         }
+                        // TV du profil allumée avec RomCloud ouvert : jeu diffusé, le téléphone sert de manette.
+                        if (state.canStream) {
+                            val single = state.tvs.singleOrNull()
+                            OutlinedButton(
+                                onClick = {
+                                    if (single != null) {
+                                        viewModel.play(activity, state.canResume, single)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                                    } else {
+                                        chooseTv = true
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                            ) {
+                                Icon(Icons.Filled.Tv, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    when {
+                                        single != null && state.canResume -> stringResource(R.string.stream_resume_on_named_tv, single.name)
+                                        single != null -> stringResource(R.string.stream_play_on_named_tv, single.name)
+                                        state.canResume -> stringResource(R.string.stream_resume_on_tv)
+                                        else -> stringResource(R.string.stream_play_on_tv)
+                                    },
+                                )
+                            }
+                            Text(
+                                stringResource(R.string.stream_tv_hint),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     } else {
                         Button(onClick = viewModel::download, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                             Icon(Icons.Filled.CloudDownload, null)
@@ -256,6 +288,30 @@ fun GameDetailScreen(
         }
     }
 
+    if (chooseTv) {
+        AlertDialog(
+            onDismissRequest = { chooseTv = false },
+            title = { Text(stringResource(R.string.stream_choose_tv)) },
+            text = {
+                Column {
+                    state.tvs.forEach { tv ->
+                        TextButton(
+                            onClick = {
+                                chooseTv = false
+                                viewModel.play(activity, state.canResume, tv)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Filled.Tv, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(tv.name, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { chooseTv = false }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },

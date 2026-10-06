@@ -444,4 +444,23 @@
     <string name="tv_profile_qr_code">Or type the code: %1$s</string>
     <string name="tv_profile_qr_error">QR code unavailable: %1$s</string>
     <string name="libretro_syncing_saves">Retrieving the online save…</string>
+    <!-- Diffusion d'un jeu du téléphone sur une TV du profil -->
+    <string name="stream_play_on_tv">Play on the TV</string>
+    <string name="stream_resume_on_tv">Resume on the TV</string>
+    <string name="stream_play_on_named_tv">Play on %1$s</string>
+    <string name="stream_resume_on_named_tv">Resume on %1$s</string>
+    <string name="stream_choose_tv">Choose a TV</string>
+    <string name="stream_tv_hint">Image and sound go to the TV; this phone becomes the controller.</string>
+    <string name="stream_connecting">Connecting to %1$s…</string>
+    <string name="stream_started">Playing on %1$s</string>
+    <string name="stream_on_tv">On the TV: %1$s</string>
+    <string name="stream_stopped">Streaming to the TV stopped</string>
+    <string name="stream_failed">Unable to stream to the TV: %1$s</string>
+    <string name="stream_unreachable">%1$s cannot be reached: the phone and the TV must be on the same network.</string>
+    <string name="stream_refused">%1$s refused the stream.</string>
+    <string name="stream_menu_stop">Stop streaming to the TV</string>
+    <string name="stream_menu_start">Stream to %1$s</string>
+    <string name="stream_tv_from">Game streamed from %1$s</string>
+    <string name="stream_tv_busy">The TV is already showing a game.</string>
+    <string name="stream_tv_back_hint">Back: stop the stream</string>
 </resources>
