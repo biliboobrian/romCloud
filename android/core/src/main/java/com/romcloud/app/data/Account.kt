@@ -342,13 +342,15 @@ class Account(private val context: Context, private val api: ApiClient, private 
      */
     suspend fun downloadNewer(gameId: Long, core: String, files: Map<String, File>): List<String> {
         val updated = mutableListOf<String>()
-        for (save in saves(gameId).filter { it.core == core }) {
+        // Variantes du même cœur (N64 : mupen64plus_next sous Windows, _gles3 sous Android) : la plus récente.
+        val latest = saves(gameId).filter { sameSaveCore(it.core, core) }.groupBy { it.kind }.values.map { it.maxBy(OnlineSave::savedAtMillis) }
+        for (save in latest) {
             val file = files[save.kind] ?: continue
             if (save.savedAtMillis <= file.lastModified() + 1000) continue
             runCatching {
                 withContext(Dispatchers.IO) {
                     val client = api.http.newBuilder().readTimeout(120, TimeUnit.SECONDS).build()
-                    client.newCall(request(savePath(gameId, core, save.kind)).build()).execute().use { response ->
+                    client.newCall(request(savePath(gameId, save.core, save.kind)).build()).execute().use { response ->
                         if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
                         file.parentFile?.mkdirs()
                         val part = File(file.path + ".download")
@@ -499,3 +501,11 @@ class Account(private val context: Context, private val api: ApiClient, private 
         }
     }
 }
+
+/**
+ * Cœurs dont les sauvegardes sont interchangeables : variantes d'un même émulateur compilées pour
+ * des rendus différents (mupen64plus_next sous Windows, mupen64plus_next_gles3 sous Android).
+ */
+internal fun saveCoreFamily(core: String): String = core.removeSuffix("_gles3").removeSuffix("_gles2")
+
+internal fun sameSaveCore(a: String, b: String): Boolean = saveCoreFamily(a) == saveCoreFamily(b)

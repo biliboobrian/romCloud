@@ -159,6 +159,13 @@ async function addPlaytime(gameId, seconds) {
 // Sauvegardes en ligne (moteur intégré)
 // ---------------------------------------------------------------------------
 
+/**
+ * Cœurs dont les sauvegardes sont interchangeables : variantes d'un même émulateur compilées pour
+ * des rendus différents (mupen64plus_next sous Windows, mupen64plus_next_gles3 sous Android).
+ */
+const saveCoreFamily = (core) => String(core || '').replace(/_gles[23]$/, '');
+const sameSaveCore = (a, b) => saveCoreFamily(a) === saveCoreFamily(b);
+
 const savePath = (gameId, core, kind) => `/api/account/saves/${gameId}/${encodeURIComponent(core)}/${kind}`;
 
 /**
@@ -175,13 +182,16 @@ async function downloadNewer(gameId, core, files) {
   }
   const updated = [];
   for (const kind of KINDS) {
-    const save = remote.find((s) => s.core === core && s.kind === kind);
+    // Variantes du même cœur (sauvegardes envoyées par Android) : la plus récente.
+    const save = remote
+      .filter((s) => sameSaveCore(s.core, core) && s.kind === kind)
+      .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0];
     const file = files[kind];
     if (!save || !file) continue;
     const local = fs.existsSync(file) ? fs.statSync(file).mtimeMs : 0;
     if (Date.parse(save.savedAt) <= local + 1000) continue;
     try {
-      const { data } = await call(savePath(gameId, core, kind), { raw: true, timeout: 120000 });
+      const { data } = await call(savePath(gameId, save.core, kind), { raw: true, timeout: 120000 });
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(`${file}.download`, data);
       fs.renameSync(`${file}.download`, file);
@@ -296,5 +306,5 @@ function reportError({ context, message, details }) {
 }
 
 module.exports = {
-  onChange, register, login, logout, state, playtime, addPlaytime, downloadNewer, uploadChanged, saves, reportError, flush, pendingCount, MIN_PLAY_SECONDS,
+  onChange, register, login, logout, state, playtime, addPlaytime, downloadNewer, uploadChanged, saves, sameSaveCore, reportError, flush, pendingCount, MIN_PLAY_SECONDS,
 };

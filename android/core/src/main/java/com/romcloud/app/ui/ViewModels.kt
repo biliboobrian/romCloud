@@ -14,6 +14,7 @@ import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.OnlineSave
 import com.romcloud.app.data.Player
 import com.romcloud.app.data.StreamReceiver
+import com.romcloud.app.data.sameSaveCore
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulator
@@ -412,7 +413,7 @@ class GameDetailViewModel(
             val selected = app.launcher.selectedPlayer(system, game.fileName)
             val file = app.library.fileFor(system, game)
             val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(file, selected) }
-            val online = selected?.libretroCore?.let { core -> app.account.saves(game.id).find { it.core == core && it.kind == "state" } }
+            val online = selected?.libretroCore?.let { core -> app.account.saves(game.id).find { sameSaveCore(it.core, core) && it.kind == "state" } }
             val canResume = localResume || (downloaded && online != null)
             _state.update {
                 it.copy(

@@ -245,7 +245,7 @@ async function resumableOnline(system, game) {
     return null;
   }
   if (!plan.builtin) return null;
-  const save = (await account.saves(game.id)).find((s) => s.core === plan.core && s.kind === 'state');
+  const save = (await account.saves(game.id)).find((s) => account.sameSaveCore(s.core, plan.core) && s.kind === 'state');
   return save ? { device: save.device, savedAt: save.savedAt } : null;
 }
 
