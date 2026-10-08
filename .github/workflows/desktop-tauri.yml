@@ -1,0 +1,145 @@
+name: Windows (Tauri)
+
+# Application RomCloud pour Windows en Tauri (interface de desktop/src/renderer, processus principal
+# en Rust, moteur d'émulation intégré en C++) :
+#   RomCloud-Windows-<version>-tauri-x64.exe  installeur
+#   latest.json                               mise à jour automatique (tauri-plugin-updater) : version,
+#                                             adresse et signature de l'installeur
+# Signature des mises à jour : secrets TAURI_SIGNING_PRIVATE_KEY (contenu de la clé privée créée par
+# « tauri signer generate ») et TAURI_SIGNING_PRIVATE_KEY_PASSWORD (vide si la clé n'en a pas).
+# Compilée ici avec la chaîne de Visual Studio du runner (en local : llvm-mingw, voir
+# desktop-tauri/README.md), bibliothèques d'exécution liées dans l'exe.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "desktop-tauri/**"
+      - "desktop/src/renderer/**"
+      - "desktop/native/**"
+      - ".github/workflows/desktop-tauri.yml"
+  pull_request:
+    paths:
+      - "desktop-tauri/**"
+      - "desktop/src/renderer/**"
+      - "desktop/native/**"
+      - ".github/workflows/desktop-tauri.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write # ajout de l'installeur aux Releases sur les tags
+
+env:
+  TARGET: x86_64-pc-windows-msvc
+  RUSTFLAGS: -C target-feature=+crt-static
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop-tauri/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop-tauri/src-tauri -> target
+
+      # Interface partagée avec la version Electron : ses propres tests (sans dépendance).
+      - name: Tests de l'interface
+        run: node --test desktop/test/criteria.test.js desktop/test/gamepad.test.js
+
+      - name: Tests Rust
+        working-directory: desktop-tauri/src-tauri
+        run: cargo test --target "$TARGET"
+
+      - name: Version
+        working-directory: desktop-tauri
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            # Version de l'installeur et de l'application (comparée aux Releases pour les mises à jour).
+            node -e "
+              const fs = require('fs');
+              const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+              conf.version = process.argv[1];
+              fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+              const cargo = fs.readFileSync('src-tauri/Cargo.toml', 'utf8').replace(/^version = \".*\"/m, 'version = \"' + process.argv[1] + '\"');
+              fs.writeFileSync('src-tauri/Cargo.toml', cargo);
+            " "$VERSION"
+            LABEL="$VERSION"
+          else
+            VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+            LABEL="$VERSION-dev.${{ github.run_number }}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "LABEL=$LABEL" >> "$GITHUB_ENV"
+
+      # Moteur d'émulation intégré (frontend libretro natif, C++ / SDL2), inclus dans l'installeur.
+      - name: Moteur d'émulation intégré
+        working-directory: desktop
+        run: npm run player
+
+      - run: npm ci
+        working-directory: desktop-tauri
+
+      - name: Installeur
+        working-directory: desktop-tauri
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          # Sans clé (pull request d'un fork…) : installeur sans signature de mise à jour.
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            npx tauri build --target "$TARGET" --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          else
+            npx tauri build --target "$TARGET"
+          fi
+          BUNDLE="src-tauri/target/$TARGET/release/bundle/nsis/RomCloud_${VERSION}_x64-setup.exe"
+          NAME="RomCloud-Windows-${LABEL}-tauri-x64.exe"
+          mkdir -p dist
+          cp "$BUNDLE" "dist/$NAME"
+          # Mise à jour automatique : installeur de la Release du tag, et sa signature.
+          if [[ -f "$BUNDLE.sig" && "$GITHUB_REF" == refs/tags/v* ]]; then
+            node -e "
+              const fs = require('fs');
+              const [version, name, sigFile] = process.argv.slice(1);
+              const url = 'https://github.com/${{ github.repository }}/releases/download/v' + version + '/' + name;
+              const signature = fs.readFileSync(sigFile, 'utf8').trim();
+              const platform = { signature, url };
+              fs.writeFileSync('dist/latest.json', JSON.stringify({
+                version,
+                notes: 'RomCloud ' + version,
+                pub_date: new Date().toISOString(),
+                platforms: { 'windows-x86_64': platform, 'windows-x86_64-nsis': platform },
+              }, null, 2));
+            " "$VERSION" "$NAME" "$BUNDLE.sig"
+          fi
+          ls -la dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: RomCloud-Windows-Tauri-${{ env.LABEL }}
+          path: desktop-tauri/dist/*
+
+      - name: Release GitHub
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            desktop-tauri/dist/*.exe
+            desktop-tauri/dist/latest.json
