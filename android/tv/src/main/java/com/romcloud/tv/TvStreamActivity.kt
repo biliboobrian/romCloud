@@ -65,6 +65,8 @@ class TvStreamActivity : ComponentActivity(), SurfaceHolder.Callback {
         session = taken
         current.set(taken)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Mode jeu de la TV (ALLM) : sans les traitements de l'image, qui retardent l'affichage.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) window.setPreferMinimalPostProcessing(true)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
@@ -151,12 +153,17 @@ class TvStreamActivity : ComponentActivity(), SurfaceHolder.Callback {
                 val input = session.input
                 val format = StreamProtocol.json.decodeFromString(StreamProtocol.Format.serializer(), input.readUTF())
                 onFormat(format)
-                val codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                var codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
                 decoder = codec
-                val videoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, format.width, format.height).apply {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                try {
+                    codec.configure(videoFormat(format, vendorKeys = true), surface, null, 0)
+                } catch (e: Exception) {
+                    // Réglages propres aux fabricants refusés : format standard.
+                    runCatching { codec.release() }
+                    codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                    decoder = codec
+                    codec.configure(videoFormat(format, vendorKeys = false), surface, null, 0)
                 }
-                codec.configure(videoFormat, surface, null, 0)
                 codec.start()
                 thread(name = "stream-render") { render(codec) }
                 if (format.sampleRate > 0) thread(name = "stream-audio") { play(format.sampleRate) }
@@ -185,6 +192,22 @@ class TvStreamActivity : ComponentActivity(), SurfaceHolder.Callback {
                 onEnd()
             }
         }
+
+        /**
+         * Décodeur à faible latence : chaque image affichée dès qu'elle est décodée (Android 11), et
+         * réglages équivalents des puces de TV (Qualcomm, Amlogic, MediaTek, HiSilicon), ignorés ailleurs.
+         */
+        private fun videoFormat(format: StreamProtocol.Format, vendorKeys: Boolean) =
+            MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, format.width, format.height).apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                setInteger(MediaFormat.KEY_PRIORITY, 0) // temps réel
+                if (vendorKeys) {
+                    setInteger("vendor.qti-ext-dec-low-latency.enable", 1)
+                    setInteger("vendor.low-latency.enable", 1)
+                    setInteger("vendor.rtc-ext-dec-low-latency.enable", 1)
+                    setInteger("vendor.hisi-ext-low-latency-video-dec.video-scene-for-low-latency-req", 1)
+                }
+            }
 
         /** Image au décodeur ; sans tampon libre, une image ordinaire est sautée (pas la configuration). */
         private fun decode(codec: MediaCodec, packet: StreamProtocol.Packet, flags: Int, required: Boolean) {

@@ -25,15 +25,18 @@ import java.io.DataOutputStream
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /**
  * Diffuse le jeu affiché par [view] (vue OpenGL de l'émulateur intégré) vers la TV [target] (voir
- * [StreamProtocol]). L'image est copiée depuis la surface du jeu (PixelCopy) : la manette tactile et
- * les menus, superposés dans d'autres vues, ne sont pas diffusés. Seule la zone du jeu est copiée,
- * mise à la taille de l'écran de la TV et encodée en H.264 ; le son est lu dans l'adaptateur natif
- * ([StreamTap]) et coupé sur le téléphone. [onEvent] est appelé sur le thread principal.
+ * [StreamProtocol]). Image : celle du cœur à sa taille d'origine, lue dans l'adaptateur natif
+ * ([StreamTap], rendu logiciel), sinon copiée depuis la surface du jeu (PixelCopy, cœurs à rendu
+ * OpenGL) ; la manette tactile et les menus, superposés dans d'autres vues, ne sont pas diffusés.
+ * L'image est mise à la taille de l'écran de la TV et encodée en H.264 ; le son est lu dans
+ * l'adaptateur et coupé sur le téléphone. [onEvent] est appelé sur le thread principal.
  */
 class StreamSender(
     private val view: SurfaceView,
@@ -96,6 +99,8 @@ class StreamSender(
             val s = Socket()
             try {
                 s.tcpNoDelay = true
+                // File d'envoi courte : Wi-Fi ralenti, l'encodeur attend au lieu d'accumuler du retard.
+                s.sendBufferSize = SEND_BUFFER
                 s.connect(InetSocketAddress(address, target.port), CONNECT_TIMEOUT_MS)
                 return s
             } catch (e: IOException) {
@@ -188,29 +193,46 @@ class StreamSender(
 
     // ---- Image ----
 
-    private fun videoFormat(width: Int, height: Int, lowLatency: Boolean) =
+    /**
+     * Format de l'encodeur. Faible latence : temps réel, sans images B, profil H.264 « Baseline »
+     * (les décodeurs des TV affichent alors chaque image sans en garder d'avance) et débit constant
+     * (pas de grosse image qui retarde les suivantes sur le Wi-Fi), si l'encodeur les connaît.
+     */
+    private fun videoFormat(width: Int, height: Int, lowLatency: Boolean, caps: MediaCodecInfo.CodecCapabilities?) =
         MediaFormat.createVideoFormat(MIME, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, (width.toLong() * height * FPS / 8).toInt().coerceIn(MIN_BITRATE, MAX_BITRATE))
+            setInteger(MediaFormat.KEY_BIT_RATE, (width.toLong() * height * FPS / 12).toInt().coerceIn(MIN_BITRATE, MAX_BITRATE))
             setInteger(MediaFormat.KEY_FRAME_RATE, FPS)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
             if (lowLatency) {
                 setInteger(MediaFormat.KEY_PRIORITY, 0) // temps réel
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setInteger(MediaFormat.KEY_LATENCY, 1)
+                val levels = caps?.profileLevels.orEmpty()
+                val baseline = levels.filter { it.profile == AVC_CONSTRAINED_BASELINE }.ifEmpty {
+                    levels.filter { it.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline }
+                }.maxByOrNull { it.level }
+                if (baseline != null) {
+                    setInteger(MediaFormat.KEY_PROFILE, baseline.profile)
+                    setInteger(MediaFormat.KEY_LEVEL, baseline.level)
+                }
+                if (caps?.encoderCapabilities?.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) == true) {
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+                }
             }
         }
 
     private fun startVideo(width: Int, height: Int) {
         var codec = MediaCodec.createEncoderByType(MIME)
+        val caps = runCatching { codec.codecInfo.getCapabilitiesForType(MIME) }.getOrNull()
         try {
-            codec.configure(videoFormat(width, height, lowLatency = true), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            codec.configure(videoFormat(width, height, lowLatency = true, caps), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         } catch (e: Exception) {
             // Réglages de faible latence refusés par cet encodeur : format de base.
             Log.w(TAG, "low-latency encoder format refused", e)
             codec.release()
             codec = MediaCodec.createEncoderByType(MIME)
-            codec.configure(videoFormat(width, height, lowLatency = false), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            codec.configure(videoFormat(width, height, lowLatency = false, caps), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         }
         inputSurface = codec.createInputSurface()
         codec.start()
@@ -219,15 +241,17 @@ class StreamSender(
     }
 
     /**
-     * Copie l'image du jeu (au plus [FPS] fois par seconde) puis la dessine sur la surface de
-     * l'encodeur (OpenGL ES, [EncoderRenderer]), le tout sur le thread « stream-capture ».
+     * Envoie chaque image du jeu à la surface de l'encodeur (OpenGL ES, [EncoderRenderer]), sur le
+     * thread « stream-capture » : image du cœur lue dans l'adaptateur dès qu'elle change (rendu
+     * logiciel : petite copie, sans attendre l'écran), sinon copie de l'écran au plus [FPS] fois par
+     * seconde (rendu OpenGL, ou adaptateur absent).
      */
     private fun startCapture(width: Int, height: Int) {
         val handlerThread = HandlerThread("stream-capture").also { it.start() }
         captureThread = handlerThread
         val handler = Handler(handlerThread.looper)
         captureHandler = handler
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val bitmap by lazy { Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) }
 
         fun draw() = synchronized(surfaceLock) {
             if (inputSurface == null) return@synchronized
@@ -235,6 +259,40 @@ class StreamSender(
         }
 
         lateinit var capture: () -> Unit
+
+        // Image du cœur : interrogée toutes les [POLL_MS] ms, envoyée dès qu'elle change.
+        val info = IntArray(6)
+        var frame = ByteBuffer.allocateDirect(512 * 512 * 4).order(ByteOrder.nativeOrder())
+        var serial = 0
+        lateinit var copyFrame: () -> Unit
+        copyFrame = copyFrame@{
+            if (!running) return@copyFrame
+            try {
+                val next = StreamTap.readFrame(frame, info, serial)
+                when {
+                    // Rendu OpenGL : rien à lire ici, l'écran est copié.
+                    info[4] == 1 -> {
+                        capture()
+                        return@copyFrame
+                    }
+                    next == -1 -> {
+                        frame = ByteBuffer.allocateDirect(info[5]).order(ByteOrder.nativeOrder())
+                        handler.post(copyFrame)
+                        return@copyFrame
+                    }
+                    next != serial -> {
+                        serial = next
+                        synchronized(surfaceLock) {
+                            if (inputSurface != null) renderer?.drawFrame(frame, info[0], info[1], info[2], info[3], System.nanoTime())
+                        }
+                    }
+                }
+                handler.postDelayed(copyFrame, POLL_MS)
+            } catch (e: Throwable) {
+                fail(e)
+            }
+        }
+
         capture = capture@{
             if (!running) return@capture
             val began = SystemClock.uptimeMillis()
@@ -264,7 +322,12 @@ class StreamSender(
                     val surface = inputSurface ?: return@post
                     renderer = EncoderRenderer(surface, width, height)
                 }
-                capture()
+                if (StreamTap.active) {
+                    StreamTap.setFrameCapture(true)
+                    copyFrame()
+                } else {
+                    capture()
+                }
             } catch (e: Throwable) {
                 fail(e)
             }
@@ -344,6 +407,7 @@ class StreamSender(
         if (!finished.compareAndSet(false, true)) return
         running = false
         StreamTap.setCapture(enabled = false, muteLocal = false)
+        StreamTap.setFrameCapture(false)
         runCatching { socket?.close() }
         // Contexte OpenGL libéré sur son thread, avant l'arrêt de celui-ci.
         captureHandler?.post {
@@ -360,8 +424,14 @@ class StreamSender(
         const val MIME = MediaFormat.MIMETYPE_VIDEO_AVC
         const val FPS = 60
         const val FRAME_MS = 1000L / FPS
-        const val MIN_BITRATE = 4_000_000
-        const val MAX_BITRATE = 16_000_000
+        const val MIN_BITRATE = 3_000_000
+        const val MAX_BITRATE = 12_000_000
+        /** MediaCodecInfo.CodecProfileLevel.AVCProfileConstrainedBaseline (Android 8.1). */
+        const val AVC_CONSTRAINED_BASELINE = 0x10000
+        /** Intervalle de lecture de l'image du cœur (ms). */
+        const val POLL_MS = 2L
+        /** File d'envoi du système (octets) : environ 0,2 s d'image au débit maximal. */
+        const val SEND_BUFFER = 256 * 1024
         const val TAG = "RomCloudStream"
         const val CONNECT_TIMEOUT_MS = 5000
         const val HANDSHAKE_TIMEOUT_MS = 8000

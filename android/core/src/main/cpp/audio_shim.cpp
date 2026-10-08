@@ -13,6 +13,8 @@
 // - diffusion sur une TV (tous les cœurs passent alors par l'adaptateur) : le son est copié dans une
 //   file lue par l'application (StreamTap, JNI) et peut être coupé sur le téléphone (silence envoyé à
 //   LibretroDroid, même cadence d'émulation) ; proportions de l'image et fréquence du son exposées ;
+//   image des cœurs à rendu logiciel copiée à sa taille d'origine (lue par StreamTap, bien moins
+//   coûteux qu'une copie de l'écran) ;
 // - format d'image choisi par l'utilisateur (CoreShim, JNI) : proportions annoncées à LibretroDroid
 //   remplacées (géométrie du cœur), y compris en cours de partie.
 // Pas de bibliothèque C++ (ni STL, ni variable statique locale) : rien d'autre à embarquer.
@@ -21,6 +23,7 @@
 #include <android/log.h>
 #include <jni.h>
 #include <dlfcn.h>
+#include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -83,6 +86,8 @@ static audio_sample_batch_t batch = nullptr;
 static void tap(const int16_t *data, size_t frames);
 // Format d'image choisi (section « Image ») : appliqué avant chaque image.
 static void apply_aspect();
+// Diffusion : copie de l'image du cœur (section « Diffusion »).
+static void tap_frame(const void *data, unsigned width, unsigned height, size_t pitch);
 static bool mute_local = false;
 static int16_t *silence = nullptr;
 static size_t silence_frames = 0;
@@ -195,7 +200,11 @@ struct retro_hw_render_callback {
     void (*context_destroy)();
     bool debug_context;
 };
-const unsigned SET_HW_RENDER = 14, SET_SYSTEM_AV_INFO = 32, SET_GEOMETRY = 37;
+const unsigned SET_ROTATION = 1, SET_PIXEL_FORMAT = 10, SET_HW_RENDER = 14, SET_SYSTEM_AV_INFO = 32, SET_GEOMETRY = 37;
+// Format des pixels (RETRO_PIXEL_FORMAT_*) et rotation (quarts de tour antihoraires) demandés par le cœur.
+const int PIXEL_0RGB1555 = 0, PIXEL_XRGB8888 = 1;
+static int pixel_format = PIXEL_0RGB1555;
+static unsigned rotation = 0;
 
 static environment_t frontend_environment = nullptr;
 static video_refresh_t frontend_video = nullptr;
@@ -263,6 +272,10 @@ static bool on_environment(unsigned cmd, void *data) {
         auto *hw = static_cast<retro_hw_render_callback *>(data);
         frontend_framebuffer = hw->get_current_framebuffer;
         bottom_left_origin = hw->bottom_left_origin;
+    } else if (cmd == SET_PIXEL_FORMAT) {
+        __atomic_store_n(&pixel_format, *static_cast<const int *>(data), __ATOMIC_RELAXED);
+    } else if (cmd == SET_ROTATION) {
+        __atomic_store_n(&rotation, *static_cast<const unsigned *>(data) & 3, __ATOMIC_RELAXED);
     }
     return handled;
 }
@@ -295,6 +308,7 @@ static void blit_frame(unsigned width, unsigned height) {
 
 static void on_video(const void *data, unsigned width, unsigned height, size_t pitch) {
     frontend_video(data, width, height, pitch);
+    tap_frame(data, width, height, pitch);
     // Image en double (data == nullptr) : LibretroDroid redessine aussi l'écran, copie refaite.
     if (frontend_framebuffer && blit_enabled()) blit_frame(width, height);
 }
@@ -390,8 +404,98 @@ JNI_FN(jint, nativeRead)(JNIEnv *env, jobject, jshortArray buffer) {
 
 JNI_FN(jdouble, nativeSampleRate)(JNIEnv *, jobject) { return sample_rate; }
 
-/** Proportions de l'image du jeu (largeur / hauteur), 0 si inconnues. */
-JNI_FN(jfloat, nativeAspectRatio)(JNIEnv *, jobject) { return aspect_ratio; }
+/** Proportions de l'image du jeu affichée (largeur / hauteur, rotation comprise), 0 si inconnues. */
+JNI_FN(jfloat, nativeAspectRatio)(JNIEnv *, jobject) {
+    float aspect = aspect_ratio;
+    return aspect > 0 && (__atomic_load_n(&rotation, __ATOMIC_RELAXED) & 1) ? 1.0f / aspect : aspect;
+}
+
+// Image du cœur copiée pour la diffusion : rendu logiciel seulement (rendu OpenGL : la diffusion
+// copie l'écran). Pixels serrés, 0RGB1555 converti en RGB565 ; numéro d'image croissant.
+static pthread_mutex_t frame_lock = PTHREAD_MUTEX_INITIALIZER;
+static bool frame_capture = false;
+static bool hardware_frames = false;
+static uint8_t *frame = nullptr;
+static size_t frame_capacity = 0;
+static unsigned frame_width = 0, frame_height = 0, frame_bpp = 0;
+static int frame_serial = 0;
+
+static void tap_frame(const void *data, unsigned width, unsigned height, size_t pitch) {
+    if (!__atomic_load_n(&frame_capture, __ATOMIC_ACQUIRE) || !data || !width || !height) return;
+    if (data == reinterpret_cast<const void *>(-1)) {  // RETRO_HW_FRAME_BUFFER_VALID : rendu OpenGL
+        __atomic_store_n(&hardware_frames, true, __ATOMIC_RELEASE);
+        return;
+    }
+    const int format = __atomic_load_n(&pixel_format, __ATOMIC_RELAXED);
+    const unsigned bpp = format == PIXEL_XRGB8888 ? 4 : 2;
+    const size_t row = (size_t)width * bpp, size = row * height;
+    pthread_mutex_lock(&frame_lock);
+    if (size > frame_capacity) {
+        auto grown = static_cast<uint8_t *>(realloc(frame, size));
+        if (!grown) {
+            pthread_mutex_unlock(&frame_lock);
+            return;
+        }
+        frame = grown;
+        frame_capacity = size;
+    }
+    const auto *src = static_cast<const uint8_t *>(data);
+    for (unsigned y = 0; y < height; y++) {
+        uint8_t *dst = frame + row * y;
+        const uint8_t *line = src + pitch * y;
+        if (format == PIXEL_0RGB1555) {
+            const auto *in = reinterpret_cast<const uint16_t *>(line);
+            auto *out = reinterpret_cast<uint16_t *>(dst);
+            for (unsigned x = 0; x < width; x++) {
+                uint16_t p = in[x];
+                uint16_t g = (p >> 5) & 0x1f;
+                out[x] = (uint16_t)(((p & 0x7c00) << 1) | (g << 6) | ((g >> 4) << 5) | (p & 0x1f));
+            }
+        } else {
+            memcpy(dst, line, row);
+        }
+    }
+    frame_width = width;
+    frame_height = height;
+    frame_bpp = bpp;
+    frame_serial = frame_serial == 0x7fffffff ? 1 : frame_serial + 1;
+    pthread_mutex_unlock(&frame_lock);
+}
+
+/** Copie de l'image active ou non (diffusion en cours). */
+JNI_FN(void, nativeSetFrameCapture)(JNIEnv *, jobject, jboolean enabled) {
+    __atomic_store_n(&frame_capture, (bool)enabled, __ATOMIC_RELEASE);
+}
+
+/**
+ * Dernière image copiée, si elle a changé depuis [last] : pixels dans [buffer] (direct) et [info] =
+ * largeur, hauteur, octets par pixel (2 : RGB565, 4 : XRGB8888), rotation, rendu OpenGL (1 : rien
+ * à copier, l'écran doit l'être), taille nécessaire. Renvoie le numéro de l'image ([last] si rien
+ * de neuf, -1 si [buffer] est trop petit).
+ */
+JNI_FN(jint, nativeReadFrame)(JNIEnv *env, jobject, jobject buffer, jintArray info, jint last) {
+    jint values[6] = {0, 0, 0, (jint)__atomic_load_n(&rotation, __ATOMIC_RELAXED),
+                      __atomic_load_n(&hardware_frames, __ATOMIC_ACQUIRE) ? 1 : 0, 0};
+    jint serial = last;
+    pthread_mutex_lock(&frame_lock);
+    if (frame_serial != last && frame_serial != 0) {
+        const size_t size = (size_t)frame_width * frame_height * frame_bpp;
+        auto *out = static_cast<uint8_t *>(env->GetDirectBufferAddress(buffer));
+        values[0] = (jint)frame_width;
+        values[1] = (jint)frame_height;
+        values[2] = (jint)frame_bpp;
+        values[5] = (jint)size;
+        if (!out || env->GetDirectBufferCapacity(buffer) < (jlong)size) {
+            serial = -1;
+        } else {
+            memcpy(out, frame, size);
+            serial = frame_serial;
+        }
+    }
+    pthread_mutex_unlock(&frame_lock);
+    env->SetIntArrayRegion(info, 0, 6, values);
+    return serial;
+}
 
 // --- Format d'image (CoreShim) ---
 
