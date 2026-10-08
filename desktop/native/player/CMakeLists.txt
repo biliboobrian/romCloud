@@ -1,6 +1,6 @@
 # Moteur d'émulation intégré de RomCloud pour Windows : frontend libretro natif (inspiré de
-# LibretroDroid) qui charge un cœur libretro (.dll) et affiche le jeu avec SDL2 et OpenGL.
-# Un seul exécutable : SDL2 et le runtime C++ sont liés statiquement.
+# LibretroDroid) qui charge un cœur libretro (.dll) et affiche le jeu avec SDL3 et OpenGL.
+# Un seul exécutable : SDL3 et le runtime C++ sont liés statiquement.
 cmake_minimum_required(VERSION 3.20)
 project(romcloud_player C CXX)
 
@@ -16,14 +16,14 @@ endif()
 include(FetchContent)
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
-set(SDL_TEST OFF CACHE BOOL "" FORCE)
-set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+set(SDL_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
-  SDL2
-  URL https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz
+  SDL3
+  URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
-FetchContent_MakeAvailable(SDL2)
+FetchContent_MakeAvailable(SDL3)
 
 add_executable(romcloud-player WIN32
   src/main.cpp
@@ -39,13 +39,14 @@ add_executable(romcloud-player WIN32
   src/font8x8.c
 )
 target_include_directories(romcloud-player PRIVATE third_party src)
-target_link_libraries(romcloud-player PRIVATE SDL2::SDL2main SDL2::SDL2-static opengl32)
+target_link_libraries(romcloud-player PRIVATE SDL3::SDL3-static opengl32)
 target_compile_definitions(romcloud-player PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-# Exécutable directement dans build/ (pas build/Release/ avec Visual Studio) : repris par electron-builder.
+# Exécutable directement dans build/ (pas build/Release/ avec Visual Studio) : repris par l'installeur.
 set_target_properties(romcloud-player PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>")
 
 if(MINGW)
-  target_link_options(romcloud-player PRIVATE -static)
+  # -municode : point d'entrée wWinMain fourni par SDL3 (UNICODE défini).
+  target_link_options(romcloud-player PRIVATE -static -municode)
 endif()
 if(MSVC)
   # Sources en UTF-8 (textes du menu accentués).

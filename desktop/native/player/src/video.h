@@ -3,7 +3,7 @@
 // rotation et surimpression du menu.
 #pragma once
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cstdint>
 #include <string>

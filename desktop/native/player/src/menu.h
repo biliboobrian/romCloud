@@ -4,7 +4,7 @@
 // filtre et format d'image, plein écran, sauvegarder et quitter, quitter.
 #pragma once
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <string>
 #include <utility>
