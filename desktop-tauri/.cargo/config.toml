@@ -1,0 +1,8 @@
+# Compilation avec llvm-mingw (sans Visual Studio) : cible x86_64-pc-windows-gnullvm.
+[build]
+target = "x86_64-pc-windows-gnullvm"
+
+[target.x86_64-pc-windows-gnullvm]
+linker = "x86_64-w64-mingw32-clang"
+# Bibliothèques d'exécution liées dans l'exe (libunwind…) : aucune DLL de llvm-mingw à livrer.
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -1,0 +1,42 @@
+[package]
+name = "romcloud"
+version = "1.22.0"
+description = "RomCloud pour Windows : bibliothèque de jeux du serveur RomCloud, téléchargement à la demande et lancement des émulateurs"
+authors = ["biliboobrian"]
+license = "MIT"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+# TLS de Windows (Schannel) : rien à compiler en C.
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json", "stream"] }
+native-tls = "0.2"
+tokio-native-tls = "0.3"
+futures-util = "0.3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+hex = "0.4"
+rand = "0.8"
+dirs = "5"
+sys-locale = "0.3"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+socket2 = { version = "0.5", features = ["all"] }
+if-addrs = "0.13"
+filetime = "0.2"
+urlencoding = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

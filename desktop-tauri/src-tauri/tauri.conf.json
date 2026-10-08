@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "RomCloud",
+  "version": "1.22.0",
+  "identifier": "com.romcloud.desktop",
+  "build": {
+    "frontendDist": "../../desktop/src/renderer"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": {
+      "../../desktop/native/player/build/romcloud-player.exe": "player/romcloud-player.exe",
+      "resources/WebView2Loader.dll": "WebView2Loader.dll"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "French",
+          "English"
+        ]
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwMzNCQjNGREY3NzlFMjYKUldRbW5uZmZQN3N6TUxIbmZhMSt5bHZFbkEwNFRJeEVoS05NN0piaFd6TzAzaEo1RlZJeGQwZ1gK",
+      "endpoints": [
+        "https://github.com/biliboobrian/romCloud/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
