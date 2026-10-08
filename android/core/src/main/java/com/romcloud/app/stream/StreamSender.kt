@@ -29,12 +29,14 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * Diffuse le jeu affiché par [view] (vue OpenGL de l'émulateur intégré) vers la TV [target] (voir
- * [StreamProtocol]). Image : celle du cœur à sa taille d'origine, lue dans l'adaptateur natif
- * ([StreamTap], rendu logiciel), sinon copiée depuis la surface du jeu (PixelCopy, cœurs à rendu
- * OpenGL) ; la manette tactile et les menus, superposés dans d'autres vues, ne sont pas diffusés.
+ * [StreamProtocol]). Image ([mode]) : celle du cœur à sa taille d'origine, lue dans l'adaptateur
+ * natif ([StreamTap]), ou copie de la surface du jeu (PixelCopy : mode vidéo, ou image du cœur
+ * impossible à lire) ; la manette tactile et les menus, superposés dans d'autres vues, ne sont pas diffusés.
  * L'image est mise à la taille de l'écran de la TV et encodée en H.264 ; le son est lu dans
  * l'adaptateur et coupé sur le téléphone. [onEvent] est appelé sur le thread principal.
  */
@@ -43,6 +45,7 @@ class StreamSender(
     private var target: StreamReceiver,
     private val device: String,
     private val title: String,
+    private val mode: StreamMode,
     /** Informations de la TV relues sur le serveur (port ou clé changés depuis le lancement) ; appelé hors du thread principal. */
     private val refreshTarget: () -> StreamReceiver?,
     private val onEvent: (Event) -> Unit,
@@ -242,18 +245,24 @@ class StreamSender(
 
     /**
      * Envoie chaque image du jeu à la surface de l'encodeur (OpenGL ES, [EncoderRenderer]), sur le
-     * thread « stream-capture » : image du cœur lue dans l'adaptateur dès qu'elle change (rendu
-     * logiciel : petite copie, sans attendre l'écran), sinon copie de l'écran au plus [FPS] fois par
-     * seconde (rendu OpenGL, ou adaptateur absent).
+     * thread « stream-capture » : mode natif, image du cœur lue dans l'adaptateur dès qu'elle change
+     * (petite copie, sans attendre l'écran) ; mode vidéo (ou image du cœur illisible), copie de
+     * l'écran au plus [FPS] fois par seconde.
      */
     private fun startCapture(width: Int, height: Int) {
         val handlerThread = HandlerThread("stream-capture").also { it.start() }
         captureThread = handlerThread
         val handler = Handler(handlerThread.looper)
         captureHandler = handler
-        val bitmap by lazy { Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) }
+        // Copie de l'écran : [VIDEO_MAX_HEIGHT] lignes au plus (agrandie par l'encodeur), deux images
+        // en alternance : la copie suivante est demandée avant d'envoyer la précédente.
+        val scale = min(1f, VIDEO_MAX_HEIGHT.toFloat() / height)
+        val bitmaps by lazy {
+            Array(2) { Bitmap.createBitmap((width * scale).roundToInt().coerceAtLeast(16), (height * scale).roundToInt().coerceAtLeast(16), Bitmap.Config.ARGB_8888) }
+        }
+        var nextBitmap = 0
 
-        fun draw() = synchronized(surfaceLock) {
+        fun draw(bitmap: Bitmap) = synchronized(surfaceLock) {
             if (inputSurface == null) return@synchronized
             renderer?.draw(bitmap, System.nanoTime())
         }
@@ -261,7 +270,7 @@ class StreamSender(
         lateinit var capture: () -> Unit
 
         // Image du cœur : interrogée toutes les [POLL_MS] ms, envoyée dès qu'elle change.
-        val info = IntArray(6)
+        val info = IntArray(7)
         var frame = ByteBuffer.allocateDirect(512 * 512 * 4).order(ByteOrder.nativeOrder())
         var serial = 0
         lateinit var copyFrame: () -> Unit
@@ -283,7 +292,7 @@ class StreamSender(
                     next != serial -> {
                         serial = next
                         synchronized(surfaceLock) {
-                            if (inputSurface != null) renderer?.drawFrame(frame, info[0], info[1], info[2], info[3], System.nanoTime())
+                            if (inputSurface != null) renderer?.drawFrame(frame, info[0], info[1], info[2], info[6] == 1, info[3], System.nanoTime())
                         }
                     }
                 }
@@ -302,11 +311,14 @@ class StreamSender(
                 return@capture
             }
             val area = StreamProtocol.gameArea(view.width, view.height, aspect())
+            val bitmap = bitmaps[nextBitmap]
+            nextBitmap = nextBitmap xor 1
             try {
                 PixelCopy.request(view, Rect(area.left, area.top, area.right, area.bottom), bitmap, { result ->
                     try {
-                        if (result == PixelCopy.SUCCESS && running) draw()
-                        handler.postAtTime(capture, began + FRAME_MS)
+                        // Copie suivante lancée avant l'envoi de celle-ci (elle se fait pendant l'envoi).
+                        if (SystemClock.uptimeMillis() >= began + FRAME_MS) capture() else handler.postAtTime(capture, began + FRAME_MS)
+                        if (result == PixelCopy.SUCCESS && running) draw(bitmap)
                     } catch (e: Throwable) {
                         fail(e)
                     }
@@ -322,7 +334,7 @@ class StreamSender(
                     val surface = inputSurface ?: return@post
                     renderer = EncoderRenderer(surface, width, height)
                 }
-                if (StreamTap.active) {
+                if (mode == StreamMode.NATIVE && StreamTap.active) {
                     StreamTap.setFrameCapture(true)
                     copyFrame()
                 } else {
@@ -428,6 +440,8 @@ class StreamSender(
         const val MAX_BITRATE = 12_000_000
         /** MediaCodecInfo.CodecProfileLevel.AVCProfileConstrainedBaseline (Android 8.1). */
         const val AVC_CONSTRAINED_BASELINE = 0x10000
+        /** Hauteur maximale de la copie de l'écran (mode vidéo) : copie plus rapide, image agrandie par l'encodeur. */
+        const val VIDEO_MAX_HEIGHT = 720
         /** Intervalle de lecture de l'image du cœur (ms). */
         const val POLL_MS = 2L
         /** File d'envoi du système (octets) : environ 0,2 s d'image au débit maximal. */

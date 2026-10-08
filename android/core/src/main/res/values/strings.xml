@@ -458,6 +458,11 @@
     <string name="stream_play_on_named_tv">Play on %1$s</string>
     <string name="stream_resume_on_named_tv">Resume on %1$s</string>
     <string name="stream_choose_tv">Choose a TV</string>
+    <string name="stream_mode_title">Stream type</string>
+    <string name="stream_mode_native">Native</string>
+    <string name="stream_mode_native_desc">The game’s own image: almost instant, sharp pixels. Recommended.</string>
+    <string name="stream_mode_video">Video</string>
+    <string name="stream_mode_video_desc">Copy of the phone screen (image filter and aspect ratio included): a little more lag.</string>
     <string name="stream_tv_hint">Image and sound go to the TV; this phone becomes the controller.</string>
     <string name="stream_connecting">Connecting to %1$s…</string>
     <string name="stream_started">Playing on %1$s</string>

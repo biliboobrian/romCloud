@@ -14,6 +14,7 @@ import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.OnlineSave
 import com.romcloud.app.data.Player
 import com.romcloud.app.data.StreamReceiver
+import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.data.sameSaveCore
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.LaunchException
@@ -44,6 +45,7 @@ fun RomCloudApp.play(
     emulatorClosed: Boolean = false,
     resume: Boolean = false,
     stream: StreamReceiver? = null,
+    streamMode: StreamMode = StreamMode.NATIVE,
 ): String? {
     val file = library.fileFor(system, game)
     val player = launcher.selectedPlayer(system, game.fileName)
@@ -54,7 +56,7 @@ fun RomCloudApp.play(
         }
     }
     return try {
-        launcher.launch(activity, system, file, player, resume, game.id, stream)
+        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode)
         // Émulateur externe : temps de jeu compté jusqu'au retour dans l'application (l'émulateur
         // intégré compte lui-même le temps de la partie affichée).
         if (player?.libretroCore == null) account.startExternalSession(game.id)
@@ -477,12 +479,12 @@ class GameDetailViewModel(
         }
     }
 
-    /** [resume] : reprend la partie sauvegardée dans l'émulateur intégré ; [tv] : diffusée sur cette TV. */
-    fun play(activity: Activity, resume: Boolean = false, tv: StreamReceiver? = null): String? {
+    /** [resume] : reprend la partie sauvegardée dans l'émulateur intégré ; [tv] : diffusée sur cette TV, image [mode]. */
+    fun play(activity: Activity, resume: Boolean = false, tv: StreamReceiver? = null, mode: StreamMode = StreamMode.NATIVE): String? {
         val s = _state.value
         val system = s.system ?: return I18n.get(R.string.err_system_not_found)
         val game = s.game ?: return I18n.get(R.string.game_not_found)
-        return app.play(activity, system, game, resume = resume, stream = tv)
+        return app.play(activity, system, game, resume = resume, stream = tv, streamMode = mode)
     }
 
     private companion object {

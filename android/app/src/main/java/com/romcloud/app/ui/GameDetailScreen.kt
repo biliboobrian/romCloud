@@ -71,6 +71,8 @@ import coil.compose.AsyncImage
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
+import com.romcloud.app.data.StreamReceiver
+import com.romcloud.app.stream.StreamMode
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
 
@@ -89,6 +91,8 @@ fun GameDetailScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     // Plusieurs TV du profil allumées : choix de celle qui affiche le jeu.
     var chooseTv by remember { mutableStateOf(false) }
+    /** TV choisie : type de diffusion demandé avant de lancer le jeu. */
+    var streamTv by remember { mutableStateOf<StreamReceiver?>(null) }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
@@ -190,7 +194,7 @@ fun GameDetailScreen(
                             OutlinedButton(
                                 onClick = {
                                     if (single != null) {
-                                        viewModel.play(activity, state.canResume, single)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                                        streamTv = single
                                     } else {
                                         chooseTv = true
                                     }
@@ -298,7 +302,7 @@ fun GameDetailScreen(
                         TextButton(
                             onClick = {
                                 chooseTv = false
-                                viewModel.play(activity, state.canResume, tv)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                                streamTv = tv
                             },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -310,6 +314,38 @@ fun GameDetailScreen(
                 }
             },
             confirmButton = { TextButton(onClick = { chooseTv = false }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
+    streamTv?.let { tv ->
+        AlertDialog(
+            onDismissRequest = { streamTv = null },
+            title = { Text(stringResource(R.string.stream_mode_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        Triple(StreamMode.NATIVE, R.string.stream_mode_native, R.string.stream_mode_native_desc),
+                        Triple(StreamMode.VIDEO, R.string.stream_mode_video, R.string.stream_mode_video_desc),
+                    ).forEach { (mode, label, description) ->
+                        OutlinedButton(
+                            onClick = {
+                                streamTv = null
+                                viewModel.play(activity, state.canResume, tv, mode)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Text(stringResource(label), style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    stringResource(description),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { streamTv = null }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
     if (confirmDelete) {

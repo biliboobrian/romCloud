@@ -38,9 +38,10 @@ object StreamTap {
 
     /**
      * Dernière image du cœur si elle a changé depuis [last] : pixels dans [buffer] (direct) et
-     * [info] = largeur, hauteur, octets par pixel (2 : RGB565, 4 : XRGB8888), rotation (quarts de
-     * tour antihoraires), rendu OpenGL (1 : pas d'image à copier ici), taille nécessaire. Renvoie le
-     * numéro de l'image ([last] si rien de neuf, -1 si [buffer] est trop petit).
+     * [info] (7 valeurs) = largeur, hauteur, octets par pixel (2 : RGB565, 4 : 32 bits), rotation
+     * (quarts de tour antihoraires), aucune image copiable (1 : l'écran doit l'être), taille
+     * nécessaire, ordre des octets (1 : RGBA, 0 : BGRX). Renvoie le numéro de l'image ([last] si
+     * rien de neuf, -1 si [buffer] est trop petit).
      */
     fun readFrame(buffer: ByteBuffer, info: IntArray, last: Int): Int = if (loaded) nativeReadFrame(buffer, info, last) else last
 

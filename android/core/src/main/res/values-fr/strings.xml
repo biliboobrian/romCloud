@@ -449,6 +449,11 @@
     <string name="stream_play_on_named_tv">Jouer sur %1$s</string>
     <string name="stream_resume_on_named_tv">Reprendre sur %1$s</string>
     <string name="stream_choose_tv">Choisir une TV</string>
+    <string name="stream_mode_title">Type de diffusion</string>
+    <string name="stream_mode_native">Native</string>
+    <string name="stream_mode_native_desc">Image du jeu elle-même : quasi instantanée, pixels nets. Recommandé.</string>
+    <string name="stream_mode_video">Vidéo</string>
+    <string name="stream_mode_video_desc">Copie de l’écran du téléphone (filtre d’image et format compris) : un peu plus de retard.</string>
     <string name="stream_tv_hint">L’image et le son passent sur la TV ; le téléphone sert de manette.</string>
     <string name="stream_connecting">Connexion à %1$s…</string>
     <string name="stream_started">Jeu diffusé sur %1$s</string>

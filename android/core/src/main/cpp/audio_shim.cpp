@@ -13,8 +13,8 @@
 // - diffusion sur une TV (tous les cœurs passent alors par l'adaptateur) : le son est copié dans une
 //   file lue par l'application (StreamTap, JNI) et peut être coupé sur le téléphone (silence envoyé à
 //   LibretroDroid, même cadence d'émulation) ; proportions de l'image et fréquence du son exposées ;
-//   image des cœurs à rendu logiciel copiée à sa taille d'origine (lue par StreamTap, bien moins
-//   coûteux qu'une copie de l'écran) ;
+//   image du cœur copiée à sa taille d'origine (lue par StreamTap, bien moins coûteux qu'une copie
+//   de l'écran), relue dans son framebuffer pour les cœurs à rendu OpenGL ;
 // - format d'image choisi par l'utilisateur (CoreShim, JNI) : proportions annoncées à LibretroDroid
 //   remplacées (géométrie du cœur), y compris en cours de partie.
 // Pas de bibliothèque C++ (ni STL, ni variable statique locale) : rien d'autre à embarquer.
@@ -410,24 +410,24 @@ JNI_FN(jfloat, nativeAspectRatio)(JNIEnv *, jobject) {
     return aspect > 0 && (__atomic_load_n(&rotation, __ATOMIC_RELAXED) & 1) ? 1.0f / aspect : aspect;
 }
 
-// Image du cœur copiée pour la diffusion : rendu logiciel seulement (rendu OpenGL : la diffusion
-// copie l'écran). Pixels serrés, 0RGB1555 converti en RGB565 ; numéro d'image croissant.
+// Image du cœur copiée pour la diffusion, pixels serrés, numéro d'image croissant :
+// - rendu logiciel : copie de l'image reçue (0RGB1555 converti en RGB565, XRGB8888 tel quel) ;
+// - rendu OpenGL : image relue dans le framebuffer du cœur (OpenGL ES 3 : deux tampons de pixels,
+//   lecture asynchrone, rendue une image plus tard, sans attendre le processeur graphique), lignes
+//   remises dans l'ordre, en RGBA. Contexte OpenGL ES 2 : rien (la diffusion copie l'écran).
 static pthread_mutex_t frame_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool frame_capture = false;
-static bool hardware_frames = false;
+static bool hardware_frames = false;  // aucune image copiable ici : la diffusion doit copier l'écran
 static uint8_t *frame = nullptr;
 static size_t frame_capacity = 0;
 static unsigned frame_width = 0, frame_height = 0, frame_bpp = 0;
+static bool frame_rgba = false;  // octets R, G, B, A (sinon B, G, R, X pour XRGB8888)
 static int frame_serial = 0;
 
-static void tap_frame(const void *data, unsigned width, unsigned height, size_t pitch) {
-    if (!__atomic_load_n(&frame_capture, __ATOMIC_ACQUIRE) || !data || !width || !height) return;
-    if (data == reinterpret_cast<const void *>(-1)) {  // RETRO_HW_FRAME_BUFFER_VALID : rendu OpenGL
-        __atomic_store_n(&hardware_frames, true, __ATOMIC_RELEASE);
-        return;
-    }
-    const int format = __atomic_load_n(&pixel_format, __ATOMIC_RELAXED);
-    const unsigned bpp = format == PIXEL_XRGB8888 ? 4 : 2;
+enum FrameSource { SOURCE_1555, SOURCE_RAW, SOURCE_RGBA_BOTTOM_UP, SOURCE_RGBA_TOP_DOWN };
+
+/** Copie l'image ([pitch] octets par ligne de [data]) sous le verrou. */
+static void store_frame(const void *data, unsigned width, unsigned height, size_t pitch, unsigned bpp, FrameSource source) {
     const size_t row = (size_t)width * bpp, size = row * height;
     pthread_mutex_lock(&frame_lock);
     if (size > frame_capacity) {
@@ -442,8 +442,8 @@ static void tap_frame(const void *data, unsigned width, unsigned height, size_t 
     const auto *src = static_cast<const uint8_t *>(data);
     for (unsigned y = 0; y < height; y++) {
         uint8_t *dst = frame + row * y;
-        const uint8_t *line = src + pitch * y;
-        if (format == PIXEL_0RGB1555) {
+        const uint8_t *line = src + pitch * (source == SOURCE_RGBA_BOTTOM_UP ? height - 1 - y : y);
+        if (source == SOURCE_1555) {
             const auto *in = reinterpret_cast<const uint16_t *>(line);
             auto *out = reinterpret_cast<uint16_t *>(dst);
             for (unsigned x = 0; x < width; x++) {
@@ -458,8 +458,77 @@ static void tap_frame(const void *data, unsigned width, unsigned height, size_t 
     frame_width = width;
     frame_height = height;
     frame_bpp = bpp;
+    frame_rgba = source == SOURCE_RGBA_BOTTOM_UP || source == SOURCE_RGBA_TOP_DOWN;
     frame_serial = frame_serial == 0x7fffffff ? 1 : frame_serial + 1;
     pthread_mutex_unlock(&frame_lock);
+}
+
+// Relecture asynchrone du framebuffer du cœur (rendu OpenGL), sur le thread d'émulation.
+static int gles_major = -1;  // version d'OpenGL ES du contexte (-1 : pas encore lue)
+static GLuint pack_buffers[2] = {0, 0};
+static size_t pack_sizes[2] = {0, 0};
+static unsigned pack_width[2] = {0, 0}, pack_height[2] = {0, 0};
+static bool pack_pending[2] = {false, false};
+static int pack_next = 0;
+
+static void read_hw_frame(unsigned width, unsigned height) {
+    if (gles_major < 0) {
+        const char *version = reinterpret_cast<const char *>(glGetString(GL_VERSION));
+        const char *digits = version ? strstr(version, "OpenGL ES ") : nullptr;
+        gles_major = digits ? atoi(digits + 10) : 2;
+    }
+    if (gles_major < 3 || !frontend_framebuffer) {
+        __atomic_store_n(&hardware_frames, true, __ATOMIC_RELEASE);
+        return;
+    }
+    GLint read_fb = 0, pack_buffer = 0, pack_alignment = 4;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read_fb);
+    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &pack_buffer);
+    glGetIntegerv(GL_PACK_ALIGNMENT, &pack_alignment);
+    if (!pack_buffers[0]) glGenBuffers(2, pack_buffers);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)frontend_framebuffer());
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+
+    // Image de ce tour : lecture lancée dans un tampon (le processeur graphique la fait plus tard).
+    const int current = pack_next;
+    pack_next ^= 1;
+    const size_t size = (size_t)width * height * 4;
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, pack_buffers[current]);
+    if (pack_sizes[current] < size) {
+        glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)size, nullptr, GL_STREAM_READ);
+        pack_sizes[current] = size;
+    }
+    glReadPixels(0, 0, (GLsizei)width, (GLsizei)height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    pack_width[current] = width;
+    pack_height[current] = height;
+    pack_pending[current] = true;
+
+    // Image du tour précédent : prête, copiée.
+    const int previous = current ^ 1;
+    if (pack_pending[previous]) {
+        const unsigned w = pack_width[previous], h = pack_height[previous];
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pack_buffers[previous]);
+        const void *pixels = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)w * h * 4, GL_MAP_READ_BIT);
+        if (pixels) {
+            store_frame(pixels, w, h, (size_t)w * 4, 4, bottom_left_origin ? SOURCE_RGBA_BOTTOM_UP : SOURCE_RGBA_TOP_DOWN);
+            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+        }
+        pack_pending[previous] = false;
+    }
+
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)pack_buffer);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)read_fb);
+    glPixelStorei(GL_PACK_ALIGNMENT, pack_alignment);
+}
+
+static void tap_frame(const void *data, unsigned width, unsigned height, size_t pitch) {
+    if (!__atomic_load_n(&frame_capture, __ATOMIC_ACQUIRE) || !data || !width || !height) return;
+    if (data == reinterpret_cast<const void *>(-1)) {  // RETRO_HW_FRAME_BUFFER_VALID : rendu OpenGL
+        read_hw_frame(width, height);
+        return;
+    }
+    const int format = __atomic_load_n(&pixel_format, __ATOMIC_RELAXED);
+    store_frame(data, width, height, pitch, format == PIXEL_XRGB8888 ? 4 : 2, format == PIXEL_0RGB1555 ? SOURCE_1555 : SOURCE_RAW);
 }
 
 /** Copie de l'image active ou non (diffusion en cours). */
@@ -469,13 +538,13 @@ JNI_FN(void, nativeSetFrameCapture)(JNIEnv *, jobject, jboolean enabled) {
 
 /**
  * Dernière image copiée, si elle a changé depuis [last] : pixels dans [buffer] (direct) et [info] =
- * largeur, hauteur, octets par pixel (2 : RGB565, 4 : XRGB8888), rotation, rendu OpenGL (1 : rien
- * à copier, l'écran doit l'être), taille nécessaire. Renvoie le numéro de l'image ([last] si rien
- * de neuf, -1 si [buffer] est trop petit).
+ * largeur, hauteur, octets par pixel (2 : RGB565, 4 : 32 bits), rotation, aucune image copiable
+ * (1 : l'écran doit être copié), taille nécessaire, ordre des octets (1 : RGBA, 0 : BGRX). Renvoie
+ * le numéro de l'image ([last] si rien de neuf, -1 si [buffer] est trop petit).
  */
 JNI_FN(jint, nativeReadFrame)(JNIEnv *env, jobject, jobject buffer, jintArray info, jint last) {
-    jint values[6] = {0, 0, 0, (jint)__atomic_load_n(&rotation, __ATOMIC_RELAXED),
-                      __atomic_load_n(&hardware_frames, __ATOMIC_ACQUIRE) ? 1 : 0, 0};
+    jint values[7] = {0, 0, 0, (jint)__atomic_load_n(&rotation, __ATOMIC_RELAXED),
+                      __atomic_load_n(&hardware_frames, __ATOMIC_ACQUIRE) ? 1 : 0, 0, 0};
     jint serial = last;
     pthread_mutex_lock(&frame_lock);
     if (frame_serial != last && frame_serial != 0) {
@@ -485,6 +554,7 @@ JNI_FN(jint, nativeReadFrame)(JNIEnv *env, jobject, jobject buffer, jintArray in
         values[1] = (jint)frame_height;
         values[2] = (jint)frame_bpp;
         values[5] = (jint)size;
+        values[6] = frame_rgba ? 1 : 0;
         if (!out || env->GetDirectBufferCapacity(buffer) < (jlong)size) {
             serial = -1;
         } else {
@@ -493,7 +563,7 @@ JNI_FN(jint, nativeReadFrame)(JNIEnv *env, jobject, jobject buffer, jintArray in
         }
     }
     pthread_mutex_unlock(&frame_lock);
-    env->SetIntArrayRegion(info, 0, 6, values);
+    env->SetIntArrayRegion(info, 0, 7, values);
     return serial;
 }
 
