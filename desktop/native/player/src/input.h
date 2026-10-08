@@ -2,7 +2,7 @@
 // convertis en manette libretro (RetroPad) : boutons, sticks analogiques, gâchettes, vibrations.
 #pragma once
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cstdint>
 #include <string>
@@ -48,10 +48,10 @@ class Input {
  private:
   bool button(unsigned port, unsigned id) const;
   bool key(unsigned id) const;
-  int16_t axis(unsigned port, SDL_GameControllerAxis axis) const;
+  int16_t axis(unsigned port, SDL_GamepadAxis axis) const;
 
   SDL_Scancode keys_[kButtons] = {};
   std::string keysFile_;
-  SDL_GameController* pads_[kPorts] = {};
+  SDL_Gamepad* pads_[kPorts] = {};
   uint16_t rumbleStrong_[kPorts] = {}, rumbleWeak_[kPorts] = {};
 };

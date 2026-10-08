@@ -9,7 +9,8 @@
 // Fonctionnement calqué sur LibretroDroid : le cœur est chargé, le jeu démarré, puis une boucle
 // exécute retro_run au rythme de l'audio et affiche chaque image avec OpenGL. Codes de sortie :
 // 0 = fin normale, 1 = erreur (message affiché).
-#include <SDL.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 #include <algorithm>
 #include <cmath>
@@ -127,7 +128,7 @@ class Player {
   bool quit_ = false;
   bool comboLatched_ = false;
   std::string toast_;
-  uint32_t toastUntil_ = 0;
+  Uint64 toastUntil_ = 0;
   double nextFrame_ = 0;
 };
 
@@ -288,21 +289,21 @@ bool Player::handleEvents() {
     }
     if (padConfig_ && padConfig_->finished()) padConfig_.reset();
     switch (e.type) {
-      case SDL_QUIT: quit_ = true; break;
+      case SDL_EVENT_QUIT: quit_ = true; break;
 
-      case SDL_WINDOWEVENT:
+      case SDL_EVENT_WINDOW_FOCUS_LOST:
         // Fenêtre quittée (Alt+Tab…) : le jeu se met en pause.
-        if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST && args_.testSeconds.empty()) openMenu();
+        if (args_.testSeconds.empty()) openMenu();
         break;
 
-      case SDL_KEYDOWN: {
+      case SDL_EVENT_KEY_DOWN: {
         // Écran des touches du menu : la touche appuyée est attribuée au bouton choisi.
         if (menu_.waitingKey()) {
-          if (!e.key.repeat) menu_.keyPressed(e.key.keysym.scancode);
+          if (!e.key.repeat) menu_.keyPressed(e.key.scancode);
           break;
         }
-        SDL_Keycode key = e.key.keysym.sym;
-        bool alt = (e.key.keysym.mod & KMOD_ALT) != 0;
+        SDL_Keycode key = e.key.key;
+        bool alt = (e.key.mod & SDL_KMOD_ALT) != 0;
         if (key == SDLK_F11 || (key == SDLK_RETURN && alt)) {
           video_.toggleFullscreen();
           break;
@@ -323,35 +324,35 @@ bool Player::handleEvents() {
           case SDLK_ESCAPE: case SDLK_BACKSPACE: case SDLK_F1: nav = Nav::Back; break;
           case SDLK_PAGEUP: nav = Nav::TabPrev; break;
           case SDLK_PAGEDOWN: nav = Nav::TabNext; break;
-          case SDLK_TAB: nav = (e.key.keysym.mod & KMOD_SHIFT) ? Nav::TabPrev : Nav::TabNext; break;
+          case SDLK_TAB: nav = (e.key.mod & SDL_KMOD_SHIFT) ? Nav::TabPrev : Nav::TabNext; break;
           default: continue;
         }
         onMenuAction(menu_.handle(nav, menuState()));
         break;
       }
 
-      case SDL_CONTROLLERBUTTONDOWN: {
-        auto button = (SDL_GameControllerButton)e.cbutton.button;
-        if (button == SDL_CONTROLLER_BUTTON_GUIDE) {
+      case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
+        auto button = (SDL_GamepadButton)e.gbutton.button;
+        if (button == SDL_GAMEPAD_BUTTON_GUIDE) {
           if (menu_.isOpen()) closeMenu();
           else openMenu();
           break;
         }
         if (!menu_.isOpen()) break;
         if (menu_.waitingKey()) {
-          if (button == SDL_CONTROLLER_BUTTON_B) menu_.keyPressed(SDL_SCANCODE_ESCAPE);  // annule
+          if (button == SDL_GAMEPAD_BUTTON_EAST) menu_.keyPressed(SDL_SCANCODE_ESCAPE);  // annule
           break;
         }
         Nav nav;
         switch (button) {
-          case SDL_CONTROLLER_BUTTON_DPAD_UP: nav = Nav::Up; break;
-          case SDL_CONTROLLER_BUTTON_DPAD_DOWN: nav = Nav::Down; break;
-          case SDL_CONTROLLER_BUTTON_DPAD_LEFT: nav = Nav::Left; break;
-          case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: nav = Nav::Right; break;
-          case SDL_CONTROLLER_BUTTON_A: nav = Nav::Confirm; break;  // bouton du bas
-          case SDL_CONTROLLER_BUTTON_B: nav = Nav::Back; break;     // bouton de droite
-          case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: nav = Nav::TabPrev; break;
-          case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: nav = Nav::TabNext; break;
+          case SDL_GAMEPAD_BUTTON_DPAD_UP: nav = Nav::Up; break;
+          case SDL_GAMEPAD_BUTTON_DPAD_DOWN: nav = Nav::Down; break;
+          case SDL_GAMEPAD_BUTTON_DPAD_LEFT: nav = Nav::Left; break;
+          case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: nav = Nav::Right; break;
+          case SDL_GAMEPAD_BUTTON_SOUTH: nav = Nav::Confirm; break;  // bouton du bas
+          case SDL_GAMEPAD_BUTTON_EAST: nav = Nav::Back; break;     // bouton de droite
+          case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: nav = Nav::TabPrev; break;
+          case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: nav = Nav::TabNext; break;
           default: continue;
         }
         onMenuAction(menu_.handle(nav, menuState()));
@@ -383,7 +384,7 @@ void Player::present() {
   // menu sur 480 lignes (deux colonnes : libellés plus longs) ; options du cœur sur 540 lignes :
   // texte 1,5 fois plus petit et plus d'options visibles.
   int winW = 16, winH = 9;
-  SDL_GL_GetDrawableSize(video_.window(), &winW, &winH);
+  SDL_GetWindowSizeInPixels(video_.window(), &winW, &winH);
   const int canvasHeight = menu_.inOptions() ? 540 : menu_.isOpen() ? 480 : 360;
   int canvasWidth = std::clamp(winH > 0 ? (int)std::lround((double)canvasHeight * winW / winH) : canvasHeight * 16 / 9,
                                canvasHeight * 11 / 9, canvasHeight * 32 / 9);
@@ -563,7 +564,7 @@ int main(int argc, char** argv) {
   // Fenêtre au premier plan même si le jeu a été lancé à la manette (Windows ne donne ce droit
   // qu'après une action au clavier ou à la souris).
   SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC) != 0) {
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "RomCloud", SDL_GetError(), nullptr);
     return 1;
   }

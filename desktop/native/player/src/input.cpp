@@ -93,20 +93,20 @@ void Input::assignKey(unsigned id, SDL_Scancode code) {
 // Manette SDL (disposition Xbox : A en bas) -> RetroPad (disposition Super Nintendo : B en bas).
 static int padButton(unsigned id) {
   switch (id) {
-    case RETRO_DEVICE_ID_JOYPAD_B: return SDL_CONTROLLER_BUTTON_A;
-    case RETRO_DEVICE_ID_JOYPAD_A: return SDL_CONTROLLER_BUTTON_B;
-    case RETRO_DEVICE_ID_JOYPAD_Y: return SDL_CONTROLLER_BUTTON_X;
-    case RETRO_DEVICE_ID_JOYPAD_X: return SDL_CONTROLLER_BUTTON_Y;
-    case RETRO_DEVICE_ID_JOYPAD_L: return SDL_CONTROLLER_BUTTON_LEFTSHOULDER;
-    case RETRO_DEVICE_ID_JOYPAD_R: return SDL_CONTROLLER_BUTTON_RIGHTSHOULDER;
-    case RETRO_DEVICE_ID_JOYPAD_L3: return SDL_CONTROLLER_BUTTON_LEFTSTICK;
-    case RETRO_DEVICE_ID_JOYPAD_R3: return SDL_CONTROLLER_BUTTON_RIGHTSTICK;
-    case RETRO_DEVICE_ID_JOYPAD_START: return SDL_CONTROLLER_BUTTON_START;
-    case RETRO_DEVICE_ID_JOYPAD_SELECT: return SDL_CONTROLLER_BUTTON_BACK;
-    case RETRO_DEVICE_ID_JOYPAD_UP: return SDL_CONTROLLER_BUTTON_DPAD_UP;
-    case RETRO_DEVICE_ID_JOYPAD_DOWN: return SDL_CONTROLLER_BUTTON_DPAD_DOWN;
-    case RETRO_DEVICE_ID_JOYPAD_LEFT: return SDL_CONTROLLER_BUTTON_DPAD_LEFT;
-    case RETRO_DEVICE_ID_JOYPAD_RIGHT: return SDL_CONTROLLER_BUTTON_DPAD_RIGHT;
+    case RETRO_DEVICE_ID_JOYPAD_B: return SDL_GAMEPAD_BUTTON_SOUTH;
+    case RETRO_DEVICE_ID_JOYPAD_A: return SDL_GAMEPAD_BUTTON_EAST;
+    case RETRO_DEVICE_ID_JOYPAD_Y: return SDL_GAMEPAD_BUTTON_WEST;
+    case RETRO_DEVICE_ID_JOYPAD_X: return SDL_GAMEPAD_BUTTON_NORTH;
+    case RETRO_DEVICE_ID_JOYPAD_L: return SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
+    case RETRO_DEVICE_ID_JOYPAD_R: return SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
+    case RETRO_DEVICE_ID_JOYPAD_L3: return SDL_GAMEPAD_BUTTON_LEFT_STICK;
+    case RETRO_DEVICE_ID_JOYPAD_R3: return SDL_GAMEPAD_BUTTON_RIGHT_STICK;
+    case RETRO_DEVICE_ID_JOYPAD_START: return SDL_GAMEPAD_BUTTON_START;
+    case RETRO_DEVICE_ID_JOYPAD_SELECT: return SDL_GAMEPAD_BUTTON_BACK;
+    case RETRO_DEVICE_ID_JOYPAD_UP: return SDL_GAMEPAD_BUTTON_DPAD_UP;
+    case RETRO_DEVICE_ID_JOYPAD_DOWN: return SDL_GAMEPAD_BUTTON_DPAD_DOWN;
+    case RETRO_DEVICE_ID_JOYPAD_LEFT: return SDL_GAMEPAD_BUTTON_DPAD_LEFT;
+    case RETRO_DEVICE_ID_JOYPAD_RIGHT: return SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
     default: return -1;
   }
 }
@@ -119,39 +119,42 @@ bool Input::key(unsigned id) const {
 }
 
 void Input::init() {
-  for (int i = 0; i < SDL_NumJoysticks(); i++) {
+  // Manettes déjà branchées (SDL envoie aussi leur évènement d'arrivée : ouverture une seule fois).
+  int count = 0;
+  SDL_JoystickID* ids = SDL_GetGamepads(&count);
+  for (int i = 0; i < count; i++) {
     SDL_Event e{};
-    e.cdevice.type = SDL_CONTROLLERDEVICEADDED;
-    e.cdevice.which = i;
+    e.gdevice.type = SDL_EVENT_GAMEPAD_ADDED;
+    e.gdevice.which = ids[i];
     handleEvent(e);
   }
+  SDL_free(ids);
 }
 
 void Input::shutdown() {
   for (auto& pad : pads_) {
-    if (pad) SDL_GameControllerClose(pad);
+    if (pad) SDL_CloseGamepad(pad);
     pad = nullptr;
   }
 }
 
 void Input::handleEvent(const SDL_Event& event) {
-  if (event.type == SDL_CONTROLLERDEVICEADDED) {
-    if (!SDL_IsGameController(event.cdevice.which)) return;
-    SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(event.cdevice.which);
+  if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
+    const SDL_JoystickID id = event.gdevice.which;
     for (auto* pad : pads_) {
-      if (pad && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad)) == id) return;  // déjà ouverte
+      if (pad && SDL_GetJoystickID(SDL_GetGamepadJoystick(pad)) == id) return;  // déjà ouverte
     }
     for (int port = 0; port < kPorts; port++) {
       if (!pads_[port]) {
-        pads_[port] = SDL_GameControllerOpen(event.cdevice.which);
-        if (pads_[port]) logf("Manette %d : %s", port + 1, SDL_GameControllerName(pads_[port]));
+        pads_[port] = SDL_OpenGamepad(id);
+        if (pads_[port]) logf("Manette %d : %s", port + 1, SDL_GetGamepadName(pads_[port]));
         return;
       }
     }
-  } else if (event.type == SDL_CONTROLLERDEVICEREMOVED) {
+  } else if (event.type == SDL_EVENT_GAMEPAD_REMOVED) {
     for (auto& pad : pads_) {
-      if (pad && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad)) == event.cdevice.which) {
-        SDL_GameControllerClose(pad);
+      if (pad && SDL_GetJoystickID(SDL_GetGamepadJoystick(pad)) == event.gdevice.which) {
+        SDL_CloseGamepad(pad);
         pad = nullptr;
       }
     }
@@ -164,20 +167,20 @@ int Input::connected() const {
   return n;
 }
 
-int16_t Input::axis(unsigned port, SDL_GameControllerAxis a) const {
+int16_t Input::axis(unsigned port, SDL_GamepadAxis a) const {
   if (port >= (unsigned)kPorts || !pads_[port]) return 0;
-  return SDL_GameControllerGetAxis(pads_[port], a);
+  return SDL_GetGamepadAxis(pads_[port], a);
 }
 
 bool Input::button(unsigned port, unsigned id) const {
   if (port >= (unsigned)kPorts) return false;
   if (port == 0 && key(id)) return true;
-  SDL_GameController* pad = pads_[port];
+  SDL_Gamepad* pad = pads_[port];
   if (!pad) return false;
-  if (id == RETRO_DEVICE_ID_JOYPAD_L2) return SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 16000;
-  if (id == RETRO_DEVICE_ID_JOYPAD_R2) return SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 16000;
+  if (id == RETRO_DEVICE_ID_JOYPAD_L2) return SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 16000;
+  if (id == RETRO_DEVICE_ID_JOYPAD_R2) return SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 16000;
   int b = padButton(id);
-  return b >= 0 && SDL_GameControllerGetButton(pad, (SDL_GameControllerButton)b);
+  return b >= 0 && SDL_GetGamepadButton(pad, (SDL_GamepadButton)b);
 }
 
 int16_t Input::state(unsigned port, unsigned device, unsigned index, unsigned id) const {
@@ -194,15 +197,15 @@ int16_t Input::state(unsigned port, unsigned device, unsigned index, unsigned id
 
     case RETRO_DEVICE_ANALOG: {
       if (index == RETRO_DEVICE_INDEX_ANALOG_BUTTON) {
-        if (id == RETRO_DEVICE_ID_JOYPAD_L2) return axis(port, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
-        if (id == RETRO_DEVICE_ID_JOYPAD_R2) return axis(port, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+        if (id == RETRO_DEVICE_ID_JOYPAD_L2) return axis(port, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
+        if (id == RETRO_DEVICE_ID_JOYPAD_R2) return axis(port, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
         return button(port, id) ? 0x7FFF : 0;
       }
       bool left = index == RETRO_DEVICE_INDEX_ANALOG_LEFT;
       bool x = id == RETRO_DEVICE_ID_ANALOG_X;
       if (port < (unsigned)kPorts && pads_[port]) {
-        SDL_GameControllerAxis a = left ? (x ? SDL_CONTROLLER_AXIS_LEFTX : SDL_CONTROLLER_AXIS_LEFTY)
-                                        : (x ? SDL_CONTROLLER_AXIS_RIGHTX : SDL_CONTROLLER_AXIS_RIGHTY);
+        SDL_GamepadAxis a = left ? (x ? SDL_GAMEPAD_AXIS_LEFTX : SDL_GAMEPAD_AXIS_LEFTY)
+                                        : (x ? SDL_GAMEPAD_AXIS_RIGHTX : SDL_GAMEPAD_AXIS_RIGHTY);
         int16_t v = axis(port, a);
         if (v != 0) return v;
       }
@@ -223,13 +226,13 @@ int16_t Input::state(unsigned port, unsigned device, unsigned index, unsigned id
 bool Input::rumble(unsigned port, retro_rumble_effect effect, uint16_t strength) {
   if (port >= (unsigned)kPorts || !pads_[port]) return false;
   (effect == RETRO_RUMBLE_STRONG ? rumbleStrong_ : rumbleWeak_)[port] = strength;
-  return SDL_GameControllerRumble(pads_[port], rumbleStrong_[port], rumbleWeak_[port], 5000) == 0;
+  return SDL_RumbleGamepad(pads_[port], rumbleStrong_[port], rumbleWeak_[port], 5000);
 }
 
 bool Input::menuCombo() const {
   for (auto* pad : pads_) {
-    if (pad && SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_START) &&
-        SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_BACK)) {
+    if (pad && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START) &&
+        SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK)) {
       return true;
     }
   }

@@ -25,7 +25,7 @@ static std::map<std::string, std::string> originalMappings;
 
 static std::string guidOf(SDL_Joystick* joystick) {
   char text[64] = {};
-  SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(joystick), text, sizeof(text));
+  SDL_GUIDToString(SDL_GetJoystickGUID(joystick), text, sizeof(text));
   return text;
 }
 
@@ -41,9 +41,9 @@ static std::vector<std::string> split(const std::string& s, char separator) {
   return parts;
 }
 
-/** Correspondance SDL actuelle de la manette [index] (vide si SDL ne la connaît pas). */
-static std::string mappingForDevice(int index) {
-  char* mapping = SDL_GameControllerMappingForDeviceIndex(index);
+/** Correspondance SDL actuelle de la manette [id] (vide si SDL ne la connaît pas). */
+static std::string mappingFor(SDL_JoystickID id) {
+  char* mapping = SDL_GetGamepadMappingForID(id);
   std::string result = mapping ? mapping : "";
   SDL_free(mapping);
   return result;
@@ -53,11 +53,11 @@ void applySavedPadMappings() {
   for (const auto& [key, mapping] : g.options.settings(kSettingPrefix)) {
     std::string guid = key.substr(strlen(kSettingPrefix));
     if (!originalMappings.count(guid)) {
-      char* original = SDL_GameControllerMappingForGUID(SDL_JoystickGetGUIDFromString(guid.c_str()));
+      char* original = SDL_GetGamepadMappingForGUID(SDL_StringToGUID(guid.c_str()));
       originalMappings[guid] = original ? original : "";
       SDL_free(original);
     }
-    if (SDL_GameControllerAddMapping(mapping.c_str()) < 0) logf("Manette %s : correspondance refusée (%s)", guid.c_str(), SDL_GetError());
+    if (SDL_AddGamepadMapping(mapping.c_str()) < 0) logf("Manette %s : correspondance refusée (%s)", guid.c_str(), SDL_GetError());
   }
 }
 
@@ -134,49 +134,52 @@ PadConfig::PadConfig(const std::string& buttons, const std::string& style, Trans
   assigned_.resize(steps_.size());
 
   // Toutes les manettes, connues de SDL ou non : la première utilisée est configurée.
-  for (int i = 0; i < SDL_NumJoysticks(); i++) {
-    if (SDL_Joystick* joystick = SDL_JoystickOpen(i)) opened_.push_back(joystick);
+  int count = 0;
+  SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+  for (int i = 0; i < count; i++) {
+    if (SDL_Joystick* joystick = SDL_OpenJoystick(ids[i])) opened_.push_back(joystick);
   }
+  SDL_free(ids);
 }
 
 PadConfig::~PadConfig() {
-  for (auto* joystick : opened_) SDL_JoystickClose(joystick);
+  for (auto* joystick : opened_) SDL_CloseJoystick(joystick);
 }
 
 bool PadConfig::handleEvent(const SDL_Event& e) {
   if (finished_) return false;
   switch (e.type) {
-    case SDL_KEYDOWN:
+    case SDL_EVENT_KEY_DOWN:
       if (e.key.repeat) return true;
-      if (e.key.keysym.sym == SDLK_ESCAPE) finish(nullptr);
-      else if (joystick_ && e.key.keysym.sym == SDLK_TAB) next();
-      else if (joystick_ && e.key.keysym.sym == SDLK_DELETE) resetDevice();
+      if (e.key.key == SDLK_ESCAPE) finish(nullptr);
+      else if (joystick_ && e.key.key == SDLK_TAB) next();
+      else if (joystick_ && e.key.key == SDLK_DELETE) resetDevice();
       return true;
-    case SDL_KEYUP:
-    case SDL_TEXTINPUT:
-    case SDL_CONTROLLERBUTTONDOWN:
-    case SDL_CONTROLLERBUTTONUP:
-    case SDL_CONTROLLERAXISMOTION:
+    case SDL_EVENT_KEY_UP:
+    case SDL_EVENT_TEXT_INPUT:
+    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+    case SDL_EVENT_GAMEPAD_BUTTON_UP:
+    case SDL_EVENT_GAMEPAD_AXIS_MOTION:
       return true;
-    case SDL_JOYDEVICEADDED:
-      if (SDL_Joystick* joystick = SDL_JoystickOpen(e.jdevice.which)) opened_.push_back(joystick);
+    case SDL_EVENT_JOYSTICK_ADDED:
+      if (SDL_Joystick* joystick = SDL_OpenJoystick(e.jdevice.which)) opened_.push_back(joystick);
       return false;  // aussi pour Input (manettes connues de SDL)
-    case SDL_JOYDEVICEREMOVED:
-      if (joystick_ && SDL_JoystickInstanceID(joystick_) == e.jdevice.which) finish(nullptr);
+    case SDL_EVENT_JOYSTICK_REMOVED:
+      if (joystick_ && SDL_GetJoystickID(joystick_) == e.jdevice.which) finish(nullptr);
       return false;
-    case SDL_JOYBUTTONDOWN:
-    case SDL_JOYBUTTONUP:
+    case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+    case SDL_EVENT_JOYSTICK_BUTTON_UP:
       if (!joystick_) {
-        if (e.type == SDL_JOYBUTTONUP) lock(e.jbutton.which);
-      } else if (SDL_JoystickInstanceID(joystick_) == e.jbutton.which) {
-        onButton(e.jbutton.button, e.type == SDL_JOYBUTTONDOWN);
+        if (e.type == SDL_EVENT_JOYSTICK_BUTTON_UP) lock(e.jbutton.which);
+      } else if (SDL_GetJoystickID(joystick_) == e.jbutton.which) {
+        onButton(e.jbutton.button, e.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN);
       }
       return true;
-    case SDL_JOYHATMOTION:
-      if (joystick_ && SDL_JoystickInstanceID(joystick_) == e.jhat.which) onHat(e.jhat.hat, e.jhat.value);
+    case SDL_EVENT_JOYSTICK_HAT_MOTION:
+      if (joystick_ && SDL_GetJoystickID(joystick_) == e.jhat.which) onHat(e.jhat.hat, e.jhat.value);
       return true;
-    case SDL_JOYAXISMOTION:
-      if (joystick_ && SDL_JoystickInstanceID(joystick_) == e.jaxis.which) onAxes();
+    case SDL_EVENT_JOYSTICK_AXIS_MOTION:
+      if (joystick_ && SDL_GetJoystickID(joystick_) == e.jaxis.which) onAxes();
       return true;
     default:
       return false;
@@ -184,37 +187,34 @@ bool PadConfig::handleEvent(const SDL_Event& e) {
 }
 
 void PadConfig::lock(SDL_JoystickID id) {
-  joystick_ = SDL_JoystickFromInstanceID(id);
+  joystick_ = SDL_GetJoystickFromID(id);
   if (!joystick_) return;
-  const char* name = SDL_JoystickName(joystick_);
+  const char* name = SDL_GetJoystickName(joystick_);
   deviceName_ = name ? name : "?";
   // Position de repos de chaque axe (certaines gâchettes reposent à -1).
-  int axes = SDL_JoystickNumAxes(joystick_);
+  int axes = SDL_GetNumJoystickAxes(joystick_);
   rest_.assign((size_t)std::max(0, axes), 0.0f);
   for (int i = 0; i < axes; i++) {
     Sint16 state = 0;
-    if (!SDL_JoystickGetAxisInitialState(joystick_, i, &state)) state = SDL_JoystickGetAxis(joystick_, i);
+    if (!SDL_GetJoystickAxisInitialState(joystick_, i, &state)) state = SDL_GetJoystickAxis(joystick_, i);
     rest_[(size_t)i] = std::clamp(std::round(state / 32767.0f), -1.0f, 1.0f);
   }
   // Stick gauche : celui de la correspondance de SDL, sinon les deux premiers axes.
   leftStick_ = {0, 1};
-  for (int i = 0; i < SDL_NumJoysticks(); i++) {
-    if (SDL_JoystickGetDeviceInstanceID(i) != id) continue;
-    std::set<int> found;
-    for (const auto& bind : split(mappingForDevice(i), ',')) {
-      if (bind.rfind("leftx:", 0) == 0 || bind.rfind("lefty:", 0) == 0) {
-        int axis = axisOf(bind.substr(6));
-        if (axis >= 0) found.insert(axis);
-      }
+  std::set<int> found;
+  for (const auto& bind : split(mappingFor(id), ',')) {
+    if (bind.rfind("leftx:", 0) == 0 || bind.rfind("lefty:", 0) == 0) {
+      int axis = axisOf(bind.substr(6));
+      if (axis >= 0) found.insert(axis);
     }
-    if (!found.empty()) leftStick_ = found;
   }
+  if (!found.empty()) leftStick_ = found;
   step_ = 0;
 }
 
 float PadConfig::delta(int axis) const {
   float rest = axis < (int)rest_.size() ? rest_[(size_t)axis] : 0.0f;
-  return SDL_JoystickGetAxis(joystick_, axis) / 32767.0f - rest;
+  return SDL_GetJoystickAxis(joystick_, axis) / 32767.0f - rest;
 }
 
 bool PadConfig::usesAxis(int axis) const {
@@ -272,7 +272,7 @@ void PadConfig::onHat(int hat, Uint8 value) {
 
 void PadConfig::onAxes() {
   if (step_ >= steps_.size()) return;
-  const int axes = SDL_JoystickNumAxes(joystick_);
+  const int axes = SDL_GetNumJoystickAxes(joystick_);
   if (settling_) {
     bool still = true;
     for (int i = 0; i < axes; i++) still = still && std::fabs(delta(i)) < 0.3f;
@@ -326,10 +326,7 @@ void PadConfig::save() {
   const std::string guid = guidOf(joystick_);
   // Correspondance de départ : celle de SDL (ou déjà configurée) ; les éléments configurés et les
   // boutons ou axes réattribués en sont retirés, le reste est gardé (étapes passées, stick gauche).
-  std::string base;
-  for (int i = 0; i < SDL_NumJoysticks(); i++) {
-    if (SDL_JoystickGetDeviceInstanceID(i) == SDL_JoystickInstanceID(joystick_)) base = mappingForDevice(i);
-  }
+  const std::string base = mappingFor(SDL_GetJoystickID(joystick_));
   std::vector<std::string> fields = split(base, ',');
   std::string name = fields.size() > 1 && !fields[1].empty() ? fields[1] : deviceName_;
   name.erase(std::remove(name.begin(), name.end(), ','), name.end());
@@ -367,7 +364,7 @@ void PadConfig::save() {
   std::string mapping = guid + "," + name + ",";
   for (const auto& bind : binds) mapping += bind + ",";
   if (!originalMappings.count(guid)) originalMappings[guid] = base;
-  if (SDL_GameControllerAddMapping(mapping.c_str()) < 0) {
+  if (SDL_AddGamepadMapping(mapping.c_str()) < 0) {
     logf("Manette %s : correspondance refusée (%s) : %s", guid.c_str(), SDL_GetError(), mapping.c_str());
     message_ = tr_("pad_failed");
     step_ = steps_.size() - 1;
@@ -382,7 +379,7 @@ void PadConfig::resetDevice() {
   const std::string guid = guidOf(joystick_);
   g.options.removeSetting(kSettingPrefix + guid);
   auto original = originalMappings.find(guid);
-  if (original != originalMappings.end() && !original->second.empty()) SDL_GameControllerAddMapping(original->second.c_str());
+  if (original != originalMappings.end() && !original->second.empty()) SDL_AddGamepadMapping(original->second.c_str());
   finish("pad_reset");
 }
 

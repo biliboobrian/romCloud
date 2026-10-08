@@ -61,7 +61,7 @@ jobs:
         with:
           workspaces: desktop-tauri/src-tauri -> target
 
-      # Moteur d'émulation intégré (frontend libretro natif, C++ / SDL2), inclus dans l'installeur :
+      # Moteur d'émulation intégré (frontend libretro natif, C++ / SDL3), inclus dans l'installeur :
       # compilé avant les tests, la compilation de l'application vérifiant ses ressources.
       - name: Moteur d'émulation intégré
         working-directory: desktop

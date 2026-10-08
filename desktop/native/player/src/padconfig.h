@@ -2,11 +2,11 @@
 // l'utilisateur appuie sur chaque bouton demandé (bouton, croix ou gâchette analogique), puis pousse
 // le stick droit. Les boutons sont lus sur la manette brute (SDL_Joystick) : les manettes inconnues
 // de SDL sont aussi configurables. La première manette utilisée est celle configurée ; appuyer de
-// nouveau sur le dernier bouton passe l'étape. Le résultat est une correspondance SDL (SDL_GameController)
+// nouveau sur le dernier bouton passe l'étape. Le résultat est une correspondance SDL (SDL_Gamepad)
 // mémorisée pour le système et le modèle de manette (GUID), appliquée au lancement suivant et aussitôt.
 #pragma once
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <functional>
 #include <set>

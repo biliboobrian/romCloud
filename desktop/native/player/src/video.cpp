@@ -1,6 +1,6 @@
 #include "video.h"
 
-#include <SDL_opengl.h>
+#include <SDL3/SDL_opengl.h>
 
 #include <algorithm>
 #include <cmath>
@@ -144,10 +144,10 @@ bool Video::create(const std::string& title, bool fullscreen, bool hidden, std::
   const retro_game_geometry& geo = g.av.geometry;
   int scale = 3;
   int w = std::max(640, (int)geo.base_width * scale), h = std::max(480, (int)geo.base_height * scale);
-  Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
-  if (fullscreen) flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+  Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+  if (fullscreen) flags |= SDL_WINDOW_FULLSCREEN;
   if (hidden) flags |= SDL_WINDOW_HIDDEN;
-  window_ = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h, flags);
+  window_ = SDL_CreateWindow(title.c_str(), w, h, flags);
   if (!window_) {
     error = SDL_GetError();
     return false;
@@ -168,7 +168,8 @@ bool Video::create(const std::string& title, bool fullscreen, bool hidden, std::
     allocateHwFramebuffer();
     if (g.hw.context_reset) g.hw.context_reset();
   }
-  SDL_ShowCursor(fullscreen ? SDL_DISABLE : SDL_ENABLE);
+  if (fullscreen) SDL_HideCursor();
+  else SDL_ShowCursor();
   return true;
 }
 
@@ -181,7 +182,7 @@ void Video::destroyCoreContext() {
 }
 
 void Video::destroy() {
-  if (context_) SDL_GL_DeleteContext(context_);
+  if (context_) SDL_GL_DestroyContext(context_);
   if (window_) SDL_DestroyWindow(window_);
   context_ = nullptr;
   window_ = nullptr;
@@ -209,17 +210,18 @@ bool Video::saveFrame(const std::string& path) {
   if (flip) {
     for (int y = 0; y < h / 2; y++) std::swap_ranges(&pixels[(size_t)y * w * 4], &pixels[(size_t)(y + 1) * w * 4], &pixels[(size_t)(h - 1 - y) * w * 4]);
   }
-  SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(pixels.data(), w, h, 32, w * 4, SDL_PIXELFORMAT_RGBA32);
+  SDL_Surface* surface = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_RGBA32, pixels.data(), w * 4);
   if (!surface) return false;
-  bool ok = SDL_SaveBMP(surface, path.c_str()) == 0;
-  SDL_FreeSurface(surface);
+  bool ok = SDL_SaveBMP(surface, path.c_str());
+  SDL_DestroySurface(surface);
   return ok;
 }
 
 void Video::toggleFullscreen() {
   fullscreen_ = !fullscreen_;
-  SDL_SetWindowFullscreen(window_, fullscreen_ ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-  SDL_ShowCursor(fullscreen_ ? SDL_DISABLE : SDL_ENABLE);
+  SDL_SetWindowFullscreen(window_, fullscreen_);
+  if (fullscreen_) SDL_HideCursor();
+  else SDL_ShowCursor();
 }
 
 // ---------------------------------------------------------------------------
@@ -609,7 +611,7 @@ struct Vertex {
 
 void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool swap) {
   int winW, winH;
-  SDL_GL_GetDrawableSize(window_, &winW, &winH);
+  SDL_GetWindowSizeInPixels(window_, &winW, &winH);
 
   // État neutre : le cœur peut avoir laissé n'importe quel état OpenGL.
   p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -758,7 +760,7 @@ void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight,
 
 bool Video::saveWindow(const std::string& path) {
   int w, h;
-  SDL_GL_GetDrawableSize(window_, &w, &h);
+  SDL_GetWindowSizeInPixels(window_, &w, &h);
   std::vector<uint8_t> pixels((size_t)w * h * 4);
   p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
   p_glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
@@ -766,9 +768,9 @@ bool Video::saveWindow(const std::string& path) {
   glReadBuffer(GL_BACK);
   glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
   for (int y = 0; y < h / 2; y++) std::swap_ranges(&pixels[(size_t)y * w * 4], &pixels[(size_t)(y + 1) * w * 4], &pixels[(size_t)(h - 1 - y) * w * 4]);
-  SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(pixels.data(), w, h, 32, w * 4, SDL_PIXELFORMAT_RGBA32);
+  SDL_Surface* surface = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_RGBA32, pixels.data(), w * 4);
   if (!surface) return false;
-  bool ok = SDL_SaveBMP(surface, path.c_str()) == 0;
-  SDL_FreeSurface(surface);
+  bool ok = SDL_SaveBMP(surface, path.c_str());
+  SDL_DestroySurface(surface);
   return ok;
 }

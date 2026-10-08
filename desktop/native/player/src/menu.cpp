@@ -441,7 +441,7 @@ std::string Menu::keyName(SDL_Scancode code) const {
     }
   }
   // Nom selon la disposition du clavier (touche Q d'un AZERTY : « A »).
-  const char* name = SDL_GetKeyName(SDL_GetKeyFromScancode(code));
+  const char* name = SDL_GetKeyName(SDL_GetKeyFromScancode(code, SDL_KMOD_NONE, false));
   return name && *name ? std::string(name) : "#" + std::to_string((int)code);
 }
 
