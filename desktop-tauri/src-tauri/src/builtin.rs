@@ -217,6 +217,7 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         .stderr(log)
         .spawn()
         .map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e.to_string() })))?;
+    paths::allow_foreground(child.id());
     let started = paths::now_ms();
     let (system, game, core) = (system.clone(), game.clone(), core.to_string());
     tauri::async_runtime::spawn(async move {

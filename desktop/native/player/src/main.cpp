@@ -560,6 +560,9 @@ void Player::shutdown() {
 int main(int argc, char** argv) {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS3, "1");  // DualShock 3 (pilote Sixaxis de Windows)
+  // Fenêtre au premier plan même si le jeu a été lancé à la manette (Windows ne donne ce droit
+  // qu'après une action au clavier ou à la souris).
+  SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC) != 0) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "RomCloud", SDL_GetError(), nullptr);
     return 1;

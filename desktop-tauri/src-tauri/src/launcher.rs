@@ -111,6 +111,7 @@ fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()>
         command.current_dir(&dir);
     }
     let mut child = command.spawn().map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e.to_string() })))?;
+    paths::allow_foreground(child.id());
     let started = paths::now_ms();
     tauri::async_runtime::spawn(async move {
         let _ = child.wait().await;

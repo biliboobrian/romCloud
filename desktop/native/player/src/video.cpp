@@ -152,6 +152,7 @@ bool Video::create(const std::string& title, bool fullscreen, bool hidden, std::
     error = SDL_GetError();
     return false;
   }
+  if (!hidden) SDL_RaiseWindow(window_);  // devant RomCloud (SDL_HINT_FORCE_RAISEWINDOW)
   if (!createContext(error)) return false;
   if (!loadFunctions()) {
     error = "OpenGL 2.1 minimum";
