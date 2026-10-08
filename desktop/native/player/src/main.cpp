@@ -374,7 +374,7 @@ void Player::runFrame() {
   g.api.run();
   if (g.avChanged) {
     g.avChanged = false;
-    if (std::fabs(g.av.timing.sample_rate - audio_.rate()) > 1.0) audio_.open(g.av.timing.sample_rate);
+    if (std::fabs(g.av.timing.sample_rate - audio_.coreRate()) > 1.0) audio_.open(g.av.timing.sample_rate);
   }
 }
 
