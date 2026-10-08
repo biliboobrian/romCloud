@@ -170,16 +170,24 @@ const PAD_BY_CORE = [
 ];
 
 /**
+ * Manette de la console (« snes », « psx »… ; « default » : RetroPad) : système, puis cœur.
+ * Argument --pad-style du moteur (dessin de la manette dans sa configuration).
+ */
+function consolePad(systemId, core) {
+  const system = String(systemId || '').toLowerCase();
+  return PAD_BY_SYSTEM[system] || PAD_BY_CORE.find(([prefix]) => String(core || '').startsWith(prefix))?.[1] || 'default';
+}
+
+/**
  * Boutons de la console proposés dans l'écran des touches du moteur : argument --buttons,
  * « bouton[=nom sur la console] » séparés par des virgules (directions sans nom : traduites par
  * le moteur). Système, puis cœur, sinon tous les boutons du RetroPad.
  */
 function consoleButtons(systemId, core, language = 'fr') {
-  const system = String(systemId || '').toLowerCase();
-  const pad = PADS[PAD_BY_SYSTEM[system] || PAD_BY_CORE.find(([prefix]) => String(core || '').startsWith(prefix))?.[1] || 'default'];
+  const pad = PADS[consolePad(systemId, core)];
   const label = (l) => (typeof l === 'string' ? l : l[language] || l.en);
   const clean = (s) => s.replace(/[,=]/g, ' ');
   return ['up', 'down', 'left', 'right', ...Object.entries(pad).map(([name, l]) => `${name}=${clean(label(l))}`)].join(',');
 }
 
-module.exports = { BUTTONS, DEFAULTS, RESERVED, SCANCODES, assignable, resolve, parseFile, formatFile, consoleButtons };
+module.exports = { BUTTONS, DEFAULTS, RESERVED, SCANCODES, assignable, resolve, parseFile, formatFile, consolePad, consoleButtons };

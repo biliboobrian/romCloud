@@ -153,6 +153,7 @@ async function launch(system, game, file, core, { resume = false } = {}) {
     resume,
     keysFile: keysFile(),
     buttons: keyboard.consoleButtons(system.shortname || system.id, core, settings.language()),
+    padStyle: keyboard.consolePad(system.shortname || system.id, core),
     optionDefaults: libretro.gameOptionDefaults(core, rom),
   });
   fs.mkdirSync(base, { recursive: true });

@@ -29,8 +29,11 @@ class PadConfig {
  public:
   using Translate = std::function<std::string(const char*)>;
 
-  /** [buttons] : boutons de la console (--buttons, « bouton[=nom] ») ; [tr] : textes traduits. */
-  PadConfig(const std::string& buttons, Translate tr);
+  /**
+   * [buttons] : boutons de la console (--buttons, « bouton[=nom] ») ; [style] : sa manette
+   * (--pad-style : « snes », « psx »…), pour son dessin ; [tr] : textes traduits.
+   */
+  PadConfig(const std::string& buttons, const std::string& style, Translate tr);
   ~PadConfig();
   PadConfig(const PadConfig&) = delete;
   PadConfig& operator=(const PadConfig&) = delete;
@@ -56,9 +59,11 @@ class PadConfig {
   float delta(int axis) const;
   bool usesAxis(int axis) const;
   std::string sourceLabel(const std::string& source) const;
-  void renderPad(Canvas& c, int x, int y, int width) const;
+  /** Manette de la console ; renvoie sa hauteur. */
+  int renderPad(Canvas& c, int x, int y, int width) const;
 
   Translate tr_;
+  std::string style_;
   std::vector<PadStep> steps_;
   std::vector<std::string> assigned_;  // source attribuée à chaque étape (« b3 », « h0.4 », « +a2 »…), vide : aucune
   std::vector<SDL_Joystick*> opened_;

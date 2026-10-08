@@ -1,6 +1,7 @@
 #include "canvas.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include "util.h"
@@ -50,6 +51,46 @@ void Canvas::blend(int x, int y, uint32_t c) {
 void Canvas::fill(int x, int y, int w, int h, uint32_t c) {
   for (int j = std::max(0, y); j < std::min(height_, y + h); j++) {
     for (int i = std::max(0, x); i < std::min(width_, x + w); i++) blend(i, j, c);
+  }
+}
+
+template <typename Coverage>
+void Canvas::shape(float x, float y, float w, float h, float r, uint32_t c, Coverage coverage) {
+  r = std::clamp(r, 0.0f, std::min(w, h) / 2);
+  const float cx = x + w / 2, cy = y + h / 2, hx = w / 2 - r, hy = h / 2 - r;
+  const uint32_t alpha = c >> 24;
+  for (int j = std::max(0, (int)std::floor(y) - 1); j < std::min(height_, (int)std::ceil(y + h) + 1); j++) {
+    for (int i = std::max(0, (int)std::floor(x) - 1); i < std::min(width_, (int)std::ceil(x + w) + 1); i++) {
+      // Distance signée au bord (négative à l'intérieur).
+      float qx = std::fabs(i + 0.5f - cx) - hx, qy = std::fabs(j + 0.5f - cy) - hy;
+      float d = std::hypot(std::max(qx, 0.0f), std::max(qy, 0.0f)) + std::min(std::max(qx, qy), 0.0f) - r;
+      float cover = std::clamp(coverage(d), 0.0f, 1.0f);
+      if (cover <= 0) continue;
+      blend(i, j, (c & 0xFFFFFF) | ((uint32_t)std::lround(alpha * cover) << 24));
+    }
+  }
+}
+
+void Canvas::roundRect(float x, float y, float w, float h, float r, uint32_t c) {
+  shape(x, y, w, h, r, c, [](float d) { return 0.5f - d; });
+}
+
+void Canvas::roundRectOutline(float x, float y, float w, float h, float r, float t, uint32_t c) {
+  shape(x, y, w, h, r, c, [t](float d) { return 0.5f - (std::fabs(d + t / 2) - t / 2); });
+}
+
+void Canvas::line(float x0, float y0, float x1, float y1, float t, uint32_t c) {
+  const float r = t / 2, vx = x1 - x0, vy = y1 - y0, len2 = std::max(vx * vx + vy * vy, 1e-6f);
+  const uint32_t alpha = c >> 24;
+  for (int j = std::max(0, (int)std::floor(std::min(y0, y1) - r) - 1); j < std::min(height_, (int)std::ceil(std::max(y0, y1) + r) + 1); j++) {
+    for (int i = std::max(0, (int)std::floor(std::min(x0, x1) - r) - 1); i < std::min(width_, (int)std::ceil(std::max(x0, x1) + r) + 1); i++) {
+      // Distance au segment.
+      float px = i + 0.5f - x0, py = j + 0.5f - y0;
+      float k = std::clamp((px * vx + py * vy) / len2, 0.0f, 1.0f);
+      float d = std::hypot(px - k * vx, py - k * vy) - r;
+      float cover = std::clamp(0.5f - d, 0.0f, 1.0f);
+      if (cover > 0) blend(i, j, (c & 0xFFFFFF) | ((uint32_t)std::lround(alpha * cover) << 24));
+    }
   }
 }
 

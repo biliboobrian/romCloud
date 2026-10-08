@@ -18,6 +18,14 @@ class Canvas {
   }
   void clear();
   void fill(int x, int y, int w, int h, uint32_t rgba);
+  /** Rectangle aux coins arrondis (rayon [r] ; moitié du côté : disque), bords lissés. */
+  void roundRect(float x, float y, float w, float h, float r, uint32_t rgba);
+  /** Contour intérieur d'épaisseur [t] du même rectangle. */
+  void roundRectOutline(float x, float y, float w, float h, float r, float t, uint32_t rgba);
+  /** Trait d'épaisseur [t] (bouts arrondis), bords lissés. */
+  void line(float x0, float y0, float x1, float y1, float t, uint32_t rgba);
+  void circle(float cx, float cy, float r, uint32_t rgba) { roundRect(cx - r, cy - r, 2 * r, 2 * r, r, rgba); }
+  void circleOutline(float cx, float cy, float r, float t, uint32_t rgba) { roundRectOutline(cx - r, cy - r, 2 * r, 2 * r, r, t, rgba); }
   /** Dessine le texte (UTF-8) ; renvoie la largeur en pixels. */
   int text(int x, int y, const std::string& s, int scale, uint32_t rgba);
   static int measure(const std::string& s, int scale);
@@ -30,6 +38,9 @@ class Canvas {
 
  private:
   void blend(int x, int y, uint32_t rgba);
+  /** Forme d'un rectangle arrondi : couverture de chaque pixel d'après sa distance au bord. */
+  template <typename Coverage>
+  void shape(float x, float y, float w, float h, float r, uint32_t rgba, Coverage coverage);
 
   int width_, height_;
   std::vector<uint8_t> pixels_;
