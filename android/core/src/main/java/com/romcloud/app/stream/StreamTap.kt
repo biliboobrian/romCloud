@@ -1,5 +1,6 @@
 package com.romcloud.app.stream
 
+import java.nio.ByteBuffer
 import kotlin.math.roundToInt
 
 /**
@@ -27,12 +28,27 @@ object StreamTap {
     /** Fréquence du son du cœur (Hz), 0 si inconnue. */
     val sampleRate: Int get() = if (loaded) nativeSampleRate().roundToInt() else 0
 
-    /** Proportions de l'image du jeu (largeur / hauteur), 0 si inconnues. */
+    /** Proportions de l'image du jeu affichée (largeur / hauteur, rotation comprise), 0 si inconnues. */
     val aspectRatio: Float get() = if (loaded) nativeAspectRatio() else 0f
+
+    /** Copie de l'image du cœur à sa taille d'origine (diffusion), lue par [readFrame]. */
+    fun setFrameCapture(enabled: Boolean) {
+        if (loaded) nativeSetFrameCapture(enabled)
+    }
+
+    /**
+     * Dernière image du cœur si elle a changé depuis [last] : pixels dans [buffer] (direct) et
+     * [info] = largeur, hauteur, octets par pixel (2 : RGB565, 4 : XRGB8888), rotation (quarts de
+     * tour antihoraires), rendu OpenGL (1 : pas d'image à copier ici), taille nécessaire. Renvoie le
+     * numéro de l'image ([last] si rien de neuf, -1 si [buffer] est trop petit).
+     */
+    fun readFrame(buffer: ByteBuffer, info: IntArray, last: Int): Int = if (loaded) nativeReadFrame(buffer, info, last) else last
 
     private external fun nativeActive(): Boolean
     private external fun nativeSetCapture(enabled: Boolean, mute: Boolean)
     private external fun nativeRead(buffer: ShortArray): Int
     private external fun nativeSampleRate(): Double
     private external fun nativeAspectRatio(): Float
+    private external fun nativeSetFrameCapture(enabled: Boolean)
+    private external fun nativeReadFrame(buffer: ByteBuffer, info: IntArray, last: Int): Int
 }
