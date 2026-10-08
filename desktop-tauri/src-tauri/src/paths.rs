@@ -56,6 +56,27 @@ pub fn size(path: &std::path::Path) -> Option<u64> {
     std::fs::metadata(path).ok().filter(|m| m.is_file()).map(|m| m.len())
 }
 
+/// Autorise le programme [pid] lancé par RomCloud (au premier plan) à passer devant lui : sans
+/// cela, Windows le laisse derrière quand le jeu a été lancé à la manette (seuls le clavier et la
+/// souris comptent comme une action de l'utilisateur).
+pub fn allow_foreground(pid: Option<u32>) {
+    #[cfg(windows)]
+    {
+        #[link(name = "user32")]
+        extern "system" {
+            fn AllowSetForegroundWindow(process_id: u32) -> i32;
+        }
+        if let Some(pid) = pid {
+            // SAFETY : fonction de Windows sans pointeur, sans effet si RomCloud n'est pas au premier plan.
+            unsafe {
+                AllowSetForegroundWindow(pid);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = pid;
+}
+
 /// Maintenant, en ms depuis 1970.
 pub fn now_ms() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
