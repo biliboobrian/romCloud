@@ -1,5 +1,5 @@
-// Opérations demandées par l'interface : mêmes canaux que le preload de la version Electron
-// (« settings:get », « launcher:play »…), reçus par une seule commande et répartis ici. Le pont
+// Opérations demandées par l'interface : canaux « settings:get », « launcher:play »…, reçus par
+// une seule commande et répartis ici. Le pont
 // (bridge.js) renvoie à l'interface { ok, data } ou { ok: false, error }.
 use crate::error::{AppError, Result};
 use crate::{account, api, builtin, connectivity, downloads, keyboard, launcher, library, screencast, settings, updater};

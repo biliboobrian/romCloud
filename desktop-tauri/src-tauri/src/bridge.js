@@ -1,5 +1,5 @@
-// Pont entre l'interface et le processus principal (Rust) : même objet window.romcloud que le
-// preload de la version Electron. Chaque appel renvoie { ok, data } ou { ok: false, error }.
+// Pont entre l'interface et le processus principal (Rust) : objet window.romcloud. Chaque appel
+// renvoie { ok, data } ou { ok: false, error }.
 // Injecté avant le chargement de la page ; les fonctions de Tauri sont lues au moment de l'appel.
 (function () {
   const tauri = () => window.__TAURI__;

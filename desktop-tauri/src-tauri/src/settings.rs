@@ -1,5 +1,5 @@
 // Réglages de l'application (fichier JSON dans le dossier de données de l'utilisateur), même format
-// que la version Electron. Gardés sous forme d'objet JSON : les champs inconnus sont conservés.
+// que l'ancienne version Electron. Gardés sous forme d'objet JSON : les champs inconnus sont conservés.
 use crate::paths;
 use serde_json::{json, Map, Value};
 use std::path::PathBuf;

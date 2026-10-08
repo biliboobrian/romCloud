@@ -1,4 +1,4 @@
-// Dossiers de l'application : les mêmes que la version Electron (%APPDATA%\RomCloud), pour reprendre
+// Dossiers de l'application : les mêmes que l'ancienne version Electron (%APPDATA%\RomCloud), pour reprendre
 // réglages, cache, cœurs, sauvegardes et profil sans migration.
 use std::path::PathBuf;
 

@@ -1,5 +1,5 @@
-// Touches du clavier du joueur 1 dans le moteur intégré, et boutons de chaque console (comme
-// keyboard.js de la version Electron). Une touche est notée par son code physique
+// Touches du clavier du joueur 1 dans le moteur intégré, et boutons de chaque console. Une touche
+// est notée par son code physique
 // (KeyboardEvent.code : « KeyZ », « ArrowUp »…) ; fichier partagé avec le moteur : une ligne
 // « bouton=scancode SDL » par bouton, valeur vide = aucune touche.
 use serde_json::{json, Map, Value};

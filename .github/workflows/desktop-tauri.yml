@@ -1,4 +1,4 @@
-name: Windows (Tauri)
+name: Windows
 
 # Application RomCloud pour Windows en Tauri (interface de desktop/src/renderer, processus principal
 # en Rust, moteur d'émulation intégré en C++) :
@@ -18,12 +18,14 @@ on:
       - "desktop-tauri/**"
       - "desktop/src/renderer/**"
       - "desktop/native/**"
+      - "desktop/test/**"
       - ".github/workflows/desktop-tauri.yml"
   pull_request:
     paths:
       - "desktop-tauri/**"
       - "desktop/src/renderer/**"
       - "desktop/native/**"
+      - "desktop/test/**"
       - ".github/workflows/desktop-tauri.yml"
   workflow_dispatch:
 
@@ -47,7 +49,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: desktop-tauri/package-lock.json
 
@@ -65,7 +67,7 @@ jobs:
         working-directory: desktop
         run: npm run player
 
-      # Interface partagée avec la version Electron : ses propres tests (sans dépendance).
+      # Interface (desktop/src/renderer) : ses propres tests (sans dépendance).
       - name: Tests de l'interface
         run: node --test desktop/test/criteria.test.js desktop/test/gamepad.test.js
 

@@ -91,7 +91,7 @@ private fun Color.shade(amount: Float): Color =
 private fun Color.ink(): Color =
     if (red * 0.299f + green * 0.587f + blue * 0.114f > 0.59f) rgb(20, 20, 24) else rgb(250, 250, 252)
 
-private enum class Label { INSIDE, BELOW, ABOVE, NONE }
+private enum class LabelPlace { INSIDE, BELOW, ABOVE, NONE }
 private enum class Symbol { CROSS, CIRCLE, SQUARE, TRIANGLE }
 
 private class PadPainter(
@@ -162,17 +162,17 @@ private class PadPainter(
         if (isCurrent(i)) scope.drawRoundRect(accent.copy(alpha = 0.4f), at(x, y), Size(u(w), u(h)), CornerRadius(u(r)))
     }
 
-    private fun label(i: Int, where: Label, cx: Float, cy: Float, halfH: Float, maxWidth: Float, ink: Color, outside: Color) {
+    private fun label(i: Int, where: LabelPlace, cx: Float, cy: Float, halfH: Float, maxWidth: Float, ink: Color, outside: Color) {
         when (where) {
-            Label.INSIDE -> text(cx, cy, labelOf(i), maxWidth, ink)
-            Label.BELOW -> text(cx, cy + halfH + 7, labelOf(i), max(maxWidth, 48f), outside)
-            Label.ABOVE -> text(cx, cy - halfH - 7, labelOf(i), max(maxWidth, 48f), outside)
-            Label.NONE -> Unit
+            LabelPlace.INSIDE -> text(cx, cy, labelOf(i), maxWidth, ink)
+            LabelPlace.BELOW -> text(cx, cy + halfH + 7, labelOf(i), max(maxWidth, 48f), outside)
+            LabelPlace.ABOVE -> text(cx, cy - halfH - 7, labelOf(i), max(maxWidth, 48f), outside)
+            LabelPlace.NONE -> Unit
         }
     }
 
     /** Bouton rond de la console (absent de la configuration : non dessiné). */
-    private fun button(key: Int, cx: Float, cy: Float, r: Float, color: Color, where: Label = Label.INSIDE, outside: Color = rgb(230, 230, 236)) {
+    private fun button(key: Int, cx: Float, cy: Float, r: Float, color: Color, where: LabelPlace = LabelPlace.INSIDE, outside: Color = rgb(230, 230, 236)) {
         val i = stepOf(key)
         if (i < 0) return
         disc(cx, cy + 1.5f, r + 1, SHADOW)
@@ -208,7 +208,7 @@ private class PadPainter(
     }
 
     /** Bouton allongé (Select, Start…) centré en ([cx], [cy]). */
-    private fun pill(key: Int, cx: Float, cy: Float, w: Float, h: Float, color: Color, where: Label = Label.INSIDE, outside: Color = rgb(230, 230, 236)) {
+    private fun pill(key: Int, cx: Float, cy: Float, w: Float, h: Float, color: Color, where: LabelPlace = LabelPlace.INSIDE, outside: Color = rgb(230, 230, 236)) {
         val i = stepOf(key)
         if (i < 0) return
         val r = h / 2
@@ -220,7 +220,7 @@ private class PadPainter(
     }
 
     /** Bouton en biais (Select / Start de la Super Nintendo et de la Game Boy). */
-    private fun slanted(key: Int, x0: Float, y0: Float, x1: Float, y1: Float, t: Float, color: Color, where: Label, outside: Color) {
+    private fun slanted(key: Int, x0: Float, y0: Float, x1: Float, y1: Float, t: Float, color: Color, where: LabelPlace, outside: Color) {
         val i = stepOf(key)
         if (i < 0) return
         if (isCurrent(i)) line(x0, y0, x1, y1, t + 10 / k, accent)
@@ -363,8 +363,8 @@ private class PadPainter(
         disc(118, 96, 28, color.shade(-0.15f))
         dpad(118f, 96f, 14f, 7.5f, rgb(28, 28, 32))
         stick(222f, 96f, 15f, rgb(34, 34, 38), color.shade(-0.25f), stepOf(BTN_R3), rightAxis(), "R3")
-        pill(BTN_SELECT, 146f, 58f, 24f, 11f, rgb(30, 30, 34), Label.BELOW)
-        pill(BTN_START, 194f, 58f, 24f, 11f, rgb(30, 30, 34), Label.BELOW)
+        pill(BTN_SELECT, 146f, 58f, 24f, 11f, rgb(30, 30, 34), LabelPlace.BELOW)
+        pill(BTN_START, 194f, 58f, 24f, 11f, rgb(30, 30, 34), LabelPlace.BELOW)
         button(BTN_X, 272f, 32f, 11f, YELLOW)
         button(BTN_Y, 250f, 54f, 11f, BLUE)
         button(BTN_A, 294f, 54f, 11f, RED)
@@ -382,12 +382,12 @@ private class PadPainter(
         repeat(4) { rect(132, 44 + it * 7f, 76, 3, 1.5f, strip.shade(-0.22f)) }
         disc(78, 75, 32, panel.shade(0.08f))
         dpad(78f, 75f, 17f, 9f, rgb(48, 48, 50))
-        pill(BTN_SELECT, 146f, 96f, 26f, 9f, rgb(30, 30, 32), Label.ABOVE, print)
-        pill(BTN_START, 194f, 96f, 26f, 9f, rgb(30, 30, 32), Label.ABOVE, print)
+        pill(BTN_SELECT, 146f, 96f, 26f, 9f, rgb(30, 30, 32), LabelPlace.ABOVE, print)
+        pill(BTN_START, 194f, 96f, 26f, 9f, rgb(30, 30, 32), LabelPlace.ABOVE, print)
         rect(232, 58, 34, 34, 4, strip.shade(0.35f))
         rect(276, 58, 34, 34, 4, strip.shade(0.35f))
-        button(BTN_B, 249f, 75f, 12f, buttons, Label.BELOW, print)
-        button(BTN_A, 293f, 75f, 12f, buttons, Label.BELOW, print)
+        button(BTN_B, 249f, 75f, 12f, buttons, LabelPlace.BELOW, print)
+        button(BTN_A, 293f, 75f, 12f, buttons, LabelPlace.BELOW, print)
     }
 
     /** Super Nintendo : « os de chien » gris, X bleu, Y vert, A rouge, B jaune, Select / Start en biais. */
@@ -408,8 +408,8 @@ private class PadPainter(
         button(BTN_Y, 230f, 84f, 13f, GREEN)
         button(BTN_A, 282f, 84f, 13f, RED)
         button(BTN_B, 256f, 110f, 13f, YELLOW)
-        slanted(BTN_SELECT, 132f, 102f, 144f, 90f, 8f, rgb(100, 100, 108), Label.BELOW, rgb(80, 80, 92))
-        slanted(BTN_START, 196f, 102f, 208f, 90f, 8f, rgb(100, 100, 108), Label.BELOW, rgb(80, 80, 92))
+        slanted(BTN_SELECT, 132f, 102f, 144f, 90f, 8f, rgb(100, 100, 108), LabelPlace.BELOW, rgb(80, 80, 92))
+        slanted(BTN_START, 196f, 102f, 208f, 90f, 8f, rgb(100, 100, 108), LabelPlace.BELOW, rgb(80, 80, 92))
     }
 
     /** Nintendo 64 : trois poignées, stick au centre (Z dessous), Start rouge, A bleu, B vert, boutons C jaunes. */
@@ -428,7 +428,7 @@ private class PadPainter(
         dpad(66f, 50f, 14f, 8f, rgb(42, 42, 48))
         stick(170f, 84f, 12f, rgb(72, 72, 78), color.shade(-0.3f), -1, -1, "")
         pill(BTN_L2, 170f, 132f, 34f, 14f, rgb(60, 60, 66))
-        button(BTN_START, 170f, 42f, 9f, rgb(200, 40, 40), Label.ABOVE, rgb(40, 40, 48))
+        button(BTN_START, 170f, 42f, 9f, rgb(200, 40, 40), LabelPlace.ABOVE, rgb(40, 40, 48))
         button(BTN_Y, 230f, 46f, 12f, GREEN)
         button(BTN_B, 254f, 66f, 12f, rgb(42, 82, 200))
         // Boutons C (stick droit : gauche / droite, haut / bas).
@@ -471,8 +471,8 @@ private class PadPainter(
         symbol(BTN_Y, 246f, 56f, 10.5f, dark, Symbol.SQUARE, rgb(232, 136, 206))
         symbol(BTN_A, 290f, 56f, 10.5f, dark, Symbol.CIRCLE, rgb(232, 86, 96))
         symbol(BTN_B, 268f, 78f, 10.5f, dark, Symbol.CROSS, rgb(120, 150, 236))
-        pill(BTN_SELECT, 146f, 56f, 24f, 8f, rgb(84, 84, 92), Label.BELOW, rgb(70, 70, 80))
-        pill(BTN_START, 194f, 56f, 24f, 8f, rgb(84, 84, 92), Label.BELOW, rgb(70, 70, 80))
+        pill(BTN_SELECT, 146f, 56f, 24f, 8f, rgb(84, 84, 92), LabelPlace.BELOW, rgb(70, 70, 80))
+        pill(BTN_START, 194f, 56f, 24f, 8f, rgb(84, 84, 92), LabelPlace.BELOW, rgb(70, 70, 80))
         disc(170, 82, 3, rgb(220, 40, 40))  // voyant « Analog »
         stick(128f, 100f, 15f, rgb(50, 50, 56), color.shade(-0.22f), stepOf(BTN_L3), -1, "L3")
         stick(212f, 100f, 15f, rgb(50, 50, 56), color.shade(-0.22f), stepOf(BTN_R3), rightAxis(), "R3")
@@ -493,8 +493,8 @@ private class PadPainter(
         symbol(BTN_Y, 271f, 66f, 9f, dark, Symbol.SQUARE, rgb(232, 136, 206))
         symbol(BTN_A, 309f, 66f, 9f, dark, Symbol.CIRCLE, rgb(232, 86, 96))
         symbol(BTN_B, 290f, 86f, 9f, dark, Symbol.CROSS, rgb(120, 150, 236))
-        pill(BTN_SELECT, 152f, 122f, 20f, 6f, rgb(96, 96, 102), Label.NONE)
-        pill(BTN_START, 188f, 122f, 20f, 6f, rgb(96, 96, 102), Label.NONE)
+        pill(BTN_SELECT, 152f, 122f, 20f, 6f, rgb(96, 96, 102), LabelPlace.NONE)
+        pill(BTN_START, 188f, 122f, 20f, 6f, rgb(96, 96, 102), LabelPlace.NONE)
     }
 
     /** Game Boy : console verticale grise, écran vert, B et A magenta en biais. */
@@ -506,10 +506,10 @@ private class PadPainter(
         rect(136, 16, 68, 50, 1, rgb(150, 170, 72))
         disc(126, 36, 2.5f, rgb(220, 40, 40))
         dpad(140f, 102f, 11f, 6f, rgb(40, 40, 42))
-        button(BTN_B, 192f, 110f, 9f, rgb(160, 32, 90), Label.BELOW, rgb(50, 50, 120))
-        button(BTN_A, 214f, 98f, 9f, rgb(160, 32, 90), Label.BELOW, rgb(50, 50, 120))
-        slanted(BTN_SELECT, 150f, 140f, 158f, 134f, 5f, rgb(130, 130, 128), Label.NONE, Color.Transparent)
-        slanted(BTN_START, 170f, 140f, 178f, 134f, 5f, rgb(130, 130, 128), Label.NONE, Color.Transparent)
+        button(BTN_B, 192f, 110f, 9f, rgb(160, 32, 90), LabelPlace.BELOW, rgb(50, 50, 120))
+        button(BTN_A, 214f, 98f, 9f, rgb(160, 32, 90), LabelPlace.BELOW, rgb(50, 50, 120))
+        slanted(BTN_SELECT, 150f, 140f, 158f, 134f, 5f, rgb(130, 130, 128), LabelPlace.NONE, Color.Transparent)
+        slanted(BTN_START, 170f, 140f, 178f, 134f, 5f, rgb(130, 130, 128), LabelPlace.NONE, Color.Transparent)
         repeat(4) { line(196 + it * 6f, 146, 212 + it * 6f, 130, 2, color.shade(-0.3f)) }  // haut-parleur
     }
 
@@ -522,8 +522,8 @@ private class PadPainter(
         body(color, edge) { g, c -> rect(16 - g, 28 - g, 308 + 2 * g, 100 + 2 * g, 48 + g, c) }
         screen(104f, 36f, 132f, 84f, rgb(40, 36, 70), rgb(20, 24, 32))
         dpad(62f, 70f, 13f, 7f, rgb(34, 34, 40))
-        button(BTN_SELECT, 50f, 108f, 5f, rgb(204, 204, 214), Label.NONE)
-        button(BTN_START, 70f, 108f, 5f, rgb(204, 204, 214), Label.NONE)
+        button(BTN_SELECT, 50f, 108f, 5f, rgb(204, 204, 214), LabelPlace.NONE)
+        button(BTN_START, 70f, 108f, 5f, rgb(204, 204, 214), LabelPlace.NONE)
         button(BTN_B, 264f, 88f, 11f, rgb(204, 204, 214))
         button(BTN_A, 290f, 72f, 11f, rgb(204, 204, 214))
     }
@@ -556,7 +556,7 @@ private class PadPainter(
         rect(28, 40, 284, 74, 4, rgb(44, 44, 50))
         disc(84, 77, 32, rgb(56, 56, 62))
         dpad(84f, 77f, 18f, 10f, rgb(28, 28, 30))
-        pill(BTN_START, 170f, 54f, 40f, 10f, rgb(84, 84, 90), Label.BELOW)
+        pill(BTN_START, 170f, 54f, 40f, 10f, rgb(84, 84, 90), LabelPlace.BELOW)
         button(BTN_B, 238f, 82f, 15f, rgb(64, 64, 70))
         button(BTN_A, 284f, 82f, 15f, rgb(64, 64, 70))
     }
@@ -574,7 +574,7 @@ private class PadPainter(
         }
         disc(84, 84, 34, color.shade(-0.2f))
         dpad(84f, 84f, 18f, 10f, rgb(40, 40, 46))
-        pill(BTN_START, 170f, 108f, 34f, 12f, rgb(104, 104, 114), Label.BELOW)
+        pill(BTN_START, 170f, 108f, 34f, 12f, rgb(104, 104, 114), LabelPlace.BELOW)
         button(BTN_B, 226f, 104f, 12f, BLUE)  // A
         button(BTN_A, 256f, 94f, 12f, GREEN)  // B
         button(BTN_R, 286f, 84f, 12f, YELLOW)  // C
@@ -602,7 +602,7 @@ private class PadPainter(
         button(BTN_Y, 240f, 70f, 10.5f, YELLOW)  // X
         button(BTN_A, 284f, 70f, 10.5f, BLUE)  // B
         button(BTN_B, 262f, 92f, 10.5f, RED)  // A
-        button(BTN_START, 170f, 96f, 7f, rgb(70, 70, 76), Label.BELOW, rgb(80, 80, 92))
+        button(BTN_START, 170f, 96f, 7f, rgb(70, 70, 76), LabelPlace.BELOW, rgb(80, 80, 92))
     }
 
     /** PC Engine : rectangle gris clair, Select / Run au centre, boutons II et I noirs, interrupteurs turbo. */
@@ -613,8 +613,8 @@ private class PadPainter(
         rect(26, 40, 288, 72, 6, rgb(198, 198, 204))
         disc(80, 76, 32, rgb(180, 180, 186))
         dpad(80f, 76f, 18f, 10f, rgb(40, 40, 44))
-        pill(BTN_SELECT, 148f, 92f, 26f, 9f, rgb(70, 70, 76), Label.ABOVE, rgb(70, 70, 76))
-        pill(BTN_START, 192f, 92f, 26f, 9f, rgb(70, 70, 76), Label.ABOVE, rgb(70, 70, 76))
+        pill(BTN_SELECT, 148f, 92f, 26f, 9f, rgb(70, 70, 76), LabelPlace.ABOVE, rgb(70, 70, 76))
+        pill(BTN_START, 192f, 92f, 26f, 9f, rgb(70, 70, 76), LabelPlace.ABOVE, rgb(70, 70, 76))
         rect(232, 46, 16, 8, 2, rgb(120, 120, 126))
         rect(276, 46, 16, 8, 2, rgb(120, 120, 126))
         button(BTN_B, 240f, 82f, 14f, rgb(50, 50, 56))  // II
@@ -631,8 +631,8 @@ private class PadPainter(
         disc(82, 78, 14, rgb(76, 76, 82))
         ring(82, 78, 9, 1.5f, rgb(110, 110, 118))
         directions(82f, 78f, 24f, rgb(150, 150, 160))
-        pill(BTN_SELECT, 148f, 64f, 24f, 9f, rgb(90, 90, 96), Label.BELOW)
-        pill(BTN_START, 192f, 64f, 24f, 9f, rgb(90, 90, 96), Label.BELOW)
+        pill(BTN_SELECT, 148f, 64f, 24f, 9f, rgb(90, 90, 96), LabelPlace.BELOW)
+        pill(BTN_START, 192f, 64f, 24f, 9f, rgb(90, 90, 96), LabelPlace.BELOW)
         button(BTN_B, 212f, 100f, 12f, RED)  // A
         button(BTN_A, 242f, 86f, 12f, YELLOW)  // B
         button(BTN_Y, 272f, 74f, 12f, GREEN)  // C
@@ -650,7 +650,7 @@ private class PadPainter(
         directions(62f, 80f, 17f, rgb(180, 180, 190))
         button(BTN_B, 264f, 94f, 11f, rgb(186, 186, 194))  // A
         button(BTN_A, 292f, 74f, 11f, rgb(186, 186, 194))  // B
-        button(BTN_START, 280f, 118f, 5f, rgb(140, 140, 148), Label.NONE)  // Option
+        button(BTN_START, 280f, 118f, 5f, rgb(140, 140, 148), LabelPlace.NONE)  // Option
     }
 
     /**
@@ -675,8 +675,8 @@ private class PadPainter(
         val bottomColors = if (cps) listOf(BLUE, BLUE, BLUE) else listOf(RED, GREEN, rgb(232, 120, 40))
         top.forEachIndexed { i, key -> button(key, 176f + 38 * i, if (i == 0) 66f else 62f, 13f, topColors[i]) }
         bottom.forEachIndexed { i, key -> button(key, 180f + 38 * i, if (i == 0) 104f else 100f, 13f, bottomColors[i]) }
-        button(BTN_SELECT, 300f, 54f, 7f, rgb(224, 224, 228), Label.BELOW)
-        button(BTN_START, 300f, 96f, 7f, rgb(224, 224, 228), Label.BELOW)
+        button(BTN_SELECT, 300f, 54f, 7f, rgb(224, 224, 228), LabelPlace.BELOW)
+        button(BTN_START, 300f, 96f, 7f, rgb(224, 224, 228), LabelPlace.BELOW)
     }
 
     /**
@@ -687,8 +687,8 @@ private class PadPainter(
         val color = rgb(30, 30, 32)
         val edge = rgb(8, 8, 10)
         val metal = rgb(192, 192, 198)
-        pill(BTN_SELECT, 52f, 56f, 44f, 14f, metal, Label.BELOW)
-        pill(BTN_START, 52f, 104f, 44f, 14f, metal, Label.BELOW)
+        pill(BTN_SELECT, 52f, 56f, 44f, 14f, metal, LabelPlace.BELOW)
+        pill(BTN_START, 52f, 104f, 44f, 14f, metal, LabelPlace.BELOW)
         if (!proLine) {
             body(color, edge) { g, c -> rect(110 - g, 14 - g, 120 + 2 * g, 122 + 2 * g, 10 + g, c) }
             disc(170, 82, 30, rgb(20, 20, 22))
@@ -716,9 +716,9 @@ private class PadPainter(
         dpad(54f, 78f, 14f, 7.5f, rgb(30, 30, 34))
         button(BTN_A, 300f, 64f, 11f, rgb(72, 72, 78))
         button(BTN_B, 276f, 92f, 11f, rgb(72, 72, 78))
-        pill(BTN_L, 262f, 44f, 22f, 8f, rgb(96, 96, 104), Label.NONE)  // Option 1
-        pill(BTN_R, 262f, 114f, 22f, 8f, rgb(96, 96, 104), Label.NONE)  // Option 2
-        pill(BTN_START, 80f, 114f, 22f, 8f, rgb(96, 96, 104), Label.NONE)  // Pause
+        pill(BTN_L, 262f, 44f, 22f, 8f, rgb(96, 96, 104), LabelPlace.NONE)  // Option 1
+        pill(BTN_R, 262f, 114f, 22f, 8f, rgb(96, 96, 104), LabelPlace.NONE)  // Option 2
+        pill(BTN_START, 80f, 114f, 22f, 8f, rgb(96, 96, 104), LabelPlace.NONE)  // Pause
     }
 
     /** Amstrad GX4000 : manette grise, façade sombre, croix et deux boutons de tir. */
@@ -728,7 +728,7 @@ private class PadPainter(
         body(color, edge) { g, c -> rect(20 - g, 34 - g, 300 + 2 * g, 86 + 2 * g, 12 + g, c) }
         rect(30, 44, 280, 66, 6, rgb(70, 70, 80))
         dpad(86f, 77f, 18f, 10f, rgb(30, 30, 34))
-        button(BTN_B, 236f, 72f, 14f, RED, Label.BELOW)
-        button(BTN_A, 284f, 72f, 14f, BLUE, Label.BELOW)
+        button(BTN_B, 236f, 72f, 14f, RED, LabelPlace.BELOW)
+        button(BTN_A, 284f, 72f, 14f, BLUE, LabelPlace.BELOW)
     }
 }

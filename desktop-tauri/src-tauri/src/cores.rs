@@ -1,4 +1,4 @@
-// Cœurs libretro : ordre de chaque console (même table que CoreRanking.kt et coreRanking.js), lecture
+// Cœurs libretro : ordre de chaque console (même table que CoreRanking.kt de l'application Android), lecture
 // des modèles d'émulateurs Daijishou du serveur, et fonctions du moteur intégré (buildbot libretro,
 // ROMs compressées, arguments de romcloud-player.exe).
 use crate::paths;
@@ -186,7 +186,7 @@ pub struct PlayerArgs {
     pub option_defaults: Vec<(String, String)>,
 }
 
-/// Arguments de romcloud-player.exe (même ordre que la version Electron).
+/// Arguments de romcloud-player.exe.
 pub fn player_args(a: &PlayerArgs) -> Vec<String> {
     let mut args: Vec<String> = [
         ("--core", &a.dll), ("--rom", &a.rom), ("--system-dir", &a.system_dir), ("--save-dir", &a.save_dir),

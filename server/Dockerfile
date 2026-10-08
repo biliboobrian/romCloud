@@ -1,5 +1,5 @@
 # Serveur RomCloud — image multi-architecture (amd64, arm64)
-FROM node:22-alpine
+FROM node:24-alpine
 
 ENV NODE_ENV=production \
     DATA_DIR=/data \
