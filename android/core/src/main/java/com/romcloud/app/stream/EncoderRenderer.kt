@@ -148,9 +148,10 @@ internal class EncoderRenderer(surface: Surface, private val width: Int, private
 
     /**
      * Envoie l'image du cœur ([pixels] serrés, [frameW] x [frameH], [bytesPerPixel] : 2 = RGB565,
-     * 4 = XRGB8888), tournée de [rotation] quarts de tour antihoraires, à l'encodeur.
+     * 4 = 32 bits, octets RGBA si [rgba], sinon BGRX), tournée de [rotation] quarts de tour
+     * antihoraires, à l'encodeur.
      */
-    fun drawFrame(pixels: ByteBuffer, frameW: Int, frameH: Int, bytesPerPixel: Int, rotation: Int, timeNanos: Long) {
+    fun drawFrame(pixels: ByteBuffer, frameW: Int, frameH: Int, bytesPerPixel: Int, rgba: Boolean, rotation: Int, timeNanos: Long) {
         GLES20.glViewport(0, 0, width, height)
         GLES20.glUseProgram(frameProgram)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
@@ -182,7 +183,7 @@ internal class EncoderRenderer(surface: Surface, private val width: Int, private
         GLES20.glUniform1i(GLES20.glGetUniformLocation(frameProgram, "uTex"), 0)
         GLES20.glUniform2f(GLES20.glGetUniformLocation(frameProgram, "uSize"), frameW.toFloat(), frameH.toFloat())
         GLES20.glUniform2f(GLES20.glGetUniformLocation(frameProgram, "uScale"), outW.toFloat() / frameW, outH.toFloat() / frameH)
-        GLES20.glUniform1f(GLES20.glGetUniformLocation(frameProgram, "uSwap"), if (bytesPerPixel == 4) 1f else 0f)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(frameProgram, "uSwap"), if (bytesPerPixel == 4 && !rgba) 1f else 0f)
         val cos = floatArrayOf(1f, 0f, -1f, 0f)[turns]
         val sin = floatArrayOf(0f, 1f, 0f, -1f)[turns]
         GLES20.glUniform2f(GLES20.glGetUniformLocation(frameProgram, "uRot"), cos, sin)

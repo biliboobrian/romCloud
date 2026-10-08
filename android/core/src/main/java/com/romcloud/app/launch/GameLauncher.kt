@@ -17,6 +17,7 @@ import com.romcloud.app.data.Player
 import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
 import com.romcloud.app.data.StreamReceiver
+import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.libretro.LibretroActivity
 import com.romcloud.app.libretro.LibretroCores
 import java.io.File
@@ -112,7 +113,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
     /**
      * Lance le jeu avec l'émulateur choisi ([resume] : reprend la partie sauvegardée, émulateur
-     * intégré ; [stream] : diffusé sur cette TV du profil, émulateur intégré). Sans modèle d'émulateur (système personnalisé), ouvre le sélecteur d'applications.
+     * intégré ; [stream] : diffusé sur cette TV du profil, émulateur intégré, image [streamMode]). Sans modèle d'émulateur (système personnalisé), ouvre le sélecteur d'applications.
      */
     fun launch(
         activityContext: Context,
@@ -122,12 +123,13 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         resume: Boolean = false,
         gameId: Long = 0,
         stream: StreamReceiver? = null,
+        streamMode: StreamMode = StreamMode.NATIVE,
     ) {
         if (!file.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, file.absolutePath))
 
         // Émulateur intégré : le cœur est téléchargé si besoin par l'activité de jeu elle-même.
         player?.libretroCore?.let { core ->
-            val intent = LibretroActivity.intent(activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream)
+            val intent = LibretroActivity.intent(activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode)
             if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             activityContext.startActivity(intent)
             return

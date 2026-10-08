@@ -88,6 +88,7 @@ import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.stream.StreamProtocol
 import com.romcloud.app.stream.StreamSender
+import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.stream.StreamTap
 import com.romcloud.app.ui.CastDialog
 import com.romcloud.app.ui.formatSize
@@ -136,6 +137,10 @@ class LibretroActivity : ComponentActivity() {
     // Fenêtre « Caster l'écran » (recopie sur un Chromecast par Android).
     private var showCast by mutableStateOf(false)
     /** TV du profil choisie pour diffuser le jeu (« Jouer sur la TV »), diffusion en cours et nom de la TV. */
+    /** Image diffusée sur la TV, choisie au lancement. */
+    private val streamMode by lazy {
+        intent.getStringExtra(EXTRA_STREAM_MODE)?.let { runCatching { StreamMode.valueOf(it) }.getOrNull() } ?: StreamMode.NATIVE
+    }
     private val streamTarget by lazy {
         intent.getStringExtra(EXTRA_STREAM)?.let { runCatching { StreamProtocol.json.decodeFromString(StreamReceiver.serializer(), it) }.getOrNull() }
     }
@@ -454,7 +459,7 @@ class LibretroActivity : ComponentActivity() {
         val refresh = {
             runBlocking { account.streamReceivers() }.let { tvs -> tvs.find { it.id == target.id } ?: tvs.find { it.name == target.name } }
         }
-        streamSender = StreamSender(view, target, account.deviceName, rom.nameWithoutExtension, refresh) { event ->
+        streamSender = StreamSender(view, target, account.deviceName, rom.nameWithoutExtension, streamMode, refresh) { event ->
             when (event) {
                 StreamSender.Event.Connected -> {
                     streamingTo = target.name
@@ -1239,6 +1244,7 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_RESUME = "resume"
         private const val EXTRA_GAME_ID = "gameId"
         private const val EXTRA_STREAM = "stream"
+        private const val EXTRA_STREAM_MODE = "streamMode"
         private const val TOAST_MS = 2000L
         private const val ERROR_TOAST_MS = 8000L
         private const val RETRO_DEVICE_JOYPAD = 1
@@ -1259,7 +1265,7 @@ class LibretroActivity : ComponentActivity() {
          * [systemId] : système du jeu (options du cœur mémorisées par système) ;
          * [systemDir] : dossier des BIOS (dossier « system » libretro) ;
          * [resume] : reprend la partie à son état sauvegardé ;
-         * [stream] : TV du profil sur laquelle diffuser le jeu.
+         * [stream] : TV du profil sur laquelle diffuser le jeu ; [streamMode] : image diffusée.
          */
         fun intent(
             context: Context,
@@ -1270,6 +1276,7 @@ class LibretroActivity : ComponentActivity() {
             resume: Boolean = false,
             gameId: Long = 0,
             stream: StreamReceiver? = null,
+            streamMode: StreamMode = StreamMode.NATIVE,
         ): Intent =
             Intent(context, LibretroActivity::class.java)
                 .putExtra(EXTRA_SYSTEM, systemId)
@@ -1279,5 +1286,6 @@ class LibretroActivity : ComponentActivity() {
                 .putExtra(EXTRA_RESUME, resume)
                 .putExtra(EXTRA_GAME_ID, gameId)
                 .putExtra(EXTRA_STREAM, stream?.let { StreamProtocol.json.encodeToString(StreamReceiver.serializer(), it) })
+                .putExtra(EXTRA_STREAM_MODE, streamMode.name)
     }
 }
