@@ -59,6 +59,12 @@ jobs:
         with:
           workspaces: desktop-tauri/src-tauri -> target
 
+      # Moteur d'émulation intégré (frontend libretro natif, C++ / SDL2), inclus dans l'installeur :
+      # compilé avant les tests, la compilation de l'application vérifiant ses ressources.
+      - name: Moteur d'émulation intégré
+        working-directory: desktop
+        run: npm run player
+
       # Interface partagée avec la version Electron : ses propres tests (sans dépendance).
       - name: Tests de l'interface
         run: node --test desktop/test/criteria.test.js desktop/test/gamepad.test.js
@@ -88,11 +94,6 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "LABEL=$LABEL" >> "$GITHUB_ENV"
-
-      # Moteur d'émulation intégré (frontend libretro natif, C++ / SDL2), inclus dans l'installeur.
-      - name: Moteur d'émulation intégré
-        working-directory: desktop
-        run: npm run player
 
       - run: npm ci
         working-directory: desktop-tauri
