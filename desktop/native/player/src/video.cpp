@@ -495,6 +495,19 @@ Filter nextFilter(Filter filter) {
 
 const char* filterId(Filter filter) { return kFilterIds[(int)filter]; }
 
+static const char* kAspectIds[kAspectCount] = {"core", "4:3", "16:9", "stretch"};
+
+Aspect nextAspect(Aspect aspect) { return (Aspect)(((int)aspect + 1) % kAspectCount); }
+
+const char* aspectId(Aspect aspect) { return kAspectIds[(int)aspect]; }
+
+Aspect aspectFromId(const std::string& id) {
+  for (int i = 0; i < kAspectCount; i++) {
+    if (id == kAspectIds[i]) return (Aspect)i;
+  }
+  return Aspect::Core;
+}
+
 Filter filterFromId(const std::string& id) {
   for (int i = 0; i < kFilterCount; i++) {
     if (id == kFilterIds[i]) return (Filter)i;
@@ -627,11 +640,15 @@ void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight,
   };
 
   if (hasFrame_ && frameWidth_ && frameHeight_) {
-    // Rapport d'aspect du cœur (sinon celui de l'image), inversé pour les écrans tournés.
+    // Rapport d'aspect du cœur (sinon celui de l'image) ou format choisi, inversé pour les écrans
+    // tournés ; « étiré » : toute la fenêtre.
     const retro_game_geometry& geo = g.av.geometry;
     float aspect = geo.aspect_ratio > 0 ? geo.aspect_ratio
                    : (float)(geo.base_width ? geo.base_width : frameWidth_) / (float)(geo.base_height ? geo.base_height : frameHeight_);
+    if (aspect_ == Aspect::Ratio4_3) aspect = 4.0f / 3.0f;
+    if (aspect_ == Aspect::Ratio16_9) aspect = 16.0f / 9.0f;
     if (g.rotation & 1) aspect = 1.0f / aspect;
+    if (aspect_ == Aspect::Stretch && winH > 0) aspect = (float)winW / (float)winH;
     float w = (float)winW, h = w / aspect;
     if (h > winH) {
       h = (float)winH;

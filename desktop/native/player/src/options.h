@@ -5,6 +5,7 @@
 #pragma once
 
 #include <map>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -64,6 +65,9 @@ class CoreOptions {
   /** Réglage du moteur (clé « romcloud_… »), mémorisé avec les options du cœur. */
   std::string setting(const std::string& key, const std::string& fallback) const;
   void setSetting(const std::string& key, const std::string& value);
+  void removeSetting(const std::string& key);
+  /** Réglages du moteur dont la clé commence par [prefix] (clé, valeur). */
+  std::vector<std::pair<std::string, std::string>> settings(const std::string& prefix) const;
 
  private:
   void save() const;

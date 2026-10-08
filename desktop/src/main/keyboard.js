@@ -92,19 +92,25 @@ function formatFile(saved) {
 // Boutons de chaque console (comme PadLayouts de l'application Android) : bouton RetroPad -> nom
 // sur la console, dans l'ordre d'affichage ; les directions sont toujours proposées. Convention
 // des cœurs libretro : B = bouton du bas, A = droite, Y = gauche, X = haut (Super Nintendo).
+// rx / ry : axes du stick droit (boutons C de la Nintendo 64), proposés seulement dans la
+// configuration des manettes du moteur (ignorés par l'écran des touches du clavier).
 const tr = (fr, en) => ({ fr, en });
 const START_SELECT = { start: 'Start', select: 'Select' };
+const RIGHT_STICK = { rx: tr('Stick droit horizontal', 'Right stick horizontal'), ry: tr('Stick droit vertical', 'Right stick vertical') };
 const PADS = {
-  default: { a: 'A', b: 'B', x: 'X', y: 'Y', l: 'L', r: 'R', l2: 'L2', r2: 'R2', l3: 'L3', r3: 'R3', ...START_SELECT },
+  default: { a: 'A', b: 'B', x: 'X', y: 'Y', l: 'L', r: 'R', l2: 'L2', r2: 'R2', l3: 'L3', r3: 'R3', ...START_SELECT, ...RIGHT_STICK },
   nes: { b: 'B', a: 'A', ...START_SELECT },
   fds: { b: 'B', a: 'A', l: tr('Face du disque', 'Disk side'), r: tr('Éjecter / insérer', 'Eject / insert'), ...START_SELECT },
   gameBoy: { b: 'B', a: 'A', ...START_SELECT },
   gba: { b: 'B', a: 'A', l: 'L', r: 'R', ...START_SELECT },
   snes: { b: 'B', a: 'A', y: 'Y', x: 'X', l: 'L', r: 'R', ...START_SELECT },
-  n64: { b: 'A', y: 'B', l2: 'Z', l: 'L', r: 'R', start: 'Start' },
+  n64: {
+    b: 'A', y: 'B', l2: 'Z', l: 'L', r: 'R', start: 'Start',
+    rx: tr('C gauche / droite', 'C left / right'), ry: tr('C haut / bas', 'C up / down'),
+  },
   psx: {
     b: tr('Croix', 'Cross'), a: tr('Rond', 'Circle'), y: tr('Carré', 'Square'), x: 'Triangle',
-    l: 'L1', r: 'R1', l2: 'L2', r2: 'R2', l3: 'L3', r3: 'R3', ...START_SELECT,
+    l: 'L1', r: 'R1', l2: 'L2', r2: 'R2', l3: 'L3', r3: 'R3', ...START_SELECT, ...RIGHT_STICK,
   },
   psp: { b: tr('Croix', 'Cross'), a: tr('Rond', 'Circle'), y: tr('Carré', 'Square'), x: 'Triangle', l: 'L', r: 'R', ...START_SELECT },
   genesis: { y: 'A', b: 'B', a: 'C', l: 'X', x: 'Y', r: 'Z', start: 'Start' },

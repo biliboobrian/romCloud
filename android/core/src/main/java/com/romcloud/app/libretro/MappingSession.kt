@@ -37,6 +37,10 @@ internal class MappingSession(
     var done by mutableStateOf(emptySet<MappingStep>())
         private set
 
+    /** Commande de la manette attribuée à chaque étape (touche ou axe), pour le récapitulatif. */
+    var assigned by mutableStateOf(emptyMap<MappingStep, String>())
+        private set
+
     val step: MappingStep? get() = steps.getOrNull(stepIndex)
 
     private var deviceId: Int? = null
@@ -88,6 +92,7 @@ internal class MappingSession(
                 lastKey = code
                 settling = true
                 done += current
+                assigned += current to keyName(code)
                 next()
             }
         }
@@ -132,6 +137,7 @@ internal class MappingSession(
             }
             lastKey = null
             done += current
+            assigned += current to axisName(axis, direction.takeIf { current.stick == null })
             next()
         }
         return true
@@ -172,6 +178,15 @@ internal class MappingSession(
     }
 
     private companion object {
+        /** Nom court d'une touche : « A », « L1 », « DPAD UP »… */
+        fun keyName(code: Int) = KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_").removePrefix("BUTTON_").replace('_', ' ')
+
+        /** Nom court d'un axe, avec le sens pour une gâchette : « RTRIGGER + », « Z »… */
+        fun axisName(axis: Int, direction: Float?): String {
+            val name = MotionEvent.axisToString(axis).removePrefix("AXIS_").replace('_', ' ')
+            return if (direction == null) name else "$name ${if (direction > 0) "+" else "−"}"
+        }
+
         /** Stick gauche et croix analogique : jamais pris pour une gâchette ou le stick droit. */
         val IGNORED_AXES = listOf(MotionEvent.AXIS_X, MotionEvent.AXIS_Y, MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y)
     }
