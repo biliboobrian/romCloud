@@ -1,6 +1,6 @@
-// RomCloud pour Windows (Tauri) : même interface que la version Electron (desktop/src/renderer),
-// affichée par WebView2, et processus principal en Rust ; même moteur d'émulation intégré
-// (romcloud-player.exe) et mêmes données (%APPDATA%\RomCloud).
+// RomCloud pour Windows (Tauri) : interface de desktop/src/renderer affichée par WebView2,
+// processus principal en Rust, moteur d'émulation intégré desktop/native/player
+// (romcloud-player.exe), données dans %APPDATA%\RomCloud.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod account;

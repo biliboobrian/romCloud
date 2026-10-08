@@ -1,5 +1,5 @@
 // Erreur renvoyée à l'interface : { key, vars, message } (clé du dictionnaire de l'interface, ou
-// message du serveur), comme l'application Electron.
+// message du serveur).
 use serde::Serialize;
 use serde_json::{Map, Value};
 

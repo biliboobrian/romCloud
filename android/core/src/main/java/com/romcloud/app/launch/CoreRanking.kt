@@ -2,7 +2,7 @@ package com.romcloud.app.launch
 
 /**
  * Ordre des cœurs libretro de chaque console : du plus abouti, qui fait tourner le plus de jeux,
- * au moins abouti. Même table que desktop/src/main/coreRanking.js (application Windows). Les cœurs
+ * au moins abouti. Même table que desktop-tauri/src-tauri/src/cores.rs (application Windows). Les cœurs
  * absents de la table gardent l'ordre des modèles du serveur, après ceux de la table.
  * PlayStation 2 : LRPS2 (pcsx2) seul à afficher une image avec LibretroDroid (rendu logiciel).
  * Arcade : le nombre de jeux dépend surtout de la version du romset (MAME 0.78 -> mame2003_plus).

@@ -1,4 +1,5 @@
-// Interface de RomCloud pour Windows (script classique, API exposée par preload.js).
+// Interface de RomCloud pour Windows (script classique, API window.romcloud exposée par
+// desktop-tauri/src-tauri/src/bridge.js).
 (function () {
   const rc = window.romcloud;
   const { t, errorText, formatSize } = window.I18N;

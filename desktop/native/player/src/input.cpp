@@ -6,7 +6,7 @@
 
 #include "util.h"
 
-// Clavier du joueur 1 par défaut (disposition proche de RetroArch), comme DEFAULTS de keyboard.js.
+// Clavier du joueur 1 par défaut (disposition proche de RetroArch), comme DEFAULTS de l'application (desktop-tauri, keyboard.rs).
 static const std::pair<unsigned, SDL_Scancode> kDefaultKeys[] = {
     {RETRO_DEVICE_ID_JOYPAD_UP, SDL_SCANCODE_UP},       {RETRO_DEVICE_ID_JOYPAD_DOWN, SDL_SCANCODE_DOWN},
     {RETRO_DEVICE_ID_JOYPAD_LEFT, SDL_SCANCODE_LEFT},   {RETRO_DEVICE_ID_JOYPAD_RIGHT, SDL_SCANCODE_RIGHT},
@@ -31,7 +31,7 @@ const char* Input::buttonName(unsigned id) {
 }
 
 bool Input::assignable(SDL_Scancode code) {
-  // Touches de keyboard.js (SCANCODES) ; Échap, F1, F2, F4 et F11 commandent le moteur.
+  // Touches connues de l'application (keyboard.rs, SCANCODES) ; Échap, F1, F2, F4 et F11 commandent le moteur.
   bool known = (code >= SDL_SCANCODE_A && code <= SDL_SCANCODE_APPLICATION && code != SDL_SCANCODE_NONUSHASH) ||
                (code >= SDL_SCANCODE_LCTRL && code <= SDL_SCANCODE_RGUI);
   return known && code != SDL_SCANCODE_ESCAPE && code != SDL_SCANCODE_F1 && code != SDL_SCANCODE_F2 &&

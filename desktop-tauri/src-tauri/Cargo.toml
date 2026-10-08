@@ -1,6 +1,6 @@
 [package]
 name = "romcloud"
-version = "1.22.0"
+version = "1.23.0"
 description = "RomCloud pour Windows : bibliothèque de jeux du serveur RomCloud, téléchargement à la demande et lancement des émulateurs"
 authors = ["biliboobrian"]
 license = "MIT"
@@ -19,18 +19,18 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 # TLS de Windows (Schannel) : rien à compiler en C.
-reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "stream"] }
 native-tls = "0.2"
 tokio-native-tls = "0.3"
 futures-util = "0.3"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 hex = "0.4"
-rand = "0.8"
-dirs = "5"
+rand = "0.10"
+dirs = "7"
 sys-locale = "0.3"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-socket2 = { version = "0.5", features = ["all"] }
-if-addrs = "0.13"
+socket2 = { version = "0.6", features = ["all"] }
+if-addrs = "0.15"
 filetime = "0.2"
 urlencoding = "2"
 

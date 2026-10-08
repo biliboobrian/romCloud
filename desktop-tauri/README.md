@@ -1,12 +1,12 @@
 # RomCloud pour Windows (Tauri)
 
-Nouvelle version de l'application Windows : même interface que la version Electron
-(`desktop/src/renderer`, affichée par WebView2), processus principal réécrit en Rust, même moteur
-d'émulation intégré (`desktop/native/player`, romcloud-player.exe) et mêmes données
-(`%APPDATA%\RomCloud` : réglages, cache, cœurs, sauvegardes, profil).
+Application Windows : interface de `desktop/src/renderer` (affichée par WebView2), processus
+principal en Rust, moteur d'émulation intégré `desktop/native/player` (romcloud-player.exe), données
+dans `%APPDATA%\RomCloud` (réglages, cache, cœurs, sauvegardes, profil ; mêmes emplacements que
+l'ancienne version Electron, reprise sans migration).
 
-- `src-tauri/src/bridge.js` : objet `window.romcloud` de l'interface (mêmes canaux que le preload Electron).
-- `src-tauri/src/ipc.rs` : répartition des canaux vers les modules (un module Rust par module de `desktop/src/main`).
+- `src-tauri/src/bridge.js` : objet `window.romcloud` de l'interface.
+- `src-tauri/src/ipc.rs` : répartition des canaux vers les modules.
 
 ## Compilation (sans Visual Studio)
 

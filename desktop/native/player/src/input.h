@@ -18,7 +18,7 @@ class Input {
   void init();
 
   // Touches du clavier du joueur 1, une par bouton du RetroPad (SDL_SCANCODE_UNKNOWN : aucune),
-  // mémorisées dans un fichier « bouton=scancode » partagé avec l'application (keyboard.js).
+  // mémorisées dans un fichier « bouton=scancode » partagé avec l'application (keyboard.rs).
   static constexpr int kButtons = RETRO_DEVICE_ID_JOYPAD_R3 + 1;
   /** Boutons dans l'ordre d'affichage : identifiants libretro et noms du fichier. */
   static const unsigned kButtonOrder[kButtons];

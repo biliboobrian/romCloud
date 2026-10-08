@@ -1,65 +1,10 @@
 {
-  "name": "romcloud-desktop",
-  "productName": "RomCloud",
-  "version": "1.5.0",
-  "description": "RomCloud pour Windows : bibliothèque de jeux du serveur RomCloud, téléchargement à la demande et lancement des émulateurs",
-  "author": "biliboobrian",
+  "name": "romcloud-desktop-shared",
+  "private": true,
+  "description": "Parties de l'application Windows (desktop-tauri) : interface (src/renderer) et moteur d'émulation intégré (native/player)",
   "license": "MIT",
-  "main": "src/main/main.js",
   "scripts": {
-    "start": "electron .",
     "test": "node --test \"test/**/*.test.js\"",
-    "player": "cmake -S native/player -B native/player/build -DCMAKE_BUILD_TYPE=Release && cmake --build native/player/build --config Release",
-    "dist": "electron-builder --win --publish never"
-  },
-  "devDependencies": {
-    "electron": "^44.4.5",
-    "electron-builder": "^26.15.3"
-  },
-  "build": {
-    "appId": "com.romcloud.desktop",
-    "productName": "RomCloud",
-    "artifactName": "RomCloud-Windows-${version}-${arch}.${ext}",
-    "directories": {
-      "output": "dist",
-      "buildResources": "assets"
-    },
-    "files": [
-      "src/**/*",
-      "assets/icon.png",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "native/player/build/romcloud-player.exe",
-        "to": "player/romcloud-player.exe"
-      }
-    ],
-    "win": {
-      "icon": "assets/icon.png",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "portable": {
-      "artifactName": "RomCloud-Windows-${version}-portable.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "shortcutName": "RomCloud"
-    }
+    "player": "cmake -S native/player -B native/player/build -DCMAKE_BUILD_TYPE=Release && cmake --build native/player/build --config Release"
   }
 }
