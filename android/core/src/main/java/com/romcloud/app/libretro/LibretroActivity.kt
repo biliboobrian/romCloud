@@ -35,6 +35,9 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -156,6 +159,12 @@ class LibretroActivity : ComponentActivity() {
     /** Filtre d'image du système (lissage), changé depuis le menu ; [filterPicker] : liste affichée. */
     private var videoFilter by mutableStateOf(VideoFilter.DEFAULT)
     private var filterPicker by mutableStateOf(false)
+    private val aspectRatios by lazy { AspectRatioStore(this) }
+    /** Format de l'image du système, changé depuis le menu ; [aspectPicker] : liste affichée. */
+    private var aspectRatio by mutableStateOf(AspectRatio.ORIGINAL)
+    private var aspectPicker by mutableStateOf(false)
+    /** Cœur chargé par l'adaptateur natif ([CoreShim]) : format d'image modifiable en cours de partie. */
+    private var throughShim = false
     /** Disposition de la manette tactile propre à la console. */
     private val padLayout by lazy { PadLayouts.forGame(systemId, core) }
     private val rom by lazy { File(intent.getStringExtra(EXTRA_ROM).orEmpty()) }
@@ -214,6 +223,7 @@ class LibretroActivity : ComponentActivity() {
                 phase != Phase.Running -> finish()
                 mappingSession != null -> mappingSession = null
                 filterPicker -> filterPicker = false
+                aspectPicker -> aspectPicker = false
                 editing != null -> editing = null
                 options != null -> options = null
                 menuOpen -> closeMenu()
@@ -282,6 +292,7 @@ class LibretroActivity : ComponentActivity() {
 
     private suspend fun startGame(coreFile: File, game: File) {
         val sram = withContext(Dispatchers.IO) { sramFile.takeIf { it.isFile }?.readBytes() }
+        aspectRatio = aspectRatios.load(systemId)
         val data = GLRetroViewData(this).apply {
             coreFilePath = corePath(coreFile)
             gameFilePath = game.absolutePath
@@ -300,6 +311,8 @@ class LibretroActivity : ComponentActivity() {
         retroView = view
         lifecycle.addObserver(view)
         container.addView(view, 0, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        // Format « étiré » : proportions de la vue, suivies (rotation, fenêtre redimensionnée).
+        view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyAspectRatio() }
         lifecycleScope.launch { view.getGLRetroErrors().collect(::onRetroError) }
         lifecycleScope.launch {
             view.getGLRetroEvents().collect {
@@ -332,9 +345,13 @@ class LibretroActivity : ComponentActivity() {
         }
         // Diffusion sur une TV : tous les cœurs passent par l'adaptateur, qui copie le son. Sa
         // bibliothèque est chargée avant le cœur (même instance pour LibretroDroid et StreamTap).
+        // Format d'image choisi : proportions remplacées par l'adaptateur.
         val streaming = streamTarget != null
         if (streaming) StreamTap.load()
-        if (!streaming && core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES && core !in INPUT_MASK_CORES) return coreFile.absolutePath
+        val aspect = aspectRatio != AspectRatio.ORIGINAL
+        if (!streaming && !aspect && core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES && core !in INPUT_MASK_CORES) return coreFile.absolutePath
+        throughShim = CoreShim.load()
+        applyAspectRatio()
         Os.setenv("ROMCLOUD_SHIM_CORE", coreFile.absolutePath, true)
         Os.setenv("ROMCLOUD_SHIM_BLIT", if (core in BLIT_CORES) "1" else "0", true)
         // Bibliothèques non extraites de l'APK : dlopen les trouve par leur seul nom.
@@ -389,6 +406,7 @@ class LibretroActivity : ComponentActivity() {
         editing = null
         mappingSession = null
         filterPicker = false
+        aspectPicker = false
         retroView?.apply {
             onResume()
             audioEnabled = true
@@ -737,6 +755,8 @@ class LibretroActivity : ComponentActivity() {
                         MappingScreen(session)
                     } else if (menuOpen && filterPicker) {
                         FilterPicker()
+                    } else if (menuOpen && aspectPicker) {
+                        AspectPicker()
                     } else if (menuOpen && edited != null) {
                         ValuePicker(edited)
                     } else if (menuOpen && opts != null) {
@@ -801,6 +821,7 @@ class LibretroActivity : ComponentActivity() {
                     add(stringResource(R.string.libretro_menu_reset) to ::reset)
                     add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
                     add(stringResource(R.string.libretro_menu_filter, stringResource(videoFilter.label)) to { filterPicker = true })
+                    add(stringResource(R.string.libretro_menu_aspect, stringResource(aspectRatio.label)) to { aspectPicker = true })
                 }
                 if (!isTv) {
                     add(
@@ -863,55 +884,120 @@ class LibretroActivity : ComponentActivity() {
 
     @Composable
     private fun MappingScreen(session: MappingSession) {
-        // Manette de la console dessinée à côté des consignes (en dessous sur écran étroit).
-        val preview = @Composable { PadPreview(padLayout, session.step.takeIf { session.deviceName != null }, session.done) }
+        // Manette de la console, consignes et boutons en dessous ; récapitulatif des attributions à
+        // droite (en bas sur écran étroit).
         val wide = LocalConfiguration.current.screenWidthDp >= 600
         Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxSize().safeDrawingPadding(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (wide) preview()
-                Centered {
-                    Text(stringResource(R.string.pad_config_title), style = MaterialTheme.typography.titleMedium)
-                    val name = session.deviceName
-                    val step = session.step
-                    if (name == null) {
-                        Text(stringResource(R.string.pad_config_press_any), textAlign = TextAlign.Center)
-                    } else {
-                        Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (step != null) {
-                            Text(
-                                stringResource(R.string.pad_config_step, session.stepIndex + 1, session.steps.size),
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                            Text(
-                                step.label ?: stringResource(step.labelRes),
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                textAlign = TextAlign.Center,
-                            )
-                            if (step.label != null && step.labelRes != 0) {
-                                Text(stringResource(step.labelRes), textAlign = TextAlign.Center)
-                            }
-                            Text(
-                                stringResource(if (step.stick != null) R.string.pad_config_hint_stick else R.string.pad_config_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                        session.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
-                    }
-                    if (!wide) preview()
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (name != null) {
-                            TextButton(onClick = session::skip) { Text(stringResource(R.string.action_skip)) }
-                            TextButton(onClick = session::resetDevice) { Text(stringResource(R.string.pad_config_default)) }
-                        }
-                        FocusedButton(stringResource(R.string.action_cancel), { mappingSession = null })
-                    }
+            if (wide) {
+                Row(
+                    Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(32.dp),
+                ) {
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) { MappingInstructions(session) }
+                    MappingSummary(session, Modifier.width(280.dp).fillMaxHeight())
                 }
+            } else {
+                Column(
+                    Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    MappingInstructions(session)
+                    MappingSummary(session, Modifier.fillMaxWidth(), lazy = false)
+                }
+            }
+        }
+    }
+
+    /** Manette de la console, puis l'étape en cours et les boutons de la configuration. */
+    @Composable
+    private fun MappingInstructions(session: MappingSession) {
+        val name = session.deviceName
+        val step = session.step
+        PadPreview(padLayout, step.takeIf { name != null }, session.done)
+        Text(stringResource(R.string.pad_config_title), style = MaterialTheme.typography.titleMedium)
+        if (name == null) {
+            Text(stringResource(R.string.pad_config_press_any), textAlign = TextAlign.Center)
+        } else {
+            Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (step != null) {
+                Text(
+                    stringResource(R.string.pad_config_step, session.stepIndex + 1, session.steps.size),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    step.label ?: stringResource(step.labelRes),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                )
+                if (step.label != null && step.labelRes != 0) {
+                    Text(stringResource(step.labelRes), textAlign = TextAlign.Center)
+                }
+                Text(
+                    stringResource(if (step.stick != null) R.string.pad_config_hint_stick else R.string.pad_config_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(max = 420.dp),
+                )
+            }
+            session.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (name != null) {
+                TextButton(onClick = session::skip) { Text(stringResource(R.string.action_skip)) }
+                TextButton(onClick = session::resetDevice) { Text(stringResource(R.string.pad_config_default)) }
+            }
+            FocusedButton(stringResource(R.string.action_cancel), { mappingSession = null })
+        }
+    }
+
+    /**
+     * Récapitulatif : chaque commande de la console et le bouton (ou l'axe) de la manette qui lui
+     * est attribué ; l'étape en cours est mise en évidence et gardée visible ([lazy]).
+     */
+    @Composable
+    private fun MappingSummary(session: MappingSession, modifier: Modifier, lazy: Boolean = true) {
+        val current = session.stepIndex.takeIf { session.deviceName != null }
+        val row = @Composable { index: Int, step: MappingStep ->
+            val label = listOfNotNull(
+                step.label,
+                step.labelRes.takeIf { it != 0 && (step.label == null || step.stick != null) }?.let { stringResource(it) },
+            ).joinToString(" · ")
+            val color = if (index == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(if (index == current) Color.White.copy(alpha = 0.08f) else Color.Transparent, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(label, color = color, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(
+                    session.assigned[step] ?: "—",
+                    color = if (step in session.assigned) color else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                stringResource(R.string.pad_config_summary),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+            if (lazy) {
+                val list = rememberLazyListState()
+                LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list) {
+                    itemsIndexed(session.steps) { index, step -> row(index, step) }
+                }
+                LaunchedEffect(current) { current?.let { list.animateScrollToItem((it - 2).coerceAtLeast(0)) } }
+            } else {
+                session.steps.forEachIndexed { index, step -> row(index, step) }
             }
         }
     }
@@ -1043,31 +1129,77 @@ class LibretroActivity : ComponentActivity() {
      */
     @Composable
     private fun FilterPicker() {
+        ChoicePicker(
+            stringResource(R.string.libretro_filter_title),
+            VideoFilter.entries,
+            videoFilter,
+            label = { stringResource(it.label).replaceFirstChar { c -> c.uppercase() } },
+            description = { stringResource(it.description) },
+        ) { filter ->
+            videoFilter = filter
+            videoFilters.save(systemId, filter)
+            retroView?.shader = filter.shader()
+            closeMenu()
+        }
+    }
+
+    /**
+     * Choix du format de l'image, mémorisé pour le système : appliqué et jeu repris aussitôt quand
+     * le cœur passe par l'adaptateur, sinon au prochain lancement.
+     */
+    @Composable
+    private fun AspectPicker() {
+        ChoicePicker(
+            stringResource(R.string.libretro_aspect_title),
+            AspectRatio.entries,
+            aspectRatio,
+            label = { stringResource(it.label).replaceFirstChar { c -> c.uppercase() } },
+        ) { aspect ->
+            val changed = aspect != aspectRatio
+            aspectRatio = aspect
+            aspectRatios.save(systemId, aspect)
+            if (throughShim) applyAspectRatio() else if (changed) toast = getString(R.string.libretro_aspect_next_launch)
+            closeMenu()
+        }
+    }
+
+    /** Format d'image envoyé à l'adaptateur (« étiré » : proportions de la vue du jeu). */
+    private fun applyAspectRatio() {
+        if (!throughShim) return
+        val view = retroView ?: container
+        CoreShim.setAspectRatio(aspectRatio.ratio(view.width, view.height))
+    }
+
+    /** Liste de choix (un seul sélectionné) ; [onPick] reçoit le choix touché. */
+    @Composable
+    private fun <T> ChoicePicker(
+        title: String,
+        choices: List<T>,
+        selected: T,
+        label: @Composable (T) -> String,
+        description: (@Composable (T) -> String)? = null,
+        onPick: (T) -> Unit,
+    ) {
         val focus = remember { FocusRequester() }
         Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 Modifier.fillMaxSize().safeDrawingPadding(),
-                state = rememberLazyListState(initialFirstVisibleItemIndex = videoFilter.ordinal),
+                state = rememberLazyListState(initialFirstVisibleItemIndex = choices.indexOf(selected).coerceAtLeast(0)),
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
             ) {
                 item {
-                    Text(stringResource(R.string.libretro_filter_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
+                    Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
                 }
-                items(VideoFilter.entries) { filter ->
-                    val selected = filter == videoFilter
+                items(choices) { choice ->
+                    val isSelected = choice == selected
                     ListItem(
-                        headlineContent = { Text(stringResource(filter.label).replaceFirstChar { it.uppercase() }) },
-                        supportingContent = { Text(stringResource(filter.description), style = MaterialTheme.typography.bodySmall) },
-                        leadingContent = { RadioButton(selected = selected, onClick = null) },
+                        headlineContent = { Text(label(choice)) },
+                        supportingContent = description?.let { { Text(it(choice), style = MaterialTheme.typography.bodySmall) } },
+                        leadingContent = { RadioButton(selected = isSelected, onClick = null) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         modifier = Modifier
-                            .then(if (selected) Modifier.focusRequester(focus) else Modifier)
-                            .clickable {
-                                videoFilter = filter
-                                videoFilters.save(systemId, filter)
-                                retroView?.shader = filter.shader()
-                                closeMenu()
-                            },
+                            .then(if (isSelected) Modifier.focusRequester(focus) else Modifier)
+                            .clickable { onPick(choice) },
                     )
                 }
             }

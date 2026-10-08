@@ -25,6 +25,14 @@ Filter nextFilter(Filter filter);
 const char* filterId(Filter filter);
 Filter filterFromId(const std::string& id);
 
+/** Format de l'image : celui du cœur, 4:3, 16:9, ou étiré sur toute la fenêtre (ordre du menu). */
+enum class Aspect { Core, Ratio4_3, Ratio16_9, Stretch };
+constexpr int kAspectCount = 4;
+Aspect nextAspect(Aspect aspect);
+/** Identifiant mémorisé dans les réglages (« core »…) et inverse (celui du cœur par défaut). */
+const char* aspectId(Aspect aspect);
+Aspect aspectFromId(const std::string& id);
+
 class Video {
  public:
   /** Crée la fenêtre et un contexte OpenGL adapté au cœur ; appelé après retro_load_game. */
@@ -52,6 +60,8 @@ class Video {
   bool fullscreen() const { return fullscreen_; }
   void setFilter(Filter filter) { filter_ = filter; }
   Filter filter() const { return filter_; }
+  void setAspect(Aspect aspect) { aspect_ = aspect; }
+  Aspect aspect() const { return aspect_; }
   SDL_Window* window() const { return window_; }
 
  private:
@@ -66,6 +76,7 @@ class Video {
   bool coreProfile_ = false;
   bool fullscreen_ = true;
   Filter filter_ = Filter::Sharp;
+  Aspect aspect_ = Aspect::Core;
 
   unsigned program_ = 0, vao_ = 0, vbo_ = 0;
   int uniformTexture_ = -1, uniformAlpha_ = -1, uniformMode_ = -1, uniformSize_ = -1, uniformScale_ = -1;

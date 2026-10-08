@@ -309,6 +309,11 @@
     <string name="libretro_state_error">Impossible de sauvegarder ou de charger l’état</string>
     <string name="libretro_menu_core_options">Options du cœur</string>
     <string name="libretro_menu_filter">Image : %1$s</string>
+    <string name="libretro_menu_aspect">Format : %1$s</string>
+    <string name="libretro_aspect_title">Format de l’image</string>
+    <string name="libretro_aspect_original">d’origine</string>
+    <string name="libretro_aspect_stretch">étiré</string>
+    <string name="libretro_aspect_next_launch">Le nouveau format sera appliqué au prochain lancement du jeu.</string>
     <string name="libretro_filter_pixels">pixels nets</string>
     <string name="libretro_filter_sharp">lissage net</string>
     <string name="libretro_filter_smooth">lissage des contours</string>
@@ -349,6 +354,7 @@
     <string name="pad_config_saved">Configuration de la manette enregistrée</string>
     <string name="pad_config_reset">Configuration par défaut de la manette rétablie</string>
     <string name="pad_config_default">Configuration par défaut</string>
+    <string name="pad_config_summary">Attributions</string>
     <string name="pad_up">Croix : haut</string>
     <string name="pad_down">Croix : bas</string>
     <string name="pad_left">Croix : gauche</string>

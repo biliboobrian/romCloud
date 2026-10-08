@@ -36,6 +36,11 @@ static const struct {
     {"filter_lcd", "LCD", "LCD"},
     {"filter_xbr", "xBR", "xBR"},
     {"filter_fsr", "FSR", "FSR"},
+    {"aspect", "Format", "Aspect"},
+    {"aspect_core", "auto", "auto"},
+    {"aspect_4_3", "4:3", "4:3"},
+    {"aspect_16_9", "16:9", "16:9"},
+    {"aspect_stretch", "étiré", "stretch"},
     {"fullscreen", "Plein écran", "Fullscreen"},
     {"save_quit", "Sauvegarder et quitter", "Save and quit"},
     {"quit", "Quitter", "Quit"},
@@ -58,6 +63,31 @@ static const struct {
     {"core_failed", "Le cœur n'a pas pu être chargé :", "The core could not be loaded:"},
     {"video_failed", "L'affichage OpenGL n'a pas pu être initialisé :", "OpenGL display could not be initialized:"},
     {"keys", "Touches du clavier", "Keyboard keys"},
+    {"pad_config", "Configurer la manette", "Set up controller"},
+    {"pad_title", "Configuration de la manette", "Controller setup"},
+    {"pad_press_any", "Appuyez sur un bouton de la manette à configurer.", "Press any button on the controller to set up."},
+    {"pad_step", "Étape", "Step"},
+    {"pad_hint", "Appuyez sur ce bouton (ou cette gâchette), puis relâchez-le. Pour passer cette étape, appuyez de nouveau sur le bouton précédent.",
+     "Press this button (or trigger), then release it. To skip this step, press the previous button again."},
+    {"pad_hint_stick_x", "Poussez le stick vers la droite, puis relâchez-le. Pour passer cette étape, appuyez de nouveau sur le bouton précédent.",
+     "Push the stick to the right, then release it. To skip this step, press the previous button again."},
+    {"pad_hint_stick_y", "Poussez le stick vers le bas, puis relâchez-le. Pour passer cette étape, appuyez de nouveau sur le bouton précédent.",
+     "Push the stick down, then release it. To skip this step, press the previous button again."},
+    {"pad_already_used", "Ce bouton est déjà attribué.", "This button is already assigned."},
+    {"pad_failed", "La configuration n'a pas pu être appliquée.", "The setup could not be applied."},
+    {"pad_saved", "Configuration de la manette enregistrée", "Controller setup saved"},
+    {"pad_reset", "Configuration par défaut de la manette rétablie", "Default controller setup restored"},
+    {"pad_summary", "Attributions", "Assignments"},
+    {"pad_keys", "Tab : passer   Suppr : configuration par défaut   Échap : annuler",
+     "Tab: skip   Delete: default setup   Esc: cancel"},
+    {"pad_keys_cancel", "Échap : annuler", "Esc: cancel"},
+    {"pad_right_x", "Stick droit horizontal", "Right stick horizontal"},
+    {"pad_right_y", "Stick droit vertical", "Right stick vertical"},
+    {"pad_stick", "Stick droit", "Right stick"},
+    {"pad_src_button", "Bouton", "Button"},
+    {"pad_src_hat", "Croix", "Hat"},
+    {"pad_src_axis", "Axe", "Axis"},
+    {"pad_src_inverted", "inversé", "inverted"},
     {"keys_title", "Touches du clavier (joueur 1)", "Keyboard keys (player 1)"},
     {"keys_info", "Touches physiques, mémorisées pour tous les jeux.", "Physical keys, saved for all games."},
     {"keys_reset", "Touches par défaut", "Default keys"},
@@ -129,13 +159,13 @@ void Menu::openKeys() {
   keyMessage_.clear();
 }
 
-int Menu::itemCount(const MenuState& state) const { return state.diskCount > 1 ? 11 : 10; }
+int Menu::itemCount(const MenuState& state) const { return state.diskCount > 1 ? 13 : 12; }
 
 Menu::Item Menu::itemAt(int index, const MenuState& state) const {
   static const Item withDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options, Item::Keys,
-                                  Item::Disk, Item::Filter, Item::Fullscreen, Item::SaveQuit, Item::Quit};
+                                  Item::Pad, Item::Disk, Item::Filter, Item::Aspect, Item::Fullscreen, Item::SaveQuit, Item::Quit};
   static const Item withoutDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options,
-                                     Item::Keys, Item::Filter, Item::Fullscreen, Item::SaveQuit, Item::Quit};
+                                     Item::Keys, Item::Pad, Item::Filter, Item::Aspect, Item::Fullscreen, Item::SaveQuit, Item::Quit};
   return state.diskCount > 1 ? withDisk[index] : withoutDisk[index];
 }
 
@@ -147,12 +177,17 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::Reset: return tr("reset");
     case Item::Options: return tr("options");
     case Item::Keys: return tr("keys");
+    case Item::Pad: return tr("pad_config");
     case Item::Disk:
       return tr("disk") + " : " + std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
     case Item::Filter: {
       static const char* names[] = {"filter_pixels", "filter_sharp", "filter_soft", "filter_smooth", "filter_epx",
                                     "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr"};
       return tr("filter") + " : " + tr(names[state.filter]);
+    }
+    case Item::Aspect: {
+      static const char* names[] = {"aspect_core", "aspect_4_3", "aspect_16_9", "aspect_stretch"};
+      return tr("aspect") + " : " + tr(names[state.aspect]);
     }
     case Item::Fullscreen: return tr("fullscreen") + " : " + tr(state.fullscreen ? "yes" : "no");
     case Item::SaveQuit: return tr("save_quit");
@@ -195,7 +230,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
   }
 
   // Entrées sur deux colonnes, lues ligne par ligne : haut / bas changent de ligne, gauche /
-  // droite de colonne (disque, filtre d'image et plein écran changent avec A / Entrée).
+  // droite de colonne (disque, filtre, format d'image et plein écran changent avec A / Entrée).
   int count = itemCount(state);
   selected_ = std::min(selected_, count - 1);
   Item item = itemAt(selected_, state);
@@ -229,8 +264,10 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
         case Item::Keys:
           openKeys();
           return MenuAction::None;
+        case Item::Pad: return MenuAction::ConfigurePad;
         case Item::Disk: return MenuAction::DiskNext;
         case Item::Filter: return MenuAction::NextFilter;
+        case Item::Aspect: return MenuAction::NextAspect;
         case Item::Fullscreen: return MenuAction::ToggleFullscreen;
         case Item::SaveQuit: return MenuAction::SaveQuit;
         case Item::Quit: return MenuAction::Quit;

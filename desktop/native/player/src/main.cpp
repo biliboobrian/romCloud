@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,7 @@
 #include "core.h"
 #include "input.h"
 #include "menu.h"
+#include "padconfig.h"
 #include "util.h"
 #include "video.h"
 
@@ -41,6 +43,7 @@ struct Args {
   bool testWindow = false;  // essai dans une fenêtre visible : affichage et menu capturés
   bool testMenu = false;
   bool testKeys = false;  // essai : écran des touches du clavier
+  bool testPad = false;  // essai : écran de configuration des manettes
   bool testSaveState = false;  // essai : état enregistré après les N images
 };
 
@@ -61,6 +64,7 @@ Args parseArgs(int argc, char** argv) {
     else if (arg == "--test-window") a.testWindow = true;
     else if (arg == "--test-menu") a.testMenu = true;
     else if (arg == "--test-keys") a.testKeys = true;
+    else if (arg == "--test-pad") a.testPad = true;
     else if (arg == "--test-save-state") a.testSaveState = true;
     else if (arg == "--option-default" && i + 1 < argc) a.optionDefaults.push_back(argv[++i]);
     else if (values.count(arg) && i + 1 < argc) *values[arg] = argv[++i];
@@ -102,6 +106,9 @@ class Player {
   }
   bool handleEvents();
   void onMenuAction(MenuAction action);
+  void startPadConfig() {
+    padConfig_ = std::make_unique<PadConfig>(args_.buttons, [this](const char* key) { return menu_.tr(key); });
+  }
   void runFrame();
   void present();
   void shutdown();
@@ -111,6 +118,7 @@ class Player {
   Video video_;
   Audio audio_;
   Input input_;
+  std::unique_ptr<PadConfig> padConfig_;  // configuration d'une manette en cours (depuis le menu)
   Canvas overlay_{640, 360};
   std::vector<uint8_t> romData_;
   std::string romPath_;
@@ -197,6 +205,7 @@ void Player::changeDisk(int direction) {
 MenuState Player::menuState() const {
   MenuState s;
   s.filter = (int)video_.filter();
+  s.aspect = (int)video_.aspect();
   s.fullscreen = video_.fullscreen();
   if (g.hasDiskControl && g.disk.get_num_images) {
     s.diskCount = (int)g.disk.get_num_images();
@@ -251,6 +260,11 @@ void Player::onMenuAction(MenuAction action) {
       video_.setFilter(nextFilter(video_.filter()));
       g.options.setSetting("romcloud_filter", filterId(video_.filter()));
       break;
+    case MenuAction::ConfigurePad: startPadConfig(); break;
+    case MenuAction::NextAspect:
+      video_.setAspect(nextAspect(video_.aspect()));
+      g.options.setSetting("romcloud_aspect", aspectId(video_.aspect()));
+      break;
     case MenuAction::ToggleFullscreen: video_.toggleFullscreen(); break;
     case MenuAction::DiskNext: changeDisk(1); break;
     case MenuAction::DiskPrev: changeDisk(-1); break;
@@ -262,6 +276,15 @@ bool Player::handleEvents() {
   SDL_Event e;
   while (SDL_PollEvent(&e)) {
     input_.handleEvent(e);
+    // Configuration d'une manette : clavier et manettes lui reviennent ; menu affiché à la fin.
+    if (padConfig_ && padConfig_->handleEvent(e)) {
+      if (padConfig_->finished()) {
+        if (!padConfig_->result().empty()) toast(padConfig_->result());
+        padConfig_.reset();
+      }
+      continue;
+    }
+    if (padConfig_ && padConfig_->finished()) padConfig_.reset();
     switch (e.type) {
       case SDL_QUIT: quit_ = true; break;
 
@@ -369,17 +392,22 @@ void Player::present() {
     g.messageFrames--;
     showToast = true;
   }
-  if (menu_.isOpen()) {
-    overlay_.clear();
-    menu_.render(overlay_, menuState());
-    video_.present(overlay_.data(), overlay_.width(), overlay_.height());
-  } else if (showToast && !toast_.empty()) {
-    overlay_.clear();
+  auto drawToast = [&] {
     std::string text = Canvas::fit(toast_, 1, overlay_.width() - 60);
     int w = Canvas::measure(text, 1) + 24;
     int x = (overlay_.width() - w) / 2, y = overlay_.height() - 40;
     overlay_.fill(x, y, w, 22, rgba(0, 0, 0, 190));
     overlay_.text(x + 12, y + 7, text, 1, rgba(240, 240, 250));
+  };
+  if (menu_.isOpen()) {
+    overlay_.clear();
+    if (padConfig_) padConfig_->render(overlay_);
+    else menu_.render(overlay_, menuState());
+    if (showToast && !toast_.empty()) drawToast();  // fin de la configuration d'une manette
+    video_.present(overlay_.data(), overlay_.width(), overlay_.height());
+  } else if (showToast && !toast_.empty()) {
+    overlay_.clear();
+    drawToast();
     video_.present(overlay_.data(), overlay_.width(), overlay_.height());
   } else {
     video_.present(nullptr, 0, 0);
@@ -415,6 +443,7 @@ int Player::run() {
   const std::string oldSmooth = g.options.setting("romcloud_smooth", "") == "true" ? "smooth" : "pixels";
   const bool hasOld = !g.options.setting("romcloud_smooth", "").empty();
   video_.setFilter(filterFromId(g.options.setting("romcloud_filter", hasOld ? oldSmooth : "sharp")));
+  video_.setAspect(aspectFromId(g.options.setting("romcloud_aspect", "core")));
   const int testFrames = args_.testFrames.empty() ? 0 : std::max(1, atoi(args_.testFrames.c_str()));
   if (!video_.create("RomCloud — " + title(), !args_.windowed && !testFrames, testFrames > 0 && !args_.testWindow, error)) {
     g.api.unload_game();
@@ -423,6 +452,7 @@ int Player::run() {
   }
   input_.loadKeys(args_.keysFile);
   menu_.setButtons(args_.buttons);
+  applySavedPadMappings();  // manettes configurées pour ce système (avant leur ouverture)
   input_.init();
   loadSram();  // avant l'état de sauvegarde, qui la contient aussi
   if (args_.resume) {
@@ -442,8 +472,9 @@ int Player::run() {
     }
     bool saved = true;
     if (args_.testWindow) {
-      if (args_.testMenu || args_.testKeys || !args_.testOptions.empty()) menu_.open();
+      if (args_.testMenu || args_.testKeys || args_.testPad || !args_.testOptions.empty()) menu_.open();
       if (args_.testKeys) menu_.openKeys();
+      if (args_.testPad) startPadConfig();
       if (!args_.testOptions.empty()) {
         menu_.openOptions();
         for (int i = atoi(args_.testOptions.c_str()); i > 0; i--) menu_.handle(Nav::TabNext, menuState());
@@ -451,7 +482,8 @@ int Player::run() {
       present();  // image affichée (et menu), relue avant l'échange des tampons
       if (!args_.screenshot.empty()) {
         overlay_.clear();
-        if (menu_.isOpen()) menu_.render(overlay_, menuState());
+        if (padConfig_) padConfig_->render(overlay_);
+        else if (menu_.isOpen()) menu_.render(overlay_, menuState());
         video_.present(menu_.isOpen() ? overlay_.data() : nullptr, overlay_.width(), overlay_.height(), false);
         saved = video_.saveWindow(args_.screenshot);
       }

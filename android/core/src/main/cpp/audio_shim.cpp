@@ -12,7 +12,9 @@
 //   demande comme un bouton (toujours relâché) ; le masque est reconstitué bouton par bouton ;
 // - diffusion sur une TV (tous les cœurs passent alors par l'adaptateur) : le son est copié dans une
 //   file lue par l'application (StreamTap, JNI) et peut être coupé sur le téléphone (silence envoyé à
-//   LibretroDroid, même cadence d'émulation) ; proportions de l'image et fréquence du son exposées.
+//   LibretroDroid, même cadence d'émulation) ; proportions de l'image et fréquence du son exposées ;
+// - format d'image choisi par l'utilisateur (CoreShim, JNI) : proportions annoncées à LibretroDroid
+//   remplacées (géométrie du cœur), y compris en cours de partie.
 // Pas de bibliothèque C++ (ni STL, ni variable statique locale) : rien d'autre à embarquer.
 
 #include <GLES3/gl3.h>
@@ -79,6 +81,8 @@ static audio_sample_batch_t batch = nullptr;
 
 // Diffusion : copie du son (section « Diffusion » en fin de fichier) et son coupé sur le téléphone.
 static void tap(const int16_t *data, size_t frames);
+// Format d'image choisi (section « Image ») : appliqué avant chaque image.
+static void apply_aspect();
 static bool mute_local = false;
 static int16_t *silence = nullptr;
 static size_t silence_frames = 0;
@@ -137,6 +141,7 @@ EXPORT void retro_set_audio_sample_batch(audio_sample_batch_t cb) {
 
 CORE_FN(void, retro_run, ())
 EXPORT void retro_run() {
+    apply_aspect();
     real_retro_run()();
     flush();
 }
@@ -196,29 +201,68 @@ static environment_t frontend_environment = nullptr;
 static video_refresh_t frontend_video = nullptr;
 static get_current_framebuffer_t frontend_framebuffer = nullptr;
 static bool bottom_left_origin = true;
+// Proportions annoncées par le cœur, et celles affichées (format choisi, sinon celles du cœur).
+static float core_aspect_ratio = 0;
 static float aspect_ratio = 0;
+// Dernière géométrie du cœur (renvoyée à LibretroDroid quand le format change).
+static retro_game_geometry last_geometry = {0, 0, 0, 0, 0};
+static bool has_geometry = false;
+// Format choisi (largeur / hauteur ; 0 : celui du cœur), écrit par l'application ; format appliqué.
+static float wanted_aspect = 0;
+static float applied_aspect = 0;
+
+static float load_wanted_aspect() {
+    float value;
+    __atomic_load(&wanted_aspect, &value, __ATOMIC_RELAXED);
+    return value;
+}
 
 static bool blit_enabled() {
     const char *value = getenv("ROMCLOUD_SHIM_BLIT");
     return value && value[0] == '1';
 }
 
-static void on_geometry(const retro_game_geometry *geometry) {
-    aspect_ratio = geometry->aspect_ratio > 0 ? geometry->aspect_ratio
+/**
+ * Géométrie du cœur reçue : mémorisée, et proportions remplacées par le format choisi dans
+ * [geometry] (copie envoyée à LibretroDroid).
+ */
+static void on_geometry(retro_game_geometry *geometry) {
+    last_geometry = *geometry;
+    has_geometry = true;
+    core_aspect_ratio = geometry->aspect_ratio > 0 ? geometry->aspect_ratio
         : geometry->base_height ? (float)geometry->base_width / (float)geometry->base_height : 0;
+    float wanted = load_wanted_aspect();
+    applied_aspect = wanted;
+    if (wanted > 0) geometry->aspect_ratio = wanted;
+    aspect_ratio = wanted > 0 ? wanted : core_aspect_ratio;
+}
+
+/** Format changé depuis la dernière image : géométrie renvoyée à LibretroDroid (thread d'émulation). */
+static void apply_aspect() {
+    if (!has_geometry || !frontend_environment) return;
+    if (load_wanted_aspect() == applied_aspect) return;
+    retro_game_geometry geometry = last_geometry;
+    on_geometry(&geometry);
+    frontend_environment(SET_GEOMETRY, &geometry);
 }
 
 static bool on_environment(unsigned cmd, void *data) {
+    if ((cmd == SET_SYSTEM_AV_INFO || cmd == SET_GEOMETRY) && data) {
+        // Copie envoyée à LibretroDroid, proportions remplacées par le format choisi
+        // (retro_system_av_info commence par sa géométrie).
+        retro_av_info info;
+        if (cmd == SET_SYSTEM_AV_INFO) info = *static_cast<const retro_av_info *>(data);
+        else info.geometry = *static_cast<const retro_game_geometry *>(data);
+        on_geometry(&info.geometry);
+        if (cmd == SET_SYSTEM_AV_INFO) sample_rate = info.timing.sample_rate;
+        return frontend_environment(cmd, &info);
+    }
     bool handled = frontend_environment(cmd, data);
     if (!handled || !data) return handled;
     if (cmd == SET_HW_RENDER) {
         auto *hw = static_cast<retro_hw_render_callback *>(data);
         frontend_framebuffer = hw->get_current_framebuffer;
         bottom_left_origin = hw->bottom_left_origin;
-    } else if (cmd == SET_SYSTEM_AV_INFO || cmd == SET_GEOMETRY) {
-        // retro_system_av_info commence par sa géométrie.
-        on_geometry(static_cast<const retro_game_geometry *>(data));
-        if (cmd == SET_SYSTEM_AV_INFO) sample_rate = static_cast<const retro_av_info *>(data)->timing.sample_rate;
     }
     return handled;
 }
@@ -271,7 +315,7 @@ CORE_FN(void, retro_get_system_av_info, (retro_system_av_info *info))
 EXPORT void retro_get_system_av_info(retro_system_av_info *info) {
     real_retro_get_system_av_info()(info);
     // retro_system_av_info commence par sa géométrie.
-    on_geometry(reinterpret_cast<const retro_game_geometry *>(info));
+    on_geometry(reinterpret_cast<retro_game_geometry *>(info));
     sample_rate = reinterpret_cast<const retro_av_info *>(info)->timing.sample_rate;
 }
 FORWARD(void, retro_set_input_poll, (input_poll_t cb), (cb))
@@ -348,3 +392,11 @@ JNI_FN(jdouble, nativeSampleRate)(JNIEnv *, jobject) { return sample_rate; }
 
 /** Proportions de l'image du jeu (largeur / hauteur), 0 si inconnues. */
 JNI_FN(jfloat, nativeAspectRatio)(JNIEnv *, jobject) { return aspect_ratio; }
+
+// --- Format d'image (CoreShim) ---
+
+/** Format choisi (largeur / hauteur ; 0 : celui du cœur), appliqué à la prochaine image. */
+EXPORT JNIEXPORT void JNICALL Java_com_romcloud_app_libretro_CoreShim_nativeSetAspectRatio(JNIEnv *, jobject, jfloat aspect) {
+    float value = aspect > 0 ? (float)aspect : 0.0f;
+    __atomic_store(&wanted_aspect, &value, __ATOMIC_RELAXED);
+}

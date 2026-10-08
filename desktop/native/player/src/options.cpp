@@ -258,6 +258,18 @@ void CoreOptions::setSetting(const std::string& key, const std::string& value) {
   save();
 }
 
+void CoreOptions::removeSetting(const std::string& key) {
+  if (saved_.erase(key)) save();
+}
+
+std::vector<std::pair<std::string, std::string>> CoreOptions::settings(const std::string& prefix) const {
+  std::vector<std::pair<std::string, std::string>> result;
+  for (auto it = saved_.lower_bound(prefix); it != saved_.end() && it->first.compare(0, prefix.size(), prefix) == 0; ++it) {
+    result.emplace_back(*it);
+  }
+  return result;
+}
+
 void CoreOptions::resetAll() {
   for (auto& o : options_) {
     o.value = o.defaultValue();

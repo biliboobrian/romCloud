@@ -34,6 +34,7 @@ add_executable(romcloud-player WIN32
   src/input.cpp
   src/canvas.cpp
   src/menu.cpp
+  src/padconfig.cpp
   src/util.cpp
   src/font8x8.c
 )

@@ -316,6 +316,13 @@
     <string name="libretro_state_error">The state could not be saved or loaded</string>
     <string name="libretro_menu_core_options">Core options</string>
     <string name="libretro_menu_filter">Image: %1$s</string>
+    <string name="libretro_menu_aspect">Aspect ratio: %1$s</string>
+    <string name="libretro_aspect_title">Aspect ratio</string>
+    <string name="libretro_aspect_original">original</string>
+    <string name="libretro_aspect_4_3" translatable="false">4:3</string>
+    <string name="libretro_aspect_16_9" translatable="false">16:9</string>
+    <string name="libretro_aspect_stretch">stretched</string>
+    <string name="libretro_aspect_next_launch">The new aspect ratio will apply the next time the game is started.</string>
     <string name="libretro_filter_pixels">sharp pixels</string>
     <string name="libretro_filter_sharp">sharp smoothing</string>
     <string name="libretro_filter_smooth">edge smoothing</string>
@@ -356,6 +363,7 @@
     <string name="pad_config_saved">Controller setup saved</string>
     <string name="pad_config_reset">Default controller setup restored</string>
     <string name="pad_config_default">Default setup</string>
+    <string name="pad_config_summary">Assignments</string>
     <string name="pad_up">D-pad: up</string>
     <string name="pad_down">D-pad: down</string>
     <string name="pad_left">D-pad: left</string>
