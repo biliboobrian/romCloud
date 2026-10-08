@@ -40,6 +40,8 @@ internal data class PadLayout(
     val stick: Boolean = false,
     /** Deux sticks cliquables (L3 / R3) : configurés sur une manette physique. */
     val thumbs: Boolean = false,
+    /** Manette de la console dessinée dans la configuration d'une manette physique. */
+    val style: PadStyle = PadStyle.DEFAULT,
 ) {
     val width: Dp get() = buttons.maxOf { it.x + it.size }
     val height: Dp get() = buttons.maxOf { it.y + it.size }
@@ -93,6 +95,7 @@ internal object PadLayouts {
         buttons = diamond("X" to X, "A" to A, "B" to B, "Y" to Y, listOf(BLUE, RED, YELLOW, GREEN)),
         left = listOf(Shoulder("L", L1)),
         right = listOf(Shoulder("R", R1)),
+        style = PadStyle.SNES,
     )
 
     /** Disposition par défaut (consoles sans disposition dédiée) : tous les boutons du RetroPad. */
@@ -103,25 +106,27 @@ internal object PadLayouts {
         thumbs = true,
     )
 
-    private val NES = PadLayout(buttons = diagonal("B" to B, "A" to A, colors = listOf(RED, RED)))
+    private val NES = PadLayout(buttons = diagonal("B" to B, "A" to A, colors = listOf(RED, RED)), style = PadStyle.NES)
     /** Famicom Disk System : L change la face de la disquette, R l'éjecte / l'insère (FCEUmm, Nestopia). */
-    private val FDS = NES.copy(left = listOf(Shoulder("FACE", L1)), right = listOf(Shoulder("DISK", R1)))
-    private val GAME_BOY = PadLayout(buttons = diagonal("B" to B, "A" to A))
-    private val GBA = GAME_BOY.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)))
+    private val FDS = NES.copy(left = listOf(Shoulder("FACE", L1)), right = listOf(Shoulder("DISK", R1)), style = PadStyle.FDS)
+    private val GAME_BOY = PadLayout(buttons = diagonal("B" to B, "A" to A), style = PadStyle.GAME_BOY)
+    private val GBA = GAME_BOY.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)), style = PadStyle.GBA)
 
     private val PLAYSTATION = PadLayout(
         buttons = diamond("△" to X, "○" to A, "✕" to B, "□" to Y, listOf(GREEN, RED, BLUE, PINK)),
         left = listOf(Shoulder("L2", L2, 60.dp), Shoulder("L1", L1)),
         right = listOf(Shoulder("R1", R1), Shoulder("R2", R2, 60.dp)),
         thumbs = true,
+        style = PadStyle.PLAYSTATION,
     )
     /** PSP : croix et stick (de nombreux jeux se jouent au stick). */
-    private val PSP = PLAYSTATION.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)), stick = true, thumbs = false)
+    private val PSP = PLAYSTATION.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)), stick = true, thumbs = false, style = PadStyle.PSP)
 
     /** Mega Drive 6 boutons : A B C en bas, X Y Z en haut ; Mode = Select (masqué). */
     private val GENESIS = PadLayout(
         buttons = grid(listOf("X" to L1, "Y" to X, "Z" to R1), listOf("A" to Y, "B" to B, "C" to A)),
         select = null,
+        style = PadStyle.GENESIS,
     )
     /**
      * Saturn : même disposition que la Mega Drive, mais les cœurs (Beetle Saturn, Yabause, Kronos)
@@ -132,13 +137,14 @@ internal object PadLayouts {
         left = listOf(Shoulder("L", L2)),
         right = listOf(Shoulder("R", R2)),
         select = null,
+        style = PadStyle.SATURN,
     )
-    private val MASTER_SYSTEM = PadLayout(buttons = diagonal("1" to B, "2" to A), select = null)
+    private val MASTER_SYSTEM = PadLayout(buttons = diagonal("1" to B, "2" to A), select = null, style = PadStyle.MASTER_SYSTEM)
 
     /** Amstrad GX4000 (cap32, joystick Amstrad) : Feu 1 sur B, Feu 2 sur A, ni Select ni Start. */
-    private val GX4000 = PadLayout(buttons = diagonal("1" to B, "2" to A), select = null, start = null)
+    private val GX4000 = PadLayout(buttons = diagonal("1" to B, "2" to A), select = null, start = null, style = PadStyle.GX4000)
 
-    private val PC_ENGINE = PadLayout(buttons = diagonal("II" to B, "I" to A), start = "RUN")
+    private val PC_ENGINE = PadLayout(buttons = diagonal("II" to B, "I" to A), start = "RUN", style = PadStyle.PC_ENGINE)
 
     /** Nintendo 64 : stick, A et B, boutons C (stick droit), Z (L2), L et R. */
     private val N64 = PadLayout(
@@ -155,6 +161,7 @@ internal object PadLayouts {
         select = null,
         dpad = false,
         stick = true,
+        style = PadStyle.N64,
     )
 
     /** Dreamcast (et Naomi, Atomiswave) : croix et stick, A B X Y, gâchettes L et R. */
@@ -164,6 +171,7 @@ internal object PadLayouts {
         right = listOf(Shoulder("R", R2)),
         select = null,
         stick = true,
+        style = PadStyle.DREAMCAST,
     )
 
     /** Neo Geo : A B C D en arc. */
@@ -172,27 +180,31 @@ internal object PadLayouts {
             PadButton(label, key, (62 * i).dp, listOf(56, 28, 12, 0)[i].dp, size = 56.dp, color = listOf(RED, YELLOW, GREEN, BLUE)[i])
         },
         select = "COIN",
+        style = PadStyle.NEO_GEO,
     )
-    private val NEO_GEO_POCKET = PadLayout(buttons = diagonal("A" to B, "B" to A), select = null, start = "OPTION")
+    private val NEO_GEO_POCKET = PadLayout(buttons = diagonal("A" to B, "B" to A), select = null, start = "OPTION", style = PadStyle.NEO_GEO_POCKET)
 
     /** CP System : poings en haut, pieds en bas ; Select = pièce. */
     private val CPS = PadLayout(
         buttons = grid(listOf("LP" to Y, "MP" to X, "HP" to L1), listOf("LK" to B, "MK" to A, "HK" to R1)),
         select = "COIN",
+        style = PadStyle.CPS,
     )
     private val ARCADE = PadLayout(
         buttons = grid(listOf("4" to X, "5" to L1, "6" to R1), listOf("1" to B, "2" to A, "3" to Y)),
         select = "COIN",
+        style = PadStyle.ARCADE,
     )
 
-    private val ATARI_2600 = PadLayout(buttons = listOf(PadButton("FIRE", B, 0.dp, 0.dp, 72.dp, RED)), start = "RESET")
-    private val ATARI_7800 = PadLayout(buttons = diagonal("1" to B, "2" to A), start = "PAUSE")
+    private val ATARI_2600 = PadLayout(buttons = listOf(PadButton("FIRE", B, 0.dp, 0.dp, 72.dp, RED)), start = "RESET", style = PadStyle.ATARI_2600)
+    private val ATARI_7800 = PadLayout(buttons = diagonal("1" to B, "2" to A), start = "PAUSE", style = PadStyle.ATARI_7800)
     private val LYNX = PadLayout(
         buttons = diagonal("B" to B, "A" to A),
         left = listOf(Shoulder("OPT 1", L1)),
         right = listOf(Shoulder("OPT 2", R1)),
         select = null,
         start = "PAUSE",
+        style = PadStyle.LYNX,
     )
 
     private val BY_SYSTEM: Map<String, PadLayout> = buildMap {

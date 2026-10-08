@@ -918,7 +918,7 @@ class LibretroActivity : ComponentActivity() {
     private fun MappingInstructions(session: MappingSession) {
         val name = session.deviceName
         val step = session.step
-        PadPreview(padLayout, step.takeIf { name != null }, session.done)
+        PadPreview(padLayout, session.steps, step.takeIf { name != null }, session.done)
         Text(stringResource(R.string.pad_config_title), style = MaterialTheme.typography.titleMedium)
         if (name == null) {
             Text(stringResource(R.string.pad_config_press_any), textAlign = TextAlign.Center)
