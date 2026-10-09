@@ -95,6 +95,7 @@ fun GamesScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val peers by viewModel.peers.collectAsStateWithLifecycle()
     val activity = LocalContext.current as Activity
     val scope = rememberCoroutineScope()
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -305,6 +306,7 @@ fun GamesScreen(
                                 onResume = if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
                                     { viewModel.play(activity, game, resume = true)?.let { scope.launch { snackbar.showSnackbar(it) } } }
                                 } else null,
+                                together = peers.isNotEmpty() && viewModel.canPlayTogether(game),
                             )
                             HorizontalDivider(Modifier.padding(start = 84.dp), thickness = 0.5.dp)
                         }
@@ -430,6 +432,8 @@ private fun GameRow(
     onDetails: () -> Unit,
     /** Partie sauvegardée dans l'émulateur intégré : bouton « Reprendre » sur la ligne. */
     onResume: (() -> Unit)? = null,
+    /** Jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
+    together: Boolean = false,
 ) {
     Row(
         Modifier
@@ -441,7 +445,10 @@ private fun GameRow(
         Cover(coverUrl, game.title, 52.dp, 68.dp)
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
-            Text(game.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(game.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (together) MultiplayerBadge()
+            }
             val sub = listOfNotNull(game.year, game.genre, partsSummary(game), formatSize(game.fullSize)).joinToString(" · ")
             Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)

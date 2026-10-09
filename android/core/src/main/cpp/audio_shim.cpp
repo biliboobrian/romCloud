@@ -16,14 +16,23 @@
 //   image du cœur copiée à sa taille d'origine (lue par StreamTap, bien moins coûteux qu'une copie
 //   de l'écran), relue dans son framebuffer pour les cœurs à rendu OpenGL ;
 // - format d'image choisi par l'utilisateur (CoreShim, JNI) : proportions annoncées à LibretroDroid
-//   remplacées (géométrie du cœur), y compris en cours de partie.
+//   remplacées (géométrie du cœur), y compris en cours de partie ;
+// - jeu à plusieurs en réseau local (Netplay, JNI) : touches échangées image par image avec l'autre
+//   appareil, qui émule le même jeu (section « Jeu à plusieurs » en fin de fichier).
 // Pas de bibliothèque C++ (ni STL, ni variable statique locale) : rien d'autre à embarquer.
 
 #include <GLES3/gl3.h>
 #include <android/log.h>
 #include <jni.h>
 #include <dlfcn.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
 #include <pthread.h>
+#include <sys/socket.h>
+#include <time.h>
+#include <unistd.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -88,6 +97,10 @@ static void tap(const int16_t *data, size_t frames);
 static void apply_aspect();
 // Diffusion : copie de l'image du cœur (section « Diffusion »).
 static void tap_frame(const void *data, unsigned width, unsigned height, size_t pitch);
+// Jeu à plusieurs (section « Jeu à plusieurs ») : avant et après chaque image ; touches des joueurs.
+static void np_before_run();
+static void np_after_run();
+static bool np_input(unsigned port, unsigned device, unsigned index, unsigned id, int16_t *value);
 static bool mute_local = false;
 static int16_t *silence = nullptr;
 static size_t silence_frames = 0;
@@ -147,7 +160,9 @@ EXPORT void retro_set_audio_sample_batch(audio_sample_batch_t cb) {
 CORE_FN(void, retro_run, ())
 EXPORT void retro_run() {
     apply_aspect();
+    np_before_run();
     real_retro_run()();
+    np_after_run();
     flush();
 }
 
@@ -340,6 +355,8 @@ const unsigned DEVICE_JOYPAD = 1, DEVICE_TYPE_MASK = 0xff, JOYPAD_MASK = 256, JO
 static input_state_t frontend_input = nullptr;
 
 static int16_t on_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
+    int16_t networked;
+    if (np_input(port, device, index, id, &networked)) return networked;
     if ((device & DEVICE_TYPE_MASK) == DEVICE_JOYPAD && id == JOYPAD_MASK) {
         int16_t mask = 0;
         for (unsigned button = 0; button < JOYPAD_BUTTONS; button++) {
@@ -573,4 +590,400 @@ JNI_FN(jint, nativeReadFrame)(JNIEnv *env, jobject, jobject buffer, jintArray in
 EXPORT JNIEXPORT void JNICALL Java_com_romcloud_app_libretro_CoreShim_nativeSetAspectRatio(JNIEnv *, jobject, jfloat aspect) {
     float value = aspect > 0 ? (float)aspect : 0.0f;
     __atomic_store(&wanted_aspect, &value, __ATOMIC_RELAXED);
+}
+
+
+// --- Jeu à plusieurs en réseau local (Netplay) ---
+//
+// Chaque appareil émule le même jeu ; seules les touches circulent (connexion TCP ouverte par
+// l'application, sur le réseau local). Avant l'image f, l'appareil relève les touches de son joueur
+// (port 0 de LibretroDroid), les envoie pour l'image f + délai, puis attend celles de l'autre joueur
+// pour l'image f : les deux émulations reçoivent les mêmes touches à la même image. Les premières
+// images (moins que le délai) se jouent sans touche des deux côtés.
+// Départ : état du jeu de l'hôte copié chez l'invité entre deux images. Contrôle : empreinte de l'état
+// comparée toutes les NP_CHECK images ; différence : l'invité demande l'état de l'hôte, chargé à
+// l'image où l'hôte l'a pris (l'invité revient en arrière s'il l'a dépassée : touches gardées).
+// Messages : type (1 octet), longueur du contenu (4 octets, gros-boutiste), contenu.
+
+struct np_pad {
+    uint16_t buttons;   // boutons RetroPad (bit = RETRO_DEVICE_ID_JOYPAD_*)
+    int16_t analog[4];  // stick gauche x / y, stick droit x / y
+};
+enum { NP_MSG_INPUT = 1, NP_MSG_STATE = 2, NP_MSG_CHECK = 3, NP_MSG_RESYNC = 4, NP_MSG_BYE = 5 };
+enum { NP_OFF = 0, NP_STARTING = 1, NP_RUNNING = 2, NP_ENDED = 3 };
+const unsigned NP_RING = 256;      // images de touches gardées (retour en arrière compris)
+const unsigned NP_CHECK = 120;     // contrôle de l'état toutes les 2 s à 60 images/s
+const unsigned NP_CHECKS = 8;      // empreintes gardées
+const long NP_TIMEOUT_MS = 120000; // autre joueur muet : partie arrêtée (menu ouvert compris)
+const unsigned DEVICE_ANALOG = 5;
+
+static int np_state = NP_OFF;      // lu par l'application (atomique)
+static int np_fd = -1;
+static bool np_host = false;
+static unsigned np_local_port = 0, np_remote_port = 1, np_delay = 3;
+static uint32_t np_frame = 0;      // image émulée ensuite
+static uint32_t np_sent = 0;       // première image dont les touches locales restent à envoyer
+static np_pad np_local[NP_RING];
+static np_pad np_remote[NP_RING];
+static uint32_t np_remote_frame[NP_RING];  // image des touches reçues + 1 (0 : aucune)
+static np_pad np_current[2];
+static bool np_in_frame = false;   // touches du réseau données au cœur (pendant retro_run)
+static bool np_waiting = false;    // en attente de l'autre joueur (atomique, affiché)
+static int np_desyncs = 0;         // différences d'état constatées (atomique)
+static bool np_stop = false;       // arrêt demandé par l'application (atomique)
+// Réception : octets en attente d'un message complet.
+static uint8_t *np_buffer = nullptr;
+static size_t np_buffer_length = 0, np_buffer_capacity = 0;
+// Invité : état de l'hôte reçu, à charger à l'image np_pending_frame.
+static uint8_t *np_pending = nullptr;
+static size_t np_pending_size = 0;
+static uint32_t np_pending_frame = 0;
+static bool np_has_pending = false;
+// Hôte : état demandé par l'invité.
+static bool np_resync = false;
+// Empreintes (image + 1, valeur) : les miennes et celles de l'hôte (invité).
+static uint32_t np_mine_frame[NP_CHECKS], np_mine_hash[NP_CHECKS];
+static uint32_t np_host_frame[NP_CHECKS], np_host_hash[NP_CHECKS];
+static uint8_t *np_state_buffer = nullptr;
+static size_t np_state_capacity = 0;
+
+static long np_now_ms() {
+    timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1000L + t.tv_nsec / 1000000L;
+}
+
+static void np_put32(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)(v >> 24);
+    p[1] = (uint8_t)(v >> 16);
+    p[2] = (uint8_t)(v >> 8);
+    p[3] = (uint8_t)v;
+}
+
+static uint32_t np_get32(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
+}
+
+/** Fin de la partie à plusieurs : connexion fermée, chaque appareil continue seul. */
+static void np_end() {
+    if (np_fd >= 0) {
+        uint8_t bye[5] = {NP_MSG_BYE, 0, 0, 0, 0};
+        send(np_fd, bye, sizeof bye, MSG_NOSIGNAL | MSG_DONTWAIT);
+        close(np_fd);
+    }
+    np_fd = -1;
+    np_in_frame = false;
+    np_has_pending = false;
+    __atomic_store_n(&np_waiting, false, __ATOMIC_RELAXED);
+    __atomic_store_n(&np_state, (int)NP_ENDED, __ATOMIC_RELEASE);
+}
+
+/** Envoie tout [data] (connexion bloquante) ; faux si la connexion est perdue. */
+static bool np_write(const void *data, size_t size) {
+    const auto *p = static_cast<const uint8_t *>(data);
+    while (size) {
+        ssize_t n = send(np_fd, p, size, MSG_NOSIGNAL);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return false;
+        p += n;
+        size -= (size_t)n;
+    }
+    return true;
+}
+
+static bool np_send(uint8_t type, const void *payload, size_t size, const void *extra = nullptr, size_t extra_size = 0) {
+    uint8_t header[5];
+    header[0] = type;
+    np_put32(header + 1, (uint32_t)(size + extra_size));
+    return np_write(header, sizeof header) && (!size || np_write(payload, size)) && (!extra_size || np_write(extra, extra_size));
+}
+
+/** État du cœur sérialisé dans np_state_buffer ; renvoie sa taille (0 : impossible). */
+static size_t np_serialize() {
+    size_t size = real_retro_serialize_size()();
+    if (!size) return 0;
+    if (size > np_state_capacity) {
+        auto grown = static_cast<uint8_t *>(realloc(np_state_buffer, size));
+        if (!grown) return 0;
+        np_state_buffer = grown;
+        np_state_capacity = size;
+    }
+    return real_retro_serialize()(np_state_buffer, size) ? size : 0;
+}
+
+/** Hôte : état pris avant l'image [frame], envoyé à l'invité. */
+static bool np_send_state(uint32_t frame) {
+    size_t size = np_serialize();
+    if (!size) return false;
+    uint8_t head[4];
+    np_put32(head, frame);
+    return np_send(NP_MSG_STATE, head, sizeof head, np_state_buffer, size);
+}
+
+static uint32_t np_hash(const uint8_t *data, size_t size) {
+    uint32_t h = 2166136261u;  // FNV-1a
+    for (size_t i = 0; i < size; i++) h = (h ^ data[i]) * 16777619u;
+    return h;
+}
+
+/** Invité : empreintes de l'image [frame] connues des deux côtés et différentes -> état de l'hôte demandé. */
+static void np_compare(uint32_t frame) {
+    unsigned slot = (frame / NP_CHECK) % NP_CHECKS;
+    if (np_mine_frame[slot] != frame + 1 || np_host_frame[slot] != frame + 1) return;
+    if (np_mine_hash[slot] == np_host_hash[slot] || np_has_pending) return;
+    __atomic_add_fetch(&np_desyncs, 1, __ATOMIC_RELAXED);
+    __android_log_print(ANDROID_LOG_WARN, LOG_TAG, "netplay: state differs at frame %u, asking the host for its state", frame);
+    if (!np_send(NP_MSG_RESYNC, nullptr, 0)) np_end();
+}
+
+static void np_message(uint8_t type, const uint8_t *p, uint32_t size) {
+    if (type == NP_MSG_INPUT && size >= 14) {
+        uint32_t frame = np_get32(p);
+        np_pad &pad = np_remote[frame % NP_RING];
+        pad.buttons = (uint16_t)((p[4] << 8) | p[5]);
+        for (int i = 0; i < 4; i++) pad.analog[i] = (int16_t)((p[6 + 2 * i] << 8) | p[7 + 2 * i]);
+        np_remote_frame[frame % NP_RING] = frame + 1;
+    } else if (type == NP_MSG_STATE && size >= 4 && !np_host) {
+        size_t length = size - 4;
+        auto copy = static_cast<uint8_t *>(realloc(np_pending, length ? length : 1));
+        if (!copy) return;
+        memcpy(copy, p + 4, length);
+        np_pending = copy;
+        np_pending_size = length;
+        np_pending_frame = np_get32(p);
+        np_has_pending = true;
+    } else if (type == NP_MSG_CHECK && size >= 8 && !np_host) {
+        uint32_t frame = np_get32(p);
+        unsigned slot = (frame / NP_CHECK) % NP_CHECKS;
+        np_host_frame[slot] = frame + 1;
+        np_host_hash[slot] = np_get32(p + 4);
+        np_compare(frame);
+    } else if (type == NP_MSG_RESYNC && np_host) {
+        np_resync = true;
+    } else if (type == NP_MSG_BYE) {
+        np_end();
+    }
+}
+
+/** Lit ce qui est arrivé (attente au plus [timeout] ms) et traite les messages complets ; faux si la partie est finie. */
+static bool np_pump(int timeout) {
+    pollfd pfd = {np_fd, POLLIN, 0};
+    int ready = poll(&pfd, 1, timeout);
+    if (ready < 0) return errno == EINTR;
+    if (ready == 0) return true;
+    for (;;) {
+        if (np_buffer_capacity - np_buffer_length < 65536) {
+            size_t capacity = np_buffer_capacity ? np_buffer_capacity * 2 : 262144;
+            auto grown = static_cast<uint8_t *>(realloc(np_buffer, capacity));
+            if (!grown) return false;
+            np_buffer = grown;
+            np_buffer_capacity = capacity;
+        }
+        ssize_t n = recv(np_fd, np_buffer + np_buffer_length, np_buffer_capacity - np_buffer_length, MSG_DONTWAIT);
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+        if (n <= 0) return false;
+        np_buffer_length += (size_t)n;
+    }
+    size_t used = 0;
+    while (np_buffer_length - used >= 5) {
+        uint32_t size = np_get32(np_buffer + used + 1);
+        if (np_buffer_length - used - 5 < size) break;
+        np_message(np_buffer[used], np_buffer + used + 5, size);
+        if (__atomic_load_n(&np_state, __ATOMIC_ACQUIRE) == NP_ENDED) return false;
+        used += 5 + size;
+    }
+    if (used) {
+        memmove(np_buffer, np_buffer + used, np_buffer_length - used);
+        np_buffer_length -= used;
+    }
+    return true;
+}
+
+/** Touches du joueur de cet appareil (port 0 de LibretroDroid). */
+static np_pad np_capture() {
+    np_pad pad = {0, {0, 0, 0, 0}};
+    if (!frontend_input) return pad;
+    for (unsigned button = 0; button < JOYPAD_BUTTONS; button++) {
+        if (frontend_input(0, DEVICE_JOYPAD, 0, button)) pad.buttons |= (uint16_t)(1 << button);
+    }
+    for (unsigned i = 0; i < 4; i++) pad.analog[i] = frontend_input(0, DEVICE_ANALOG, i / 2, i % 2);
+    return pad;
+}
+
+static void np_reset_rings() {
+    memset(np_local, 0, sizeof np_local);
+    memset(np_remote, 0, sizeof np_remote);
+    memset(np_remote_frame, 0, sizeof np_remote_frame);
+    memset(np_mine_frame, 0, sizeof np_mine_frame);
+    memset(np_host_frame, 0, sizeof np_host_frame);
+    // Premières images (moins que le délai) : sans touche des deux côtés.
+    for (uint32_t f = 0; f < np_delay; f++) np_remote_frame[f] = f + 1;
+    np_sent = np_delay;
+    np_frame = 0;
+}
+
+/** Attend (au plus NP_TIMEOUT_MS) que [ready] soit vrai ; faux si la partie est finie entre-temps. */
+template <typename Ready>
+static bool np_wait(Ready ready) {
+    if (ready()) return true;
+    long start = np_now_ms();
+    __atomic_store_n(&np_waiting, true, __ATOMIC_RELAXED);
+    while (!ready()) {
+        if (!np_pump(50) || np_now_ms() - start > NP_TIMEOUT_MS || __atomic_load_n(&np_stop, __ATOMIC_ACQUIRE)) {
+            np_end();
+            return false;
+        }
+    }
+    __atomic_store_n(&np_waiting, false, __ATOMIC_RELAXED);
+    return true;
+}
+
+static void np_before_run() {
+    int state = __atomic_load_n(&np_state, __ATOMIC_ACQUIRE);
+    if (state == NP_OFF || state == NP_ENDED) return;
+    if (__atomic_load_n(&np_stop, __ATOMIC_ACQUIRE)) {
+        np_end();
+        return;
+    }
+    if (state == NP_STARTING) {
+        // Départ : état de l'hôte copié chez l'invité, puis image 0 des deux côtés. Tampons remis à
+        // zéro avant : les touches de l'hôte arrivent juste après son état, parfois dans la même lecture.
+        np_reset_rings();
+        if (np_host) {
+            if (!np_send_state(0)) {
+                np_end();
+                return;
+            }
+        } else {
+            if (!np_wait([] { return np_has_pending; })) return;
+            real_retro_unserialize()(np_pending, np_pending_size);
+            np_has_pending = false;
+        }
+        __atomic_store_n(&np_state, (int)NP_RUNNING, __ATOMIC_RELEASE);
+    }
+    if (!np_pump(0)) {
+        np_end();
+        return;
+    }
+    // Hôte : état demandé par l'invité, pris avant cette image.
+    if (np_host && np_resync) {
+        np_resync = false;
+        if (!np_send_state(np_frame)) {
+            np_end();
+            return;
+        }
+    }
+    // Invité : état de l'hôte chargé à son image (retour en arrière si elle est passée).
+    if (!np_host && np_has_pending && np_pending_frame <= np_frame) {
+        real_retro_unserialize()(np_pending, np_pending_size);
+        np_frame = np_pending_frame;
+        np_has_pending = false;
+    }
+    // Touches de ce joueur pour l'image frame + délai (une seule fois par image, même après un retour en arrière).
+    const uint32_t target = np_frame + np_delay;
+    if (target >= np_sent) {
+        const np_pad pad = np_capture();
+        for (uint32_t f = np_sent; f <= target; f++) {
+            np_local[f % NP_RING] = pad;
+            uint8_t message[14];
+            np_put32(message, f);
+            message[4] = (uint8_t)(pad.buttons >> 8);
+            message[5] = (uint8_t)pad.buttons;
+            for (int i = 0; i < 4; i++) {
+                message[6 + 2 * i] = (uint8_t)((uint16_t)pad.analog[i] >> 8);
+                message[7 + 2 * i] = (uint8_t)pad.analog[i];
+            }
+            if (!np_send(NP_MSG_INPUT, message, sizeof message)) {
+                np_end();
+                return;
+            }
+        }
+        np_sent = target + 1;
+    }
+    // Touches de l'autre joueur pour cette image : attendues.
+    const unsigned slot = np_frame % NP_RING;
+    if (!np_wait([slot] { return np_remote_frame[slot] == np_frame + 1; })) return;
+    np_current[np_local_port] = np_local[slot];
+    np_current[np_remote_port] = np_remote[slot];
+    np_in_frame = true;
+}
+
+static void np_after_run() {
+    if (!np_in_frame) return;
+    np_in_frame = false;
+    np_frame++;
+    if (np_frame % NP_CHECK) return;
+    size_t size = np_serialize();
+    if (!size) return;
+    const uint32_t hash = np_hash(np_state_buffer, size);
+    if (np_host) {
+        uint8_t message[8];
+        np_put32(message, np_frame);
+        np_put32(message + 4, hash);
+        if (!np_send(NP_MSG_CHECK, message, sizeof message)) np_end();
+    } else {
+        const unsigned slot = (np_frame / NP_CHECK) % NP_CHECKS;
+        np_mine_frame[slot] = np_frame + 1;
+        np_mine_hash[slot] = hash;
+        np_compare(np_frame);
+    }
+}
+
+/** Touches des joueurs pendant une image de la partie à plusieurs (sinon faux : touches de LibretroDroid). */
+static bool np_input(unsigned port, unsigned device, unsigned index, unsigned id, int16_t *value) {
+    if (!np_in_frame) return false;
+    *value = 0;
+    if (port > 1) return true;
+    const np_pad &pad = np_current[port];
+    const unsigned type = device & DEVICE_TYPE_MASK;
+    if (type == DEVICE_JOYPAD) {
+        if (id == JOYPAD_MASK) *value = (int16_t)pad.buttons;
+        else if (id < JOYPAD_BUTTONS) *value = (int16_t)((pad.buttons >> id) & 1);
+    } else if (type == DEVICE_ANALOG && index < 2 && id < 2) {
+        *value = pad.analog[index * 2 + id];
+    }
+    // Autres périphériques (souris, pistolet…) : non partagés, au repos des deux côtés.
+    return true;
+}
+
+#define NP_FN(ret, name) EXPORT JNIEXPORT ret JNICALL Java_com_romcloud_app_libretro_Netplay_##name
+
+/**
+ * Commence la partie à plusieurs sur la connexion [fd] (désormais gérée ici) : [host] (hôte : son état
+ * est copié chez l'invité), [localPort] (port du joueur de cet appareil : 0 hôte, 1 invité), [delay]
+ * (images entre l'appui et son effet). Pris en compte à la prochaine image.
+ */
+NP_FN(void, nativeStart)(JNIEnv *, jobject, jint fd, jboolean host, jint localPort, jint delay) {
+    int one = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    np_fd = fd;
+    np_host = host;
+    np_local_port = localPort == 1 ? 1 : 0;
+    np_remote_port = 1 - np_local_port;
+    np_delay = delay < 1 ? 1 : delay > 30 ? 30 : (unsigned)delay;
+    np_buffer_length = 0;
+    np_has_pending = false;
+    np_resync = false;
+    __atomic_store_n(&np_desyncs, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&np_stop, false, __ATOMIC_RELAXED);
+    __atomic_store_n(&np_state, (int)NP_STARTING, __ATOMIC_RELEASE);
+}
+
+/** Arrêt demandé (fin de partie, activité fermée) : attente interrompue, pris en compte à la prochaine image. */
+NP_FN(void, nativeStop)(JNIEnv *, jobject) {
+    __atomic_store_n(&np_stop, true, __ATOMIC_RELEASE);
+    const int fd = np_fd;
+    if (fd >= 0) shutdown(fd, SHUT_RDWR);
+}
+
+/** [état (0 aucune, 1 départ, 2 en cours, 3 terminée), attente de l'autre joueur (1), différences d'état, image]. */
+NP_FN(void, nativeStatus)(JNIEnv *env, jobject, jintArray out) {
+    jint values[4] = {
+        __atomic_load_n(&np_state, __ATOMIC_ACQUIRE),
+        __atomic_load_n(&np_waiting, __ATOMIC_RELAXED) ? 1 : 0,
+        __atomic_load_n(&np_desyncs, __ATOMIC_RELAXED),
+        (jint)np_frame,
+    };
+    env->SetIntArrayRegion(out, 0, 4, values);
 }

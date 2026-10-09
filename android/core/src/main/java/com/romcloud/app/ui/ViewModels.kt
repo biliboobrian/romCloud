@@ -1,6 +1,11 @@
 package com.romcloud.app.ui
 
+import com.romcloud.app.netplay.NetplayRules
+import com.romcloud.app.netplay.Peer
+import com.romcloud.app.netplay.NetplayProtocol
+import com.romcloud.app.netplay.NetplayLaunch
 import android.app.Activity
+import android.content.Context
 import androidx.annotation.StringRes
 import com.romcloud.app.I18n
 import com.romcloud.core.R
@@ -47,6 +52,7 @@ fun RomCloudApp.play(
     resume: Boolean = false,
     stream: StreamReceiver? = null,
     streamMode: StreamMode = StreamMode.NATIVE,
+    netplay: NetplayLaunch? = null,
 ): String? {
     val player = launcher.selectedPlayer(system, game.fileName)
     val file = library.launchFile(system, game, player)
@@ -57,7 +63,7 @@ fun RomCloudApp.play(
         }
     }
     return try {
-        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode)
+        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay)
         // Émulateur externe : temps de jeu compté jusqu'au retour dans l'application (l'émulateur
         // intégré compte lui-même le temps de la partie affichée).
         if (player?.libretroCore == null) account.startExternalSession(game.id)
@@ -67,6 +73,41 @@ fun RomCloudApp.play(
         null
     } catch (e: LaunchException) {
         account.reportError("launch:${system.id}", e.message ?: "launch", game.fileName)
+        e.message
+    }
+}
+
+/** Partie proposée sur le réseau local : jeu, fichier et cœur annoncés aux autres appareils. */
+fun RomCloudApp.hostNetplay(activity: Activity, system: GameSystem, game: Game): String? {
+    val core = launcher.selectedPlayer(system, game.fileName)?.libretroCore ?: return I18n.get(R.string.netplay_needs_builtin)
+    val hosted = NetplayProtocol.HostedGame(game.id, system.id, game.title, game.fileName, game.size, core)
+    return play(activity, system, game, netplay = NetplayLaunch(host = true, game = hosted))
+}
+
+/**
+ * Rejoint la partie proposée par [peer] : même jeu du serveur (même fichier), lancé avec le cœur de
+ * l'hôte. Jeu absent de l'appareil : téléchargé d'abord, la partie est rejointe à la fin du
+ * téléchargement. Renvoie un message à afficher, ou null.
+ */
+suspend fun RomCloudApp.joinNetplay(context: Context, peer: Peer): String? {
+    val hosted = peer.hosting ?: return null
+    val system = repository.system(hosted.systemId) ?: return I18n.get(R.string.netplay_game_unknown, hosted.title)
+    val game = (repository.game(hosted.systemId, hosted.gameId)?.takeIf { it.fileName == hosted.fileName }
+        ?: runCatching { repository.games(hosted.systemId).data }.getOrDefault(emptyList()).find { it.fileName == hosted.fileName && it.size == hosted.size })
+        ?: return I18n.get(R.string.netplay_game_unknown, hosted.title)
+    if (!withContext(Dispatchers.IO) { library.isDownloaded(system, game) }) {
+        pendingJoin = peer
+        downloader.start(system, game, withContext(Dispatchers.IO) { library.missingBios(repository.bios(system)) })
+        return I18n.get(R.string.netplay_downloading, game.title)
+    }
+    val file = library.fileFor(system, game)
+    return try {
+        launcher.launch(
+            context, system, file, null, gameId = game.id,
+            netplay = NetplayLaunch(host = false, address = peer.address, port = peer.port, peerName = peer.name, game = hosted),
+        )
+        null
+    } catch (e: LaunchException) {
         e.message
     }
 }
@@ -99,6 +140,9 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
 
     private val _search = MutableStateFlow(SearchState())
     val search: StateFlow<SearchState> = _search.asStateFlow()
+
+    /** Appareils RomCloud du réseau local (jeu à plusieurs). */
+    val peers = app.presence.peers
 
     private val _usage = MutableStateFlow(StorageUsage())
 
@@ -256,6 +300,16 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
 
     private val _state = MutableStateFlow(UiState(grid = app.settings.gamesAsGrid))
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    /** Appareils RomCloud du réseau local (jeu à plusieurs). */
+    val peers = app.presence.peers
+
+    /** Jeu jouable à plusieurs en réseau (moteur intégré, jeu à plusieurs joueurs). */
+    fun canPlayTogether(game: Game): Boolean {
+        val system = _state.value.system ?: return false
+        return NetplayRules.systemAllows(system) && NetplayRules.maxPlayers(game.players) >= 2 &&
+            NetplayRules.canPlayTogether(system, game, app.launcher.selectedPlayer(system, game.fileName))
+    }
 
     val downloads = app.downloader.states
 
@@ -506,6 +560,25 @@ class GameDetailViewModel(
         val system = s.system ?: return I18n.get(R.string.err_system_not_found)
         val game = s.game ?: return I18n.get(R.string.game_not_found)
         return app.play(activity, system, game, resume = resume, stream = tv, streamMode = mode)
+    }
+
+    /** Appareils RomCloud du réseau local (jeu à plusieurs). */
+    val peers = app.presence.peers
+
+    /** « Jouer à plusieurs » : jeu présent, appareil sur le réseau local, jeu et émulateur compatibles. */
+    fun canPlayTogether(peers: List<Peer>): Boolean {
+        val s = _state.value
+        val system = s.system ?: return false
+        val game = s.game ?: return false
+        return s.downloaded && peers.isNotEmpty() && NetplayRules.canPlayTogether(system, game, s.selectedPlayer)
+    }
+
+    /** Lance le jeu et le propose aux appareils du réseau local. */
+    fun hostNetplay(activity: Activity): String? {
+        val s = _state.value
+        val system = s.system ?: return I18n.get(R.string.err_system_not_found)
+        val game = s.game ?: return I18n.get(R.string.game_not_found)
+        return app.hostNetplay(activity, system, game)
     }
 
     private companion object {

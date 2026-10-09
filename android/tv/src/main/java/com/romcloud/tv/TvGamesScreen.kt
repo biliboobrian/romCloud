@@ -4,17 +4,13 @@ package com.romcloud.tv
 
 import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Refresh
@@ -38,8 +35,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -54,25 +53,27 @@ import androidx.tv.material3.FilterChip
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.launch.RetroArchInfo
-import com.romcloud.app.ui.RetroArchHelpDialog
 import com.romcloud.app.ui.CarouselRow
 import com.romcloud.app.ui.DownloadedGreen
 import com.romcloud.app.ui.GameCriteria
 import com.romcloud.app.ui.GameFilter
-import com.romcloud.app.ui.criteriaSections
 import com.romcloud.app.ui.GamesViewModel
 import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.MultiplayerBadge
 import com.romcloud.app.ui.OfflineBadge
+import com.romcloud.app.ui.PlaytimeLabel
+import com.romcloud.app.ui.RetroArchHelpDialog
 import com.romcloud.app.ui.RowLabels
 import com.romcloud.app.ui.carouselRows
+import com.romcloud.app.ui.criteriaSections
 import com.romcloud.app.ui.formatSize
+import com.romcloud.app.ui.gamePlaytime
 import com.romcloud.app.ui.partsSummary
 import com.romcloud.app.ui.pickFeatured
-import com.romcloud.app.ui.PlaytimeLabel
-import com.romcloud.app.ui.gamePlaytime
 import com.romcloud.core.R
 
 @Composable
@@ -85,6 +86,7 @@ fun TvGamesScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val peers by viewModel.peers.collectAsStateWithLifecycle()
     val activity = LocalContext.current as Activity
 
     var focusedGameId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -191,6 +193,7 @@ fun TvGamesScreen(
                 coverUrl = featured?.let { mediaUrl(it, "boxart") },
                 status = featured?.let(::statusOf),
                 resumable = featured?.let { it.id in state.resumable } == true,
+                together = featured != null && peers.isNotEmpty() && viewModel.canPlayTogether(featured),
                 modifier = Modifier.padding(start = 48.dp, end = 48.dp).height(150.dp),
             )
 
@@ -310,7 +313,7 @@ fun TvGamesScreen(
 
 /** Zone du haut : jaquette et informations du jeu sélectionné (description à côté de la jaquette). */
 @Composable
-private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, resumable: Boolean, modifier: Modifier = Modifier) {
+private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, resumable: Boolean, together: Boolean, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         if (game == null) return@Row
         if (coverUrl != null) {
@@ -321,20 +324,25 @@ private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, resum
                 modifier = Modifier.fillMaxHeight().aspectRatio(3f / 4f).clip(RoundedCornerShape(8.dp)),
             )
         }
-        GameHeroText(game, status, resumable)
+        GameHeroText(game, status, resumable, together)
     }
 }
 
 @Composable
-private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean) {
+private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean, together: Boolean) {
     Column(Modifier.fillMaxWidth(0.7f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            game.title,
-            style = MaterialTheme.typography.displaySmall,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                game.title,
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            // Jouable à plusieurs avec un appareil du réseau local.
+            if (together) MultiplayerBadge(size = 32.dp)
+        }
         Text(
             listOfNotNull(game.year, game.genre, game.players?.let { stringResource(R.string.players_count, it) }, partsSummary(game), formatSize(game.fullSize)).joinToString("  ·  "),
             style = MaterialTheme.typography.bodyMedium,

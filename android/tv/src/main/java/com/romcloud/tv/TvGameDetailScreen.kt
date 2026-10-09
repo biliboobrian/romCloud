@@ -1,12 +1,8 @@
 package com.romcloud.tv
 
-import androidx.compose.foundation.focusable
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import com.romcloud.app.ui.GameFact
-import com.romcloud.app.ui.gameFacts
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -41,6 +38,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -62,13 +61,15 @@ import com.romcloud.app.data.Game
 import com.romcloud.app.data.starsText
 import com.romcloud.app.ui.DownloadedGreen
 import com.romcloud.app.ui.GameDetailViewModel
+import com.romcloud.app.ui.GameFact
+import com.romcloud.app.ui.OfflineBadge
+import com.romcloud.app.ui.OnlineSaveLabel
+import com.romcloud.app.ui.PlaytimeLabel
 import com.romcloud.app.ui.RetroArchHelpDialog
 import com.romcloud.app.ui.formatSize
-import com.romcloud.app.ui.partsSummary
-import com.romcloud.app.ui.PlaytimeLabel
+import com.romcloud.app.ui.gameFacts
 import com.romcloud.app.ui.gamePlaytime
-import com.romcloud.app.ui.OnlineSaveLabel
-import com.romcloud.app.ui.OfflineBadge
+import com.romcloud.app.ui.partsSummary
 import com.romcloud.core.R
 
 @Composable
@@ -79,6 +80,7 @@ fun TvGameDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val peers by viewModel.peers.collectAsStateWithLifecycle()
     val activity = LocalContext.current as Activity
     var pickEmulator by remember { mutableStateOf(false) }
     var showRetroArchHelp by remember { mutableStateOf(false) }
@@ -188,6 +190,11 @@ fun TvGameDetailScreen(
                                 SecondaryButton(stringResource(R.string.action_play), Icons.Filled.Replay) { viewModel.play(activity)?.let(onMessage) }
                             } else {
                                 ActionButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, primary) { viewModel.play(activity)?.let(onMessage) }
+                            }
+                            if (viewModel.canPlayTogether(peers)) {
+                                SecondaryButton(stringResource(R.string.netplay_play_together), Icons.Filled.Groups) {
+                                    viewModel.hostNetplay(activity)?.let(onMessage)
+                                }
                             }
                             if (state.missingBios.isNotEmpty()) {
                                 SecondaryButton(stringResource(R.string.action_download_bios), Icons.Filled.CloudDownload) { viewModel.downloadBios() }
