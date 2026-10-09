@@ -395,6 +395,34 @@ void selectControllers(unsigned ports) {
   }
 }
 
+// Appel d'une fonction du cœur qui préserve les registres que Windows impose de préserver (rbx,
+// rbp, rdi, rsi, r12 à r15, xmm6 à xmm15). Le recompilateur de PCSX ReARMed (Lightrec) écrase
+// xmm6 à xmm15 sans les rétablir : les valeurs que le moteur y gardait d'un appel à l'autre (heure
+// de départ, fréquence de l'horloge) devenaient fausses et la boucle attendait indéfiniment.
+// Pile : adresse de retour + 8 registres (alignée), 32 octets réservés à l'appelé, 160 pour xmm6-15.
+extern "C" void romcloud_call_preserving(void (*fn)());
+__asm__(
+    ".text\n"
+    ".globl romcloud_call_preserving\n"
+    "romcloud_call_preserving:\n"
+    "  pushq %rbp\n"
+    "  movq %rsp, %rbp\n"
+    "  pushq %rbx\n  pushq %rsi\n  pushq %rdi\n  pushq %r12\n  pushq %r13\n  pushq %r14\n  pushq %r15\n"
+    "  subq $200, %rsp\n"
+    "  movdqu %xmm6, 32(%rsp)\n  movdqu %xmm7, 48(%rsp)\n  movdqu %xmm8, 64(%rsp)\n  movdqu %xmm9, 80(%rsp)\n"
+    "  movdqu %xmm10, 96(%rsp)\n  movdqu %xmm11, 112(%rsp)\n  movdqu %xmm12, 128(%rsp)\n  movdqu %xmm13, 144(%rsp)\n"
+    "  movdqu %xmm14, 160(%rsp)\n  movdqu %xmm15, 176(%rsp)\n"
+    "  callq *%rcx\n"
+    "  movdqu 32(%rsp), %xmm6\n  movdqu 48(%rsp), %xmm7\n  movdqu 64(%rsp), %xmm8\n  movdqu 80(%rsp), %xmm9\n"
+    "  movdqu 96(%rsp), %xmm10\n  movdqu 112(%rsp), %xmm11\n  movdqu 128(%rsp), %xmm12\n  movdqu 144(%rsp), %xmm13\n"
+    "  movdqu 160(%rsp), %xmm14\n  movdqu 176(%rsp), %xmm15\n"
+    "  addq $200, %rsp\n"
+    "  popq %r15\n  popq %r14\n  popq %r13\n  popq %r12\n  popq %rdi\n  popq %rsi\n  popq %rbx\n"
+    "  popq %rbp\n"
+    "  retq\n");
+
+void runCore() { romcloud_call_preserving(g.api.run); }
+
 void initCore() {
   // Ordre de RetroArch : environnement, retro_init, puis les autres fonctions. Mesen et Mesen-S
   // créent dans retro_init l'objet qui reçoit la fonction d'affichage (arrêt net sinon).
