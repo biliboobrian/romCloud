@@ -171,11 +171,12 @@ fn sram_path(core: &str, rom: &str) -> PathBuf {
 
 /**
  * Lance le jeu dans le moteur intégré (le cœur est téléchargé avant si besoin) ; `resume` :
- * reprend la partie à son état de sauvegarde. Profil connecté : les sauvegardes en ligne plus
+ * reprend la partie à son état de sauvegarde ; `extra` : arguments du moteur en plus (jeu à plusieurs).
+ * Profil connecté : les sauvegardes en ligne plus
  * récentes sont récupérées avant, et à la fermeture du moteur, le temps de jeu est compté et les
  * sauvegardes modifiées sont envoyées au serveur.
  */
-pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume: bool) -> Result<()> {
+pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume: bool, extra: Vec<String>) -> Result<()> {
     if !available() {
         return Err(AppError::new("errors.playerMissing", json!({ "path": player_path().to_string_lossy() })));
     }
@@ -193,7 +194,7 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
     let language = settings::language();
     let title = if s(game, "title").is_empty() { paths::stem(file) } else { s(game, "title").to_string() };
     let text = |p: PathBuf| p.to_string_lossy().into_owned();
-    let args = cores::player_args(&cores::PlayerArgs {
+    let mut args = cores::player_args(&cores::PlayerArgs {
         dll: text(dll),
         rom: rom.clone(),
         system_dir: text(settings::bios_dir()),
@@ -210,6 +211,8 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         pad_style: Some(keyboard::console_pad(system_key, core).to_string()),
         option_defaults: cores::game_option_defaults(core, &rom),
     });
+    // Jeu à plusieurs en réseau local (netplay.rs) : partie proposée ou rejointe.
+    args.extend(extra);
     std::fs::create_dir_all(&base)?;
     if !keys_file().exists() {
         save_keys(&load_keys())?;

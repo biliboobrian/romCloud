@@ -9,7 +9,7 @@
 use crate::catalog::{self, Emulator};
 use crate::error::{AppError, Result};
 use crate::library::s;
-use crate::{account, builtin, cores, library, managed, paths, settings};
+use crate::{account, builtin, cores, library, managed, netplay, paths, settings};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -314,16 +314,45 @@ pub async fn resumable_online(system: &Value, game: &Value) -> Value {
     }
 }
 
-/// Lance le jeu (`resume` : reprend la partie sauvegardée, moteur intégré).
+/// Jeu à plusieurs en réseau local : `{ host: true }` (partie proposée, émulateur choisi) ou
+/// `{ join: { address, port, peerName, game } }` (partie rejointe, avec le cœur de l'hôte).
+async fn play_together(system: &Value, game: &Value, together: &Value) -> Result<Value> {
+    let needs_builtin = || AppError::new("errors.netplayBuiltin", json!({}));
+    if let Some(join) = together.get("join").filter(|j| j.is_object()) {
+        let core = s(&join["game"], "core");
+        if !netplay::core_allows(core) || !cores::valid_core(core) {
+            return Err(needs_builtin());
+        }
+        let main = library::file_for(system, game).to_string_lossy().into_owned();
+        if !library::is_downloaded(system, game) {
+            return Err(AppError::new("errors.notDownloaded", json!({ "file": main })));
+        }
+        let file = library::playlist(system, game).map(|p| p.to_string_lossy().into_owned()).unwrap_or(main);
+        builtin::launch(system, game, &file, core, false, netplay::join_args(join)).await?;
+        return Ok(json!({ "manual": false }));
+    }
+    match prepare(system, game)? {
+        Plan::Builtin { core, file, .. } if netplay::core_allows(&core) => {
+            builtin::launch(system, game, &file, &core, false, netplay::host_args(system, game, &core)).await?;
+            Ok(json!({ "manual": false }))
+        }
+        _ => Err(needs_builtin()),
+    }
+}
+
+/// Lance le jeu (`resume` : reprend la partie sauvegardée, moteur intégré ; `netplay` : jeu à plusieurs).
 pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value> {
     let resume = options.get("resume").and_then(Value::as_bool).unwrap_or(false);
+    if let Some(together) = options.get("netplay").filter(|n| n.is_object()) {
+        return play_together(system, game, together).await;
+    }
     match prepare(system, game)? {
         Plan::Builtin { core, file, .. } if managed::by_core(&core).is_some() => {
             managed::launch(managed::by_core(&core).unwrap(), game, &file, &library::extras(system, game)).await?;
             Ok(json!({ "manual": false }))
         }
         Plan::Builtin { core, file, .. } => {
-            builtin::launch(system, game, &file, &core, resume).await?;
+            builtin::launch(system, game, &file, &core, resume, Vec::new()).await?;
             Ok(json!({ "manual": false }))
         }
         Plan::Open(file) => {

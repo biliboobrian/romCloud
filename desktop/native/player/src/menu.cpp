@@ -102,6 +102,23 @@ static const struct {
     {"btn_left", "Gauche", "Left"},
     {"btn_right", "Droite", "Right"},
     {"menu_hint", "Échap ou Start + Select : menu", "Esc or Start + Select: menu"},
+    // Jeu à plusieurs en réseau local ({name} : l'autre joueur).
+    {"netplay_open", "Proposé sur le réseau local : en attente d'un joueur…", "Offered on the local network: waiting for a player…"},
+    {"netplay_waiting", "En attente de {name}…", "Waiting for {name}…"},
+    {"netplay_playing", "À deux avec {name}", "Together with {name}"},
+    {"netplay_request", "{name} veut rejoindre votre partie en joueur 2", "{name} wants to join your game as player 2"},
+    {"netplay_request_hint", "A / Entrée : accepter   B / Échap : refuser", "A / Enter: accept   B / Esc: decline"},
+    {"netplay_connecting", "Connexion à {name}…", "Joining {name}…"},
+    {"netplay_started", "Partie à deux avec {name}", "Playing with {name}"},
+    {"netplay_ended", "Partie avec {name} terminée : vous continuez seul", "Game with {name} ended: you keep playing alone"},
+    {"netplay_refused", "{name} a refusé", "{name} declined"},
+    {"netplay_busy", "{name} joue déjà avec quelqu'un d'autre", "{name} is already playing with someone else"},
+    {"netplay_other_game", "L'autre appareil a une autre version du jeu ou de l'émulateur", "The other device runs a different version of the game or emulator"},
+    {"netplay_other_version", "Mettez RomCloud à jour sur les deux appareils pour jouer ensemble", "Update RomCloud on both devices to play together"},
+    {"netplay_unreachable", "Impossible de joindre {name}", "Could not reach {name}"},
+    {"netplay_core_differs", "Versions de l'émulateur différentes avec {name} : risque de désynchronisation", "Different emulator versions with {name}: the game may get out of sync"},
+    {"netplay_unavailable", "Jeu à plusieurs impossible (réseau)", "Playing together is unavailable (network)"},
+    {"netplay_leave", "Arrêter la partie à plusieurs", "Stop playing together"},
 };
 
 Menu::Menu(std::string language, std::string title, std::string core)
@@ -159,15 +176,21 @@ void Menu::openKeys() {
   keyMessage_.clear();
 }
 
-int Menu::itemCount(const MenuState& state) const { return state.diskCount > 1 ? 13 : 12; }
-
-Menu::Item Menu::itemAt(int index, const MenuState& state) const {
-  static const Item withDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options, Item::Keys,
-                                  Item::Pad, Item::Disk, Item::Filter, Item::Aspect, Item::Fullscreen, Item::SaveQuit, Item::Quit};
-  static const Item withoutDisk[] = {Item::Resume, Item::SaveState, Item::LoadState, Item::Reset, Item::Options,
-                                     Item::Keys, Item::Pad, Item::Filter, Item::Aspect, Item::Fullscreen, Item::SaveQuit, Item::Quit};
-  return state.diskCount > 1 ? withDisk[index] : withoutDisk[index];
+/** Entrées du menu ; partie à plusieurs : rien qui ne changerait que cet appareil. */
+std::vector<Menu::Item> Menu::items(const MenuState& state) const {
+  std::vector<Item> list = {Item::Resume, Item::SaveState};
+  if (!state.together) list.insert(list.end(), {Item::LoadState, Item::Reset, Item::Options});
+  list.insert(list.end(), {Item::Keys, Item::Pad});
+  if (state.diskCount > 1 && !state.together) list.push_back(Item::Disk);
+  list.insert(list.end(), {Item::Filter, Item::Aspect, Item::Fullscreen});
+  if (state.netplay) list.push_back(Item::LeaveNetplay);
+  list.insert(list.end(), {Item::SaveQuit, Item::Quit});
+  return list;
 }
+
+int Menu::itemCount(const MenuState& state) const { return (int)items(state).size(); }
+
+Menu::Item Menu::itemAt(int index, const MenuState& state) const { return items(state)[(size_t)index]; }
 
 std::string Menu::itemLabel(Item item, const MenuState& state) const {
   switch (item) {
@@ -190,6 +213,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
       return tr("aspect") + " : " + tr(names[state.aspect]);
     }
     case Item::Fullscreen: return tr("fullscreen") + " : " + tr(state.fullscreen ? "yes" : "no");
+    case Item::LeaveNetplay: return tr("netplay_leave");
     case Item::SaveQuit: return tr("save_quit");
     case Item::Quit: return tr("quit");
   }
@@ -269,6 +293,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
         case Item::Filter: return MenuAction::NextFilter;
         case Item::Aspect: return MenuAction::NextAspect;
         case Item::Fullscreen: return MenuAction::ToggleFullscreen;
+        case Item::LeaveNetplay: return MenuAction::LeaveNetplay;
         case Item::SaveQuit: return MenuAction::SaveQuit;
         case Item::Quit: return MenuAction::Quit;
       }

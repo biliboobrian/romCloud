@@ -37,6 +37,8 @@ struct CoreApi {
   size_t (*get_memory_size)(unsigned);
 };
 
+class Netplay;
+
 struct Session {
   CoreApi api{};
   void* library = nullptr;
@@ -71,6 +73,8 @@ struct Session {
   Video* video = nullptr;
   Audio* audio = nullptr;
   Input* input = nullptr;
+  /** Jeu à plusieurs en réseau local : touches des joueurs pendant une image (sinon null). */
+  Netplay* netplay = nullptr;
 };
 
 extern Session g;
