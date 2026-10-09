@@ -94,6 +94,33 @@ async fn call(api_path: &str, method: reqwest::Method, body: Body, raw: bool, ex
     Ok(Response { json: res.json().await.unwrap_or(Value::Null), bytes: vec![] })
 }
 
+/// Profil connecté sur ce PC.
+pub fn signed_in() -> bool {
+    session().is_some()
+}
+
+/// Jeu par Internet : annonce de ce PC ; renvoie la réponse du serveur (autres appareils connectés).
+pub async fn play_presence(body: Value) -> Result<Value> {
+    Ok(call("/api/account/play/presence", reqwest::Method::PUT, Body::Json(body), false, &[], Duration::from_secs(8)).await?.json)
+}
+
+/// Connexion de relais à ouvrir (partie [session], [channel], rôle [role]), ou None sans profil.
+pub fn relay_request(session: &str, channel: &str, role: &str) -> Option<crate::relay::Request> {
+    let token = self::session()?.get("token").and_then(Value::as_str)?.to_string();
+    let server = settings::get_str("serverUrl");
+    if server.is_empty() {
+        return None;
+    }
+    let mut headers: Vec<(String, String)> = api::headers(&settings::get_str("apiKey"))
+        .iter()
+        .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str().to_string(), v.to_string())))
+        .collect();
+    headers.push(("X-RomCloud-Session".into(), token));
+    headers.push(("X-RomCloud-Device".into(), hostname()));
+    headers.push(("X-RomCloud-Version".into(), version()));
+    Some(crate::relay::Request { url: format!("{server}/api/play/relay?session={session}&channel={channel}&role={role}"), headers })
+}
+
 async fn get(api_path: &str, timeout_ms: u64) -> Result<Value> {
     Ok(call(api_path, reqwest::Method::GET, Body::None, false, &[], Duration::from_millis(timeout_ms)).await?.json)
 }

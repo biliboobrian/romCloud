@@ -12,11 +12,31 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 static AVAILABLE: Mutex<Option<Update>> = Mutex::new(None);
 
-/// Taille de l'installeur (en-tête de la réponse), 0 si inconnue.
+/// Taille annoncée par les en-têtes : total de Content-Range (« bytes 0-0/2933729 »), sinon
+/// Content-Length ; 0 si inconnue.
+fn header_size(headers: &reqwest::header::HeaderMap) -> u64 {
+    let text = |name| headers.get(name).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let range = text(reqwest::header::CONTENT_RANGE);
+    if let Some(total) = range.rsplit('/').next().filter(|_| !range.is_empty()).and_then(|t| t.trim().parse().ok()) {
+        return total;
+    }
+    text(reqwest::header::CONTENT_LENGTH).trim().parse().unwrap_or(0)
+}
+
+/// Taille de l'installeur, 0 si inconnue. L'en-tête Content-Length est lu directement :
+/// `content_length()` de reqwest donne la taille du corps reçu, vide pour une requête HEAD (0). À
+/// défaut, le premier octet est demandé et la taille lue dans Content-Range.
 async fn installer_size(url: &str) -> u64 {
-    match api::client().head(url).timeout(Duration::from_secs(10)).send().await {
-        Ok(res) => res.content_length().unwrap_or(0),
-        Err(_) => 0,
+    let client = api::client();
+    if let Ok(res) = client.head(url).timeout(Duration::from_secs(10)).send().await {
+        let size = if res.status().is_success() { header_size(res.headers()) } else { 0 };
+        if size > 0 {
+            return size;
+        }
+    }
+    match client.get(url).header(reqwest::header::RANGE, "bytes=0-0").timeout(Duration::from_secs(10)).send().await {
+        Ok(res) if res.status().is_success() => header_size(res.headers()),
+        _ => 0,
     }
 }
 
@@ -68,4 +88,22 @@ pub async fn install() -> Result<()> {
         handle.restart();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_RANGE};
+
+    #[test]
+    fn taille_lue_dans_les_en_tetes() {
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_LENGTH, HeaderValue::from_static("2933729"));
+        assert_eq!(header_size(&headers), 2933729);
+        // Premier octet demandé : la taille totale est dans Content-Range.
+        headers.insert(CONTENT_LENGTH, HeaderValue::from_static("1"));
+        headers.insert(CONTENT_RANGE, HeaderValue::from_static("bytes 0-0/2933729"));
+        assert_eq!(header_size(&headers), 2933729);
+        assert_eq!(header_size(&HeaderMap::new()), 0);
+    }
 }

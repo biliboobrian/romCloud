@@ -82,7 +82,8 @@ fun NetplayDialog(app: RomCloudApp, peers: List<Peer>, onMessage: (String) -> Un
                 peers.forEach { peer ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column(Modifier.weight(1f)) {
-                            Text("${peer.name} · ${platformLabel(peer.platform)}", style = MaterialTheme.typography.titleSmall)
+                            val via = if (peer.internet) " · ${stringResource(R.string.netplay_via_internet)}" else ""
+                            Text("${peer.displayName} · ${platformLabel(peer.platform)}$via", style = MaterialTheme.typography.titleSmall)
                             val hosting = peer.hosting
                             Text(
                                 when {

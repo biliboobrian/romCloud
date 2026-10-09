@@ -8,6 +8,7 @@
 //                   [--netplay-host | --netplay-join <adresse:port> --netplay-peer <nom de l'hôte>]
 //                   [--netplay-game <jeu (JSON)>] [--device-id <identifiant>] [--device-name <nom>]
 //                   [--netplay-link <gb|gba|psp> [--netplay-packets] [--netplay-multi]] [--linked <nom>]
+//                   [--netplay-port <port d'écoute de l'hôte>] [--netplay-delay <images de délai demandées>]
 //                   [--option <clé>=<valeur>]…
 //
 // Jeu à plusieurs en réseau local (netplay.h) : partie proposée (--netplay-host) ou rejointe
@@ -56,6 +57,7 @@ struct Args {
   bool netplayHost = false;
   std::string netplayJoin, netplayPeer, netplayGame, deviceId, deviceName;
   std::string netplayLink, linked;
+  std::string netplayPort, netplayDelay;  // jeu par Internet : port relié au relais, délai demandé
   bool netplayPackets = false, netplayMulti = false;
   std::vector<std::string> optionsForced;  // options imposées (liaison entre consoles)
   // Mode d'essai : fenêtre cachée, N images au plus vite, dernière image enregistrée en BMP.
@@ -79,6 +81,7 @@ Args parseArgs(int argc, char** argv) {
       {"--netplay-join", &a.netplayJoin}, {"--netplay-peer", &a.netplayPeer}, {"--netplay-game", &a.netplayGame},
       {"--device-id", &a.deviceId},     {"--device-name", &a.deviceName},
       {"--netplay-link", &a.netplayLink}, {"--linked", &a.linked},
+      {"--netplay-port", &a.netplayPort}, {"--netplay-delay", &a.netplayDelay},
   };
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
@@ -675,6 +678,9 @@ void Player::startNetplay() {
   jsonField(args_.netplayGame, "title", game.title);
   jsonField(args_.netplayGame, "fileName", game.fileName);
   jsonField(args_.netplayGame, "core", game.core);
+  jsonField(args_.netplayGame, "session", game.session);
+  config.listenPort = atoi(args_.netplayPort.c_str());
+  config.delay = atoi(args_.netplayDelay.c_str());
   if (jsonField(args_.netplayGame, "size", value)) game.size = atoll(value.c_str());
   config.deviceId = args_.deviceId;
   config.deviceName = args_.deviceName.empty() ? "PC" : args_.deviceName;

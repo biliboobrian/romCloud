@@ -1120,6 +1120,9 @@
     S.netplayAllowed[system.id] = await call(rc.netplay.systemTogether, system).catch(() => null);
   }
 
+  /** Nom affiché d'un appareil : précédé du profil par Internet (« alice · Pixel 8 »). */
+  const peerName = (p) => (p.internet && p.user ? `${p.user} · ${p.name}` : p.name);
+
   const platformLabel = (p) => t(p === 'androidtv' ? 'netplay.platform.tv' : p === 'windows' ? 'netplay.platform.pc' : 'netplay.platform.phone');
 
   /** Appareils du réseau et parties qu'ils proposent : « Rejoindre ». */
@@ -1129,7 +1132,7 @@
       body: `<p class="muted">${esc(t('netplay.intro'))}</p>
         ${S.peers.length ? '' : `<p>${esc(t('netplay.nobody'))}</p>`}
         <div class="netplay-list">${S.peers.map((p) => `<div class="line">
-          <div style="flex:1"><strong>${esc(p.name)}</strong> <span class="muted">· ${esc(platformLabel(p.platform))}</span>
+          <div style="flex:1"><strong>${esc(peerName(p))}</strong> <span class="muted">· ${esc(platformLabel(p.platform))}${p.internet ? ` · ${esc(t('netplay.viaInternet'))}` : ''}</span>
             <div class="muted small">${esc(p.hosting?.link ? t('link.hosting', { title: p.hosting.title }) : p.hosting ? t('netplay.hosting', { title: p.hosting.title }) : p.busy ? t('netplay.busyPeer') : t('netplay.available'))}</div></div>
           ${p.hosting ? `<button class="btn primary" data-join="${esc(p.id)}">${esc(t(p.hosting.link ? 'link.joinShort' : 'netplay.join'))}</button>` : ''}
         </div>`).join('')}</div>`,
@@ -1169,7 +1172,8 @@
       toast(t('netplay.downloading', { title: game.title }));
       return;
     }
-    play(system, game, { netplay: { join: { address: peer.address, port: peer.port, peerName: peer.name, game: hosted } } });
+    // Par Internet : relais du serveur ; aller-retour de l'hôte jusqu'au serveur (délai des touches).
+    play(system, game, { netplay: { join: { address: peer.address, port: peer.port, peerName: peerName(peer), game: hosted, internet: !!peer.internet, rtt: peer.rtt || 0 } } });
   }
 
   /** État des appareils qui change les icônes et les boutons : appareils libres, parties proposées. */
@@ -1520,7 +1524,7 @@
 
     let actions = '';
     // Ce jeu proposé par un autre appareil : partie rejointe (jeu téléchargé d'abord s'il manque).
-    const joinBtns = hostsOf(game).map((p) => `<button class="btn primary big" data-join-peer="${esc(p.id)}">${icon(p.hosting.link ? 'link' : 'group')} ${esc(t(p.hosting.link ? 'link.joinPeer' : 'netplay.joinPeer', { name: p.name }))}</button>`).join('');
+    const joinBtns = hostsOf(game).map((p) => `<button class="btn primary big" data-join-peer="${esc(p.id)}">${icon(p.hosting.link ? 'link' : 'group')} ${esc(t(p.hosting.link ? 'link.joinPeer' : 'netplay.joinPeer', { name: peerName(p) }))}</button>`).join('');
     if (st.kind === 'running') {
       actions = `<div style="flex:1"><div class="bar"><div style="width:${Math.round(st.progress * 100)}%"></div></div>
         <p class="muted">${esc(t('download.progress', { bytes: formatSize(st.d.bytes), total: formatSize(st.d.total) }))}</p></div>
@@ -1911,7 +1915,7 @@
     modal({
       title: t('update.title'),
       body: `<p>${esc(t('update.text', { version: update.version, installed: update.installed }))}</p>
-        <p class="muted">${esc(t(update.portable ? 'update.portable' : 'update.installer', { size: formatSize(update.size) }))}</p>`,
+        <p class="muted">${esc(t(update.portable ? 'update.portable' : 'update.installer', { size: update.size ? formatSize(update.size) : t('update.sizeUnknown') }))}</p>`,
       buttons: [
         { label: t('update.later'), kind: 'ghost' },
         { label: t('update.install'), kind: 'primary', onClick: () => installUpdate(update) },
@@ -1923,14 +1927,18 @@
     const root = modal({
       title: t('update.downloading', { version: update.version }),
       body: `<div class="progress update-progress"><div style="width:0%"></div></div>
-        <p class="muted" id="updateBytes">${esc(formatSize(0))} / ${esc(formatSize(update.size))}</p>`,
+        <p class="muted" id="updateBytes">${esc(formatSize(0))}${update.size ? ` / ${esc(formatSize(update.size))}` : ''}</p>`,
       buttons: [],
     });
-    rc.update.onProgress(({ bytes, total }) => {
+    rc.update.onProgress(({ bytes, total: announced }) => {
+      // Taille annoncée par le téléchargement, sinon celle trouvée en cherchant la mise à jour.
+      const total = announced || update.size;
       const bar = $('.progress > div', root);
-      if (bar) bar.style.width = `${Math.round((bytes / total) * 100)}%`;
+      if (bar && total) bar.style.width = `${Math.min(100, Math.round((bytes / total) * 100))}%`;
       const text = $('#updateBytes', root);
-      if (text) text.textContent = bytes >= total ? t('update.restarting') : `${formatSize(bytes)} / ${formatSize(total)}`;
+      if (!text) return;
+      if (total && bytes >= total) text.textContent = t('update.restarting');
+      else text.textContent = total ? `${formatSize(bytes)} / ${formatSize(total)}` : formatSize(bytes);
     });
     try {
       await call(rc.update.install); // RomCloud se ferme puis se relance une fois à jour

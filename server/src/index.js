@@ -1,7 +1,8 @@
 import os from 'node:os';
 import path from 'node:path';
 import express from 'express';
-import { api } from './api.js';
+import { api, relayAuth } from './api.js';
+import { handleUpgrade } from './play.js';
 import { config, screenscraperEnabled } from './config.js';
 import { defaultLanguage, t, translateToken } from './i18n.js';
 import { scanAll } from './library.js';
@@ -18,7 +19,7 @@ try {
   console.error(t(defaultLanguage, 'log.initialScanFailed', { error: translateToken(err.message, defaultLanguage) }));
 }
 
-app.listen(config.port, config.host, () => {
+const server = app.listen(config.port, config.host, () => {
   const addresses = Object.values(os.networkInterfaces())
     .flat()
     .filter((i) => i && i.family === 'IPv4' && !i.internal)
@@ -29,4 +30,10 @@ app.listen(config.port, config.host, () => {
   console.log(t(defaultLanguage, config.apiKey ? 'log.apiKeyOn' : 'log.apiKeyOff'));
   console.log(t(defaultLanguage, config.adminKey ? 'log.adminKeyOn' : 'log.adminKeyOff'));
   console.log(t(defaultLanguage, screenscraperEnabled() ? 'log.ssOn' : 'log.ssOff'));
+});
+
+// Jeu à plusieurs par Internet : relais entre deux appareils (play.js).
+server.on('upgrade', (req, socket, head) => {
+  if (head?.length) socket.unshift(head);
+  if (!handleUpgrade(req, socket, relayAuth)) socket.destroy();
 });

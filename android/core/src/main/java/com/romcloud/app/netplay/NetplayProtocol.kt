@@ -24,6 +24,10 @@ object NetplayProtocol {
     const val PEER_TTL_MS = 7000L
     /** Images entre l'appui et son effet (environ 50 ms à 60 images/s) : marge du réseau local. */
     const val DELAY_FRAMES = 3
+    /** Images de délai au plus (Internet). */
+    const val MAX_DELAY_FRAMES = 15
+    /** Annonce au serveur (jeu par Internet) : intervalle. */
+    const val INTERNET_ANNOUNCE_MS = 10_000L
 
     /** Raisons d'un refus ([Answer.reason]). */
     const val REFUSED = "refused"
@@ -52,7 +56,8 @@ object NetplayProtocol {
 
     /**
      * Jeu d'une partie proposée : identifiant sur le serveur, fichier et cœur (les mêmes chez l'invité) ;
-     * [link] : liaison entre consoles ([LinkKind.id]), l'invité y relie sa console avec son propre jeu.
+     * [link] : liaison entre consoles ([LinkKind.id]), l'invité y relie sa console avec son propre jeu ;
+     * [session] : partie aussi proposée par Internet, rejointe par le relais du serveur avec cet identifiant.
      */
     @Serializable
     data class HostedGame(
@@ -63,6 +68,7 @@ object NetplayProtocol {
         val size: Long,
         val core: String,
         val link: String? = null,
+        val session: String? = null,
     )
 
     /** Demande de l'invité : son jeu (même fichier) et son cœur (même nom ; taille comparée) ; [link] : liaison demandée. */
@@ -76,6 +82,8 @@ object NetplayProtocol {
         val core: String,
         val coreSize: Long,
         val link: String? = null,
+        /** Images de délai souhaitées (Internet : d'après les allers-retours mesurés), 0 : celui de l'hôte. */
+        val delay: Int = 0,
     )
 
     /** Réponse de l'hôte ; [coreSize] : taille de son cœur (différente : versions différentes). */
@@ -85,7 +93,11 @@ object NetplayProtocol {
     const val APP = "romcloud"
 }
 
-/** Appareil RomCloud du réseau local, vu par ses annonces ; [busy] : en partie avec un autre appareil. */
+/**
+ * Appareil RomCloud joignable, vu par ses annonces ; [busy] : en partie avec un autre appareil ;
+ * [internet] : par Internet (profil [user], même serveur ; aller-retour [rtt] jusqu'au serveur),
+ * sinon sur le réseau local ([address], [port]).
+ */
 data class Peer(
     val id: String,
     val name: String,
@@ -95,7 +107,13 @@ data class Peer(
     val hosting: NetplayProtocol.HostedGame?,
     val seenAt: Long,
     val busy: Boolean = false,
+    val user: String? = null,
+    val internet: Boolean = false,
+    val rtt: Int = 0,
 ) {
+    /** Nom affiché : appareil, précédé du profil par Internet (« alice · Pixel 8 »). */
+    val displayName: String get() = if (internet && !user.isNullOrBlank()) "$user · $name" else name
+
     /** Libre : ni hôte d'une partie, ni en partie ; peut rejoindre une partie proposée. */
     val available: Boolean get() = hosting == null && !busy
 

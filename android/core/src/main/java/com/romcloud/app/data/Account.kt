@@ -271,6 +271,51 @@ class Account(private val context: Context, private val api: ApiClient, private 
         execute(request("/api/account/stream/receiver").put(body), 10)
     }
 
+    // -------------------------------------------------------------------------
+    // Jeu à plusieurs par Internet (relais du serveur)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Annonce de cet appareil (partie proposée, « en partie », aller-retour mesuré) ; renvoie les
+     * autres appareils connectés, ou null sans profil (ou hors ligne : exception).
+     */
+    suspend fun playPresence(
+        deviceId: String,
+        name: String,
+        platform: String,
+        hosting: com.romcloud.app.netplay.NetplayProtocol.HostedGame?,
+        busy: Boolean,
+        rtt: Int,
+    ): com.romcloud.app.netplay.PlayPresenceResponse? {
+        if (token == null) return null
+        val body = buildJsonObject {
+            put("deviceId", JsonPrimitive(deviceId))
+            put("name", JsonPrimitive(name))
+            put("platform", JsonPrimitive(platform))
+            put("busy", JsonPrimitive(busy))
+            put("rtt", JsonPrimitive(rtt))
+            if (hosting != null) put("hosting", json.encodeToJsonElement(com.romcloud.app.netplay.NetplayProtocol.HostedGame.serializer(), hosting))
+        }.toString().toRequestBody(JSON)
+        return json.decodeFromString(com.romcloud.app.netplay.PlayPresenceResponse.serializer(), execute(request("/api/account/play/presence").put(body), 8))
+    }
+
+    suspend fun withdrawPlayPresence(deviceId: String) {
+        if (token == null) return
+        execute(request("/api/account/play/presence/$deviceId").delete(), 5)
+    }
+
+    /** Connexion de relais à ouvrir (partie [session], [channel], rôle [role]), ou null sans profil. */
+    fun relayRequest(session: String, channel: String, role: String): com.romcloud.app.netplay.RelayRequest? {
+        val session0 = token ?: return null
+        val url = runCatching { api.url("/api/play/relay?session=$session&channel=$channel&role=$role") }.getOrNull() ?: return null
+        return com.romcloud.app.netplay.RelayRequest(url, api.authHeaders() + mapOf(
+            "X-RomCloud-Session" to session0,
+            "X-RomCloud-Device" to deviceName,
+            "X-RomCloud-Platform" to api.platform,
+            "X-RomCloud-Version" to appVersion,
+        ))
+    }
+
     /** TV : application quittée, plus proposée aux téléphones. */
     suspend fun withdrawReceiver() {
         if (token == null) return

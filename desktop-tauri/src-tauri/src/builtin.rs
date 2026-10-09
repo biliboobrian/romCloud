@@ -239,6 +239,7 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
     let (system, game, core) = (system.clone(), game.clone(), core.to_string());
     tauri::async_runtime::spawn(async move {
         let code = child.wait().await.ok().and_then(|s| s.code()).unwrap_or(0);
+        crate::netplay::player_exited();
         account::add_playtime(game_id.clone(), (paths::now_ms() - started) / 1000.0).await;
         account::upload_changed(&game_id, &core, &save_files, started - 2000.0).await;
         if let Some((other, path)) = linked_sram {
