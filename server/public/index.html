@@ -134,6 +134,13 @@
       <label><span data-i18n="field.regex"></span> <input name="filenameRegex"></label>
       <label><span data-i18n="field.libretro"></span> <input name="libretroName"></label>
       <label><span data-i18n="field.ssId"></span> <input name="screenscraperId" type="number" min="1"></label>
+      <fieldset class="platforms">
+        <legend data-i18n="sys.platforms"></legend>
+        <label class="inline"><input type="checkbox" name="platforms" value="android"> <span data-i18n="platform.android"></span></label>
+        <label class="inline"><input type="checkbox" name="platforms" value="androidtv"> <span data-i18n="platform.androidtv"></span></label>
+        <label class="inline"><input type="checkbox" name="platforms" value="windows"> <span data-i18n="platform.windows"></span></label>
+        <span class="muted" data-i18n="sys.platformsHint"></span>
+      </fieldset>
       <p class="muted" id="sysFolder"></p>
       <details id="sysPlayersBox">
         <summary id="sysPlayersSummary"></summary>

@@ -18,7 +18,11 @@ import java.util.concurrent.TimeUnit
 
 class ApiException(message: String, val code: Int = 0) : IOException(message)
 
-class ApiClient(private val settings: Settings) {
+/**
+ * [platform] : « android » ou « androidtv », envoyé au serveur (en-tête X-RomCloud-Platform) qui ne
+ * liste que les systèmes proposés à cette plateforme.
+ */
+class ApiClient(private val settings: Settings, val platform: String) {
 
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
@@ -30,8 +34,8 @@ class ApiClient(private val settings: Settings) {
     var onReachability: (Boolean) -> Unit = {}
 
     /**
-     * Requêtes destinées au serveur configuré (y compris les images Coil) : clé d'API et langue
-     * de l'application (le serveur renvoie ses messages d'erreur dans cette langue).
+     * Requêtes destinées au serveur configuré (y compris les images Coil) : clé d'API, langue
+     * de l'application (le serveur renvoie ses messages d'erreur dans cette langue) et plateforme.
      */
     private val authInterceptor = Interceptor { chain ->
         val config = settings.config.value
@@ -39,7 +43,7 @@ class ApiClient(private val settings: Settings) {
         val base = config.serverUrl.toHttpUrlOrNull()
         val sameServer = base != null && request.url.host == base.host && request.url.port == base.port
         if (!sameServer) return@Interceptor chain.proceed(request)
-        val builder = request.newBuilder().header("Accept-Language", I18n.language())
+        val builder = request.newBuilder().header("Accept-Language", I18n.language()).header("X-RomCloud-Platform", platform)
         if (config.apiKey.isNotEmpty()) builder.header("Authorization", "Bearer ${config.apiKey}")
         try {
             chain.proceed(builder.build()).also { onReachability(true) }

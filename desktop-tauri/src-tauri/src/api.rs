@@ -23,9 +23,11 @@ fn safe_name(s: &str) -> String {
     s.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' }).collect()
 }
 
-/// En-têtes communs : langue de l'interface, clé d'API.
+/// En-têtes communs : langue de l'interface, clé d'API, plateforme (le serveur ne liste que les
+/// systèmes proposés sous Windows).
 pub fn headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut h = reqwest::header::HeaderMap::new();
+    h.insert("X-RomCloud-Platform", reqwest::header::HeaderValue::from_static("windows"));
     if let Ok(v) = settings::language().parse() {
         h.insert(reqwest::header::ACCEPT_LANGUAGE, v);
     }

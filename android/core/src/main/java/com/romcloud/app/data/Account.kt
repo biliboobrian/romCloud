@@ -1,7 +1,6 @@
 package com.romcloud.app.data
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings as AndroidSettings
 import com.romcloud.app.I18n
@@ -130,7 +129,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
 
     private val token: String? get() = prefs.getString(KEY_TOKEN, null)
 
-    val isTv: Boolean get() = context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    val isTv: Boolean get() = api.platform == "androidtv"
 
     /** Nom de l'appareil (réglages Android, sinon fabricant et modèle). */
     val deviceName: String by lazy {
@@ -150,7 +149,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
     private fun request(path: String, withSession: Boolean = true): Request.Builder =
         Request.Builder().url(api.url(path)).apply {
             header("X-RomCloud-Device", deviceName)
-            header("X-RomCloud-Platform", if (isTv) "androidtv" else "android")
+            header("X-RomCloud-Platform", api.platform)
             header("X-RomCloud-Version", appVersion)
             if (withSession) token?.let { header("X-RomCloud-Session", it) }
         }

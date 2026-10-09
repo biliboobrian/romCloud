@@ -192,6 +192,7 @@ async function showSystem() {
   const bits = [t('system.meta.games', { n: s.gameCount }), formatSize(s.totalSize), t('system.meta.folder', { folder: s.folder })];
   if (s.players.length) bits.push(t('system.meta.emulators', { n: s.players.length }));
   if (s.biosCount) bits.push(t('system.meta.bios', { n: s.biosCount }));
+  if (s.platforms.length) bits.push(t('system.meta.platforms', { list: s.platforms.map((p) => t(`platform.${p}`)).join(', ') }));
   $('#sysMeta').textContent = bits.join(' · ');
   await loadGames();
 }
@@ -319,6 +320,8 @@ function openSystemSettings() {
   for (const k of ['name', 'shortname', 'filenameRegex', 'libretroName', 'screenscraperId']) {
     form.elements[k].value = s[k] ?? '';
   }
+  // Aucune plateforme enregistrée : proposé partout, toutes cochées.
+  for (const box of form.querySelectorAll('input[name="platforms"]')) box.checked = !s.platforms.length || s.platforms.includes(box.value);
   renderSystemImage(s);
   $('#sysFolder').textContent = t('sys.folderInfo', { id: s.id, folder: s.folder });
   renderPlayers(s);
@@ -434,7 +437,10 @@ async function deleteSystemImage() {
 
 async function saveSystemSettings(e) {
   e.preventDefault();
-  const data = Object.fromEntries(new FormData(e.target));
+  const form = new FormData(e.target);
+  const data = Object.fromEntries(form);
+  data.platforms = form.getAll('platforms');
+  if (!data.platforms.length) return toast(t('sys.platformsNone'), 'error');
   await guard(async () => {
     state.current = await api(`/systems/${encodeURIComponent(state.current.id)}`, { method: 'PUT', body: data });
     $('#sysDialog').close();
