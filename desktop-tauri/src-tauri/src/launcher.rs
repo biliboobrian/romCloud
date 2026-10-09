@@ -197,12 +197,19 @@ enum Plan {
     Open(String),
 }
 
+/// Émulateurs du catalogue qui lisent une liste de disques (.m3u).
+const PLAYLIST_EMULATORS: &[&str] = &["duckstation", "mednafen"];
+
 /// Vérifications avant lancement (émulateur installé, cœur présent…).
 fn prepare(system: &Value, game: &Value) -> Result<Plan> {
     let file = library::file_for(system, game).to_string_lossy().into_owned();
     if !library::is_downloaded(system, game) {
         return Err(AppError::new("errors.notDownloaded", json!({ "file": file })));
     }
+    // Jeu en plusieurs disques : liste des disques (.m3u) pour les émulateurs qui la lisent
+    // (changement de disque en jeu), sinon le premier disque.
+    let main = file.clone();
+    let playlist = || library::playlist(system, game).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| main.clone());
     let opts = options(system);
     let selected = opts["selected"].clone();
     let option = opts["options"].as_array().and_then(|l| l.iter().find(|o| o["id"] == selected).cloned()).unwrap_or(Value::Null);
@@ -214,6 +221,7 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
         }
         "builtin" => {
             let core = s(&option, "core").to_string();
+            let file = playlist();
             Ok(Plan::Builtin {
                 exe: builtin::player_path().to_string_lossy().into_owned(),
                 args: vec!["--core".into(), format!("{core}_libretro.dll"), "--rom".into(), file.clone()],
@@ -231,11 +239,12 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
             if !dll.exists() {
                 return Err(AppError::new("errors.coreMissing", json!({ "core": core, "dir": dll.parent().map(|p| p.to_string_lossy().into_owned()) })));
             }
-            Ok(Plan::Run { exe, args: vec!["-L".into(), dll.to_string_lossy().into_owned(), file] })
+            Ok(Plan::Run { exe, args: vec!["-L".into(), dll.to_string_lossy().into_owned(), playlist()] })
         }
         "emulator" => {
             let emu = catalog::by_id(s(&option, "emuId")).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": option["emuId"] })))?;
             let exe = emulator_path(emu.id).ok_or_else(|| AppError::new("errors.emulatorMissing", json!({ "name": emu.name, "id": emu.id })))?;
+            let file = if PLAYLIST_EMULATORS.contains(&emu.id) { playlist() } else { file };
             match emulator_args(emu) {
                 None => Ok(Plan::Manual { exe, emulator: emu.name.into(), file }),
                 Some(args) => Ok(Plan::Run { exe, args: catalog::build_args(&args, &file) }),
@@ -310,7 +319,7 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
     let resume = options.get("resume").and_then(Value::as_bool).unwrap_or(false);
     match prepare(system, game)? {
         Plan::Builtin { core, file, .. } if managed::by_core(&core).is_some() => {
-            managed::launch(managed::by_core(&core).unwrap(), game, &file).await?;
+            managed::launch(managed::by_core(&core).unwrap(), game, &file, &library::extras(system, game)).await?;
             Ok(json!({ "manual": false }))
         }
         Plan::Builtin { core, file, .. } => {

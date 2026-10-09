@@ -2,7 +2,8 @@
 // PlayStation 3 (RPCS3) et Wii U (Cemu). Dernière version Windows téléchargée depuis GitHub au
 // premier lancement dans %APPDATA%\RomCloud\<émulateur> (l'émulateur y garde aussi sa configuration
 // et les sauvegardes), fichiers système pris dans le dossier des BIOS, jeu lancé en plein écran.
-//  - RPCS3 : firmware installé depuis PS3UPDAT.PUP, jeu = ISO, EBOOT.BIN ou dossier du disque ;
+//  - RPCS3 : firmware installé depuis PS3UPDAT.PUP, mises à jour et DLC du jeu (.pkg) installés une
+//    fois, jeu = ISO, EBOOT.BIN ou dossier du disque ;
 //  - Cemu : mode portable (dossier « portable »), keys.txt copié pour les jeux chiffrés (.wud, .wux),
 //    jeu = .wua, .wud, .wux, .rpx ou dossier code/content/meta.
 use crate::error::{AppError, Result};
@@ -312,13 +313,53 @@ fn rpx_file(dir: &Path, depth: u32) -> Option<PathBuf> {
     dirs.iter().find_map(|d| rpx_file(d, depth - 1))
 }
 
-/// Lance le jeu dans l'émulateur (téléchargé et fichiers système installés avant si besoin) ; le
-/// temps de jeu est compté jusqu'à sa fermeture.
-pub async fn launch(app: &'static App, game: &Value, file: &str) -> Result<()> {
+/// Paquets déjà installés dans RPCS3 (« nom|taille » par ligne).
+fn installed_pkgs_file(root: &Path) -> PathBuf {
+    root.join("romcloud-pkgs.txt")
+}
+
+fn pkg_line(pkg: &Path) -> String {
+    format!("{}|{}", paths::file_name(pkg), paths::size(pkg).unwrap_or(0))
+}
+
+/// Mises à jour et DLC du jeu en .pkg installés dans RPCS3 (sans fenêtre), une fois chacun.
+async fn install_pkgs(root: &Path, exe: &Path, extras: &[PathBuf]) -> Result<()> {
+    let list = installed_pkgs_file(root);
+    for pkg in extras.iter().filter(|p| paths::extension(&p.to_string_lossy()) == ".pkg") {
+        let installed = std::fs::read_to_string(&list).unwrap_or_default();
+        let line = pkg_line(pkg);
+        if installed.lines().any(|l| l == line) {
+            continue;
+        }
+        let status = tokio::process::Command::new(exe)
+            .args(["--headless", "--installpkg"])
+            .arg(pkg)
+            .current_dir(root)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e.to_string() })))?;
+        if !status.success() {
+            return Err(AppError::new("errors.pkgInstall", json!({ "file": paths::file_name(pkg), "code": status.code() })));
+        }
+        std::fs::write(&list, format!("{installed}{line}\n"))?;
+    }
+    Ok(())
+}
+
+/// Lance le jeu dans l'émulateur (téléchargé et fichiers système installés avant si besoin) ;
+/// [extras] : mises à jour et DLC du jeu (RPCS3 : paquets installés avant le lancement). Le temps de
+/// jeu est compté jusqu'à la fermeture de l'émulateur.
+pub async fn launch(app: &'static App, game: &Value, file: &str, extras: &[PathBuf]) -> Result<()> {
     let exe = {
         let _guard = LOCK.lock().await;
         let exe = app.ensure_installed().await?;
         app.ensure_system(&exe).await?;
+        if app.core == RPCS3.core {
+            install_pkgs(&app.root(), &exe, extras).await?;
+        }
         exe
     };
     let target = {

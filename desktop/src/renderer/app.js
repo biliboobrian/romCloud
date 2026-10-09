@@ -110,6 +110,8 @@
   const systemById = (id) => S.systems.find((s) => s.id === id);
   const year = (g) => (g.releaseDate && /^\d{4}/.test(g.releaseDate) ? g.releaseDate.slice(0, 4) : null);
   const mainGenre = (g) => (g.genre || '').split(/[,/;]/)[0].trim() || null;
+  // Taille du jeu et de ses parties (disques, mises à jour, DLC téléchargés avec lui).
+  const gameSize = (game) => game.totalSize ?? game.size;
 
   // ---------------------------------------------------------------------------
   // Statut local des jeux (téléchargé, en cours, échec)
@@ -596,7 +598,7 @@
         <div class="progress${st.kind === 'running' ? '' : ' hidden'}" data-progress="${game.id}"><div style="width:${Math.round((st.progress || 0) * 100)}%"></div></div>
       </div>
       <div class="title">${esc(game.title)}</div>
-      <div class="meta">${esc([year(game), formatSize(game.size)].filter(Boolean).join(' · '))}</div>
+      <div class="meta">${esc([year(game), partsSummary(game), formatSize(gameSize(game))].filter(Boolean).join(' · '))}</div>
     </div>`;
   }
 
@@ -811,7 +813,7 @@
         return `<div class="list-row" data-card="${g.id}">
           <div class="thumb">${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : ''}</div>
           <div class="main"><div class="t">${esc(g.title)}</div>
-            <div class="muted">${esc([year(g), g.genre, formatSize(g.size)].filter(Boolean).join(' · '))}</div></div>
+            <div class="muted">${esc([year(g), g.genre, partsSummary(g), formatSize(gameSize(g))].filter(Boolean).join(' · '))}</div></div>
           <div class="status" data-status="${g.id}">${statusHtml(statusOf(g, S.games.downloaded))}</div>
           ${canResume(g) ? `<button class="btn primary" data-resume="${g.id}">${icon('play', 18)} ${esc(t('action.resume'))}</button>` : ''}
           <button class="icon-btn" data-info="${g.id}" title="${esc(t('action.details'))}">${icon('info')}</button>
@@ -957,7 +959,7 @@
       <div class="cover-lg">${cover ? `<img src="${esc(cover)}" alt="">` : ''}</div>
       <div class="text">
         <h2>${esc(game.title)}</h2>
-        <div class="muted">${esc([year(game), mainGenre(game), game.players ? `${game.players} 👤` : null, formatSize(game.size)].filter(Boolean).join('  ·  '))}</div>
+        <div class="muted">${esc([year(game), mainGenre(game), game.players ? `${game.players} 👤` : null, partsSummary(game), formatSize(gameSize(game))].filter(Boolean).join('  ·  '))}</div>
         ${statusLine}
         ${playtimeHtml(game)}
         ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
@@ -1112,7 +1114,7 @@
     const root = modal({
       title: t('download.title'),
       body: `<p>${esc(t('download.text', { title: game.title }))}</p>
-        <p class="muted">${esc(game.fileName)} · ${esc(formatSize(game.size))}</p>
+        <p class="muted">${esc(game.fileName)}${game.parts?.length ? ` + ${esc(partsSummary(game, true))}` : ''} · ${esc(formatSize(gameSize(game)))}</p>
         ${lastError ? `<p class="bad">${esc(t('download.lastError', { error: lastError }))}</p>` : ''}
         <label class="check"><input type="checkbox" id="launchAfter" checked> ${esc(t('download.launchAfter'))}</label>
         ${missing.length ? `<label class="check"><input type="checkbox" id="withBios" checked> ${esc(t('bios.downloadToo', { n: missing.length, size: biosSize(missing) }))}</label>` : ''}`,
@@ -1212,6 +1214,26 @@
   }
 
   /** Informations détaillées du jeu (scraping, nom de fichier) : [libellé, valeur, lien ?]. */
+  // « 3 disques · 1 DLC » (le premier disque est le jeu lui-même) ; [extraOnly] : parties seules
+  // (« 2 disques » de plus, mises à jour, DLC).
+  function partsSummary(game, extraOnly = false) {
+    const parts = game.parts || [];
+    if (!parts.length) return '';
+    const count = (kind) => parts.filter((p) => p.kind === kind).length;
+    const discs = count('disc');
+    return [
+      discs && t('parts.discs', { n: discs + (extraOnly ? 0 : 1) }),
+      count('update') && t('parts.updates', { n: count('update') }),
+      count('dlc') && t('parts.dlcs', { n: count('dlc') }),
+    ].filter(Boolean).join(' · ');
+  }
+
+  // Fichiers du jeu, un par ligne (« Disque 2 : FF7 (Disc 2).chd (512 Mo) »).
+  function partsText(game) {
+    const label = (p) => (p.kind === 'disc' ? t('parts.disc', { n: p.index ?? '?' }) : t(`parts.${p.kind}`));
+    return (game.parts || []).map((p) => `${label(p)} : ${p.fileName} (${formatSize(p.size)})`).join('\n');
+  }
+
   // Note sur 5 en étoiles entières (« ★★★★☆ »).
   function starsText(rating) {
     const n = Math.min(5, Math.max(0, Math.round(Number(rating) || 0)));
@@ -1252,7 +1274,8 @@
       [t('info.controls'), d.controls],
       [t('info.features'), [d.rumble && t('info.rumble'), d.analog && t('info.analog')].filter(Boolean).join(', ')],
       [t('info.file'), game.fileName],
-      [t('info.size'), formatSize(game.size)],
+      [t('info.parts'), partsText(game)],
+      [t('info.size'), formatSize(gameSize(game))],
       ['CRC32', game.crc32 && game.crc32.toUpperCase()],
       ['MD5', game.md5],
       ...(d.links || []).map((l) => [l.label, l.url.replace(/^https?:\/\//, '').split('/')[0], l.url]),
@@ -1325,7 +1348,7 @@
         <button class="btn" id="folderBtn">${icon('folder', 18)} ${esc(t('detail.showInFolder'))}</button>
         <button class="btn danger" id="deleteBtn">${icon('trash', 18)} ${esc(t('detail.delete'))}</button>`;
     } else {
-      actions = `<button class="btn primary big" id="downloadBtn">${icon('cloud')} ${esc(st.kind === 'failed' ? t('app.retry') : t('download.withSize', { size: formatSize(game.size) }))}</button>`;
+      actions = `<button class="btn primary big" id="downloadBtn">${icon('cloud')} ${esc(st.kind === 'failed' ? t('app.retry') : t('download.withSize', { size: formatSize(gameSize(game)) }))}</button>`;
     }
 
     main.innerHTML = `<div class="detail">

@@ -402,6 +402,18 @@
     <string name="info_analog">Analog stick</string>
     <string name="info_file">File</string>
     <string name="info_size">Size</string>
+    <string name="info_parts">Other files</string>
+    <string name="parts_disc">Disc %1$s</string>
+    <string name="parts_update">Update</string>
+    <string name="parts_dlcs">%1$d DLC</string>
+    <plurals name="parts_discs">
+        <item quantity="one">%1$d disc</item>
+        <item quantity="other">%1$d discs</item>
+    </plurals>
+    <plurals name="parts_updates">
+        <item quantity="one">%1$d update</item>
+        <item quantity="other">%1$d updates</item>
+    </plurals>
     <string name="region_world">World</string>
     <string name="info_arcade_set">MAME / FBNeo set</string>
     <string name="info_arcade_clone">clone of %1$s</string>

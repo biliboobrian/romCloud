@@ -41,8 +41,9 @@ fn notify(game_id: &Value, state: Option<Value>, event: Option<Value>) {
 }
 
 /**
- * Télécharge d'abord les `bios` indiqués (BIOS manquants du système), puis le jeu sauf si
- * `includeRom` vaut false. La progression couvre l'ensemble. Tâche de fond.
+ * Télécharge d'abord les `bios` indiqués (BIOS manquants du système), puis le jeu et ses parties
+ * (disques, mises à jour, DLC) sauf si `includeRom` vaut false. La progression couvre l'ensemble.
+ * Tâche de fond.
  */
 pub fn start(system: Value, game: Value, options: Value) {
     let game_id = game.get("id").cloned().unwrap_or(Value::Null);
@@ -52,7 +53,7 @@ pub fn start(system: Value, game: Value, options: Value) {
         return;
     }
     let title = s(&game, "title").to_string();
-    let total = bios.iter().map(|b| n(b, "size")).sum::<u64>() + if include_rom { n(&game, "size") } else { 0 };
+    let total = bios.iter().map(|b| n(b, "size")).sum::<u64>() + if include_rom { library::total_size(&game) } else { 0 };
     let running = {
         let title = title.clone();
         move |bytes: u64| json!({ "status": "running", "bytes": bytes, "total": total, "title": title })
@@ -79,10 +80,16 @@ pub fn start(system: Value, game: Value, options: Value) {
                 done += n(b, "size");
             }
             if include_rom {
-                fetch_to(&format!("{server}/api/games/{}/file", key(&game_id)), &library::file_for(&system, &game), n(&game, "size"), &cancelled, |bytes| {
-                    notify(&game_id, Some(running(done + bytes)), None)
-                })
-                .await?;
+                // Le jeu puis ses parties (disques, mises à jour, DLC), rangés à côté de lui.
+                let dir = library::system_dir(&system);
+                for file in library::game_files(&game) {
+                    let id = file.get("id").map(key).unwrap_or_default();
+                    fetch_to(&format!("{server}/api/games/{id}/file"), &dir.join(s(&file, "fileName")), n(&file, "size"), &cancelled, |bytes| {
+                        notify(&game_id, Some(running(done + bytes)), None)
+                    })
+                    .await?;
+                    done += n(&file, "size");
+                }
                 if let Err(e) = api::remember_downloaded(&system, &game) {
                     eprintln!("{e}"); // listé hors ligne
                 }

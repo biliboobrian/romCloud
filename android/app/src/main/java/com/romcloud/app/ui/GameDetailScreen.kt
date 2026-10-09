@@ -224,7 +224,7 @@ fun GameDetailScreen(
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 if (d is DownloadState.Failed) stringResource(R.string.action_retry)
-                                else stringResource(R.string.download_with_size, formatSize(game.size)),
+                                else stringResource(R.string.download_with_size, formatSize(game.fullSize)),
                             )
                         }
                         Text(

@@ -69,6 +69,7 @@ import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.RowLabels
 import com.romcloud.app.ui.carouselRows
 import com.romcloud.app.ui.formatSize
+import com.romcloud.app.ui.partsSummary
 import com.romcloud.app.ui.pickFeatured
 import com.romcloud.app.ui.PlaytimeLabel
 import com.romcloud.app.ui.gamePlaytime
@@ -335,7 +336,7 @@ private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean) {
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            listOfNotNull(game.year, game.genre, game.players?.let { stringResource(R.string.players_count, it) }, formatSize(game.size)).joinToString("  ·  "),
+            listOfNotNull(game.year, game.genre, game.players?.let { stringResource(R.string.players_count, it) }, partsSummary(game), formatSize(game.fullSize)).joinToString("  ·  "),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

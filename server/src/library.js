@@ -5,6 +5,7 @@ import zlib from 'node:zlib';
 import { config } from './config.js';
 import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
+import { compareParts, groupSystem } from './groups.js';
 import { fileNameDetails, mergeDetails, parseStoredDetails } from './scraper/details.js';
 import { stars } from './scraper/rating.js';
 import { contentIdLabel } from './scraper/serial.js';
@@ -39,13 +40,40 @@ export function titleFromFileName(fileName) {
   return cleaned || base;
 }
 
-export function rowToGame(row) {
+/** Partie d'un jeu (disque, mise à jour, DLC) telle que l'envoie l'API. */
+function rowToPart(row) {
+  return { id: row.id, fileName: row.file_name, size: row.size, kind: row.part_kind, index: row.part_index };
+}
+
+/** Parties des jeux [parentIds], par jeu, dans l'ordre (disques, mises à jour, DLC). */
+export function partsOf(parentIds) {
+  const parts = new Map();
+  const ids = [...new Set(parentIds)];
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const rows = db.prepare(`SELECT * FROM games WHERE parent_id IN (${chunk.map(() => '?').join(', ')})`).all(...chunk);
+    for (const row of rows) parts.set(row.parent_id, [...(parts.get(row.parent_id) || []), rowToPart(row)]);
+  }
+  for (const list of parts.values()) list.sort(compareParts);
+  return parts;
+}
+
+/**
+ * Fiche d'un jeu. [parts] : ses disques, mises à jour et DLC (téléchargés avec lui) ; totalSize :
+ * taille du jeu et de ses parties.
+ */
+export function rowToGame(row, parts = []) {
   if (!row) return null;
   return {
     id: row.id,
     systemId: row.system_id,
     fileName: row.file_name,
     size: row.size,
+    parts,
+    totalSize: row.size + parts.reduce((n, p) => n + p.size, 0),
+    parentId: row.parent_id ?? null,
+    partKind: row.part_kind ?? null,
+    groupMode: row.group_mode ?? null,
     crc32: row.crc32,
     md5: row.md5,
     title: row.title,
@@ -69,16 +97,28 @@ export function rowToGame(row) {
   };
 }
 
+/** Fiches des jeux [rows], avec leurs parties. */
+export function rowsToGames(rows) {
+  const parts = partsOf(rows.map((r) => r.id));
+  return rows.map((r) => rowToGame(r, parts.get(r.id)));
+}
+
+/** Fiche d'un jeu par son identifiant, avec ses parties. */
+export function gameWithParts(id) {
+  return rowsToGames([requireGameRow(id)])[0];
+}
+
+/** Jeux d'un système (les disques, mises à jour et DLC sont dans les parties de leur jeu). */
 export function listGames(systemId, { q } = {}) {
   requireSystem(systemId);
-  let sql = 'SELECT * FROM games WHERE system_id = ?';
+  let sql = 'SELECT * FROM games WHERE system_id = ? AND parent_id IS NULL';
   const params = [systemId];
   if (q) {
     sql += ' AND (title LIKE ? OR file_name LIKE ?)';
     params.push(`%${q}%`, `%${q}%`);
   }
   sql += ' ORDER BY title COLLATE NOCASE, file_name';
-  return db.prepare(sql).all(...params).map(rowToGame);
+  return rowsToGames(db.prepare(sql).all(...params));
 }
 
 /**
@@ -91,16 +131,15 @@ export function searchGames(query, { limit = 300, platform } = {}) {
   if (!words.length) return [];
   // « % » et « _ » saisis sont cherchés tels quels (échappés avec « ! »).
   const like = (w) => `%${w.replace(/[!%_]/g, (c) => `!${c}`)}%`;
-  let where = words.map(() => "(title LIKE ? ESCAPE '!' OR file_name LIKE ? ESCAPE '!')").join(' AND ');
+  let where = `parent_id IS NULL AND ${words.map(() => "(title LIKE ? ESCAPE '!' OR file_name LIKE ? ESCAPE '!')").join(' AND ')}`;
   const params = words.flatMap((w) => [like(w), like(w)]);
   const systems = listSystems({ platform }).map((s) => s.id);
   where += ` AND system_id IN (${systems.map(() => '?').join(', ')})`;
   params.push(...systems);
   const max = Math.min(Math.max(Number(limit) || 300, 1), 1000);
-  return db
-    .prepare(`SELECT * FROM games WHERE ${where} ORDER BY title COLLATE NOCASE, file_name LIMIT ${max}`)
-    .all(...params)
-    .map(rowToGame);
+  return rowsToGames(
+    db.prepare(`SELECT * FROM games WHERE ${where} ORDER BY title COLLATE NOCASE, file_name LIMIT ${max}`).all(...params),
+  );
 }
 
 export function getGameRow(id) {
@@ -151,8 +190,10 @@ export function updateGame(id, input) {
   return rowToGame(getGameRow(id));
 }
 
+/** Supprime le jeu (fichier, fiche, médias) et ses parties (disques, mises à jour, DLC). */
 export function deleteGame(id, { deleteFile = true } = {}) {
   const row = requireGameRow(id);
+  for (const part of db.prepare('SELECT id FROM games WHERE parent_id = ?').all(row.id)) deleteGame(part.id, { deleteFile });
   if (deleteFile) fs.rmSync(gameFilePath(row), { force: true });
   fs.rmSync(gameMediaDir(row.id), { recursive: true, force: true });
   db.prepare('DELETE FROM games WHERE id = ?').run(row.id);
@@ -218,6 +259,8 @@ export function scanSystem(systemId) {
       result.removed++;
     }
   });
+  // Disques, mises à jour et DLC rattachés à leur jeu.
+  groupSystem(systemId);
   return result;
 }
 

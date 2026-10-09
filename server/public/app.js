@@ -227,7 +227,8 @@ function renderGames() {
       <div class="cover">${g.hasBoxart ? `<img loading="lazy" src="${mediaUrl(g, 'boxart')}" alt="">` : escapeHtml(g.title)}</div>
       <div class="game-info">
         <div class="game-title" title="${escapeHtml(g.fileName)}">${escapeHtml(g.title)}</div>
-        <div class="game-sub"><span>${formatSize(g.size)}${g.releaseDate ? ` · ${escapeHtml(g.releaseDate.slice(0, 4))}` : ''}</span>
+        ${g.parts?.length ? `<div class="game-badge">${escapeHtml(partsSummary(g))}</div>` : ''}
+        <div class="game-sub"><span>${formatSize(g.totalSize ?? g.size)}${g.releaseDate ? ` · ${escapeHtml(g.releaseDate.slice(0, 4))}` : ''}</span>
           <span class="dot ${g.scrapeStatus}" title="${escapeHtml(t(`status.${g.scrapeStatus}`))}"></span></div>
       </div>`;
     card.onclick = () => openGame(g);
@@ -513,6 +514,55 @@ function uploadFiles(files) {
 // Fiche d'un jeu
 // ---------------------------------------------------------------------------
 
+/** « 3 disques · 1 mise à jour · 2 DLC » : parties d'un jeu (le premier disque est le jeu lui-même). */
+function partsSummary(game) {
+  const count = (kind) => game.parts.filter((p) => p.kind === kind).length;
+  const discs = count('disc');
+  return [
+    discs && t('parts.discs', { n: discs + 1 }),
+    count('update') && t('parts.updates', { n: count('update') }),
+    count('dlc') && t('parts.dlcs', { n: count('dlc') }),
+  ].filter(Boolean).join(' · ');
+}
+
+/** Disques, mises à jour et DLC du jeu, et rattachement de ce fichier à un autre jeu. */
+function renderGameParts(game) {
+  const box = $('#gameParts');
+  const label = (p) => (p.kind === 'disc' ? t('parts.disc', { n: p.index ?? '?' }) : t(`parts.${p.kind}`));
+  const parts = game.parts || [];
+  const others = state.games.filter((g) => g.id !== game.id).sort((a, b) => a.title.localeCompare(b.title));
+  box.innerHTML = `
+    ${parts.length ? `<strong>${escapeHtml(t('parts.title'))}</strong>
+      <ul>${parts.map((p) => `<li><span><b>${escapeHtml(label(p))}</b> — <span class="mono">${escapeHtml(p.fileName)}</span> — ${formatSize(p.size)}</span>
+        <button type="button" class="btn small ghost" data-detach="${p.id}">${escapeHtml(t('parts.detach'))}</button></li>`).join('')}</ul>`
+      : `<span class="muted">${escapeHtml(t('parts.attachHint'))}</span>
+      <div class="row">
+        <select id="attachParent"><option value="">${escapeHtml(t('parts.choose'))}</option>${others
+          .map((g) => `<option value="${g.id}">${escapeHtml(g.title)} — ${escapeHtml(g.fileName)}</option>`).join('')}</select>
+        <select id="attachKind">${['disc', 'update', 'dlc'].map((k) => `<option value="${k}">${escapeHtml(t(`parts.kind.${k}`))}</option>`).join('')}</select>
+        <button type="button" class="btn small" id="attachBtn">${escapeHtml(t('parts.attach'))}</button>
+      </div>`}
+    ${game.groupMode === 'manual' ? `<div><button type="button" class="btn small ghost" id="autoGroupBtn">${escapeHtml(t('parts.auto'))}</button></div>` : ''}`;
+  const regroup = async (id, body, message) => {
+    await guard(async () => {
+      const updated = await api(`/games/${id}/group`, { method: 'PUT', body });
+      // Partie détachée depuis la fiche du jeu : la fiche reste celle du jeu.
+      const shown = String(id) === String(game.id) ? updated : await api(`/games/${game.id}`);
+      await loadGames();
+      state.editingGame = shown;
+      fillGameDialog(shown);
+      toast(message);
+    });
+  };
+  for (const btn of $$('[data-detach]', box)) btn.onclick = () => regroup(btn.dataset.detach, { parentId: null }, t('parts.detached'));
+  $('#attachBtn', box)?.addEventListener('click', () => {
+    const parentId = $('#attachParent', box).value;
+    if (!parentId) return toast(t('parts.choose'), 'error');
+    regroup(game.id, { parentId: Number(parentId), kind: $('#attachKind', box).value }, t('parts.attached'));
+  });
+  $('#autoGroupBtn', box)?.addEventListener('click', () => regroup(game.id, { auto: true }, t('parts.autoDone')));
+}
+
 function openGame(game) {
   state.editingGame = game;
   fillGameDialog(game);
@@ -539,6 +589,7 @@ function fillGameDialog(game, bust = '') {
     $('img', slot).src = has ? mediaUrl(game, type, bust) : '';
   }
   $('#gameDownload').href = withKey(`/api/games/${game.id}/file`);
+  renderGameParts(game);
 }
 
 async function saveGame(e) {

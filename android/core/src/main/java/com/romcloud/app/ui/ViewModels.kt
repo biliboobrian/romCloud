@@ -47,8 +47,8 @@ fun RomCloudApp.play(
     stream: StreamReceiver? = null,
     streamMode: StreamMode = StreamMode.NATIVE,
 ): String? {
-    val file = library.fileFor(system, game)
     val player = launcher.selectedPlayer(system, game.fileName)
+    val file = library.launchFile(system, game, player)
     if (!emulatorClosed) {
         launcher.closeWarningPackage(player)?.let { pkg ->
             closeEmulatorPrompt.value = CloseEmulatorPrompt(system, game, pkg, player?.name ?: pkg)
@@ -293,7 +293,8 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
         withContext(Dispatchers.IO) {
             val ids = app.library.downloadedIds(system, games)
             val resumable = games.filter { it.id in ids }.filter { game ->
-                app.launcher.canResume(app.library.fileFor(system, game), app.launcher.selectedPlayer(system, game.fileName))
+                val player = app.launcher.selectedPlayer(system, game.fileName)
+                app.launcher.canResume(app.library.launchFile(system, game, player), player)
             }.mapTo(mutableSetOf()) { it.id }
             LocalState(ids, app.library.missingBios(bios), resumable)
         }
@@ -413,7 +414,7 @@ class GameDetailViewModel(
             }
             val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(s.bios) }
             val selected = app.launcher.selectedPlayer(system, game.fileName)
-            val file = app.library.fileFor(system, game)
+            val file = withContext(Dispatchers.IO) { app.library.launchFile(system, game, selected) }
             val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(file, selected) }
             val online = selected?.libretroCore?.let { core -> app.account.saves(game.id).find { sameSaveCore(it.core, core) && it.kind == "state" } }
             val canResume = localResume || (downloaded && online != null)

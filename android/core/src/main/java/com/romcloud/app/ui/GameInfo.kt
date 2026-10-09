@@ -1,6 +1,7 @@
 package com.romcloud.app.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.RegionText
@@ -68,11 +69,35 @@ fun gameFacts(game: Game): List<GameFact> {
         )
         add(stringResource(R.string.info_features), features.joinToString(", "))
         add(stringResource(R.string.info_file), game.fileName)
-        add(stringResource(R.string.info_size), formatSize(game.size))
+        val discLabel = stringResource(R.string.parts_disc)
+        val updateLabel = stringResource(R.string.parts_update)
+        add(stringResource(R.string.info_parts), game.parts.joinToString("\n") { p ->
+            val label = when (p.kind) {
+                "disc" -> discLabel.format(p.index?.toString() ?: "?")
+                "update" -> updateLabel
+                else -> "DLC"
+            }
+            "$label : ${p.fileName} (${formatSize(p.size)})"
+        })
+        add(stringResource(R.string.info_size), formatSize(game.fullSize))
         add("CRC32", game.crc32?.uppercase())
         add("MD5", game.md5)
         for (link in d.links) {
             add(GameFact(link.label, link.url.removePrefix("https://").removePrefix("http://").substringBefore('/'), link.url))
         }
     }
+}
+
+/** « 3 disques · 1 DLC » (le premier disque est le jeu lui-même), null pour un jeu d'un seul fichier. */
+@Composable
+fun partsSummary(game: Game): String? {
+    if (game.parts.isEmpty()) return null
+    val discs = game.parts.count { it.kind == "disc" }
+    val updates = game.parts.count { it.kind == "update" }
+    val dlcs = game.parts.count { it.kind == "dlc" }
+    return listOfNotNull(
+        if (discs > 0) pluralStringResource(R.plurals.parts_discs, discs + 1, discs + 1) else null,
+        if (updates > 0) pluralStringResource(R.plurals.parts_updates, updates, updates) else null,
+        if (dlcs > 0) stringResource(R.string.parts_dlcs, dlcs) else null,
+    ).joinToString(" · ")
 }
