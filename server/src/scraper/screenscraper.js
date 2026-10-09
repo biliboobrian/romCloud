@@ -104,7 +104,7 @@ function parseGame(jeu) {
     genre: genres.join(', ') || null,
     players: jeu.joueurs?.text ?? null,
     // ScreenScraper note sur 20 : on ramène sur 5.
-    rating: Number.isFinite(note) ? Math.round((note / 4) * 10) / 10 : null,
+    rating: Number.isFinite(note) && note > 0 ? Math.round((note / 4) * 10) / 10 : null,
     media: {
       boxart: pickMedia(medias, ['box-2D', 'box-3D', 'wheel'], regions),
       screenshot: pickMedia(medias, ['ss', 'sstitle'], regions),

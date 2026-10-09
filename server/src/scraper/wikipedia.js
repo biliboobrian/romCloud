@@ -1,4 +1,5 @@
 import { normalize } from './libretro.js';
+import { pressRating } from './rating.js';
 
 // Wikipedia (gratuit, sans compte) : résumé d'un jeu quand ScreenScraper n'en fournit pas, et
 // identification d'un jeu introuvable ailleurs (fichier mal nommé) : titre officiel de l'article,
@@ -191,5 +192,6 @@ export async function wikidataFacts(id, languages) {
     series: names('series').slice(0, 2).join(', ') || null,
     releaseDate: earliestDate(claims),
     links: siteLinks(claims),
+    press: pressRating(claims),
   };
 }

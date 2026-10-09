@@ -22,6 +22,7 @@ fn defaults() -> Map<String, Value> {
         "emulatorsDetectedAt": "",
         "retroarchHelpDismissed": false,
         "hideUnidentified": false,
+        "gameOrder": "name",
         "session": null,
         "pendingPlaytime": [],
         "pendingSaves": [],

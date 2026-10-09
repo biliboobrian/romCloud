@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
 import { fileNameDetails, mergeDetails, parseStoredDetails } from './scraper/details.js';
+import { stars } from './scraper/rating.js';
 import { contentIdLabel } from './scraper/serial.js';
 import { listSystems, requireSystem, systemDir } from './systems.js';
 
@@ -139,7 +140,7 @@ export function updateGame(id, input) {
   for (const [key, column] of Object.entries(EDITABLE)) {
     if (input[key] === undefined) continue;
     let value = input[key] === '' ? null : input[key];
-    if (key === 'rating' && value !== null) value = Number(value);
+    if (key === 'rating' && value !== null) value = stars(value);
     if (key === 'title' && !value) throw new HttpError(400, 'errors.titleRequired');
     sets.push(`${column} = ?`);
     values.push(value);

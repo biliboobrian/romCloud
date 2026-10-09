@@ -167,20 +167,34 @@ fn identified(game: &Value) -> bool {
     game.get("scrapeStatus").and_then(Value::as_str).is_none_or(|s| s == "ok")
 }
 
-/// Liste { data, offline } sans les jeux non identifiés (introuvables ou pas encore scrapés) quand [hide].
-fn without_unidentified(mut result: Value, hide: bool) -> Value {
-    if hide {
-        if let Some(list) = result.get_mut("data").and_then(Value::as_array_mut) {
+/// Étoiles entières (0 à 5) de la note d'un jeu, None sans note.
+fn stars(game: &Value) -> Option<i64> {
+    game.get("rating").and_then(Value::as_f64).map(|r| (r.round() as i64).clamp(0, 5))
+}
+
+/// Liste { data, offline } sans les jeux non identifiés (introuvables ou pas encore scrapés) quand
+/// [hide], classée par nom ou, [by_rating], par note (les mieux notés d'abord, sans note à la fin).
+fn arrange_games(mut result: Value, hide: bool, by_rating: bool) -> Value {
+    if let Some(list) = result.get_mut("data").and_then(Value::as_array_mut) {
+        if hide {
             list.retain(identified);
+        }
+        let title = |g: &Value| g.get("title").and_then(Value::as_str).unwrap_or("").to_lowercase();
+        if by_rating {
+            list.sort_by(|a, b| stars(b).unwrap_or(-1).cmp(&stars(a).unwrap_or(-1)).then_with(|| title(a).cmp(&title(b))));
+        } else {
+            list.sort_by_key(title);
         }
     }
     result
 }
 
-/// Réglage « Masquer les jeux non identifiés » appliqué à une liste de jeux.
+/// Réglages « Masquer les jeux non identifiés » et « Classer les jeux » appliqués à une liste de jeux.
 fn visible_games(result: Result<Value>) -> Result<Value> {
-    let hide = settings::load().get("hideUnidentified").and_then(Value::as_bool).unwrap_or(false);
-    result.map(|r| without_unidentified(r, hide))
+    let s = settings::load();
+    let hide = s.get("hideUnidentified").and_then(Value::as_bool).unwrap_or(false);
+    let by_rating = s.get("gameOrder").and_then(Value::as_str) == Some("rating");
+    result.map(|r| arrange_games(r, hide, by_rating))
 }
 
 pub async fn games(system_id: &str) -> Result<Value> {
@@ -265,7 +279,21 @@ mod tests {
             { "id": 5 },
         ], "offline": false });
         let ids = |v: Value| v["data"].as_array().unwrap().iter().map(|g| g["id"].as_i64().unwrap()).collect::<Vec<_>>();
-        assert_eq!(ids(without_unidentified(list.clone(), true)), [1, 5]);
-        assert_eq!(ids(without_unidentified(list, false)), [1, 2, 3, 4, 5]);
+        assert_eq!(ids(arrange_games(list.clone(), true, false)), [1, 5]);
+        assert_eq!(ids(arrange_games(list, false, false)), [1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn jeux_classes_par_nom_ou_par_note() {
+        let list = json!({ "data": [
+            { "id": 1, "title": "Bravo", "rating": 3 },
+            { "id": 2, "title": "alpha" },
+            { "id": 3, "title": "Charlie", "rating": 4.6 },
+            { "id": 4, "title": "delta", "rating": 5 },
+        ], "offline": false });
+        let ids = |v: Value| v["data"].as_array().unwrap().iter().map(|g| g["id"].as_i64().unwrap()).collect::<Vec<_>>();
+        assert_eq!(ids(arrange_games(list.clone(), false, false)), [2, 1, 3, 4]);
+        // Charlie (4,6) et delta (5) ont 5 étoiles : par nom entre eux ; sans note à la fin.
+        assert_eq!(ids(arrange_games(list, false, true)), [3, 4, 1, 2]);
     }
 }

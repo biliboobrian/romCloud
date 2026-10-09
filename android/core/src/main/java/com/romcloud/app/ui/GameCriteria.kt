@@ -25,7 +25,7 @@ data class GameCriteria(
             (decade == null || game.decade == decade) &&
             (players == null || game.matchesPlayers(players)) &&
             (region == null || region in game.details.regions) &&
-            (minRating == null || (game.rating ?: 0.0) >= minRating) &&
+            (minRating == null || (game.stars ?: 0) >= minRating) &&
             (publisher == null || game.mainPublisher.equals(publisher, ignoreCase = true))
 }
 
@@ -77,7 +77,7 @@ data class GameFacets(
                 decades = games.mapNotNull { it.decade }.distinct().sorted(),
                 players = PlayersCriterion.entries.filter { c -> games.any { it.matchesPlayers(c) } },
                 regions = byFrequency(games.asSequence().flatMap { it.details.regions }),
-                ratings = listOf(3, 4).filter { r -> games.any { (it.rating ?: 0.0) >= r } },
+                ratings = listOf(3, 4).filter { r -> games.any { (it.stars ?: 0) >= r } },
                 publishers = byFrequency(games.asSequence().mapNotNull { it.mainPublisher }).take(MAX_PUBLISHERS),
             )
         }

@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.data.GameOrder
 import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
 import com.romcloud.core.R
@@ -169,6 +170,27 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                     hideUnidentified = it
                     app.settings.hideUnidentified = it
                 })
+            }
+            var gameOrder by remember { mutableStateOf(app.settings.gameOrder) }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.order_games), style = MaterialTheme.typography.bodyLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GameOrder.entries.forEach { order ->
+                        FilterChip(
+                            selected = gameOrder == order,
+                            onClick = {
+                                gameOrder = order
+                                app.settings.gameOrder = order
+                            },
+                            label = { Text(stringResource(order.label)) },
+                        )
+                    }
+                }
+                Text(
+                    stringResource(R.string.order_games_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.titleMedium)

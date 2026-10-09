@@ -6,6 +6,7 @@ import { db } from '../db.js';
 import { ensureHashes, gameFilePath, gameMediaDir, getGameRow, requireGameRow, rowToGame, titleFromFileName } from '../library.js';
 import { requireSystem } from '../systems.js';
 import { mergeDetails, parseStoredDetails } from './details.js';
+import { combineRatings, stars } from './rating.js';
 import { libretroMetadata, scrapeLibretro, titleFromLibretroName } from './libretro.js';
 import { zipEntries, zipMainEntry } from './rom-identity.js';
 import { findArcadeGame, isArcadeSystem } from './arcade.js';
@@ -51,6 +52,8 @@ export async function scrapeGame(gameId, source = 'auto') {
 
   let meta = null;
   let usedSources = [];
+  // Notes trouvées par source (voir rating.js), combinées en une note sur 5 à la fin.
+  const ratings = new Map();
   const errors = [];
   // Jeu d'arcade renommé (« fatal fury.zip ») : retrouvé par les CRC des fichiers de l'archive,
   // puis cherché sous son nom court (« fatfury1.zip »).
@@ -81,6 +84,7 @@ export async function scrapeGame(gameId, source = 'auto') {
       // Inconnu par son fichier (homebrew, fichier renommé) : recherche par titre.
       if (!meta && !arcade) meta = await searchScreenScraper({ system, title: titleFromFileName(row.file_name) });
       if (meta) usedSources.push('screenscraper');
+      if (meta?.rating != null) ratings.set('screenscraper', { source: 'screenscraper', rating: meta.rating });
     } catch (err) {
       if (source === 'screenscraper' || err.name === 'QuotaError') {
         markStatus(row.id, 'error', 'screenscraper', err.message);
@@ -141,7 +145,8 @@ export async function scrapeGame(gameId, source = 'auto') {
     launchbox = lb;
     meta ||= { media: {} };
     meta.title ||= lb.title;
-    for (const key of ['developer', 'publisher', 'genre', 'releaseDate', 'players', 'rating']) meta[key] ||= lb[key];
+    for (const key of ['developer', 'publisher', 'genre', 'releaseDate', 'players']) meta[key] ||= lb[key];
+    if (lb.rating != null) ratings.set('launchbox', { source: 'launchbox', rating: lb.rating, count: lb.ratingVotes });
     meta.media.boxart ||= lb.media.boxart;
     meta.media.screenshot ||= lb.media.screenshot;
     meta.details = mergeDetails(meta.details, lb.details);
@@ -183,6 +188,7 @@ export async function scrapeGame(gameId, source = 'auto') {
         if (facts) {
           for (const key of ['developer', 'publisher', 'genre', 'releaseDate']) meta[key] ||= facts[key];
           meta.details = mergeDetails(meta.details, { modes: facts.modes, series: facts.series, links: facts.links });
+          if (facts.press) ratings.set('press', { source: 'press', ...facts.press });
         }
         if (unidentified) {
           // Titre officiel de l'article : nouvel essai dans LaunchBox.
@@ -213,6 +219,14 @@ export async function scrapeGame(gameId, source = 'auto') {
     const status = errors.length ? 'error' : 'notfound';
     markStatus(row.id, status, usedSources.join('+') || source, errors[0] || null);
     return rowToGame(getGameRow(row.id));
+  }
+
+  // Étoiles : moyenne des sources ; détail par source (en étoiles) dans les informations du jeu.
+  if (ratings.size) {
+    meta.rating = combineRatings([...ratings.values()]);
+    meta.details = mergeDetails(meta.details, { ratings: [...ratings.values()].map((r) => ({ ...r, rating: stars(r.rating) })) });
+  } else {
+    delete meta.rating;
   }
 
   const dir = gameMediaDir(row.id);
