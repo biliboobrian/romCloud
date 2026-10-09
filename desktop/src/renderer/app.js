@@ -1431,6 +1431,10 @@
       <h3>${esc(t('settings.language'))}</h3>
       <div class="line">${langs.map(([code, label]) => `<button class="chip${s.language === code ? ' selected' : ''}" data-lang="${code}">${esc(label)}</button>`).join('')}</div>
 
+      <h3>${esc(t('settings.display'))}</h3>
+      <label class="check"><input type="checkbox" id="hideUnidentified"${s.hideUnidentified ? ' checked' : ''}> ${esc(t('settings.hideUnidentified'))}</label>
+      <p class="muted">${esc(t('settings.hideUnidentifiedHint'))}</p>
+
       <h3>${esc(t('settings.storage'))}</h3>
       <label>${esc(t('settings.romsDir'))}<span class="line"><input type="text" id="romsDir" value="${esc(s.romsDir)}"><button class="btn" id="romsBrowse">${esc(t('settings.browse'))}</button></span></label>
       <label>${esc(t('settings.biosDir'))}<span class="line"><input type="text" id="biosDir" value="${esc(s.biosDir)}"><button class="btn" id="biosBrowse">${esc(t('settings.browse'))}</button></span></label>
@@ -1483,6 +1487,11 @@
         renderSettings();
       };
     }
+    // Appliqué tout de suite : listes de jeux rechargées à la prochaine ouverture d'un système.
+    $('#hideUnidentified').onchange = async (e) => {
+      S.settings = await call(rc.settings.save, { hideUnidentified: e.target.checked });
+      S.games = { ...S.games, systemId: null, list: [] };
+    };
     $('#romsBrowse').onclick = async () => {
       const dir = await call(rc.dialog.pickFolder);
       if (dir) $('#romsDir').value = dir;

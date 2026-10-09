@@ -130,6 +130,9 @@
     <string name="testing">Testing…</string>
     <string name="settings_display">Display</string>
     <string name="fullscreen">Fullscreen</string>
+    <string name="hide_unidentified">Hide unidentified games</string>
+    <string name="hide_unidentified_on">✓ Hide unidentified games</string>
+    <string name="hide_unidentified_hint">Games the server could not identify (not found in the game databases, or not scraped yet) are left out of the game lists and the search.</string>
     <string name="fullscreen_hint">Hides the status bar and navigation buttons. Swipe from the edge of the screen to show them.</string>
     <string name="settings_language">Language</string>
     <string name="language_system">System</string>

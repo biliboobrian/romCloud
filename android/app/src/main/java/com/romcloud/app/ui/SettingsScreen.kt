@@ -155,6 +155,21 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                 }
                 Switch(checked = fullscreen, onCheckedChange = app.settings::setFullscreen)
             }
+            var hideUnidentified by remember { mutableStateOf(app.settings.hideUnidentified) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.hide_unidentified), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        stringResource(R.string.hide_unidentified_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = hideUnidentified, onCheckedChange = {
+                    hideUnidentified = it
+                    app.settings.hideUnidentified = it
+                })
+            }
 
             Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.titleMedium)
             LanguageSelector(app)

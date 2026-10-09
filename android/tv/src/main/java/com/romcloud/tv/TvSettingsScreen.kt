@@ -67,6 +67,7 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
     var showAdbHelp by remember { mutableStateOf(false) }
     var safMode by remember { mutableStateOf(app.settings.retroArchSafMode) }
     var quitOnExit by remember { mutableStateOf(app.settings.retroArchQuitOnExit) }
+    var hideUnidentified by remember { mutableStateOf(app.settings.hideUnidentified) }
     val scope = rememberCoroutineScope()
     val firstField = remember { FocusRequester() }
 
@@ -142,6 +143,17 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
 
         Section(stringResource(R.string.settings_language))
         LanguageSelector(app)
+
+        Section(stringResource(R.string.settings_display))
+        FilterChip(selected = hideUnidentified, onClick = {
+            hideUnidentified = !hideUnidentified
+            app.settings.hideUnidentified = hideUnidentified
+        }) { Text(stringResource(if (hideUnidentified) R.string.hide_unidentified_on else R.string.hide_unidentified)) }
+        Text(
+            stringResource(R.string.hide_unidentified_hint),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         Section(stringResource(R.string.settings_storage))
         OutlinedTextField(
