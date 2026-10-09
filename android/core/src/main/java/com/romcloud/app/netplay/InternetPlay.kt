@@ -76,7 +76,9 @@ object Relay {
             val path = uri.rawPath + (uri.rawQuery?.let { "?$it" } ?: "")
             val head = buildString {
                 append("GET $path HTTP/1.1\r\nHost: ${uri.host}${if (uri.port > 0) ":${uri.port}" else ""}\r\n")
-                append("Connection: Upgrade\r\nUpgrade: romcloud-relay\r\n")
+                // Montée annoncée comme une WebSocket : les proxys inverses la laissent passer.
+                append("Connection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\n")
+                append("Sec-WebSocket-Key: ${java.util.Base64.getEncoder().encodeToString(ByteArray(16).also { java.security.SecureRandom().nextBytes(it) })}\r\n")
                 for ((k, v) in request.headers) append("$k: ${v.replace("\r", "").replace("\n", "")}\r\n")
                 append("\r\n")
             }
@@ -211,6 +213,12 @@ class InternetPresence(private val account: Account, private val deviceId: Strin
     var rtt: Int = 0
         private set
 
+    /**
+     * Problème de la partie par Internet (affiché en jeu), null si tout va bien : annonce refusée
+     * ou impossible, profil déconnecté, relais refusé (code HTTP, proxy inverse mal réglé…).
+     */
+    val problem = MutableStateFlow<String?>(null)
+
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private var job: Job? = null
 
@@ -220,9 +228,20 @@ class InternetPresence(private val account: Account, private val deviceId: Strin
         job = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 val started = System.nanoTime()
-                val response = runCatching {
+                val result = runCatching {
                     account.playPresence(deviceId, name, platform, hosting, busy, rtt)
-                }.getOrNull()
+                }
+                val response = result.getOrNull()
+                // Problème de l'annonce (relais : gardé, il vient d'ailleurs ; effacé seulement en cas de succès de l'annonce).
+                val failure = result.exceptionOrNull()?.takeIf { it !is kotlinx.coroutines.CancellationException }
+                when {
+                    failure != null -> {
+                        android.util.Log.w("RomCloudPlay", "annonce au serveur impossible", failure)
+                        problem.value = failure.message ?: failure.javaClass.simpleName
+                    }
+                    response == null -> problem.value = SIGNED_OUT
+                    problem.value == SIGNED_OUT || problem.value?.startsWith(RELAY) != true -> problem.value = null
+                }
                 if (response != null) {
                     rtt = ((System.nanoTime() - started) / 1_000_000).toInt()
                     _peers.value = response.peers.map {
@@ -234,6 +253,13 @@ class InternetPresence(private val account: Account, private val deviceId: Strin
                 withTimeoutOrNull(NetplayProtocol.INTERNET_ANNOUNCE_MS) { wake.receive() }
             }
         }
+    }
+
+    companion object {
+        /** Sans profil connecté : rien n'est annoncé par Internet. */
+        const val SIGNED_OUT = "signed out"
+        /** Préfixe d'un problème du relais (« relay: HTTP 404 »). */
+        const val RELAY = "relay: "
     }
 
     /** Arrêt : l'appareil est retiré tout de suite (sans attendre l'expiration). */

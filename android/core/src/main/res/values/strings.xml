@@ -521,6 +521,8 @@
     <string name="netplay_downloading">Downloading %1$s: the game will be joined when it is done.</string>
     <string name="netplay_unavailable">Playing together is unavailable with this emulator.</string>
     <string name="netplay_open">Offered on the local network: waiting for a player…</string>
+    <string name="netplay_open_internet">Offered on the local network and over the Internet: waiting for a player…</string>
+    <string name="netplay_open_internet_failed">Offered on the local network only (Internet: %1$s)</string>
     <string name="netplay_connecting">Joining %1$s…</string>
     <string name="netplay_started">Playing with %1$s</string>
     <string name="netplay_core_differs">Playing with %1$s (different emulator versions: the game may get out of sync)</string>

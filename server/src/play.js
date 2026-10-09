@@ -93,8 +93,15 @@ function refuse(socket, status, reason) {
   socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
 
-function accept(socket) {
-  socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: romcloud-relay\r\nConnection: Upgrade\r\n\r\n');
+/**
+ * Réponse 101. Requête WebSocket (Sec-WebSocket-Key) : réponse WebSocket valide, pour les proxys
+ * inverses qui ne transmettent que ces montées (Cloudflare…) ; les octets passent ensuite tels quels.
+ */
+function accept(socket, key) {
+  const head = key
+    ? `Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${crypto.createHash('sha1').update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64')}\r\n`
+    : 'Upgrade: romcloud-relay\r\nConnection: Upgrade\r\n';
+  socket.write(`HTTP/1.1 101 Switching Protocols\r\n${head}\r\n`);
   socket.setNoDelay(true);
   socket.setKeepAlive(true, 20_000);
 }
@@ -137,12 +144,13 @@ export function handleUpgrade(req, socket, authorize) {
     return refuse(socket, 400, 'Bad Request'), true;
   }
   const key = `${session}|${channel}`;
+  const wsKey = req.headers['sec-websocket-key'] || null;
   const list = waitingList(key);
   if (role === 'host') {
     // Seul le profil qui propose la partie attend ses invités.
     if (sessionOwner(session) !== auth.user.id) return refuse(socket, 403, 'Forbidden'), true;
     if (list.length >= MAX_WAITING) return refuse(socket, 429, 'Too Many Requests'), true;
-    accept(socket);
+    accept(socket, wsKey);
     // En attente, la connexion est lue (rien n'est attendu) : sa fermeture par l'hôte est vue tout
     // de suite, sans quoi un invité pourrait être relié à une connexion morte.
     socket.resume();
@@ -153,7 +161,7 @@ export function handleUpgrade(req, socket, authorize) {
   }
   const host = list.shift();
   if (!host) return refuse(socket, 404, 'Not Found'), true;
-  accept(socket);
+  accept(socket, wsKey);
   join(host, socket);
   return true;
 }
