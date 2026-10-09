@@ -4,7 +4,7 @@
 // options\<système>.cfg, keyboard.cfg (touches du clavier), player.log (journal).
 use crate::error::{AppError, Result};
 use crate::library::s;
-use crate::{account, api, cores, events, keyboard, paths, settings};
+use crate::{account, api, cores, events, keyboard, managed, paths, settings};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Read;
@@ -149,6 +149,11 @@ fn options_file(system_id: &str) -> PathBuf {
 
 /// Réinitialise un cœur après un plantage : DLL supprimée, options du cœur du système effacées.
 pub fn reset_core(system_id: &str, core: &str) -> Result<()> {
+    // RPCS3, Cemu : nouvelle version au prochain lancement, configuration et sauvegardes gardées.
+    if let Some(app) = managed::by_core(core) {
+        app.reset();
+        return Ok(());
+    }
     if !cores::valid_core(core) {
         return Err(AppError::new("errors.coreInvalid", json!({ "core": core })));
     }

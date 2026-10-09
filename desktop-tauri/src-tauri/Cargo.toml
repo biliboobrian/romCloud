@@ -1,6 +1,6 @@
 [package]
 name = "romcloud"
-version = "1.24.0"
+version = "1.25.0"
 description = "RomCloud pour Windows : bibliothèque de jeux du serveur RomCloud, téléchargement à la demande et lancement des émulateurs"
 authors = ["biliboobrian"]
 license = "MIT"
@@ -33,6 +33,8 @@ socket2 = { version = "0.6", features = ["all"] }
 if-addrs = "0.15"
 filetime = "0.2"
 urlencoding = "2"
+# Archives .7z de RPCS3 (PlayStation 3 du moteur intégré, voir managed.rs).
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["util"] }
 
 [profile.release]
 opt-level = "s"

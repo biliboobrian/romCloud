@@ -17,6 +17,7 @@ mod ipc;
 mod keyboard;
 mod launcher;
 mod library;
+mod managed;
 mod paths;
 mod screencast;
 mod settings;
