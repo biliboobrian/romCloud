@@ -97,6 +97,7 @@ import com.romcloud.core.R
 import com.romcloud.app.netplay.LanPresence
 import com.romcloud.app.netplay.LinkKind
 import com.romcloud.app.netplay.LinkRules
+import com.romcloud.app.netplay.NetplayRules
 import com.romcloud.app.netplay.NetplayHost
 import com.romcloud.app.netplay.NetplayLaunch
 import com.romcloud.app.netplay.NetplayProtocol
@@ -376,7 +377,9 @@ class LibretroActivity : ComponentActivity() {
             val linkOptions = netplayLaunch?.let { launch ->
                 link?.let { LinkRules.options(it, launch.host, launch.address, LanPresence.deviceId(this@LibretroActivity), ownAddress) }
             }.orEmpty()
-            variables = (GameOptionDefaults.forGame(core, game) + optionsStore.load(systemId) + linkOptions)
+            // Jeu synchronisé : options qui diffèrent d'un appareil à l'autre coupées (meilleurs scores de FBNeo).
+            val netplayOptions = if (netplayLaunch != null && link == null) NetplayRules.CORE_OPTIONS else emptyMap()
+            variables = (GameOptionDefaults.forGame(core, game) + optionsStore.load(systemId) + linkOptions + netplayOptions)
                 .map { (key, value) -> Variable(key, value) }.toTypedArray()
             preferLowLatencyAudio = true
             videoFilter = videoFilters.load(systemId)

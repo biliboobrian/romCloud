@@ -104,6 +104,8 @@ static void np_after_run();
 static bool np_input(unsigned port, unsigned device, unsigned index, unsigned id, int16_t *value);
 // Liaison entre consoles : interface netpacket déclarée par le cœur (gpSP), gérée ici.
 static bool np_on_netpacket(const void *data);
+// Jeu synchronisé en cours (états échangés entre appareils : contexte « netplay » des sauvegardes).
+static bool np_rollback_context();
 static bool mute_local = false;
 static int16_t *silence = nullptr;
 static size_t silence_frames = 0;
@@ -274,10 +276,18 @@ static void apply_aspect() {
 }
 
 const unsigned SET_NETPACKET_INTERFACE = 78;
+const unsigned GET_SAVESTATE_CONTEXT = 72 | 0x10000;  // RETRO_ENVIRONMENT_EXPERIMENTAL
+const int SAVESTATE_CONTEXT_NORMAL = 0, SAVESTATE_CONTEXT_ROLLBACK_NETPLAY = 3;
 
 static bool on_environment(unsigned cmd, void *data) {
     // Inconnue de LibretroDroid : la liaison entre consoles passe par l'adaptateur.
     if (cmd == SET_NETPACKET_INTERFACE) return np_on_netpacket(data);
+    // Jeu synchronisé : états échangés entre appareils. FBNeo coupe alors ce qui diffère d'un appareil
+    // à l'autre (meilleurs scores de hiscore.dat, horloge de la Neo Geo, graine du hasard).
+    if (cmd == GET_SAVESTATE_CONTEXT) {
+        if (data) *static_cast<int *>(data) = np_rollback_context() ? SAVESTATE_CONTEXT_ROLLBACK_NETPLAY : SAVESTATE_CONTEXT_NORMAL;
+        return true;
+    }
     if ((cmd == SET_SYSTEM_AV_INFO || cmd == SET_GEOMETRY) && data) {
         // Copie envoyée à LibretroDroid, proportions remplacées par le format choisi
         // (retro_system_av_info commence par sa géométrie).
@@ -676,6 +686,11 @@ static np_netpacket np_packets = {};
 static bool np_has_packets = false;
 static bool np_packets_active = false;
 
+static bool np_rollback_context() {
+    const int state = __atomic_load_n(&np_state, __ATOMIC_ACQUIRE);
+    return np_mode == NP_MODE_INPUTS && (state == NP_STARTING || state == NP_RUNNING);
+}
+
 static bool np_on_netpacket(const void *data) {
     np_has_packets = data != nullptr;
     if (data) np_packets = *static_cast<const np_netpacket *>(data);
@@ -750,6 +765,9 @@ static size_t np_serialize() {
 static bool np_send_state(uint32_t frame) {
     size_t size = np_serialize();
     if (!size) return false;
+    // L'hôte repart aussi de l'état envoyé : certains cœurs (FBNeo) ne restaurent pas tout depuis un
+    // état ; l'invité, lui, en repart forcément. Les deux reprennent ainsi exactement du même point.
+    real_retro_unserialize()(np_state_buffer, size);
     uint8_t head[4];
     np_put32(head, frame);
     return np_send(NP_MSG_STATE, head, sizeof head, np_state_buffer, size);
@@ -759,6 +777,21 @@ static uint32_t np_hash(const uint8_t *data, size_t size) {
     uint32_t h = 2166136261u;  // FNV-1a
     for (size_t i = 0; i < size; i++) h = (h ^ data[i]) * 16777619u;
     return h;
+}
+
+const unsigned MEMORY_SYSTEM_RAM = 2;
+
+/**
+ * Empreinte de la partie : mémoire du jeu si le cœur la fournit, sinon son état complet (0 :
+ * impossible). L'état complet de certains cœurs varie sans changer la partie (FBNeo : état interne
+ * du son, différent même en rejouant les mêmes images) : comparé, il ferait recaler l'invité sans raison.
+ */
+static uint32_t np_check_hash() {
+    const size_t ram_size = real_retro_get_memory_size()(MEMORY_SYSTEM_RAM);
+    const auto *ram = static_cast<const uint8_t *>(real_retro_get_memory_data()(MEMORY_SYSTEM_RAM));
+    if (ram && ram_size) return np_hash(ram, ram_size) | 1;
+    size_t size = np_serialize();
+    return size ? np_hash(np_state_buffer, size) | 1 : 0;
 }
 
 /** Invité : empreintes de l'image [frame] connues des deux côtés et différentes -> état de l'hôte demandé. */
@@ -1003,9 +1036,8 @@ static void np_after_run() {
     np_in_frame = false;
     np_frame++;
     if (np_frame % NP_CHECK) return;
-    size_t size = np_serialize();
-    if (!size) return;
-    const uint32_t hash = np_hash(np_state_buffer, size);
+    const uint32_t hash = np_check_hash();
+    if (!hash) return;
     if (np_host) {
         uint8_t message[8];
         np_put32(message, np_frame);

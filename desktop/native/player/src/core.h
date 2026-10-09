@@ -84,7 +84,7 @@ extern Session g;
 
 /** Charge la DLL et ses fonctions retro_* ; message d'erreur dans [error]. */
 bool loadCore(const std::string& dllPath, std::string& error);
-/** Branche les callbacks et appelle retro_init. */
+/** Appelle retro_init et branche les callbacks (ordre de RetroArch). */
 void initCore();
 /** Choisit la manette de chaque port (après le chargement du jeu). */
 void selectControllers(unsigned ports);

@@ -1,7 +1,7 @@
 {
   "name": "romcloud-desktop-tauri",
   "private": true,
-  "version": "1.31.4",
+  "version": "1.31.5",
   "description": "RomCloud pour Windows (Tauri) : interface de desktop/src/renderer, processus principal en Rust",
   "scripts": {
     "dev": "tauri dev",

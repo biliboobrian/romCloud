@@ -133,12 +133,19 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
       g.hasNetpacket = false;
       return true;
     }
+    if (cmd == RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT) return true;  // fonction disponible
     if (cmd != RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT) return false;
   }
   switch (cmd) {
     case RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE:
       g.netpacket = *static_cast<const retro_netpacket_callback*>(data);
       g.hasNetpacket = true;
+      return true;
+    // Jeu synchronisé : états échangés entre appareils. FBNeo coupe alors ce qui diffère d'un appareil
+    // à l'autre (meilleurs scores de hiscore.dat, horloge de la Neo Geo, graine du hasard).
+    case RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT:
+      *static_cast<int*>(data) = g.netplay && g.netplay->synchronized() ? RETRO_SAVESTATE_CONTEXT_ROLLBACK_NETPLAY
+                                                                        : RETRO_SAVESTATE_CONTEXT_NORMAL;
       return true;
     case RETRO_ENVIRONMENT_GET_CAN_DUPE:
       *static_cast<bool*>(data) = true;
@@ -389,11 +396,13 @@ void selectControllers(unsigned ports) {
 }
 
 void initCore() {
+  // Ordre de RetroArch : environnement, retro_init, puis les autres fonctions. Mesen et Mesen-S
+  // créent dans retro_init l'objet qui reçoit la fonction d'affichage (arrêt net sinon).
   g.api.set_environment(environment);
+  g.api.init();
   g.api.set_video_refresh(videoRefresh);
   g.api.set_audio_sample(audioSample);
   g.api.set_audio_sample_batch(audioSampleBatch);
   g.api.set_input_poll(inputPoll);
   g.api.set_input_state(inputState);
-  g.api.init();
 }

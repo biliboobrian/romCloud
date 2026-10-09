@@ -617,9 +617,25 @@ size_t Netplay::serialize() {
 bool Netplay::sendState(uint32_t frame) {
   size_t size = serialize();
   if (!size) return false;
+  // L'hôte repart aussi de l'état envoyé : certains cœurs (FBNeo) ne restaurent pas tout depuis un
+  // état ; l'invité, lui, en repart forcément. Les deux reprennent ainsi exactement du même point.
+  g.api.unserialize(state_buffer_.data(), size);
   uint8_t head[4];
   put32(head, frame);
   return sendMessage(kState, head, 4, state_buffer_.data(), size);
+}
+
+/**
+ * Empreinte de la partie : mémoire du jeu si le cœur la fournit, sinon son état complet. L'état
+ * complet de certains cœurs varie sans changer la partie (FBNeo : état interne du son, différent
+ * même en rejouant les mêmes images) : comparé, il ferait recaler l'invité sans raison.
+ */
+uint32_t Netplay::checkHash() {
+  const size_t ramSize = g.api.get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+  const auto* ram = static_cast<const uint8_t*>(g.api.get_memory_data(RETRO_MEMORY_SYSTEM_RAM));
+  if (ram && ramSize) return fnv(ram, ramSize) | 1;
+  size_t size = serialize();
+  return size ? fnv(state_buffer_.data(), size) | 1 : 0;
 }
 
 void Netplay::compare(uint32_t frame) {
@@ -766,7 +782,10 @@ Netplay::Frame Netplay::prepare(const LocalInput& local) {
     // Départ : tampons remis à zéro, puis état de l'hôte copié chez l'invité, image 0 des deux côtés.
     if (host_) {
       resetRings();
-      if (!sendState(0)) return fail();
+      if (!sendState(0)) {
+        logf("Netplay : état du cœur impossible à copier (taille %zu)", (size_t)g.api.serialize_size());
+        return fail();
+      }
     } else {
       if (!hasPending_) {
         if (!waiting_) resetRings();  // une seule fois, avant l'arrivée de l'état et des premières touches
@@ -825,9 +844,8 @@ void Netplay::finishFrame() {
   inFrame_ = false;
   frame_++;
   if (frame_ % kCheck) return;
-  size_t size = serialize();
-  if (!size) return;
-  const uint32_t hash = fnv(state_buffer_.data(), size);
+  const uint32_t hash = checkHash();
+  if (!hash) return;
   if (host_) {
     uint8_t m[8];
     put32(m, frame_);
