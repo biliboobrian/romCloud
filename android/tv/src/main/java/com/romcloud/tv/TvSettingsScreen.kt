@@ -51,6 +51,7 @@ import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.GameOrder
 import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
+import com.romcloud.app.ui.appVersion
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
 
@@ -259,6 +260,11 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             enabled = url.isNotBlank(),
             modifier = Modifier.padding(top = 12.dp),
         ) { Text(stringResource(R.string.action_save)) }
+        Text(
+            stringResource(R.string.settings_version, appVersion(context)),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

@@ -38,6 +38,9 @@ object LinkRules {
     /** Port du câble Game Link de Gambatte (sa valeur par défaut). */
     const val GAMBATTE_PORT = "56400"
 
+    /** Décalage des ports des jeux PSP (valeur par défaut de PPSSPP hors libretro). */
+    const val PSP_PORT_OFFSET = "10000"
+
     fun kind(system: GameSystem): LinkKind? = SYSTEMS[system.id.lowercase()] ?: SYSTEMS[system.shortname.lowercase()]
 
     fun kind(id: String?): LinkKind? = LinkKind.entries.find { it.id == id }
@@ -60,6 +63,9 @@ object LinkRules {
         LinkKind.GBA_LINK -> emptyMap()  // câble choisi par gpSP d'après le jeu (option « Automatic »)
         LinkKind.PSP_ADHOC -> buildMap {
             put("ppsspp_enable_wlan", "enabled")
+            // Ports des jeux décalés (PSP : souvent sous 1024, interdits aux applications Android) ;
+            // le même décalage sur toutes les consoles reliées (port de l'autre calculé avec).
+            put("ppsspp_port_offset", PSP_PORT_OFFSET)
             put("ppsspp_enable_builtin_pro_ad_hoc_server", if (host) "enabled" else "disabled")
             // Hôte : relié à son propre serveur par son adresse sur le réseau local, pas par « localhost » :
             // le serveur annonce chaque console aux autres avec l'adresse de sa connexion (127.0.0.1

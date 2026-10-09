@@ -301,6 +301,12 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                 enabled = url.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.action_save)) }
+            Text(
+                stringResource(R.string.settings_version, appVersion(context)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
         }
     }
 }
