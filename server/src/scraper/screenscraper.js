@@ -103,8 +103,8 @@ function parseGame(jeu) {
     publisher: jeu.editeur?.text ?? null,
     genre: genres.join(', ') || null,
     players: jeu.joueurs?.text ?? null,
-    // ScreenScraper note sur 20 : on ramène sur 5.
-    rating: Number.isFinite(note) && note > 0 ? Math.round((note / 4) * 10) / 10 : null,
+    // Note sur 20, convertie en étoiles avec le barème de ScreenScraper (voir rating.js).
+    ratingScore: Number.isFinite(note) && note > 0 ? note : null,
     media: {
       boxart: pickMedia(medias, ['box-2D', 'box-3D', 'wheel'], regions),
       screenshot: pickMedia(medias, ['ss', 'sstitle'], regions),
