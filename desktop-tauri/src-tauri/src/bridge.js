@@ -85,6 +85,7 @@
       path: call('library:path'),
       remove: call('library:remove'),
       systemsWithGames: call('library:systemsWithGames'),
+      usage: call('library:usage'),
     },
     connectivity: { state: call('connectivity:state'), check: call('connectivity:check'), onUpdate: on('connectivity:update') },
     bios: { missing: call('bios:missing') },

@@ -403,6 +403,9 @@
     <string name="info_file">File</string>
     <string name="info_size">Size</string>
     <string name="info_parts">Other files</string>
+    <string name="storage_on_device">On this device: %1$s</string>
+    <string name="storage_free">%1$s free</string>
+    <string name="storage_free_of">%1$s free out of %2$s</string>
     <string name="parts_disc">Disc %1$s</string>
     <string name="parts_update">Update</string>
     <string name="parts_dlcs">%1$d DLC</string>

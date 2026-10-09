@@ -13,6 +13,7 @@ import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.OnlineSave
 import com.romcloud.app.data.Player
+import com.romcloud.app.data.StorageUsage
 import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.data.sameSaveCore
@@ -99,13 +100,23 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
     private val _search = MutableStateFlow(SearchState())
     val search: StateFlow<SearchState> = _search.asStateFlow()
 
+    private val _usage = MutableStateFlow(StorageUsage())
+
+    /** Place occupée par système sur l'appareil et espace de la partition des ROMs. */
+    val usage: StateFlow<StorageUsage> = _usage.asStateFlow()
+
     val downloads = app.downloader.states
     private var searchJob: Job? = null
 
     init {
         refresh()
         viewModelScope.launch {
-            app.downloader.events.collect { if (it is DownloadEvent.Completed) refreshSearchLocal() }
+            app.downloader.events.collect {
+                if (it is DownloadEvent.Completed) {
+                    refreshSearchLocal()
+                    refreshUsage()
+                }
+            }
         }
         viewModelScope.launch {
             app.connectivity.online.drop(1).collect { online ->
@@ -137,11 +148,20 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
             } catch (e: Exception) {
                 _state.value.copy(loading = false, error = e.message ?: I18n.get(R.string.err_connection))
             }
+            refreshUsage()
             if (_search.value.active) runSearch(_search.value.query, debounce = false)
         }
     }
 
     fun system(id: String): GameSystem? = _state.value.systems.find { it.id == id }
+
+    /** Recalcule la place occupée (affichage de l'écran, fin de téléchargement, jeu supprimé). */
+    fun refreshUsage() {
+        val systems = _state.value.systems
+        viewModelScope.launch {
+            _usage.value = withContext(Dispatchers.IO) { app.library.usage(systems) }
+        }
+    }
 
     /** Met à jour la recherche ; la requête part après une courte pause de saisie. */
     fun setQuery(query: String, debounce: Boolean = true) {

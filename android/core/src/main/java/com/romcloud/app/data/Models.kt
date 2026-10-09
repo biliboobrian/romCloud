@@ -189,5 +189,19 @@ data class GameDetails(
     val links: List<GameLink> = emptyList(),
 )
 
+/**
+ * Place occupée sur l'appareil : [systems] octets des fichiers de chaque système (ceux qui en ont),
+ * [free] / [total] : espace de la partition du dossier des ROMs (-1 s'il est inconnu).
+ */
+data class StorageUsage(val systems: Map<String, Long> = emptyMap(), val free: Long = -1, val total: Long = -1) {
+    val known: Boolean get() = total > 0 && free >= 0
+
+    /** Part occupée de la partition (0 à 1). */
+    val usedFraction: Float get() = if (known) (1f - free.toFloat() / total).coerceIn(0f, 1f) else 0f
+
+    /** Moins de 10 % d'espace libre. */
+    val low: Boolean get() = known && free < total / 10
+}
+
 /** Données chargées, avec indication si elles proviennent du cache hors ligne. */
 data class Loaded<T>(val data: T, val offline: Boolean, val error: String? = null)

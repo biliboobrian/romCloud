@@ -2,7 +2,7 @@
 // Un jeu est téléchargé si ses fichiers existent avec la taille attendue : le fichier principal et
 // ses parties (disques, mises à jour, DLC regroupés par le serveur, rangés à côté de lui).
 use crate::{paths, settings};
-use serde_json::Value;
+use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -73,6 +73,33 @@ pub fn systems_with_games(systems: &[Value]) -> Vec<Value> {
         })
         .filter_map(|system| system.get("id").cloned())
         .collect()
+}
+
+/// Taille des fichiers d'un dossier, sous-dossiers compris (0 s'il n'existe pas).
+fn dir_size(dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => dir_size(&e.path()),
+            Ok(t) if t.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
+            _ => 0,
+        })
+        .sum()
+}
+
+/// Place occupée sur le PC : { systems: { id: octets } (systèmes ayant des fichiers), disk: { free,
+/// total } de la partition du dossier des ROMs, ou null }.
+pub fn usage(systems: &[Value]) -> Value {
+    let mut sizes = Map::new();
+    for system in systems {
+        let size = dir_size(&system_dir(system));
+        if size > 0 {
+            sizes.insert(s(system, "id").to_string(), json!(size));
+        }
+    }
+    let disk = paths::disk_space(Path::new(&settings::get_str("romsDir"))).map(|(free, total)| json!({ "free": free, "total": total }));
+    json!({ "systems": sizes, "disk": disk })
 }
 
 /// Emplacement d'un BIOS : <dossier BIOS>\<chemin relatif, sous-dossiers compris>.
@@ -155,5 +182,17 @@ mod tests {
         let zipped = json!({ "fileName": "A (Disc 1).zip", "parts": [{ "fileName": "A (Disc 2).zip", "kind": "disc", "index": 2 }] });
         assert_eq!(playlist_text(&zipped), None);
         assert_eq!(playlist_path(Path::new(r"D:\psx\FF7 (Disc 1).chd")), PathBuf::from(r"D:\psx\FF7 (Disc 1).m3u"));
+    }
+
+    #[test]
+    fn taille_d_un_dossier() {
+        let dir = std::env::temp_dir().join(format!("romcloud-usage-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sous")).unwrap();
+        std::fs::write(dir.join("a.chd"), [0u8; 100]).unwrap();
+        std::fs::write(dir.join("sous").join("b.chd"), [0u8; 23]).unwrap();
+        assert_eq!(dir_size(&dir), 123);
+        assert_eq!(dir_size(&dir.join("absent")), 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

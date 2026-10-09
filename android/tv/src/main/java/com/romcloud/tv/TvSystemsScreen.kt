@@ -1,8 +1,7 @@
 package com.romcloud.tv
 
-import androidx.activity.compose.BackHandler
 import android.app.Activity
-import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,10 +16,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,11 +35,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.LocalContentColor
@@ -53,8 +56,8 @@ import com.romcloud.app.ui.LocalStatus
 import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.SystemBadge
 import com.romcloud.app.ui.SystemsViewModel
-import com.romcloud.app.ui.pluralString
 import com.romcloud.app.ui.accountState
+import com.romcloud.app.ui.pluralString
 import com.romcloud.app.ui.quitApp
 import com.romcloud.core.R
 
@@ -71,7 +74,12 @@ fun TvSystemsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
+    val usage by viewModel.usage.collectAsStateWithLifecycle()
     var searchDialog by remember { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.refreshUsage() }
+    }
     // Au retour d'un système, le focus revient sur la carte d'où l'on venait.
     var lastFocused by rememberSaveable { mutableIntStateOf(0) }
     val restoreFocus = remember { FocusRequester() }
@@ -115,6 +123,7 @@ fun TvSystemsScreen(
     Column(Modifier.fillMaxSize().padding(TvSafePadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("RomCloud", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+            TvDiskBar(usage, Modifier.padding(start = 20.dp))
             OfflineBadge(Modifier.padding(start = 16.dp), size = 40.dp, explainOnClick = false)
             Spacer(Modifier.weight(1f))
             if (search.active) {
@@ -187,6 +196,7 @@ fun TvSystemsScreen(
                     TvSystemCard(
                         system = system,
                         imageUrl = imageUrl(system),
+                        localSize = usage.systems[system.id] ?: 0,
                         onClick = { onOpenSystem(system.id) },
                         modifier = Modifier
                             .then(if (index == lastFocused) Modifier.focusRequester(restoreFocus) else Modifier)

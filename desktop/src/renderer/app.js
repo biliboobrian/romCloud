@@ -18,6 +18,8 @@
     systemsError: null,
     systemsLoading: true,
     search: { query: '', results: [], downloaded: new Set(), offline: false, loading: false, error: null },
+    // Place occupée sur le PC par système et espace de la partition des ROMs (library:usage).
+    usage: { systems: {}, disk: null },
     games: { systemId: null, list: [], downloaded: new Set(), resumable: new Set(), offline: false, loading: false, error: null, filter: 'all', query: '', criteria: {} },
     downloads: {}, // gameId -> { status, bytes, total, title, error }
     autoLaunch: new Set(),
@@ -177,11 +179,35 @@
     ({ systems: renderSystems, games: renderGames, game: renderGame, settings: renderSettings })[S.route.name]();
   }
 
-  function setTopbar({ title, subtitle = '', center = '', right = '' }) {
+  function setTopbar({ title, subtitle = '', center = '', right = '', disk = false }) {
     $('#title').textContent = title;
+    renderDiskBar(disk ? S.usage.disk : null);
     $('#subtitle').textContent = subtitle;
     $('#topbarCenter').innerHTML = center;
     $('#topbarRight').innerHTML = right;
+  }
+
+  // Barre d'espace de la partition des ROMs : place occupée, espace libre (rouge sous 10 %).
+  function renderDiskBar(disk) {
+    const bar = $('#diskBar');
+    bar.classList.toggle('hidden', !disk);
+    if (!disk) return;
+    const used = 1 - disk.free / disk.total;
+    bar.classList.toggle('low', disk.free / disk.total < 0.1);
+    bar.title = t('disk.tooltip', { free: formatSize(disk.free), total: formatSize(disk.total), dir: S.settings.romsDir });
+    bar.innerHTML = `<div class="track"><div class="fill" style="width:${Math.round(used * 100)}%"></div></div><span>${esc(t('disk.free', { size: formatSize(disk.free) }))}</span>`;
+  }
+
+  // Place occupée par les jeux de chaque système sur le PC et espace de la partition, puis
+  // mise à jour de l'écran des systèmes s'il est affiché.
+  async function loadUsage() {
+    const usage = await call(rc.library.usage, S.systems).catch(() => null);
+    if (!usage) return;
+    S.usage = usage;
+    if (S.route.name === 'systems') {
+      renderDiskBar(usage.disk);
+      if (!S.search.query.trim()) renderSystemsBody();
+    }
   }
 
   function banner(text, error = false) {
@@ -524,8 +550,10 @@
   }
 
   function renderSystems() {
+    loadUsage();
     setTopbar({
       title: 'RomCloud',
+      disk: true,
       subtitle: S.systems.length ? t('app.games', { n: S.systems.reduce((n, s) => n + s.gameCount, 0) }) : '',
       center: `<input type="search" class="search-box" id="globalSearch" placeholder="${esc(t('app.searchAll'))}" value="${esc(S.search.query)}">`,
       right: `<button class="icon-btn" id="refreshBtn" title="${esc(t('app.refresh'))}">${icon('refresh')}</button>${settingsBtn()}`,
@@ -558,7 +586,8 @@
       return `<div class="system-card" data-system="${esc(s.id)}">
         <div class="img">${img ? `<img src="${esc(img)}" alt="">` : `<span class="short">${esc(s.shortname.toUpperCase())}</span>`}</div>
         <div class="info"><div class="name">${esc(s.name)}</div>
-        <div class="muted">${esc(t('app.games', { n: s.gameCount }))} · ${esc(formatSize(s.totalSize))}</div></div>
+        <div class="muted">${esc(t('app.games', { n: s.gameCount }))} · ${esc(formatSize(s.totalSize))}</div>
+        ${S.usage.systems[s.id] ? `<div class="small on-pc">${esc(t('app.onPc', { size: formatSize(S.usage.systems[s.id]) }))}</div>` : ''}</div>
       </div>`;
     }).join('')}</div></div>`;
     for (const el of $$('[data-system]', main)) el.onclick = () => openSystem(el.dataset.system);
@@ -1403,7 +1432,7 @@
       body: `<p>${esc(t('detail.deleteText'))}</p>`,
       buttons: [
         { label: t('app.cancel'), kind: 'ghost' },
-        { label: t('detail.delete'), kind: 'danger', onClick: async () => { await call(rc.library.remove, system, game); await refreshDownloaded(); renderGame(); } },
+        { label: t('detail.delete'), kind: 'danger', onClick: async () => { await call(rc.library.remove, system, game); await refreshDownloaded(); loadUsage(); renderGame(); } },
       ],
     }));
     $('#emuSelect').onchange = async (e) => {
@@ -1585,6 +1614,7 @@
     else delete S.downloads[gameId];
     if (event?.type === 'completed') {
       await refreshDownloaded();
+      loadUsage();
       const system = systemById(event.systemId);
       const game = findGame(gameId) || { id: gameId, systemId: event.systemId, title: event.title };
       if (S.autoLaunch.delete(gameId) && document.hasFocus()) {

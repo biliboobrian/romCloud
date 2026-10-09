@@ -77,6 +77,32 @@ pub fn allow_foreground(pid: Option<u32>) {
     let _ = pid;
 }
 
+/// Espace de la partition qui contient [path] (ou son premier dossier existant) : (libre, total) en octets.
+pub fn disk_space(path: &std::path::Path) -> Option<(u64, u64)> {
+    let mut dir = path.to_path_buf();
+    while !dir.exists() {
+        dir = dir.parent()?.to_path_buf();
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetDiskFreeSpaceExW(directory: *const u16, free_for_caller: *mut u64, total: *mut u64, total_free: *mut u64) -> i32;
+        }
+        let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(Some(0)).collect();
+        let (mut free, mut total, mut total_free) = (0u64, 0u64, 0u64);
+        // SAFETY : chaîne terminée par 0, pointeurs vers des variables locales.
+        let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, &mut total, &mut total_free) };
+        if ok != 0 && total > 0 {
+            return Some((free, total));
+        }
+        None
+    }
+    #[cfg(not(windows))]
+    None
+}
+
 /// Maintenant, en ms depuis 1970.
 pub fn now_ms() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
@@ -94,5 +120,12 @@ mod tests {
         assert_eq!(extension(r"D:\Jeux\Mario.ZIP"), ".zip");
         assert_eq!(extension("sans-extension"), "");
         assert_eq!(dirname(r"D:\Jeux\mame\sf2.zip"), r"D:\Jeux\mame");
+    }
+
+    #[test]
+    fn espace_de_la_partition() {
+        // Dossier absent : partition de son premier dossier existant.
+        let (free, total) = disk_space(&std::env::temp_dir().join("romcloud-absent").join("roms")).unwrap();
+        assert!(total > 0 && free <= total);
     }
 }
