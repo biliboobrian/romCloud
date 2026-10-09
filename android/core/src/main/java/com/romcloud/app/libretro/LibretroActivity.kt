@@ -182,6 +182,9 @@ class LibretroActivity : ComponentActivity() {
 
     /** Partie proposée aussi par Internet : identifiant sur le relais du serveur (profil connecté). */
     private var relaySession: String? = null
+
+    /** Problème de la partie par Internet (annonce ou relais), affiché dans le bandeau. */
+    private var internetProblem by mutableStateOf<String?>(null)
     private var netplayRequest by mutableStateOf<Pair<NetplayProtocol.Join, CompletableDeferred<Boolean>>?>(null)
     private var netplayWaiting by mutableStateOf(false)
     /** Partie proposée, en attente d'un invité (hôte). */
@@ -583,6 +586,7 @@ class LibretroActivity : ComponentActivity() {
         val app = application as RomCloudApp
         val presence = PlayPresence(this, account, account.deviceName, app.api.platform)
         gamePresence = presence
+        lifecycleScope.launch { presence.internet.problem.collect { internetProblem = it } }
         // Invité : annoncé « en partie » ; hôte : annonce de la partie proposée (NetplayHost).
         if (!launch.host) presence.start(lifecycleScope)
         if (link != null && !launch.host) {
@@ -1027,6 +1031,11 @@ class LibretroActivity : ComponentActivity() {
                 netplayWaiting -> stringResource(R.string.netplay_waiting, netplayPartner.orEmpty())
                 netplayPartner != null && link != null -> stringResource(R.string.link_started, netplayPartner.orEmpty())
                 netplayPartner != null -> stringResource(R.string.netplay_playing_with, netplayPartner.orEmpty())
+                // Partie aussi proposée par Internet : état de l'annonce et du relais (problème : sa raison).
+                netplayOpen && relaySession != null -> internetProblem?.let {
+                    if (it == com.romcloud.app.netplay.InternetPresence.SIGNED_OUT) stringResource(R.string.netplay_open)
+                    else stringResource(R.string.netplay_open_internet_failed, it)
+                } ?: stringResource(R.string.netplay_open_internet)
                 netplayOpen -> stringResource(R.string.netplay_open)
                 else -> null
             }

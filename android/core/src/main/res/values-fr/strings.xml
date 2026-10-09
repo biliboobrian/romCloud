@@ -512,6 +512,8 @@
     <string name="netplay_downloading">Téléchargement de %1$s : la partie sera rejointe à la fin.</string>
     <string name="netplay_unavailable">Le jeu à plusieurs n’est pas disponible avec cet émulateur.</string>
     <string name="netplay_open">Proposé sur le réseau local : en attente d’un joueur…</string>
+    <string name="netplay_open_internet">Proposé sur le réseau local et par Internet : en attente d’un joueur…</string>
+    <string name="netplay_open_internet_failed">Proposé sur le réseau local seulement (Internet : %1$s)</string>
     <string name="netplay_connecting">Connexion à %1$s…</string>
     <string name="netplay_started">Partie à deux avec %1$s</string>
     <string name="netplay_core_differs">Partie à deux avec %1$s (versions de l’émulateur différentes : risque de désynchronisation)</string>

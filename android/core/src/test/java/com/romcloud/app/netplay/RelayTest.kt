@@ -79,7 +79,7 @@ class RelayTest {
             assertEquals("demande", DataInputStream(host.getInputStream()).readUTF())
             DataOutputStream(host.getOutputStream()).apply { writeUTF("réponse"); flush() }
             assertEquals("réponse", DataInputStream(guestSide.getInputStream()).readUTF())
-            assertTrue(relay.headers.any { it.contains("X-RomCloud-Session: jeton") && it.contains("Upgrade: romcloud-relay") })
+            assertTrue(relay.headers.any { it.contains("X-RomCloud-Session: jeton") && it.contains("Upgrade: websocket") && it.contains("Sec-WebSocket-Key: ") })
             host.close()
             guestSide.close()
         }

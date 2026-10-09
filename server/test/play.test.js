@@ -41,10 +41,12 @@ test('partie proposée invalide refusée', () => {
 });
 
 /** Ouvre une connexion de relais ; renvoie la socket une fois l'en-tête de réponse lu, et son statut. */
-function relay(port, query, token) {
+function relay(port, query, token, websocket = false) {
   return new Promise((resolve, reject) => {
     const socket = net.connect(port, '127.0.0.1', () => {
-      socket.write(`GET /api/play/relay?${query} HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: romcloud-relay\r\nX-RomCloud-Session: ${token}\r\n\r\n`);
+      // Clé de l'exemple de la RFC 6455 : réponse attendue connue.
+      const upgrade = websocket ? 'Upgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' : 'Upgrade: romcloud-relay';
+      socket.write(`GET /api/play/relay?${query} HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\n${upgrade}\r\nX-RomCloud-Session: ${token}\r\n\r\n`);
     });
     let buffer = Buffer.alloc(0);
     const onData = (chunk) => {
@@ -55,7 +57,7 @@ function relay(port, query, token) {
       const status = Number(buffer.toString('latin1', 9, 12));
       const rest = buffer.subarray(end + 4);
       if (rest.length) socket.unshift(rest);
-      resolve({ socket, status });
+      resolve({ socket, status, head: buffer.toString('latin1', 0, end) });
     };
     socket.on('data', onData);
     socket.on('error', reject);
@@ -95,8 +97,9 @@ test('relais : l\'hôte attend, l\'invité le rejoint, les octets passent dans l
     gone.socket.end();
     await new Promise((r) => setTimeout(r, 100));
     assert.equal((await relay(port, `session=${session}&role=guest`, bob.token)).status, 404);
-    const host = await relay(port, `session=${session}&role=host`, alice.token);
+    const host = await relay(port, `session=${session}&role=host`, alice.token, true);
     assert.equal(host.status, 101);
+    assert.match(host.head, /Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK\+xOo=/);
     const guest = await relay(port, `session=${session}&role=guest`, bob.token);
     assert.equal(guest.status, 101);
     assert.deepEqual([...await read(host.socket, 1)], [1]);  // un invité est arrivé

@@ -56,7 +56,11 @@ pub async fn open(request: &Request) -> Result<Stream, Refused> {
         Some(p) => format!("{host}:{p}"),
         None => host.clone(),
     };
-    let mut head = format!("GET {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: Upgrade\r\nUpgrade: romcloud-relay\r\n");
+    // Montée annoncée comme une WebSocket : les proxys inverses la laissent passer.
+    let key = base64_key();
+    let mut head = format!(
+        "GET {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {key}\r\n"
+    );
     for (k, v) in &request.headers {
         head.push_str(&format!("{k}: {}\r\n", v.replace(['\r', '\n'], "")));
     }
@@ -70,6 +74,20 @@ pub async fn open(request: &Request) -> Result<Stream, Refused> {
         return Err(Refused { status, detail: format!("HTTP {status}") });
     }
     Ok(stream)
+}
+
+/// Clé WebSocket (16 octets au hasard, en base64).
+fn base64_key() -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes: [u8; 16] = rand::random();
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
+        for i in 0..4 {
+            out.push(if i <= chunk.len() { ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
+        }
+    }
+    out
 }
 
 /// En-tête de la réponse, lu octet par octet (la suite appartient à la partie) ; renvoie le statut.

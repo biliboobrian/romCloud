@@ -91,7 +91,16 @@ class NetplayHost(
             scope.launch(Dispatchers.IO) {
                 while (isActive && !socket.isClosed) {
                     val request = relay.invoke(Relay.CHANNEL_PLAY)
-                    val guest = request?.let { runCatching { Relay.awaitGuest(it) }.getOrNull() }
+                    val attempt = request?.let { runCatching { Relay.awaitGuest(it) } }
+                    // Relais refusé (proxy inverse qui ne transmet pas la requête, partie inconnue…) : affiché en jeu.
+                    attempt?.exceptionOrNull()?.let {
+                        android.util.Log.w("RomCloudPlay", "relais refusé", it)
+                        presence.internet.problem.value = InternetPresence.RELAY + (it.message ?: it.javaClass.simpleName)
+                    }
+                    val guest = attempt?.getOrNull()
+                    if (guest != null && presence.internet.problem.value?.startsWith(InternetPresence.RELAY) == true) {
+                        presence.internet.problem.value = null
+                    }
                     if (guest == null) {
                         delay(if (request == null) 10_000 else 2_000)
                         continue
