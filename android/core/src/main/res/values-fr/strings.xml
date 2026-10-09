@@ -393,6 +393,18 @@
     <string name="info_analog">Stick analogique</string>
     <string name="info_file">Fichier</string>
     <string name="info_size">Taille</string>
+    <string name="info_parts">Autres fichiers</string>
+    <string name="parts_disc">Disque %1$s</string>
+    <string name="parts_update">Mise à jour</string>
+    <string name="parts_dlcs">%1$d DLC</string>
+    <plurals name="parts_discs">
+        <item quantity="one">%1$d disque</item>
+        <item quantity="other">%1$d disques</item>
+    </plurals>
+    <plurals name="parts_updates">
+        <item quantity="one">%1$d mise à jour</item>
+        <item quantity="other">%1$d mises à jour</item>
+    </plurals>
     <string name="region_world">Monde</string>
     <string name="info_arcade_set">Jeu MAME / FBNeo</string>
     <string name="info_arcade_clone">clone de %1$s</string>

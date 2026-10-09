@@ -45,6 +45,11 @@ db.exec(`
     scrape_source  TEXT,
     scrape_error   TEXT,
     scraped_at     TEXT,
+    -- Partie d'un jeu (disque, mise à jour, DLC) rattachée au fichier principal (voir groups.js).
+    parent_id      INTEGER REFERENCES games(id) ON DELETE SET NULL,
+    part_kind      TEXT,
+    part_index     INTEGER,
+    group_mode     TEXT,
     added_at       TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (system_id, file_name)
@@ -167,6 +172,15 @@ if (!systemColumns.includes('image')) db.exec('ALTER TABLE systems ADD COLUMN im
 if (!systemColumns.includes('platforms')) db.exec("ALTER TABLE systems ADD COLUMN platforms TEXT NOT NULL DEFAULT '[]'");
 const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
+if (!gameColumns.includes('parent_id')) {
+  db.exec(`
+    ALTER TABLE games ADD COLUMN parent_id INTEGER REFERENCES games(id) ON DELETE SET NULL;
+    ALTER TABLE games ADD COLUMN part_kind TEXT;
+    ALTER TABLE games ADD COLUMN part_index INTEGER;
+    ALTER TABLE games ADD COLUMN group_mode TEXT;
+  `);
+}
+db.exec('CREATE INDEX IF NOT EXISTS games_parent ON games(parent_id)');
 // Notes en étoiles entières (les versions précédentes gardaient une décimale).
 db.exec('UPDATE games SET rating = MIN(5, MAX(0, ROUND(rating))) WHERE rating IS NOT NULL AND rating <> ROUND(rating)');
 const biosColumns = db.prepare('PRAGMA table_info(bios)').all().map((c) => c.name);

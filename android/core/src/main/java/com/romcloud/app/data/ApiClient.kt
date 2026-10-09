@@ -79,7 +79,10 @@ class ApiClient(private val settings: Settings, val platform: String) {
         return url("/api/systems/${system.id}/image?v=${system.imageVersion}")
     }
 
-    fun fileUrl(game: Game): String = url("/api/games/${game.id}/file")
+    fun fileUrl(game: Game): String = fileUrl(game.id)
+
+    /** Fichier d'un jeu ou d'une de ses parties (disque, mise à jour, DLC). */
+    fun fileUrl(id: Long): String = url("/api/games/$id/file")
 
     private suspend fun get(path: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url(path)).build()

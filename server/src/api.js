@@ -10,15 +10,16 @@ import { config, screenscraperEnabled } from './config.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
+import { setGroup } from './groups.js';
 import { cancelJob, enqueueScrape, listJobs } from './jobs.js';
 import {
   acceptsFileName,
   deleteGame,
   gameFilePath,
   gameMediaDir,
+  gameWithParts,
   listGames,
   requireGameRow,
-  rowToGame,
   safeFileName,
   scanAll,
   scanSystem,
@@ -341,9 +342,20 @@ api.post(
   }),
 );
 
-api.get('/games/:id', (req, res) => res.json(rowToGame(requireGameRow(req.params.id))));
+api.get('/games/:id', (req, res) => res.json(gameWithParts(req.params.id)));
 
-api.put('/games/:id', (req, res) => res.json(updateGame(req.params.id, req.body || {})));
+api.put('/games/:id', (req, res) => {
+  updateGame(req.params.id, req.body || {});
+  res.json(gameWithParts(req.params.id));
+});
+
+// Rattachement d'un fichier à un jeu : { parentId, kind: disc | update | dlc } ; { parentId: null } :
+// jeu à part entière ; { auto: true } : regroupement automatique. Renvoie le jeu qui contient le fichier.
+api.put('/games/:id/group', (req, res) => {
+  setGroup(req.params.id, req.body || {});
+  const row = requireGameRow(req.params.id);
+  res.json(gameWithParts(row.parent_id ?? row.id));
+});
 
 api.delete('/games/:id', (req, res) => {
   deleteGame(req.params.id, { deleteFile: req.query.keepFile !== '1' });

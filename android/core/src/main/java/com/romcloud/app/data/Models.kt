@@ -106,7 +106,15 @@ data class Game(
     val updatedAt: String = "",
     /** Scraping du serveur : ok, none (pas encore scrapé), notfound, error ; absent des anciens caches. */
     val scrapeStatus: String = "ok",
+    /** Autres disques, mises à jour et DLC regroupés par le serveur, téléchargés avec le jeu. */
+    val parts: List<GamePart> = emptyList(),
 ) {
+    /** Fichiers du jeu : le fichier principal puis ses parties. */
+    val files: List<GamePart> get() = listOf(GamePart(id, fileName, size)) + parts
+
+    /** Taille du jeu et de ses parties. */
+    val fullSize: Long get() = size + parts.sumOf { it.size }
+
     /** Jeu identifié par le scraping du serveur (réglage « Masquer les jeux non identifiés »). */
     val identified: Boolean get() = scrapeStatus == "ok"
 
@@ -129,6 +137,10 @@ data class AgeRating(val type: String? = null, val text: String)
 
 @Serializable
 data class GameLink(val label: String, val url: String)
+
+/** Partie d'un jeu : [kind] disc (avec son numéro [index]), update ou dlc ; vide pour le fichier principal. */
+@Serializable
+data class GamePart(val id: Long, val fileName: String, val size: Long, val kind: String = "", val index: Int? = null)
 
 /**
  * Note d'une source du scraping, en étoiles : [source] screenscraper, launchbox ou press (presse

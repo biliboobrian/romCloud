@@ -64,7 +64,7 @@ fun DownloadDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.tv_download_text))
                 Text(
-                    "${game.fileName} · ${formatSize(game.size)}",
+                    "${game.fileName} · ${formatSize(game.fullSize)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

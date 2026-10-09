@@ -3,7 +3,7 @@ import path from 'node:path';
 import { config, screenscraperEnabled } from '../config.js';
 import { I18nError } from '../i18n.js';
 import { db } from '../db.js';
-import { ensureHashes, gameFilePath, gameMediaDir, getGameRow, requireGameRow, rowToGame, titleFromFileName } from '../library.js';
+import { ensureHashes, gameFilePath, gameMediaDir, gameWithParts, requireGameRow, titleFromFileName } from '../library.js';
 import { requireSystem } from '../systems.js';
 import { mergeDetails, parseStoredDetails } from './details.js';
 import { combineRatings } from './rating.js';
@@ -218,7 +218,7 @@ export async function scrapeGame(gameId, source = 'auto') {
   if (!meta) {
     const status = errors.length ? 'error' : 'notfound';
     markStatus(row.id, status, usedSources.join('+') || source, errors[0] || null);
-    return rowToGame(getGameRow(row.id));
+    return gameWithParts(row.id);
   }
 
   // Étoiles : barème de chaque source puis moyenne ; détail par source (note brute et étoiles)
@@ -267,7 +267,7 @@ export async function scrapeGame(gameId, source = 'auto') {
     row.id,
   );
   markStatus(row.id, 'ok', usedSources.join('+'), errors[0] || null);
-  return rowToGame(getGameRow(row.id));
+  return gameWithParts(row.id);
 }
 
 /** Enregistre une image fournie manuellement (upload depuis l'interface web). */
@@ -280,5 +280,5 @@ export function saveCustomMedia(gameId, type, buffer, mimeType) {
   for (const old of fs.readdirSync(dir)) if (old.startsWith(`${type}.`)) fs.rmSync(path.join(dir, old));
   fs.writeFileSync(path.join(dir, `${type}${ext}`), buffer);
   db.prepare(`UPDATE games SET ${type} = ?, updated_at = datetime('now') WHERE id = ?`).run(`${type}${ext}`, row.id);
-  return rowToGame(getGameRow(row.id));
+  return gameWithParts(row.id);
 }

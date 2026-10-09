@@ -114,9 +114,9 @@ export async function findDuplicateGroups(games, hashOf) {
 /** Doublons d'un système (calcule et mémorise les MD5 manquants des fichiers de même taille). */
 export async function systemDuplicates(systemId) {
   requireSystem(systemId);
-  const rows = db.prepare('SELECT * FROM games WHERE system_id = ?').all(systemId);
+  const rows = db.prepare('SELECT * FROM games WHERE system_id = ? AND parent_id IS NULL').all(systemId);
   const rowById = new Map(rows.map((r) => [r.id, r]));
-  const games = rows.map(rowToGame);
+  const games = rows.map((r) => rowToGame(r));
   let unhashed = 0;
   const result = await findDuplicateGroups(games, async (g) => {
     const row = await ensureHashes(rowById.get(g.id));

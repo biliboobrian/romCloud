@@ -58,13 +58,13 @@ class Downloader(
     val activeCount: Int get() = _states.value.values.count { it is DownloadState.Running }
 
     /**
-     * Télécharge d'abord les [bios] indiqués (BIOS manquants du système), puis le jeu sauf si
-     * [includeRom] vaut false. La progression affichée couvre l'ensemble.
+     * Télécharge d'abord les [bios] indiqués (BIOS manquants du système), puis le jeu et ses parties
+     * (disques, mises à jour, DLC) sauf si [includeRom] vaut false. La progression affichée couvre l'ensemble.
      */
     fun start(system: GameSystem, game: Game, bios: List<BiosFile> = emptyList(), includeRom: Boolean = true) {
         if (jobs[game.id]?.isActive == true) return
         if (!includeRom && bios.isEmpty()) return
-        val total = bios.sumOf { it.size } + if (includeRom) game.size else 0
+        val total = bios.sumOf { it.size } + if (includeRom) game.fullSize else 0
         _states.update { it + (game.id to DownloadState.Running(game.title, 0, total)) }
         ContextCompat.startForegroundService(context, Intent(context, DownloadService::class.java))
         jobs[game.id] = scope.launch(Dispatchers.IO) {
@@ -77,7 +77,12 @@ class Downloader(
                     fetch(api.biosFileUrl(file), library.biosFile(file), file.size, progress)
                     done += file.size
                 }
-                if (includeRom) fetch(api.fileUrl(game), library.fileFor(system, game), game.size, progress)
+                if (includeRom) {
+                    for (file in game.files) {
+                        fetch(api.fileUrl(file.id), File(library.systemDir(system), file.fileName), file.size, progress)
+                        done += file.size
+                    }
+                }
                 _states.update { it - game.id }
                 _events.emit(DownloadEvent.Completed(system, game, includeRom))
             } catch (e: CancellationException) {

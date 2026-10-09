@@ -36,4 +36,24 @@ class GameTest {
         // Charlie (4,6) et delta (5) ont 5 étoiles : par nom entre eux ; sans note à la fin.
         assertEquals(listOf("Charlie", "delta", "Bravo", "alpha"), sortGames(games, GameOrder.RATING).map { it.title })
     }
+
+    @Test
+    fun `jeu en plusieurs fichiers et liste des disques`() {
+        val game = Game(
+            1, "psx", "FF7 (Disc 1).chd", 10, "FF7",
+            parts = listOf(
+                GamePart(3, "FF7 (Disc 3).chd", 30, "disc", 3),
+                GamePart(9, "FF7 [DLC].chd", 5, "dlc"),
+                GamePart(2, "FF7 (Disc 2).chd", 20, "disc", 2),
+            ),
+        )
+        assertEquals(65L, game.fullSize)
+        assertEquals(listOf(1L, 3L, 9L, 2L), game.files.map { it.id })
+        assertEquals("FF7 (Disc 1).chd\nFF7 (Disc 2).chd\nFF7 (Disc 3).chd\n", playlistText(game))
+        assertEquals(null, playlistText(Game(5, "psx", "Tekken.chd", 7, "Tekken")))
+        assertEquals(null, playlistText(game.copy(fileName = "FF7 (Disc 1).zip")))
+        // Parties envoyées par le serveur
+        val decoded = json.decodeFromString(Game.serializer(), """{"id":1,"systemId":"psx","fileName":"a.chd","size":1,"title":"A","parts":[{"id":2,"fileName":"b.chd","size":2,"kind":"disc","index":2}],"totalSize":3}""")
+        assertEquals(3L, decoded.fullSize)
+    }
 }

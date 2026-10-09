@@ -325,7 +325,7 @@ fun GamesScreen(
                 Column {
                     Text(stringResource(R.string.download_text, game.title))
                     Spacer(Modifier.padding(4.dp))
-                    Text("${game.fileName} · ${formatSize(game.size)}", style = MaterialTheme.typography.bodySmall,
+                    Text("${game.fileName} · ${formatSize(game.fullSize)}", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     (statusOf(game) as? LocalStatus.Error)?.let {
                         Text(stringResource(R.string.download_last_error, it.message), color = MaterialTheme.colorScheme.error,
@@ -442,7 +442,7 @@ private fun GameRow(
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(game.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val sub = listOfNotNull(game.year, game.genre, formatSize(game.size)).joinToString(" · ")
+            val sub = listOfNotNull(game.year, game.genre, partsSummary(game), formatSize(game.fullSize)).joinToString(" · ")
             Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (status is LocalStatus.Downloading) {
