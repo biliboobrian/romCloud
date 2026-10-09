@@ -91,6 +91,8 @@ class Netplay {
   void announce(const std::string& deviceId, const std::string& deviceName);
   /** Liaison par paquets du cœur, séparée du jeu synchronisé ; à couper avec leave(). */
   bool packets() const { return config_.packets; }
+  /** Jeu synchronisé en cours (états échangés entre appareils). */
+  bool synchronized() const { return playing() && config_.link.empty(); }
 
  private:
   enum class State { Off, Starting, Running };
@@ -111,6 +113,7 @@ class Netplay {
   bool sendState(uint32_t frame);
   size_t serialize();
   void compare(uint32_t frame);
+  uint32_t checkHash();
   void onMessage(uint8_t type, const uint8_t* p, uint32_t size);
   void resetRings();
   Frame preparePackets();

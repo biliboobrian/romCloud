@@ -26,10 +26,13 @@ const SYSTEMS: &[&str] = &[
     "msx2", "3do",
 ];
 
-/// Cœurs trop lourds, ou dont l'état est trop gros pour être copié en cours de partie.
+/// Cœurs trop lourds, dont l'état est trop gros pour être copié en cours de partie, ou qui ne tiennent
+/// pas une partie synchronisée (vérifié entre deux moteurs ; même liste que NetplayRules.kt) :
+/// parallel_n64 s'arrête net après le départ ; Yabause, YabaSanshiro, Kronos et Ymir (Saturn,
+/// émulation répartie sur plusieurs fils) et SMS Plus divergent à chaque contrôle.
 const EXCLUDED_CORES: &[&str] = &[
     "dolphin", "pcsx2", "play", "lrps2", "pcee2", "armsx2", "flycast", "citra", "azahar", "panda3ds", "ppsspp", "melonds",
-    "melondsds", "desmume", "desmume2015",
+    "melondsds", "desmume", "desmume2015", "parallel_n64", "yabause", "yabasanshiro", "kronos", "ymir", "smsplus",
 ];
 
 /// Liaison propre à un cœur (même règles que LinkRules.kt) : chaque appareil émule sa console, avec
@@ -420,12 +423,14 @@ pub fn host_args(system: &Value, game: &Value, core: &str) -> Vec<String> {
         "fileName": s(game, "fileName"), "size": game["size"], "core": core,
     });
     let mut args = vec!["--netplay-host".to_string(), "--netplay-game".into(), hosted.to_string()];
+    args.extend(netplay_options());
     args.extend(identity());
     args
 }
 
 pub fn join_args(join: &Value) -> Vec<String> {
     let mut args = join_game_args(join);
+    args.extend(netplay_options());
     args.extend(identity());
     args
 }
@@ -439,6 +444,14 @@ fn join_game_args(join: &Value) -> Vec<String> {
         "--netplay-game".into(),
         join["game"].to_string(),
     ]
+}
+
+/// Options des cœurs imposées en jeu synchronisé (même règle que NetplayRules.CORE_OPTIONS) : ce
+/// qui dépend de l'appareil et changerait la partie (meilleurs scores enregistrés de FBNeo).
+const NETPLAY_OPTIONS: &[(&str, &str)] = &[("fbneo-hiscores", "disabled")];
+
+fn netplay_options() -> Vec<String> {
+    NETPLAY_OPTIONS.iter().flat_map(|(k, v)| ["--option".to_string(), format!("{k}={v}")]).collect()
 }
 
 fn identity() -> Vec<String> {
@@ -458,6 +471,8 @@ mod tests {
     fn coeurs_compatibles() {
         assert!(core_allows("snes9x"));
         assert!(!core_allows("dolphin"));
+        assert!(!core_allows("yabause"));
+        assert!(core_allows("mednafen_saturn"));
         assert!(!core_allows("rpcs3")); // émulateur géré par RomCloud, pas le moteur intégré
         assert!(!core_allows(""));
     }

@@ -122,11 +122,23 @@ object NetplayRules {
         "colecovision", "intellivision", "msx", "msx2", "3do",
     )
 
-    /** Cœurs trop lourds, ou dont l'état est trop gros pour être copié en cours de partie. */
+    /**
+     * Cœurs trop lourds, dont l'état est trop gros pour être copié en cours de partie, ou qui ne
+     * tiennent pas une partie synchronisée (vérifié entre deux moteurs) : parallel_n64 s'arrête net
+     * après le départ ; Yabause, YabaSanshiro, Kronos et Ymir (Saturn, émulation répartie sur
+     * plusieurs fils) et SMS Plus divergent à chaque contrôle.
+     */
     private val EXCLUDED_CORES = setOf(
         "dolphin", "pcsx2", "play", "lrps2", "pcee2", "armsx2", "flycast", "citra", "azahar", "panda3ds",
         "ppsspp", "melonds", "melondsds", "desmume", "desmume2015",
+        "parallel_n64", "yabause", "yabasanshiro", "kronos", "ymir", "smsplus",
     )
+
+    /**
+     * Options des cœurs imposées en jeu synchronisé : ce qui dépend de l'appareil et changerait la
+     * partie (meilleurs scores enregistrés de FBNeo, réinjectés dans la mémoire du jeu).
+     */
+    val CORE_OPTIONS = mapOf("fbneo-hiscores" to "disabled")
 
     /** Nombre de joueurs maximal d'après le champ « joueurs » du scraping (« 1-2 », « 4 »…), 0 si inconnu. */
     fun maxPlayers(players: String?): Int =

@@ -28,6 +28,9 @@ class NetplayRulesTest {
         assertFalse(NetplayRules.canPlayTogether(system("snes"), game("1-2"), Player(name = "RetroArch", uniqueId = "ra", amStartArguments = "")))
         assertFalse(NetplayRules.canPlayTogether(system("gc"), game("1-4"), builtin("dolphin")))
         assertTrue(NetplayRules.canPlayTogether(system("psx"), game("1-2"), builtin("swanstation")))
+        // Saturn : seul Mednafen Saturn tient une partie synchronisée.
+        assertTrue(NetplayRules.canPlayTogether(system("saturn"), game("1-2"), builtin("mednafen_saturn")))
+        assertFalse(NetplayRules.canPlayTogether(system("saturn"), game("1-2"), builtin("yabause")))
     }
 
     @Test

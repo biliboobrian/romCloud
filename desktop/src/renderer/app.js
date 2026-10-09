@@ -688,7 +688,11 @@
       S.games.error = err.message;
     }
     S.games.loading = false;
-    if (S.route.name === 'games' && S.route.systemId === systemId) renderGamesBody();
+    if (S.route.name !== 'games' || S.route.systemId !== systemId) return;
+    // Barre du haut aussi : bouton « Filtres » et nombre de jeux dépendent de la liste chargée.
+    const typing = document.activeElement?.id === 'gameSearch';
+    renderGames();
+    if (typing) $('#gameSearch')?.focus();
   }
 
   /** Jeux téléchargés du système affiché avec une partie sauvegardée (moteur intégré) : « Reprendre ». */
