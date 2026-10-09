@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
+import android.os.StatFs
 import androidx.core.content.ContextCompat
 import com.romcloud.app.launch.PlayerFilter
 import java.io.File
@@ -52,6 +53,16 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
             systemDir(system).listFiles()?.any { it.isFile && !it.name.endsWith(".part") } == true
         }.mapTo(mutableSetOf()) { it.id }
 
+    /** Place occupée par les fichiers de chaque système et espace de la partition du dossier des ROMs. */
+    fun usage(systems: List<GameSystem>): StorageUsage {
+        val sizes = systems.associate { it.id to dirSize(systemDir(it)) }.filterValues { it > 0 }
+        // Dossier pas encore créé : partition de son premier dossier existant.
+        var dir: File? = root()
+        while (dir != null && !dir.exists()) dir = dir.parentFile
+        val stat = dir?.let { runCatching { StatFs(it.absolutePath) }.getOrNull() }
+        return StorageUsage(sizes, stat?.availableBytes ?: -1, stat?.totalBytes ?: -1)
+    }
+
     /** Emplacement d'un BIOS : <dossier BIOS>/<chemin relatif, sous-dossiers compris>. */
     fun biosFile(bios: BiosFile) = File(
         settings.config.value.biosDir,
@@ -96,3 +107,7 @@ fun playlistText(game: Game): String? {
     if (names.any { it.substringAfterLast('.', "").lowercase() in setOf("zip", "7z") }) return null
     return names.joinToString("\n", postfix = "\n")
 }
+
+/** Taille des fichiers d'un dossier, sous-dossiers compris (0 s'il n'existe pas). */
+fun dirSize(dir: File): Long =
+    dir.listFiles()?.sumOf { if (it.isDirectory) dirSize(it) else it.length() } ?: 0L

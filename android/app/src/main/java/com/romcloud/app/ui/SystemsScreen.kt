@@ -1,19 +1,20 @@
 package com.romcloud.app.ui
 
-import androidx.activity.compose.BackHandler
 import android.app.Activity
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.material3.AlertDialog
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -51,6 +53,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +66,7 @@ import coil.compose.AsyncImage
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
+import com.romcloud.app.data.StorageUsage
 import com.romcloud.core.R
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,8 +111,12 @@ fun SystemsScreen(
     // Au retour dans l'application (ex. après une partie), re-vérifie les jeux présents.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
-        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.refreshSearchLocal() }
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.refreshSearchLocal()
+            viewModel.refreshUsage()
+        }
     }
+    val usage by viewModel.usage.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -128,7 +136,10 @@ fun SystemsScreen(
                         )
                         LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
                     } else {
-                        Text("RomCloud")
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("RomCloud")
+                            DiskBar(usage)
+                        }
                     }
                 },
                 actions = {
@@ -190,7 +201,7 @@ fun SystemsScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(state.systems, key = { it.id }) { system ->
-                            SystemCard(system, imageUrl(system)) { onOpenSystem(system.id) }
+                            SystemCard(system, imageUrl(system), usage.systems[system.id] ?: 0) { onOpenSystem(system.id) }
                         }
                     }
                 }
@@ -200,7 +211,7 @@ fun SystemsScreen(
 }
 
 @Composable
-private fun SystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Unit) {
+private fun SystemCard(system: GameSystem, imageUrl: String?, localSize: Long, onClick: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         imageUrl?.let { url ->
             AsyncImage(
@@ -228,7 +239,35 @@ private fun SystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Uni
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (localSize > 0) {
+                Text(
+                    stringResource(R.string.storage_on_device, formatSize(localSize)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
+    }
+}
+
+/** Espace de la partition des ROMs : barre de la place occupée et espace libre (rouge sous 10 %). */
+@Composable
+private fun DiskBar(usage: StorageUsage) {
+    if (!usage.known) return
+    val color = if (usage.low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        LinearProgressIndicator(
+            progress = { usage.usedFraction },
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            drawStopIndicator = {},
+            modifier = Modifier.width(72.dp).height(6.dp),
+        )
+        Text(
+            stringResource(R.string.storage_free, formatSize(usage.free)),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (usage.low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

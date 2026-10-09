@@ -54,6 +54,7 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
             Value::Null
         }
         "library:systemsWithGames" => json!(library::systems_with_games(&list(a, 0))),
+        "library:usage" => library::usage(&list(a, 0)),
         "connectivity:state" => connectivity::state(),
         "connectivity:check" => {
             connectivity::probe().await;

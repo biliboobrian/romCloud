@@ -394,6 +394,9 @@
     <string name="info_file">Fichier</string>
     <string name="info_size">Taille</string>
     <string name="info_parts">Autres fichiers</string>
+    <string name="storage_on_device">Sur l’appareil : %1$s</string>
+    <string name="storage_free">%1$s libres</string>
+    <string name="storage_free_of">%1$s libres sur %2$s</string>
     <string name="parts_disc">Disque %1$s</string>
     <string name="parts_update">Mise à jour</string>
     <string name="parts_dlcs">%1$d DLC</string>

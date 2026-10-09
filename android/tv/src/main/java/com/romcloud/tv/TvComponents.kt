@@ -2,14 +2,18 @@ package com.romcloud.tv
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
@@ -21,6 +25,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +39,7 @@ import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
+import com.romcloud.app.data.StorageUsage
 import com.romcloud.app.ui.DownloadIndicator
 import com.romcloud.app.ui.LocalStatus
 import com.romcloud.app.ui.formatSize
@@ -144,7 +150,7 @@ private fun BoxScope.CoverImage(url: String?, title: String) {
 
 /** Carte d'un système : image 16:9 (configurée sur le serveur) ou nom court en grand. */
 @Composable
-fun TvSystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun TvSystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Unit, modifier: Modifier = Modifier, localSize: Long = 0) {
     Card(
         onClick = onClick,
         shape = CardDefaults.shape(CardShape),
@@ -182,7 +188,35 @@ fun TvSystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Unit, mod
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (localSize > 0) {
+                Text(
+                    stringResource(R.string.storage_on_device, formatSize(localSize)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
+    }
+}
+
+/** Espace de la partition des ROMs, à côté du nom de l'application : barre et espace libre (rouge sous 10 %). */
+@Composable
+fun TvDiskBar(usage: StorageUsage, modifier: Modifier = Modifier) {
+    if (!usage.known) return
+    val color = if (usage.low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        LinearProgressIndicator(
+            progress = { usage.usedFraction },
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            drawStopIndicator = {},
+            modifier = Modifier.width(160.dp).height(10.dp),
+        )
+        Text(
+            stringResource(R.string.storage_free_of, formatSize(usage.free), formatSize(usage.total)),
+            style = MaterialTheme.typography.titleSmall,
+            color = if (usage.low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
