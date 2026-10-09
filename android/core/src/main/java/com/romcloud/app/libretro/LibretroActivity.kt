@@ -345,6 +345,8 @@ class LibretroActivity : ComponentActivity() {
     }
 
     private suspend fun startGame(coreFile: File, game: File) {
+        // Hôte d'une liaison ad hoc (PSP) : adresse de cet appareil sur le réseau local.
+        val ownAddress = if (link == LinkKind.PSP_ADHOC && netplayLaunch?.host == true) withContext(Dispatchers.IO) { LanPresence.localAddress() } else null
         val sram = withContext(Dispatchers.IO) {
             // Liaison : sauvegarde de l'émulateur choisi reprise si elle est plus récente.
             linkedSram?.takeIf { it.isFile && (!sramFile.isFile || it.lastModified() > sramFile.lastModified()) }
@@ -362,7 +364,7 @@ class LibretroActivity : ComponentActivity() {
             // Valeurs imposées par le jeu (cartouche GX4000…), sauf choix de l'utilisateur.
             // Liaison entre consoles : options du cœur imposées (serveur chez l'hôte, adresse de l'hôte chez l'invité).
             val linkOptions = netplayLaunch?.let { launch ->
-                link?.let { LinkRules.options(it, launch.host, launch.address, LanPresence.deviceId(this@LibretroActivity)) }
+                link?.let { LinkRules.options(it, launch.host, launch.address, LanPresence.deviceId(this@LibretroActivity), ownAddress) }
             }.orEmpty()
             variables = (GameOptionDefaults.forGame(core, game) + optionsStore.load(systemId) + linkOptions)
                 .map { (key, value) -> Variable(key, value) }.toTypedArray()

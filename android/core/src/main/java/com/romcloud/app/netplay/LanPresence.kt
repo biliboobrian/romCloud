@@ -163,6 +163,27 @@ class LanPresence(
     }
 
     companion object {
+        /**
+         * Adresse IPv4 de cet appareil sur le réseau local : celle de la route par défaut (socket UDP
+         * « connectée », rien n'est envoyé), sinon la première adresse privée d'une interface active.
+         * Réseau : hors du thread principal.
+         */
+        fun localAddress(): String? {
+            runCatching {
+                DatagramSocket().use { socket ->
+                    socket.connect(InetAddress.getByName("8.8.8.8"), 53)
+                    val address = socket.localAddress
+                    if (address is java.net.Inet4Address && !address.isAnyLocalAddress && !address.isLoopbackAddress) return address.hostAddress
+                }
+            }
+            return runCatching {
+                NetworkInterface.getNetworkInterfaces().asSequence()
+                    .filter { it.isUp && !it.isLoopback }
+                    .flatMap { it.inetAddresses.asSequence() }
+                    .firstOrNull { it is java.net.Inet4Address && it.isSiteLocalAddress }?.hostAddress
+            }.getOrNull()
+        }
+
         /** Identifiant de l'appareil, gardé dans les réglages (le même dans tous les processus). */
         fun deviceId(context: Context): String {
             val prefs = context.getSharedPreferences("romcloud", Context.MODE_PRIVATE)
