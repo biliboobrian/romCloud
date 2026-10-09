@@ -191,6 +191,8 @@ bool Player::loadGame(std::string& error) {
   }
   if (!g.api.load_game(&game)) {
     error = menu_.tr("load_failed");
+    // Raison donnée par le cœur (Azahar : « This ROM is encrypted… »).
+    if (!g.message.empty()) error += "\n" + g.message;
     return false;
   }
   g.api.get_system_av_info(&g.av);
@@ -430,7 +432,7 @@ void Player::runFrame() {
     double fps = g.av.timing.fps > 0 ? g.av.timing.fps : 60.0;
     g.frameTime.callback(g.frameTime.reference ? g.frameTime.reference : (retro_usec_t)(1e6 / fps));
   }
-  g.api.run();
+  runCore();
   if (g.avChanged) {
     g.avChanged = false;
     if (std::fabs(g.av.timing.sample_rate - audio_.coreRate()) > 1.0) audio_.open(g.av.timing.sample_rate);
