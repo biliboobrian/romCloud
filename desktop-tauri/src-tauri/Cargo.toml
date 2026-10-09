@@ -1,6 +1,6 @@
 [package]
 name = "romcloud"
-version = "1.32.0"
+version = "1.32.1"
 description = "RomCloud pour Windows : bibliothèque de jeux du serveur RomCloud, téléchargement à la demande et lancement des émulateurs"
 authors = ["biliboobrian"]
 license = "MIT"

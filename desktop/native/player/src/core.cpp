@@ -401,6 +401,7 @@ void selectControllers(unsigned ports) {
 // de départ, fréquence de l'horloge) devenaient fausses et la boucle attendait indéfiniment.
 // Pile : adresse de retour + 8 registres (alignée), 32 octets réservés à l'appelé, 160 pour xmm6-15.
 extern "C" void romcloud_call_preserving(void (*fn)());
+#if !defined(_MSC_VER)  // Visual Studio : call_preserving_msvc.asm (MASM)
 __asm__(
     ".text\n"
     ".globl romcloud_call_preserving\n"
@@ -420,6 +421,7 @@ __asm__(
     "  popq %r15\n  popq %r14\n  popq %r13\n  popq %r12\n  popq %rdi\n  popq %rsi\n  popq %rbx\n"
     "  popq %rbp\n"
     "  retq\n");
+#endif
 
 void runCore() { romcloud_call_preserving(g.api.run); }
 
