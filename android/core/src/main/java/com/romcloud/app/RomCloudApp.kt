@@ -1,6 +1,7 @@
 package com.romcloud.app
 
 import android.app.Application
+import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
 import coil.ImageLoader
@@ -69,7 +70,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         super.onCreate()
         I18n.init(this)
         settings = Settings(this)
-        api = ApiClient(settings)
+        api = ApiClient(settings, if (packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) "androidtv" else "android")
         repository = Repository(api, filesDir)
         library = LocalLibrary(this, settings)
         downloader = Downloader(this, api, library, appScope)

@@ -119,7 +119,11 @@ api.get('/status', (req, res) => {
 });
 
 // ---- Systèmes ----
-api.get('/systems', (req, res) => res.json(listSystems()));
+// Plateforme de l'application (android, androidtv, windows) : seuls les systèmes qui lui sont
+// proposés sont listés et cherchés ; sans plateforme (administration), tous.
+const platformOf = (req) => String(req.get('x-romcloud-platform') || req.query.platform || '').toLowerCase();
+
+api.get('/systems', (req, res) => res.json(listSystems({ platform: platformOf(req) })));
 
 api.post('/systems', (req, res) => res.status(201).json(createSystem(req.body || {})));
 
@@ -282,7 +286,7 @@ api.post(
 
 // ---- Jeux ----
 // Recherche globale (tous les systèmes) : ?q=mots&limit=300
-api.get('/search', (req, res) => res.json(searchGames(req.query.q, { limit: req.query.limit })));
+api.get('/search', (req, res) => res.json(searchGames(req.query.q, { limit: req.query.limit, platform: platformOf(req) })));
 
 api.get('/systems/:id/games', (req, res) => res.json(listGames(req.params.id, { q: req.query.q })));
 

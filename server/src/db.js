@@ -16,6 +16,7 @@ db.exec(`
     libretro_name    TEXT,
     screenscraper_id INTEGER,
     players          TEXT NOT NULL DEFAULT '[]',
+    platforms        TEXT NOT NULL DEFAULT '[]',
     source           TEXT NOT NULL DEFAULT 'custom',
     source_revision  INTEGER,
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
@@ -163,6 +164,7 @@ db.exec(`
 // Migrations légères pour les bases créées par une version antérieure.
 const systemColumns = db.prepare('PRAGMA table_info(systems)').all().map((c) => c.name);
 if (!systemColumns.includes('image')) db.exec('ALTER TABLE systems ADD COLUMN image TEXT');
+if (!systemColumns.includes('platforms')) db.exec("ALTER TABLE systems ADD COLUMN platforms TEXT NOT NULL DEFAULT '[]'");
 const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
 const biosColumns = db.prepare('PRAGMA table_info(bios)').all().map((c) => c.name);

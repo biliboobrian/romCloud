@@ -49,7 +49,6 @@ async fn call(api_path: &str, method: reqwest::Method, body: Body, raw: bool, ex
         .request(method, format!("{server}{api_path}"))
         .headers(api::headers(&settings::get_str("apiKey")))
         .header("X-RomCloud-Device", hostname())
-        .header("X-RomCloud-Platform", "windows")
         .header("X-RomCloud-Version", version())
         .timeout(timeout);
     if let Some(token) = session().and_then(|s| s.get("token").and_then(Value::as_str).map(String::from)) {

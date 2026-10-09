@@ -7,6 +7,27 @@ import { SCREENSCRAPER_SYSTEM_IDS } from './screenscraper-systems.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
+/** Plateformes des applications (en-tête X-RomCloud-Platform). */
+export const PLATFORMS = ['android', 'androidtv', 'windows'];
+
+/**
+ * Plateformes où le système est proposé, dans l'ordre de PLATFORMS ; liste vide = toutes
+ * (aussi quand toutes sont cochées, pour que les plateformes ajoutées plus tard en profitent).
+ */
+export function normalizePlatforms(input) {
+  if (input == null || input === '') return [];
+  const given = (Array.isArray(input) ? input : [input]).map((p) => String(p).toLowerCase());
+  const unknown = given.find((p) => !PLATFORMS.includes(p));
+  if (unknown) throw new HttpError(400, 'errors.unknownPlatform', { platform: unknown });
+  const list = PLATFORMS.filter((p) => given.includes(p));
+  return list.length === PLATFORMS.length ? [] : list;
+}
+
+/** Système proposé à la plateforme [platform] (inconnue ou absente, comme l'administration : tous). */
+export function availableOn(system, platform) {
+  return !PLATFORMS.includes(platform) || !system.platforms.length || system.platforms.includes(platform);
+}
+
 function rowToSystem(row, stats) {
   if (!row) return null;
   return {
@@ -18,6 +39,7 @@ function rowToSystem(row, stats) {
     libretroName: row.libretro_name,
     screenscraperId: row.screenscraper_id,
     players: JSON.parse(row.players || '[]'),
+    platforms: JSON.parse(row.platforms || '[]'),
     source: row.source,
     hasImage: Boolean(row.image),
     // Nom du fichier image : change à chaque envoi, sert à invalider les caches.
@@ -32,7 +54,8 @@ function rowToSystem(row, stats) {
 
 const biosCount = (id) => db.prepare('SELECT COUNT(*) AS n FROM bios WHERE system_id = ?').get(id).n;
 
-export function listSystems() {
+/** Systèmes ; `platform` : seulement ceux proposés à cette plateforme. */
+export function listSystems({ platform } = {}) {
   const stats = new Map(
     db
       .prepare('SELECT system_id, COUNT(*) AS game_count, SUM(size) AS total_size FROM games GROUP BY system_id')
@@ -42,7 +65,8 @@ export function listSystems() {
   return db
     .prepare('SELECT * FROM systems ORDER BY name COLLATE NOCASE')
     .all()
-    .map((r) => rowToSystem(r, { ...stats.get(r.id), bios_count: biosCount(r.id) }));
+    .map((r) => rowToSystem(r, { ...stats.get(r.id), bios_count: biosCount(r.id) }))
+    .filter((s) => availableOn(s, platform));
 }
 
 export function getSystem(id) {
@@ -91,8 +115,8 @@ export function createSystem(input) {
     throw new HttpError(409, 'errors.folderInUse', { folder });
   }
   db.prepare(
-    `INSERT INTO systems (id, name, shortname, folder, filename_regex, libretro_name, screenscraper_id, players, source, source_revision)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO systems (id, name, shortname, folder, filename_regex, libretro_name, screenscraper_id, players, platforms, source, source_revision)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.name,
@@ -102,6 +126,7 @@ export function createSystem(input) {
     input.libretroName || null,
     input.screenscraperId ? Number(input.screenscraperId) : SCREENSCRAPER_SYSTEM_IDS[id] ?? null,
     JSON.stringify(input.players || []),
+    JSON.stringify(normalizePlatforms(input.platforms)),
     input.source || 'custom',
     input.sourceRevision ?? null,
   );
@@ -123,9 +148,10 @@ export function updateSystem(id, input) {
           : Number(input.screenscraperId)
         : current.screenscraperId,
     players: input.players ?? current.players,
+    platforms: input.platforms !== undefined ? normalizePlatforms(input.platforms) : current.platforms,
   };
   db.prepare(
-    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?
+    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -134,6 +160,7 @@ export function updateSystem(id, input) {
     next.libretroName,
     next.screenscraperId,
     JSON.stringify(next.players),
+    JSON.stringify(next.platforms),
     id,
   );
   return getSystem(id);
