@@ -1,5 +1,6 @@
 // Lancement des jeux sous Windows.
 //  - moteur intégré (romcloud-player.exe) : mêmes cœurs que RetroArch, téléchargés à la demande ;
+//    PlayStation 3 et Wii U : RPCS3 et Cemu, téléchargés et gérés par RomCloud (pas de cœur libretro) ;
 //  - RetroArch : « retroarch.exe -L <cœur> <jeu> », le cœur étant repris des modèles d'émulateurs ;
 //  - émulateurs du catalogue (Dolphin, PCSX2, DuckStation…) : ligne de commande connue, ou
 //    ouverture de l'émulateur seul quand il ne sait pas lancer un jeu directement ;
@@ -8,7 +9,7 @@
 use crate::catalog::{self, Emulator};
 use crate::error::{AppError, Result};
 use crate::library::s;
-use crate::{account, builtin, cores, library, paths, settings};
+use crate::{account, builtin, cores, library, managed, paths, settings};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -143,6 +144,9 @@ pub fn options(system: &Value) -> Value {
     ensure_detected();
     let system_cores = cores::cores(system);
     let mut list: Vec<Value> = Vec::new();
+    if let Some(app) = managed::for_system(system) {
+        list.push(json!({ "id": format!("builtin:{}", app.core), "kind": "builtin", "core": app.core, "name": app.name, "installed": app.installed() }));
+    }
     // Moteur intégré en premier : mêmes cœurs que RetroArch, rien à installer.
     if builtin::available() {
         for core in &system_cores {
@@ -204,6 +208,10 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
     let option = opts["options"].as_array().and_then(|l| l.iter().find(|o| o["id"] == selected).cloned()).unwrap_or(Value::Null);
     let command = opts["command"].as_str().unwrap_or("").to_string();
     match option["kind"].as_str().unwrap_or("default") {
+        "builtin" if managed::by_core(s(&option, "core")).is_some() => {
+            let app = managed::by_core(s(&option, "core")).unwrap();
+            Ok(Plan::Builtin { exe: app.exe().to_string_lossy().into_owned(), args: app.args(&file), core: app.core.into(), file })
+        }
         "builtin" => {
             let core = s(&option, "core").to_string();
             Ok(Plan::Builtin {
@@ -301,6 +309,10 @@ pub async fn resumable_online(system: &Value, game: &Value) -> Value {
 pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value> {
     let resume = options.get("resume").and_then(Value::as_bool).unwrap_or(false);
     match prepare(system, game)? {
+        Plan::Builtin { core, file, .. } if managed::by_core(&core).is_some() => {
+            managed::launch(managed::by_core(&core).unwrap(), game, &file).await?;
+            Ok(json!({ "manual": false }))
+        }
         Plan::Builtin { core, file, .. } => {
             builtin::launch(system, game, &file, &core, resume).await?;
             Ok(json!({ "manual": false }))

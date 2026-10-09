@@ -1280,6 +1280,7 @@
     const shot = mediaUrl(game, 'screenshot');
     const selected = emu.options.find((o) => o.id === emu.selected);
     const optionLabel = (o) => {
+      if (o.kind === 'builtin' && o.name) return t(o.installed ? 'emu.builtinApp' : 'emu.builtinAppPending', { name: o.name });
       if (o.kind === 'builtin') return t(o.installed ? 'emu.builtin' : 'emu.builtinPending', { core: o.core });
       if (o.kind === 'retroarch') return t('emu.retroarch', { core: o.core });
       if (o.kind === 'emulator') return o.installed ? o.name : t('emu.notInstalled', { name: o.name });
