@@ -149,10 +149,7 @@ fun SystemsScreen(
                         )
                         LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
                     } else {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("RomCloud")
-                            DiskBar(usage)
-                        }
+                        DiskBar(usage)
                     }
                 },
                 actions = {

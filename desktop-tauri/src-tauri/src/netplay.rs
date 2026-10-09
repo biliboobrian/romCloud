@@ -50,6 +50,8 @@ const LINKS: &[Link] = &[
 ];
 const LINK_SYSTEMS: &[(&str, &str)] = &[("gb", "gb"), ("gbc", "gb"), ("gbcolor", "gb"), ("gba", "gba"), ("psp", "psp")];
 const GAMBATTE_PORT: &str = "56400";
+/// Décalage des ports des jeux PSP (valeur par défaut de PPSSPP hors libretro, comme LinkRules.kt).
+const PSP_PORT_OFFSET: &str = "10000";
 
 struct Entry {
     peer: Value,
@@ -277,6 +279,9 @@ fn link_options(link: &Link, host: bool, host_address: &str) -> Vec<String> {
         }
         "psp" => {
             options.push(("ppsspp_enable_wlan".into(), "enabled".into()));
+            // Ports des jeux décalés (PSP : souvent sous 1024, interdits aux applications Android) ;
+            // le même décalage sur toutes les consoles reliées (port de l'autre calculé avec).
+            options.push(("ppsspp_port_offset".into(), PSP_PORT_OFFSET.into()));
             options.push(("ppsspp_enable_builtin_pro_ad_hoc_server".into(), if host { "enabled" } else { "disabled" }.into()));
             // Hôte : relié à son propre serveur par son adresse sur le réseau local, pas par « localhost » :
             // le serveur annonce chaque console aux autres avec l'adresse de sa connexion (127.0.0.1
@@ -470,6 +475,7 @@ mod tests {
         assert!(options.contains(&"gambatte_gb_link_network_server_ip_12=2".to_string()));
         // Hôte de la PSP : relié à son serveur par son adresse sur le réseau, pas par 127.0.0.1.
         let host = link_options(link_by_id("psp").unwrap(), true, "");
+        assert!(host.contains(&"ppsspp_port_offset=10000".to_string()));
         if local_address().is_some() {
             assert!(host.contains(&"ppsspp_change_pro_ad_hoc_server_address=IP address".to_string()));
         }

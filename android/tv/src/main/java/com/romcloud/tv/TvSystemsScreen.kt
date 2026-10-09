@@ -132,8 +132,7 @@ fun TvSystemsScreen(
 
     Column(Modifier.fillMaxSize().padding(TvSafePadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("RomCloud", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-            TvDiskBar(usage, Modifier.padding(start = 20.dp))
+            TvDiskBar(usage)
             OfflineBadge(Modifier.padding(start = 16.dp), size = 40.dp, explainOnClick = false)
             Spacer(Modifier.weight(1f))
             if (search.active) {

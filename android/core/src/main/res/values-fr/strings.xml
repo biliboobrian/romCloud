@@ -539,4 +539,5 @@
     <string name="link_request_title">Relier les consoles ?</string>
     <string name="link_request_text">%1$s veut relier sa console à la vôtre.</string>
     <string name="link_menu_leave">Couper la liaison</string>
+    <string name="settings_version">Version %1$s</string>
 </resources>
