@@ -7,7 +7,7 @@ import path from 'node:path';
 process.env.DATA_DIR = path.join(os.tmpdir(), `romcloud-groups-test-${process.pid}-${Date.now()}`);
 
 const { db } = await import('../src/db.js');
-const { autoGroups, partInfo, setGroup } = await import('../src/groups.js');
+const { autoGroups, parsePkgHeader, partInfo, setGroup } = await import('../src/groups.js');
 const { createSystem, systemDir, requireSystem } = await import('../src/systems.js');
 const { deleteGame, listGames, scanSystem, searchGames } = await import('../src/library.js');
 
@@ -28,6 +28,56 @@ test('parties reconnues dans les noms de fichiers', () => {
     ['update', 'dlc', null],
   );
   assert.equal(partInfo('UP0001-BLUS30443_00-DEMONSSOULSDLC01.pkg').serial, 'BLUS30443');
+});
+
+/** En-tête de paquet Sony : métadonnées 2 (type de contenu) et 3 (drapeaux) à l'adresse 640. */
+function pkg(type, flags) {
+  const b = Buffer.alloc(1024);
+  b.writeUInt32BE(0x7f504b47, 0);
+  b.writeUInt32BE(640, 8);
+  b.writeUInt32BE(3, 12);
+  let off = 640;
+  for (const [id, value] of [[1, 0], [2, type], [3, flags]]) {
+    b.writeUInt32BE(id, off);
+    b.writeUInt32BE(4, off + 4);
+    b.writeUInt32BE(value, off + 8);
+    off += 12;
+  }
+  return b;
+}
+
+test('paquets Sony : type de contenu lu dans l’en-tête', () => {
+  assert.deepEqual(parsePkgHeader(pkg(0x15, 0x300e)), { type: 0x15, patch: false });
+  assert.deepEqual(parsePkgHeader(pkg(0x15, 0x301e)), { type: 0x15, patch: true });
+  assert.deepEqual(parsePkgHeader(pkg(0x16, 0x0e)), { type: 0x16, patch: false });
+  assert.equal(parsePkgHeader(Buffer.from('pas un paquet')), null);
+  // Libellé sans « DLC » (« AC3LIBERATIONULC ») : DLC d'après l'en-tête.
+  assert.equal(partInfo('EP0001-PCSB00074_00-AC3LIBERATIONULC.pkg', { type: 0x16, patch: false }).kind, 'dlc');
+  assert.equal(partInfo('EP0001-PCSB00074_00-AC3LIBERATION575.pkg', { type: 0x15, patch: false }), null);
+  assert.equal(partInfo('EP0001-PCSB00061_00-LUMINESELECTROSY_patch_01.02.pkg', { type: 0x15, patch: true }).kind, 'update');
+  // Sans en-tête : identifiant de contenu.
+  assert.equal(partInfo('EP0001-PCSB00598_00-DLC0100000000000.pkg').kind, 'dlc');
+  assert.equal(partInfo('EP0031-PCSB00701_00-NORDLCONTENTS001.pkg').serial, 'PCSB00701');
+  assert.equal(partInfo('EP0001-PCSB00061_00-LUMINESELECTROSY_patch_01.02.pkg').kind, 'update');
+  assert.equal(partInfo('EP0001-PCSB00598_00-CHILDOFLIGHT0000.pkg'), null);
+});
+
+test('PS Vita : patchs et DLC rattachés au jeu du même numéro de série', () => {
+  const files = [
+    ['EP0001-PCSB00598_00-CHILDOFLIGHT0000.pkg', { type: 0x15, patch: false }],
+    ['EP0001-PCSB00598_00-DLC0100000000000.pkg', { type: 0x16, patch: false }],
+    ['EP0001-PCSB00598_00-DLC0200000000000.pkg', { type: 0x16, patch: false }],
+    ['EP0001-PCSB00074_00-AC3LIBERATION575.pkg', { type: 0x15, patch: false }],
+    ['EP0001-PCSB00074_00-AC3LIBERATION575_patch_01.02.pkg', { type: 0x15, patch: true }],
+    ['EP0001-PCSB00074_00-AC3LIBERATIONULC.pkg', { type: 0x16, patch: false }],
+    ['EP0002-PCSB00428_00-AMAZINGSPIDERMDL.pkg', { type: 0x15, patch: false }],
+    ['EP0031-PCSB00999_00-ORPHANDLC0000001.pkg', { type: 0x16, patch: false }], // jeu absent
+  ].map(([fileName, header], i) => ({ id: i + 1, fileName, pkg: header }));
+  const groups = autoGroups(files);
+  const g = (id) => [groups.get(id).parentId, groups.get(id).kind];
+  assert.deepEqual([g(1), g(2), g(3)], [[null, null], [1, 'dlc'], [1, 'dlc']]);
+  assert.deepEqual([g(4), g(5), g(6)], [[null, null], [4, 'update'], [4, 'dlc']]);
+  assert.deepEqual([g(7), g(8)], [[null, null], [null, null]]);
 });
 
 test('regroupement : disques, mises à jour et DLC rattachés à leur jeu', () => {
