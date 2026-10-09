@@ -150,6 +150,9 @@ static PADS: LazyLock<HashMap<&'static str, Pad>> = LazyLock::new(|| {
     pads.insert("snes", with(vec![same("b", "B"), same("a", "A"), same("y", "Y"), same("x", "X"), same("l", "L"), same("r", "R")], vec![start_select()]));
     pads.insert("n64", vec![same("b", "A"), same("y", "B"), same("l2", "Z"), same("l", "L"), same("r", "R"), same("start", "Start"), ("rx", "C gauche / droite", "C left / right"), ("ry", "C haut / bas", "C up / down")]);
     pads.insert("psx", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L1"), same("r", "R1"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), right_stick()]));
+    pads.insert("ps2", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L1"), same("r", "R1"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), right_stick()]));
+    // GameCube (Dolphin) : A B X Y sous leur nom, gâchettes L / R sur L2 / R2, Z sur R, stick C à droite.
+    pads.insert("gc", vec![same("a", "A"), same("b", "B"), same("x", "X"), same("y", "Y"), same("l2", "L"), same("r2", "R"), same("r", "Z"), same("start", "Start"), ("rx", "Stick C horizontal", "C stick horizontal"), ("ry", "Stick C vertical", "C stick vertical")]);
     pads.insert("psp", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L"), same("r", "R")], vec![start_select()]));
     pads.insert("genesis", vec![same("y", "A"), same("b", "B"), same("a", "C"), same("l", "X"), same("x", "Y"), same("r", "Z"), same("start", "Start")]);
     pads.insert("saturn", vec![same("b", "A"), same("a", "B"), same("r", "C"), same("y", "X"), same("x", "Y"), same("l", "Z"), same("l2", "L"), same("r2", "R"), same("start", "Start")]);
@@ -174,6 +177,8 @@ fn pad_by_system(system: &str) -> Option<&'static str> {
         "gba" => "gba",
         "n64" => "n64",
         "psx" => "psx",
+        "ps2" => "ps2",
+        "gc" | "ngc" => "gc",
         "gx4000" => "gx4000",
         "atari2600" => "atari2600",
         "atari7800" => "atari7800",
@@ -204,6 +209,8 @@ const PAD_BY_CORE: &[(&str, &str)] = &[
     ("mupen64plus", "n64"), ("parallel_n64", "n64"),
     ("pcsx_rearmed", "psx"), ("swanstation", "psx"), ("duckstation", "psx"), ("mednafen_psx", "psx"),
     ("ppsspp", "psp"),
+    ("pcsx2", "ps2"), ("pcee2", "ps2"), ("armsx2", "ps2"), ("play", "ps2"),
+    ("dolphin", "gc"),
     ("genesis_plus_gx", "genesis"), ("picodrive", "genesis"),
     ("mednafen_saturn", "saturn"), ("yabause", "saturn"), ("yabasanshiro", "saturn"), ("kronos", "saturn"),
     ("gearsystem", "master"), ("smsplus", "master"),
@@ -296,5 +303,8 @@ mod tests {
         assert!(!console_buttons("gx4000", "cap32", "fr").contains("start"));
         assert_eq!(console_pad("n64", "mupen64plus_next"), "n64");
         assert_eq!(console_pad("perso", "mesen-s"), "snes");
+        assert_eq!(console_pad("ps2", "pcsx2"), "ps2");
+        assert_eq!(console_pad("gc", "dolphin"), "gc");
+        assert_eq!(console_buttons("gc", "dolphin", "fr"), "up,down,left,right,a=A,b=B,x=X,y=Y,l2=L,r2=R,r=Z,start=Start,rx=Stick C horizontal,ry=Stick C vertical");
     }
 }

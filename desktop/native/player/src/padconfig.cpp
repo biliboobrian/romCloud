@@ -682,7 +682,7 @@ class PadPainter {
   void nes(uint32_t color, uint32_t panel, uint32_t strip, uint32_t buttons, uint32_t print);
   void snes();
   void n64();
-  void playstation();
+  void playstation(uint32_t color, uint32_t edge, uint32_t trigger, uint32_t arrows, uint32_t print);
   void psp();
   void gameBoy();
   void gba();
@@ -697,6 +697,7 @@ class PadPainter {
   void atari(bool proLine);
   void lynx();
   void gx4000();
+  void gamecube();
 
   Canvas& c_;
   float x_, y_, k_;
@@ -707,11 +708,14 @@ class PadPainter {
 
 void PadPainter::draw(const std::string& style) {
   if (style == "nes") nes(rgba(204, 204, 204), rgba(30, 30, 32), rgba(150, 150, 152), rgba(196, 30, 40), rgba(196, 30, 40));
-  // Famicom : manette bordeaux, façade dorée.
-  else if (style == "fds") nes(rgba(132, 30, 36), rgba(196, 162, 92), rgba(170, 136, 70), rgba(196, 30, 40), rgba(100, 20, 24));
+  // Famicom : manette rouge, façade crème et bande dorée.
+  else if (style == "fds") nes(rgba(176, 34, 40), rgba(226, 208, 164), rgba(196, 166, 104), rgba(150, 26, 32), rgba(140, 26, 30));
   else if (style == "snes") snes();
   else if (style == "n64") n64();
-  else if (style == "psx") playstation();
+  // PlayStation : DualShock grise ; PlayStation 2 : DualShock 2 noire.
+  else if (style == "psx") playstation(rgba(202, 202, 208), rgba(112, 112, 120), rgba(170, 170, 178), rgba(72, 72, 78), rgba(70, 70, 80));
+  else if (style == "ps2") playstation(rgba(40, 40, 46), rgba(12, 12, 14), rgba(62, 62, 70), rgba(96, 96, 104), rgba(190, 190, 200));
+  else if (style == "gc") gamecube();
   else if (style == "psp") psp();
   else if (style == "gameBoy") gameBoy();
   else if (style == "gba") gba();
@@ -777,8 +781,8 @@ void PadPainter::nes(uint32_t color, uint32_t panel, uint32_t strip, uint32_t bu
   button(RETRO_DEVICE_ID_JOYPAD_A, 293, 75, 12, buttons, Label::Below, print);
 }
 
-// Super Nintendo : « os de chien » gris, croix dans un creux, boutons X bleu, Y vert, A rouge,
-// B jaune sur un fond mauve, Select / Start en biais.
+// Super Nintendo : « os de chien » gris, croix dans un creux, boutons violets (A et B foncés,
+// X et Y lavande) sur un fond mauve, Select / Start en biais.
 void PadPainter::snes() {
   const uint32_t color = rgba(206, 206, 214), edge = rgba(128, 128, 138);
   shoulder(RETRO_DEVICE_ID_JOYPAD_L, 36, 6, 96, 22, rgba(168, 168, 178), edge);
@@ -791,20 +795,21 @@ void PadPainter::snes() {
   disc(84, 84, 36, shade(color, -0.1f));
   dpad(84, 84, 18, 10, rgba(48, 48, 54));
   disc(256, 84, 48, rgba(150, 146, 172));
-  button(RETRO_DEVICE_ID_JOYPAD_X, 256, 58, 13, rgba(70, 72, 176));
-  button(RETRO_DEVICE_ID_JOYPAD_Y, 230, 84, 13, kGreen);
-  button(RETRO_DEVICE_ID_JOYPAD_A, 282, 84, 13, kRed);
-  button(RETRO_DEVICE_ID_JOYPAD_B, 256, 110, 13, kYellow);
+  const uint32_t lavender = rgba(176, 166, 224), purple = rgba(92, 72, 168);
+  button(RETRO_DEVICE_ID_JOYPAD_X, 256, 58, 13, lavender);
+  button(RETRO_DEVICE_ID_JOYPAD_Y, 230, 84, 13, lavender);
+  button(RETRO_DEVICE_ID_JOYPAD_A, 282, 84, 13, purple);
+  button(RETRO_DEVICE_ID_JOYPAD_B, 256, 110, 13, purple);
   slanted(RETRO_DEVICE_ID_JOYPAD_SELECT, 132, 102, 144, 90, 8, rgba(100, 100, 108), Label::Below, rgba(80, 80, 92));
   slanted(RETRO_DEVICE_ID_JOYPAD_START, 196, 102, 208, 90, 8, rgba(100, 100, 108), Label::Below, rgba(80, 80, 92));
 }
 
-// Nintendo 64 : trois poignées, croix à gauche, stick au centre (Z dessous), Start rouge, A bleu,
+// Nintendo 64 : grise claire, trois poignées, croix à gauche, stick au centre (Z dessous), Start rouge, A bleu,
 // B vert et boutons C jaunes à droite (stick droit : gauche / droite, haut / bas).
 void PadPainter::n64() {
-  const uint32_t color = rgba(142, 142, 152), edge = rgba(70, 70, 80);
-  shoulder(RETRO_DEVICE_ID_JOYPAD_L, 36, 4, 70, 18, rgba(112, 112, 122), edge);
-  shoulder(RETRO_DEVICE_ID_JOYPAD_R, 234, 4, 70, 18, rgba(112, 112, 122), edge);
+  const uint32_t color = rgba(200, 200, 208), edge = rgba(118, 118, 128);
+  shoulder(RETRO_DEVICE_ID_JOYPAD_L, 36, 4, 70, 18, rgba(176, 176, 186), edge);
+  shoulder(RETRO_DEVICE_ID_JOYPAD_R, 234, 4, 70, 18, rgba(176, 176, 186), edge);
   body([&](float g, uint32_t col) {
     rect(16 - g, 18 - g, 308 + 2 * g, 60 + 2 * g, 30 + g, col);
     rect(30 - g, 48 - g, 70 + 2 * g, 100 + 2 * g, 33 + g, col);
@@ -812,9 +817,9 @@ void PadPainter::n64() {
     rect(240 - g, 48 - g, 70 + 2 * g, 100 + 2 * g, 33 + g, col);
   }, color, edge);
   disc(66, 50, 28, shade(color, -0.08f));
-  dpad(66, 50, 14, 8, rgba(42, 42, 48));
-  stick(170, 84, 12, rgba(72, 72, 78), shade(color, -0.3f), -1, -1, "");
-  pill(RETRO_DEVICE_ID_JOYPAD_L2, 170, 132, 34, 14, rgba(60, 60, 66));
+  dpad(66, 50, 14, 8, rgba(84, 84, 92));
+  stick(170, 84, 12, rgba(150, 150, 158), shade(color, -0.3f), -1, -1, "");
+  pill(RETRO_DEVICE_ID_JOYPAD_L2, 170, 132, 34, 14, rgba(96, 96, 104));
   button(RETRO_DEVICE_ID_JOYPAD_START, 170, 42, 9, rgba(200, 40, 40), Label::Above, rgba(40, 40, 48));
   button(RETRO_DEVICE_ID_JOYPAD_Y, 230, 46, 12, kGreen);
   button(RETRO_DEVICE_ID_JOYPAD_B, 254, 66, 12, rgba(42, 82, 200));
@@ -835,10 +840,9 @@ void PadPainter::n64() {
   }
 }
 
-// PlayStation (DualShock) : grise, deux poignées, croix en quatre flèches, symboles de couleur,
-// deux sticks.
-void PadPainter::playstation() {
-  const uint32_t color = rgba(202, 202, 208), edge = rgba(112, 112, 120), trigger = rgba(170, 170, 178);
+// PlayStation (DualShock) et PlayStation 2 (DualShock 2, noire) : deux poignées, croix en quatre
+// flèches, symboles de couleur, deux sticks ; [print] : noms de Select / Start.
+void PadPainter::playstation(uint32_t color, uint32_t edge, uint32_t trigger, uint32_t arrows, uint32_t print) {
   shoulder(RETRO_DEVICE_ID_JOYPAD_L2, 22, 0, 44, 20, trigger, edge);
   shoulder(RETRO_DEVICE_ID_JOYPAD_L, 70, 2, 58, 18, trigger, edge);
   shoulder(RETRO_DEVICE_ID_JOYPAD_R, 212, 2, 58, 18, trigger, edge);
@@ -848,19 +852,21 @@ void PadPainter::playstation() {
     disc(70, 100, 44 + g, col);
     disc(270, 100, 44 + g, col);
   }, color, edge);
-  disc(72, 56, 30, shade(color, -0.1f));
-  dpad(72, 56, 15, 8, rgba(72, 72, 78), true);
-  disc(268, 56, 32, shade(color, -0.1f));
-  const uint32_t dark = rgba(46, 46, 54);
-  symbol(RETRO_DEVICE_ID_JOYPAD_X, 268, 34, 10.5f, dark, Symbol::Triangle, rgba(76, 196, 156));
-  symbol(RETRO_DEVICE_ID_JOYPAD_Y, 246, 56, 10.5f, dark, Symbol::Square, rgba(232, 136, 206));
-  symbol(RETRO_DEVICE_ID_JOYPAD_A, 290, 56, 10.5f, dark, Symbol::Circle, rgba(232, 86, 96));
-  symbol(RETRO_DEVICE_ID_JOYPAD_B, 268, 78, 10.5f, dark, Symbol::Cross, rgba(120, 150, 236));
-  pill(RETRO_DEVICE_ID_JOYPAD_SELECT, 146, 56, 24, 8, rgba(84, 84, 92), Label::Below, rgba(70, 70, 80));
-  pill(RETRO_DEVICE_ID_JOYPAD_START, 194, 56, 24, 8, rgba(84, 84, 92), Label::Below, rgba(70, 70, 80));
+  const bool dark = (color & 0xFF) < 100;
+  disc(72, 56, 30, shade(color, dark ? 0.08f : -0.1f));
+  dpad(72, 56, 15, 8, arrows, true);
+  disc(268, 56, 32, shade(color, dark ? 0.08f : -0.1f));
+  const uint32_t buttons = dark ? rgba(26, 26, 30) : rgba(46, 46, 54);
+  symbol(RETRO_DEVICE_ID_JOYPAD_X, 268, 34, 10.5f, buttons, Symbol::Triangle, rgba(76, 196, 156));
+  symbol(RETRO_DEVICE_ID_JOYPAD_Y, 246, 56, 10.5f, buttons, Symbol::Square, rgba(232, 136, 206));
+  symbol(RETRO_DEVICE_ID_JOYPAD_A, 290, 56, 10.5f, buttons, Symbol::Circle, rgba(232, 86, 96));
+  symbol(RETRO_DEVICE_ID_JOYPAD_B, 268, 78, 10.5f, buttons, Symbol::Cross, rgba(120, 150, 236));
+  pill(RETRO_DEVICE_ID_JOYPAD_SELECT, 146, 56, 24, 8, shade(color, dark ? 0.3f : -0.55f), Label::Below, print);
+  pill(RETRO_DEVICE_ID_JOYPAD_START, 194, 56, 24, 8, shade(color, dark ? 0.3f : -0.55f), Label::Below, print);
   disc(170, 82, 3, rgba(220, 40, 40));  // voyant « Analog »
-  stick(128, 100, 15, rgba(50, 50, 56), shade(color, -0.22f), stepOf(RETRO_DEVICE_ID_JOYPAD_L3), -1, "L3");
-  stick(212, 100, 15, rgba(50, 50, 56), shade(color, -0.22f), stepOf(RETRO_DEVICE_ID_JOYPAD_R3), rightAxis(), "R3");
+  const uint32_t cap = dark ? rgba(28, 28, 32) : rgba(50, 50, 56), well = shade(color, dark ? 0.12f : -0.22f);
+  stick(128, 100, 15, cap, well, stepOf(RETRO_DEVICE_ID_JOYPAD_L3), -1, "L3");
+  stick(212, 100, 15, cap, well, stepOf(RETRO_DEVICE_ID_JOYPAD_R3), rightAxis(), "R3");
 }
 
 // PSP : console portable noire, écran au centre, croix et petit stick à gauche, symboles à droite.
@@ -910,13 +916,15 @@ void PadPainter::gba() {
   button(RETRO_DEVICE_ID_JOYPAD_A, 290, 72, 11, rgba(204, 204, 214));
 }
 
-// Mega Drive (6 boutons) : croissant noir, croix ronde, A B C en bas et X Y Z au-dessus.
+// Mega Drive (6 boutons) : noire, deux lobes arrondis, croix ronde, A B C en bas et X Y Z au-dessus.
 void PadPainter::genesis() {
   const uint32_t color = rgba(34, 34, 38), edge = rgba(10, 10, 12), buttons = rgba(58, 58, 66);
   body([&](float g, uint32_t col) {
-    rect(14 - g, 34 - g, 312 + 2 * g, 82 + 2 * g, 41 + g, col);
-    rect(80 - g, 60 - g, 180 + 2 * g, 84 + 2 * g, 42 + g, col);
+    rect(14 - g, 30 - g, 312 + 2 * g, 72 + 2 * g, 36 + g, col);
+    disc(84, 96, 46 + g, col);
+    disc(256, 96, 46 + g, col);
   }, color, edge);
+  rect(130, 36, 80, 12, 6, shade(color, 0.1f));  // logo
   disc(80, 76, 31, rgba(22, 22, 24));
   dpad(80, 76, 16, 9, rgba(48, 48, 52));
   pill(RETRO_DEVICE_ID_JOYPAD_START, 170, 58, 44, 12, rgba(64, 64, 70));
@@ -928,37 +936,40 @@ void PadPainter::genesis() {
   button(RETRO_DEVICE_ID_JOYPAD_R, 270, 44, 9.5f, buttons);  // Z
 }
 
-// Master System (et Game Gear) : rectangle noir, croix carrée, boutons 1 et 2.
+// Master System (et Game Gear) : rectangle noir, croix dans un cadre rouge, boutons 1 et 2.
 void PadPainter::master() {
   const uint32_t color = rgba(36, 36, 40), edge = rgba(12, 12, 14);
   body([&](float g, uint32_t col) { rect(20 - g, 32 - g, 300 + 2 * g, 90 + 2 * g, 8 + g, col); }, color, edge);
   rect(28, 40, 284, 74, 4, rgba(44, 44, 50));
-  disc(84, 77, 32, rgba(56, 56, 62));
-  dpad(84, 77, 18, 10, rgba(28, 28, 30));
+  rect(48, 41, 72, 72, 4, rgba(196, 40, 44));  // cadre rouge de la croix
+  rect(51, 44, 66, 66, 3, rgba(30, 30, 34));
+  dpad(84, 77, 18, 10, rgba(56, 56, 62));
+  rect(222, 104, 78, 3, 1.5f, rgba(196, 40, 44));  // filet rouge sous 1 et 2
   pill(RETRO_DEVICE_ID_JOYPAD_START, 170, 54, 40, 10, rgba(84, 84, 90), Label::Below);
   button(RETRO_DEVICE_ID_JOYPAD_B, 238, 82, 15, rgba(64, 64, 70));
   button(RETRO_DEVICE_ID_JOYPAD_A, 284, 82, 15, rgba(64, 64, 70));
 }
 
-// Saturn : « os de chien » gris foncé, A B C en bas, X Y Z plus petits au-dessus, L / R en haut.
+// Saturn : « os de chien » noir, boutons gris (A B C en bas, X Y Z plus petits au-dessus),
+// gâchettes L / R en haut.
 void PadPainter::saturn() {
-  const uint32_t color = rgba(62, 62, 70), edge = rgba(24, 24, 28);
-  shoulder(RETRO_DEVICE_ID_JOYPAD_L2, 36, 6, 96, 22, rgba(92, 92, 102), edge);
-  shoulder(RETRO_DEVICE_ID_JOYPAD_R2, 208, 6, 96, 22, rgba(92, 92, 102), edge);
+  const uint32_t color = rgba(44, 44, 50), edge = rgba(14, 14, 16), buttons = rgba(100, 100, 110);
+  shoulder(RETRO_DEVICE_ID_JOYPAD_L2, 36, 6, 96, 22, rgba(72, 72, 80), edge);
+  shoulder(RETRO_DEVICE_ID_JOYPAD_R2, 208, 6, 96, 22, rgba(72, 72, 80), edge);
   body([&](float g, uint32_t col) {
     disc(84, 84, 58 + g, col);
     disc(256, 84, 58 + g, col);
     rect(84, 26 - g, 172, 116 + 2 * g, 8, col);
   }, color, edge);
-  disc(84, 84, 34, shade(color, -0.2f));
-  dpad(84, 84, 18, 10, rgba(40, 40, 46));
-  pill(RETRO_DEVICE_ID_JOYPAD_START, 170, 108, 34, 12, rgba(104, 104, 114), Label::Below);
-  button(RETRO_DEVICE_ID_JOYPAD_B, 226, 104, 12, kBlue);    // A
-  button(RETRO_DEVICE_ID_JOYPAD_A, 256, 94, 12, kGreen);    // B
-  button(RETRO_DEVICE_ID_JOYPAD_R, 286, 84, 12, kYellow);   // C
-  button(RETRO_DEVICE_ID_JOYPAD_Y, 222, 72, 9, rgba(124, 124, 134));  // X
-  button(RETRO_DEVICE_ID_JOYPAD_X, 250, 62, 9, rgba(124, 124, 134));  // Y
-  button(RETRO_DEVICE_ID_JOYPAD_L, 278, 52, 9, rgba(124, 124, 134));  // Z
+  disc(84, 84, 34, shade(color, -0.3f));
+  dpad(84, 84, 18, 10, rgba(78, 78, 86));
+  pill(RETRO_DEVICE_ID_JOYPAD_START, 170, 108, 34, 12, rgba(110, 110, 120), Label::Below);
+  button(RETRO_DEVICE_ID_JOYPAD_B, 226, 104, 12, buttons);  // A
+  button(RETRO_DEVICE_ID_JOYPAD_A, 256, 94, 12, buttons);  // B
+  button(RETRO_DEVICE_ID_JOYPAD_R, 286, 84, 12, buttons);  // C
+  button(RETRO_DEVICE_ID_JOYPAD_Y, 222, 72, 9, buttons);   // X
+  button(RETRO_DEVICE_ID_JOYPAD_X, 250, 62, 9, buttons);   // Y
+  button(RETRO_DEVICE_ID_JOYPAD_L, 278, 52, 9, buttons);   // Z
 }
 
 // Dreamcast : blanche, fente de la carte mémoire au centre, stick en haut à gauche, croix
@@ -972,8 +983,9 @@ void PadPainter::dreamcast() {
     disc(86, 104, 42 + g, col);
     disc(254, 104, 42 + g, col);
   }, color, edge);
-  rect(132, 24, 76, 46, 4, rgba(160, 160, 168));
-  rect(140, 30, 60, 34, 2, rgba(70, 70, 80));
+  rect(132, 24, 76, 46, 4, rgba(170, 170, 178));
+  rect(140, 30, 60, 34, 2, rgba(120, 164, 104));  // écran de la carte mémoire (VMU)
+  rect(140, 30, 60, 8, 2, rgba(255, 255, 255, 30));
   stick(74, 52, 13, rgba(206, 206, 210), shade(color, -0.25f), -1, -1, "");
   dpad(104, 98, 13, 7.5f, rgba(70, 70, 76));
   button(RETRO_DEVICE_ID_JOYPAD_X, 262, 48, 10.5f, kGreen);   // Y
@@ -983,19 +995,27 @@ void PadPainter::dreamcast() {
   button(RETRO_DEVICE_ID_JOYPAD_START, 170, 96, 7, rgba(70, 70, 76), Label::Below, rgba(80, 80, 92));
 }
 
-// PC Engine : rectangle gris clair, Select / Run au centre, boutons II et I noirs, interrupteurs turbo.
+// PC Engine (TurboPad de la TurboGrafx-16) : noir, bosse au centre, Select / Run, interrupteurs
+// turbo au-dessus des boutons II et I.
 void PadPainter::pcEngine() {
-  const uint32_t color = rgba(226, 226, 230), edge = rgba(136, 136, 142);
-  body([&](float g, uint32_t col) { rect(16 - g, 30 - g, 308 + 2 * g, 92 + 2 * g, 10 + g, col); }, color, edge);
-  rect(26, 40, 288, 72, 6, rgba(198, 198, 204));
-  disc(80, 76, 32, rgba(180, 180, 186));
-  dpad(80, 76, 18, 10, rgba(40, 40, 44));
-  pill(RETRO_DEVICE_ID_JOYPAD_SELECT, 148, 92, 26, 9, rgba(70, 70, 76), Label::Above, rgba(70, 70, 76));
-  pill(RETRO_DEVICE_ID_JOYPAD_START, 192, 92, 26, 9, rgba(70, 70, 76), Label::Above, rgba(70, 70, 76));
-  rect(232, 46, 16, 8, 2, rgba(120, 120, 126));
-  rect(276, 46, 16, 8, 2, rgba(120, 120, 126));
-  button(RETRO_DEVICE_ID_JOYPAD_B, 240, 82, 14, rgba(50, 50, 56));  // II
-  button(RETRO_DEVICE_ID_JOYPAD_A, 284, 82, 14, rgba(50, 50, 56));  // I
+  const uint32_t color = rgba(36, 36, 40), edge = rgba(10, 10, 12);
+  body([&](float g, uint32_t col) {
+    rect(16 - g, 30 - g, 308 + 2 * g, 92 + 2 * g, 10 + g, col);
+    rect(122 - g, 22 - g, 96 + 2 * g, 40 + 2 * g, 14 + g, col);  // bosse
+  }, color, edge);
+  rect(26, 40, 288, 72, 6, rgba(44, 44, 50));
+  rect(128, 26, 84, 30, 10, rgba(54, 54, 60));
+  rect(34, 46, 30, 6, 2, rgba(200, 40, 40));  // « TURBO »
+  disc(80, 78, 30, rgba(28, 28, 32));
+  dpad(80, 78, 18, 10, rgba(64, 64, 70));
+  pill(RETRO_DEVICE_ID_JOYPAD_SELECT, 148, 92, 26, 9, rgba(104, 104, 112), Label::Above, rgba(200, 200, 210));
+  pill(RETRO_DEVICE_ID_JOYPAD_START, 192, 92, 26, 9, rgba(104, 104, 112), Label::Above, rgba(200, 200, 210));
+  for (float x : {232.0f, 276.0f}) {
+    rect(x, 46, 16, 8, 2, rgba(150, 150, 156));
+    rect(x + 6, 46, 4, 8, 1, rgba(200, 40, 40));
+  }
+  button(RETRO_DEVICE_ID_JOYPAD_B, 240, 84, 14, rgba(72, 72, 80));  // II
+  button(RETRO_DEVICE_ID_JOYPAD_A, 284, 84, 14, rgba(72, 72, 80));  // I
 }
 
 // Neo Geo (manette du Neo Geo CD) : noire, joystick à gauche, A rouge, B jaune, C vert, D bleu en arc.
@@ -1060,11 +1080,17 @@ void PadPainter::atari(bool proLine) {
   pill(RETRO_DEVICE_ID_JOYPAD_SELECT, 52, 56, 44, 14, metal, Label::Below);
   pill(RETRO_DEVICE_ID_JOYPAD_START, 52, 104, 44, 14, metal, Label::Below);
   if (!proLine) {
+    // CX40 : socle carré biseauté, soufflet et manche vus de dessus.
     body([&](float g, uint32_t col) { rect(110 - g, 14 - g, 120 + 2 * g, 122 + 2 * g, 10 + g, col); }, color, edge);
-    disc(170, 82, 30, rgba(20, 20, 22));
-    disc(170, 82, 10, rgba(56, 56, 60));
+    rect(118, 22, 104, 106, 8, rgba(44, 44, 48));
+    disc(170, 82, 26, rgba(20, 20, 22));
+    ring(170, 82, 20, 1.6f, rgba(52, 52, 56));
+    ring(170, 82, 14, 1.6f, rgba(52, 52, 56));
+    disc(173, 85, 10, rgba(0, 0, 0, 120));  // ombre du manche
+    disc(170, 82, 9, rgba(14, 14, 16));
+    disc(167, 79, 3.5f, rgba(84, 84, 90));
     directions(170, 82, 42, rgba(150, 150, 160));
-    button(RETRO_DEVICE_ID_JOYPAD_B, 128, 32, 11, kRed);
+    button(RETRO_DEVICE_ID_JOYPAD_B, 132, 36, 11, kRed);
     return;
   }
   body([&](float g, uint32_t col) { rect(100 - g, 20 - g, 140 + 2 * g, 116 + 2 * g, 26 + g, col); }, color, edge);
@@ -1098,6 +1124,37 @@ void PadPainter::gx4000() {
   dpad(86, 77, 18, 10, rgba(30, 30, 34));
   button(RETRO_DEVICE_ID_JOYPAD_B, 236, 72, 14, kRed, Label::Below);
   button(RETRO_DEVICE_ID_JOYPAD_A, 284, 72, 14, kBlue, Label::Below);
+}
+
+// GameCube : indigo, stick en haut à gauche, croix dessous, Start au centre, gros A vert, B rouge,
+// X et Y gris, stick C jaune (stick droit), gâchettes L / R et bouton Z sur la tranche droite.
+void PadPainter::gamecube() {
+  const uint32_t color = rgba(84, 72, 170), edge = rgba(40, 34, 96), trigger = rgba(118, 108, 196);
+  shoulder(RETRO_DEVICE_ID_JOYPAD_L2, 40, 2, 76, 20, trigger, edge);
+  shoulder(RETRO_DEVICE_ID_JOYPAD_R, 186, 8, 44, 14, rgba(124, 112, 220), edge);  // Z
+  shoulder(RETRO_DEVICE_ID_JOYPAD_R2, 234, 2, 68, 20, trigger, edge);
+  body([&](float g, uint32_t col) {
+    rect(18 - g, 20 - g, 304 + 2 * g, 82 + 2 * g, 40 + g, col);
+    disc(72, 104, 40 + g, col);
+    disc(268, 104, 40 + g, col);
+  }, color, edge);
+  stick(76, 56, 14, rgba(170, 170, 180), shade(color, -0.3f), -1, -1, "");
+  disc(112, 102, 20, shade(color, -0.2f));
+  dpad(112, 102, 11, 6, rgba(170, 170, 180));
+  button(RETRO_DEVICE_ID_JOYPAD_START, 170, 64, 6, rgba(200, 200, 208), Label::Below);
+  button(RETRO_DEVICE_ID_JOYPAD_X, 296, 50, 9, rgba(206, 206, 214));   // X, à droite de A
+  button(RETRO_DEVICE_ID_JOYPAD_Y, 258, 32, 9, rgba(206, 206, 214));   // Y, au-dessus de A
+  button(RETRO_DEVICE_ID_JOYPAD_A, 264, 60, 15, rgba(60, 176, 104));   // A
+  button(RETRO_DEVICE_ID_JOYPAD_B, 236, 84, 9, rgba(206, 46, 52));     // B
+  // Stick C : axes du stick droit.
+  const int axis = rightAxis();
+  if (axis >= 0) {
+    disc(232, 112, 17, shade(color, -0.3f));
+    disc(232, 113.5f, 11.5f, rgba(0, 0, 0, 100));
+    disc(232, 112, 11, rgba(232, 190, 46));
+    text(232, 112, "C", 12, rgba(90, 70, 10));
+    mark(axis, 221, 101, 22, 22, 11);
+  }
 }
 
 }  // namespace

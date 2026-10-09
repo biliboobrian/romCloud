@@ -119,6 +119,31 @@ internal object PadLayouts {
         thumbs = true,
         style = PadStyle.PLAYSTATION,
     )
+    /** PlayStation 2 : même disposition (DualShock 2). */
+    private val PS2 = PLAYSTATION.copy(style = PadStyle.PS2)
+
+    /**
+     * GameCube (Dolphin) : A B X Y sous leur nom (gros A au centre, B en bas à gauche, X à droite,
+     * Y en haut), stick C sur le stick droit, gâchettes L / R sur L2 / R2, Z sur R.
+     */
+    private val GAMECUBE = PadLayout(
+        buttons = listOf(
+            PadButton("Y", Y, 56.dp, 0.dp, 44.dp),
+            PadButton("X", X, 120.dp, 40.dp, 44.dp),
+            PadButton("A", A, 50.dp, 48.dp, 64.dp, GREEN),
+            PadButton("B", B, 0.dp, 92.dp, 44.dp, RED),
+            PadButton("C▲", 0, 150.dp, 96.dp, 32.dp, YELLOW, rightStick = Offset(0f, -1f)),
+            PadButton("C▶", 0, 182.dp, 128.dp, 32.dp, YELLOW, rightStick = Offset(1f, 0f)),
+            PadButton("C▼", 0, 150.dp, 160.dp, 32.dp, YELLOW, rightStick = Offset(0f, 1f)),
+            PadButton("C◀", 0, 118.dp, 128.dp, 32.dp, YELLOW, rightStick = Offset(-1f, 0f)),
+        ),
+        left = listOf(Shoulder("L", L2)),
+        right = listOf(Shoulder("Z", R1, 60.dp), Shoulder("R", R2)),
+        select = null,
+        stick = true,
+        style = PadStyle.GAMECUBE,
+    )
+
     /** PSP : croix et stick (de nombreux jeux se jouent au stick). */
     private val PSP = PLAYSTATION.copy(left = listOf(Shoulder("L", L1)), right = listOf(Shoulder("R", R1)), stick = true, thumbs = false, style = PadStyle.PSP)
 
@@ -215,6 +240,8 @@ internal object PadLayouts {
         listOf("snes", "snesmsu1", "satellaview").forEach { put(it, SNES) }
         put("n64", N64)
         put("psx", PLAYSTATION)
+        put("ps2", PS2)
+        listOf("gc", "ngc").forEach { put(it, GAMECUBE) }
         listOf("psp", "pspminis").forEach { put(it, PSP) }
         listOf("genesis", "genesismsu", "segacd", "sega32x", "pico").forEach { put(it, GENESIS) }
         listOf("saturn", "stv").forEach { put(it, SATURN) }
@@ -243,6 +270,8 @@ internal object PadLayouts {
         "mupen64plus" to N64, "parallel_n64" to N64,
         "pcsx_rearmed" to PLAYSTATION, "swanstation" to PLAYSTATION, "duckstation" to PLAYSTATION, "mednafen_psx" to PLAYSTATION,
         "ppsspp" to PSP,
+        "pcsx2" to PS2, "pcee2" to PS2, "armsx2" to PS2, "play" to PS2,
+        "dolphin" to GAMECUBE,
         "genesis_plus_gx" to GENESIS, "picodrive" to GENESIS,
         "mednafen_saturn" to SATURN, "yabause" to SATURN, "yabasanshiro" to SATURN, "kronos" to SATURN,
         "gearsystem" to MASTER_SYSTEM, "smsplus" to MASTER_SYSTEM,
