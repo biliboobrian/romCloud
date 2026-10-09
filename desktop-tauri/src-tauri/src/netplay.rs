@@ -2,6 +2,7 @@
 // le moteur intégré, desktop/native/player/src/netplay.h) : annonce de ce PC, appareils RomCloud du
 // réseau et parties qu'ils proposent ; règles des jeux jouables à plusieurs ; arguments du moteur
 // intégré (partie proposée ou rejointe). La partie elle-même (touches image par image) est dans le moteur.
+use crate::error::{AppError, Result};
 use crate::library::s;
 use crate::{events, launcher, managed, settings};
 use serde_json::{json, Value};
@@ -30,6 +31,25 @@ const EXCLUDED_CORES: &[&str] = &[
     "dolphin", "pcsx2", "play", "lrps2", "pcee2", "armsx2", "flycast", "citra", "azahar", "panda3ds", "ppsspp", "melonds",
     "melondsds", "desmume", "desmume2015",
 ];
+
+/// Liaison propre à un cœur (même règles que LinkRules.kt) : chaque appareil émule sa console, avec
+/// son propre jeu. `packets` : paquets du cœur transmis par le moteur (interface netpacket, gpSP),
+/// sinon connexion ouverte par le cœur vers l'hôte (options imposées) ; `multi` : plus de deux consoles.
+pub struct Link {
+    pub id: &'static str,
+    pub core: &'static str,
+    pub packets: bool,
+    pub multi: bool,
+}
+
+/// Câble Game Link (Gambatte), câble et adaptateur sans fil de la GBA (gpSP), ad hoc de la PSP (PPSSPP).
+const LINKS: &[Link] = &[
+    Link { id: "gb", core: "gambatte", packets: false, multi: false },
+    Link { id: "gba", core: "gpsp", packets: true, multi: false },
+    Link { id: "psp", core: "ppsspp", packets: false, multi: true },
+];
+const LINK_SYSTEMS: &[(&str, &str)] = &[("gb", "gb"), ("gbc", "gb"), ("gbcolor", "gb"), ("gba", "gba"), ("psp", "psp")];
+const GAMBATTE_PORT: &str = "56400";
 
 struct Entry {
     peer: Value,
@@ -188,6 +208,171 @@ pub fn system_allows(system: &Value) -> bool {
     selected["kind"] == "builtin" && core_allows(s(&selected, "core"))
 }
 
+pub fn link_by_id(id: &str) -> Option<&'static Link> {
+    LINKS.iter().find(|l| l.id == id)
+}
+
+/// Liaison de la console du système, s'il se relie à une autre.
+pub fn link_for(system: &Value) -> Option<&'static Link> {
+    let ids = [s(system, "id").to_lowercase(), s(system, "shortname").to_lowercase()];
+    LINK_SYSTEMS.iter().find(|(id, _)| ids.iter().any(|i| i == id)).and_then(|(_, link)| link_by_id(link))
+}
+
+/// Façon de jouer à plusieurs avec ce système : "netplay" (jeu synchronisé), "link" (consoles reliées) ou null.
+pub fn system_together(system: &Value) -> Value {
+    if system_allows(system) {
+        json!("netplay")
+    } else if link_for(system).is_some() {
+        json!("link")
+    } else {
+        Value::Null
+    }
+}
+
+/// Adresse IPv4 en 12 chiffres, comme les options des cœurs (« 192.168.1.5 » -> « 192168001005 »).
+fn ip_digits(address: &str) -> Option<String> {
+    let parts: Vec<u8> = address.trim().split('.').map(|p| p.parse().ok()).collect::<Option<_>>()?;
+    (parts.len() == 4).then(|| parts.iter().map(|n| format!("{n:03}")).collect())
+}
+
+/// Adresse MAC (12 chiffres hexadécimaux) tirée de l'identifiant de l'appareil, administrée localement.
+fn mac(device_id: &str) -> String {
+    let mut hash: u64 = 1469598103934665603;
+    for c in device_id.chars() {
+        hash = (hash ^ c as u64).wrapping_mul(1099511628211);
+    }
+    let mut bytes: Vec<u8> = (0..6).map(|i| (hash >> (i * 8)) as u8).collect();
+    bytes[0] = (bytes[0] & 0xfc) | 0x02;
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Options du cœur imposées pour la liaison (« --option clé=valeur ») : hôte (serveur) ou invité relié à [host_address].
+fn link_options(link: &Link, host: bool, host_address: &str) -> Vec<String> {
+    let mut options: Vec<(String, String)> = Vec::new();
+    let digits = ip_digits(host_address).unwrap_or_default();
+    match link.id {
+        "gb" => {
+            options.push(("gambatte_gb_link_mode".into(), if host { "Network Server" } else { "Network Client" }.into()));
+            options.push(("gambatte_gb_link_network_port".into(), GAMBATTE_PORT.into()));
+            if !host {
+                for (i, d) in digits.chars().enumerate() {
+                    options.push((format!("gambatte_gb_link_network_server_ip_{}", i + 1), d.to_string()));
+                }
+            }
+        }
+        "psp" => {
+            options.push(("ppsspp_enable_wlan".into(), "enabled".into()));
+            options.push(("ppsspp_enable_builtin_pro_ad_hoc_server".into(), if host { "enabled" } else { "disabled" }.into()));
+            options.push(("ppsspp_change_pro_ad_hoc_server_address".into(), if host { "localhost" } else { "IP address" }.into()));
+            if !host {
+                for (i, d) in digits.chars().enumerate() {
+                    options.push((format!("ppsspp_pro_ad_hoc_server_address{:02}", i + 1), d.to_string()));
+                }
+            }
+            for (i, d) in mac(&device_id()).chars().enumerate() {
+                options.push((format!("ppsspp_change_mac_address{:02}", i + 1), d.to_string()));
+            }
+        }
+        _ => {}  // gpSP : câble choisi d'après le jeu (option « Automatic »)
+    }
+    options.into_iter().flat_map(|(k, v)| ["--option".to_string(), format!("{k}={v}")]).collect()
+}
+
+/// Ce jeu, annoncé pour une liaison (cœur de la liaison).
+fn link_game(system: &Value, game: &Value, link: &Link) -> Value {
+    json!({
+        "gameId": game["id"], "systemId": s(system, "id"), "title": s(game, "title"),
+        "fileName": s(game, "fileName"), "size": game["size"], "core": link.core, "link": link.id,
+    })
+}
+
+fn link_flags(link: &Link) -> Vec<String> {
+    let mut args = vec!["--netplay-link".to_string(), link.id.to_string()];
+    if link.packets {
+        args.push("--netplay-packets".into());
+    }
+    if link.multi {
+        args.push("--netplay-multi".into());
+    }
+    args
+}
+
+/// Liaison proposée : annonce et demandes gérées par le moteur, options du cœur côté serveur.
+pub fn link_host_args(system: &Value, game: &Value, link: &Link) -> Vec<String> {
+    let mut args = vec!["--netplay-host".to_string(), "--netplay-game".into(), link_game(system, game, link).to_string()];
+    args.extend(link_flags(link));
+    args.extend(link_options(link, true, ""));
+    args.extend(identity());
+    args
+}
+
+/// Liaison par paquets (gpSP) : le moteur se connecte à l'hôte, avec ce jeu.
+pub fn link_join_args(join: &Value, system: &Value, game: &Value, link: &Link) -> Vec<String> {
+    let mut args = vec![
+        "--netplay-join".to_string(),
+        format!("{}:{}", s(join, "address"), join["port"].as_u64().unwrap_or(0)),
+        "--netplay-peer".into(),
+        s(join, "peerName").to_string(),
+        "--netplay-game".into(),
+        link_game(system, game, link).to_string(),
+    ];
+    args.extend(link_flags(link));
+    args.extend(identity());
+    args
+}
+
+/// Liaison ouverte par le cœur, déjà acceptée par l'hôte : options du cœur côté client.
+pub fn linked_args(join: &Value, link: &Link) -> Vec<String> {
+    let mut args = vec!["--linked".to_string(), s(join, "peerName").to_string()];
+    args.extend(link_options(link, false, s(join, "address")));
+    args.extend(identity());
+    args
+}
+
+/**
+ * Invité d'une liaison ouverte par le cœur : demande à l'hôte (même échange que le moteur et
+ * l'application Android : writeUTF / readUTF de Java), avant le lancement. L'hôte a 90 s pour accepter.
+ */
+pub async fn link_handshake(join: &Value, game: &Value, link: &Link) -> Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let peer = s(join, "peerName").to_string();
+    let unreachable = |detail: String| AppError::new("errors.linkUnreachable", json!({ "name": peer, "detail": detail }));
+    let address = format!("{}:{}", s(join, "address"), join["port"].as_u64().unwrap_or(0));
+    let mut stream = tokio::time::timeout(Duration::from_secs(5), tokio::net::TcpStream::connect(&address))
+        .await
+        .map_err(|_| unreachable("timeout".into()))?
+        .map_err(|e| unreachable(e.to_string()))?;
+    let request = json!({
+        "v": VERSION, "name": device_name(), "platform": "windows", "fileName": s(game, "fileName"),
+        "size": game["size"].as_i64().unwrap_or(0), "core": link.core, "coreSize": 0, "link": link.id,
+    })
+    .to_string();
+    let bytes = request.as_bytes();
+    let mut message = (bytes.len() as u16).to_be_bytes().to_vec();
+    message.extend_from_slice(bytes);
+    stream.write_all(&message).await.map_err(|e| unreachable(e.to_string()))?;
+    let answer = tokio::time::timeout(Duration::from_secs(90), async {
+        let mut head = [0u8; 2];
+        stream.read_exact(&mut head).await?;
+        let mut body = vec![0u8; u16::from_be_bytes(head) as usize];
+        stream.read_exact(&mut body).await?;
+        Ok::<_, std::io::Error>(body)
+    })
+    .await
+    .map_err(|_| AppError::new("errors.linkRefused", json!({ "name": peer })))?
+    .map_err(|e| unreachable(e.to_string()))?;
+    let answer: Value = serde_json::from_slice(&answer).unwrap_or(Value::Null);
+    if answer["ok"] == true {
+        return Ok(());
+    }
+    Err(match s(&answer, "reason") {
+        "busy" => AppError::new("errors.linkBusy", json!({ "name": peer })),
+        "version" => AppError::new("errors.linkVersion", json!({})),
+        "game" | "core" => AppError::new("errors.linkOther", json!({})),
+        _ => AppError::new("errors.linkRefused", json!({ "name": peer })),
+    })
+}
+
 /// Arguments du moteur intégré : partie proposée ([core] : cœur choisi) ou rejointe ([join] : adresse,
 /// port et nom de l'hôte, jeu annoncé).
 pub fn host_args(system: &Value, game: &Value, core: &str) -> Vec<String> {
@@ -249,6 +434,21 @@ mod tests {
         assert_eq!(peer["port"], 4000);
         assert_eq!(peer["hosting"]["core"], "snes9x");
         assert_eq!(peer["address"], "192.168.1.5");
+    }
+
+    #[test]
+    fn liaisons() {
+        assert_eq!(link_for(&json!({ "id": "gbc", "shortname": "gbc" })).map(|l| l.core), Some("gambatte"));
+        assert_eq!(system_together(&json!({ "id": "gba", "shortname": "gba" })), json!("link"));
+        assert_eq!(ip_digits("192.168.1.5").as_deref(), Some("192168001005"));
+        assert_eq!(ip_digits("fe80::1"), None);
+        let options = link_options(link_by_id("gb").unwrap(), false, "10.0.0.42");
+        assert!(options.contains(&"gambatte_gb_link_mode=Network Client".to_string()));
+        assert!(options.contains(&"gambatte_gb_link_network_server_ip_2=1".to_string()));
+        assert!(options.contains(&"gambatte_gb_link_network_server_ip_12=2".to_string()));
+        assert_eq!(mac("a").len(), 12);
+        assert_ne!(mac("a"), mac("b"));
+        assert_eq!(u8::from_str_radix(&mac("a")[..2], 16).unwrap() & 3, 2);
     }
 
     #[test]

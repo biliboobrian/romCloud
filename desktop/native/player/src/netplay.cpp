@@ -18,7 +18,7 @@ namespace {
 constexpr int kDiscoveryPort = 47321;
 constexpr int kVersion = 1;
 constexpr uint64_t kTimeoutMs = 120000;  // autre joueur muet : partie arrêtée (menu ouvert compris)
-enum : uint8_t { kInput = 1, kState = 2, kCheck = 3, kResync = 4, kBye = 5 };
+enum : uint8_t { kInput = 1, kState = 2, kCheck = 3, kResync = 4, kBye = 5, kPacket = 6 };
 
 void put32(uint8_t* p, uint32_t v) {
   p[0] = (uint8_t)(v >> 24);
@@ -322,6 +322,7 @@ void Netplay::stop() {
   if (listener_ != INVALID_SOCKET) closesocket(listener_);
   listener_ = INVALID_SOCKET;
   end(true);
+  stopPackets();  // jeu quitté : liaison terminée pour le cœur, avant son arrêt
   if (beaconThread_.joinable()) beaconThread_.join();
   if (acceptThread_.joinable()) acceptThread_.join();
   if (joinThread_.joinable()) joinThread_.join();
@@ -343,6 +344,16 @@ std::vector<std::pair<std::string, std::string>> Netplay::takeMessages() {
 }
 
 std::string Netplay::partner() const { return partner_; }
+
+std::string Netplay::linked() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return linked_;
+}
+
+void Netplay::setLinked(const std::string& name) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  linked_ = name;
+}
 
 bool Netplay::requestPending(std::string& name) const {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -370,7 +381,8 @@ void Netplay::beaconLoop() {
     if (announcing_) {
       beacon += ",\"port\":" + std::to_string(config_.port) + ",\"hosting\":{\"gameId\":" + std::to_string(g.gameId) +
                 ",\"systemId\":" + jsonEscape(g.systemId) + ",\"title\":" + jsonEscape(g.title) +
-                ",\"fileName\":" + jsonEscape(g.fileName) + ",\"size\":" + std::to_string(g.size) + ",\"core\":" + jsonEscape(g.core) + "}";
+                ",\"fileName\":" + jsonEscape(g.fileName) + ",\"size\":" + std::to_string(g.size) + ",\"core\":" + jsonEscape(g.core) +
+                (config_.link.empty() ? std::string() : ",\"link\":" + jsonEscape(config_.link)) + "}";
     }
     beacon += "}";
     for (uint32_t address : broadcastAddresses()) {
@@ -407,7 +419,8 @@ void Netplay::handleClient(SOCKET client) {
     closesocket(client);
     return;
   }
-  std::string v, name, fileName, size, core;
+  std::string v, name, fileName, size, core, link;
+  jsonField(text, "link", link);
   jsonField(text, "v", v);
   jsonField(text, "name", name);
   jsonField(text, "fileName", fileName);
@@ -416,7 +429,10 @@ void Netplay::handleClient(SOCKET client) {
   const char* refusal = nullptr;
   if (atoi(v.c_str()) != kVersion) refusal = "version";
   else if (playing() || !announcing_) refusal = "busy";
-  else if (fileName != config_.game.fileName || atoll(size.c_str()) != config_.game.size) refusal = "game";
+  // Liaison : chacun son jeu, même liaison (même cœur).
+  else if (!config_.link.empty() && link.empty()) refusal = "version";
+  else if (link != config_.link) refusal = "game";
+  else if (config_.link.empty() && (fileName != config_.game.fileName || atoll(size.c_str()) != config_.game.size)) refusal = "game";
   else if (core != config_.game.core) refusal = "core";
   if (refusal) {
     reply(false, refusal);
@@ -438,6 +454,15 @@ void Netplay::handleClient(SOCKET client) {
     return;
   }
   reply(true, nullptr);
+  if (!config_.link.empty() && !config_.packets) {
+    // Liaison ouverte par le cœur (serveur Gambatte, ad hoc PPSSPP) : la connexion ne sert plus.
+    closesocket(client);
+    if (!config_.multi) announcing_ = false;
+    lock.lock();
+    linked_ = linked_.empty() ? name : linked_ + ", " + name;
+    messages_.emplace_back("link_started", name);
+    return;
+  }
   announcing_ = false;
   lock.lock();
   ready_ = client;
@@ -472,7 +497,8 @@ void Netplay::joinLoop() {
   const NetplayGame& g = config_.game;
   std::string join = "{\"v\":" + std::to_string(kVersion) + ",\"name\":" + jsonEscape(config_.deviceName) +
                      ",\"platform\":\"windows\",\"fileName\":" + jsonEscape(g.fileName) + ",\"size\":" + std::to_string(g.size) +
-                     ",\"core\":" + jsonEscape(g.core) + ",\"coreSize\":" + std::to_string(config_.coreSize) + "}";
+                     ",\"core\":" + jsonEscape(g.core) + ",\"coreSize\":" + std::to_string(config_.coreSize) +
+                     (config_.link.empty() ? std::string() : ",\"link\":" + jsonEscape(config_.link)) + "}";
   setTimeout(s, 90000);
   std::string text;
   if (!writeUtf(s, join) || !readUtf(s, text)) {
@@ -526,8 +552,8 @@ void Netplay::begin(SOCKET socket, bool host, int delay) {
   waiting_ = false;
   state_ = State::Starting;
   desyncs_ = 0;
-  logf("Netplay : partie avec %s (%s, délai %u images)", partner_.c_str(), host ? "hôte" : "invité", delay_);
-  message("netplay_started", partner_);
+  logf("Netplay : %s avec %s (%s, délai %u images)", config_.packets ? "liaison" : "partie", partner_.c_str(), host ? "hôte" : "invité", delay_);
+  message(config_.link.empty() ? "netplay_started" : "link_started", partner_);
 }
 
 void Netplay::end(bool notify) {
@@ -536,8 +562,9 @@ void Netplay::end(bool notify) {
     send(socket_, reinterpret_cast<const char*>(bye), 5, 0);
     closesocket(socket_);
     socket_ = INVALID_SOCKET;
-    logf("Netplay : fin de la partie à l'image %u (%d écart(s) d'état recalé(s))", frame_, desyncs_);
-    if (notify && state_ != State::Off) message("netplay_ended", partner_);
+    if (config_.packets) logf("Netplay : fin de la liaison (%lu paquet(s) envoyé(s), %lu reçu(s))", packetsOut_, packetsIn_);
+    else logf("Netplay : fin de la partie à l'image %u (%d écart(s) d'état recalé(s))", frame_, desyncs_);
+    if (notify && state_ != State::Off) message(config_.link.empty() ? "netplay_ended" : "link_ended", partner_);
   }
   state_ = State::Off;
   inFrame_ = false;
@@ -606,9 +633,61 @@ void Netplay::onMessage(uint8_t type, const uint8_t* p, uint32_t size) {
     compare(frame);
   } else if (type == kResync && host_) {
     resync_ = true;
+  } else if (type == kPacket && packetsActive_ && g.netpacket.receive) {
+    packetsIn_++;
+    g.netpacket.receive(p, size, host_ ? 1 : 0);
   } else if (type == kBye) {
     end(true);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Liaison entre consoles : paquets du cœur (interface netpacket)
+// ---------------------------------------------------------------------------
+
+void Netplay::packetSend(int, const void* buf, size_t len, uint16_t) {
+  Netplay* self = g.netplay;
+  if (!self || self->socket_ == INVALID_SOCKET || !buf || !len) return;
+  self->packetsOut_++;
+  if (!self->sendMessage(kPacket, buf, len)) self->end(true);
+}
+
+void Netplay::packetPollReceive() {
+  Netplay* self = g.netplay;
+  if (self && self->socket_ != INVALID_SOCKET && !self->pump()) self->end(true);
+}
+
+/** Session terminée : signalée au cœur hors de ses propres appels (début d'image). */
+void Netplay::stopPackets() {
+  if (!packetsActive_) return;
+  packetsActive_ = false;
+  if (host_ && g.netpacket.disconnected) g.netpacket.disconnected(1);
+  if (g.netpacket.stop) g.netpacket.stop();
+}
+
+Netplay::Frame Netplay::preparePackets() {
+  if (state_ == State::Starting) {
+    if (!g.hasNetpacket || !g.netpacket.start || !g.netpacket.receive) {
+      logf("Netplay : le cœur n'a pas d'interface de liaison (netpacket)");
+      end(true);
+      return Frame::Solo;
+    }
+    g.netpacket.start(host_ ? 0 : 1, &Netplay::packetSend, &Netplay::packetPollReceive);
+    packetsActive_ = true;
+    if (host_ && g.netpacket.connected && !g.netpacket.connected(1)) {
+      end(true);
+      stopPackets();
+      return Frame::Solo;
+    }
+    state_ = State::Running;
+  }
+  if (!pump()) end(true);
+  if (state_ != State::Running) {
+    stopPackets();
+    return Frame::Solo;
+  }
+  if (g.netpacket.poll) g.netpacket.poll();
+  return Frame::Solo;
 }
 
 /** Lit ce qui est arrivé sans attendre et traite les messages complets ; faux si la partie est finie. */
@@ -636,6 +715,7 @@ bool Netplay::pump() {
 }
 
 Netplay::Frame Netplay::prepare(const LocalInput& local) {
+  if (state_ == State::Off) stopPackets();
   if (state_ == State::Off) {
     // Connexion acceptée par le fil de connexion : la partie commence à cette image.
     SOCKET s;
@@ -651,6 +731,7 @@ Netplay::Frame Netplay::prepare(const LocalInput& local) {
     }
     begin(s, host, delay);
   }
+  if (config_.packets) return preparePackets();
   auto fail = [&] {
     end(true);
     return Frame::Solo;

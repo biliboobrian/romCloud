@@ -7,9 +7,13 @@
 //                   [--pad-style <manette de la console>]
 //                   [--netplay-host | --netplay-join <adresse:port> --netplay-peer <nom de l'hôte>]
 //                   [--netplay-game <jeu (JSON)>] [--device-id <identifiant>] [--device-name <nom>]
+//                   [--netplay-link <gb|gba|psp> [--netplay-packets] [--netplay-multi]] [--linked <nom>]
+//                   [--option <clé>=<valeur>]…
 //
 // Jeu à plusieurs en réseau local (netplay.h) : partie proposée (--netplay-host) ou rejointe
-// (--netplay-join), même protocole que l'application Android.
+// (--netplay-join), même protocole que l'application Android. Liaison entre consoles (--netplay-link) :
+// chacun son jeu ; paquets du cœur échangés ici (--netplay-packets, gpSP) ou connexion ouverte par le
+// cœur (options imposées par --option ; invité accepté avant le lancement : --linked <nom de l'hôte>).
 //
 // Fonctionnement calqué sur LibretroDroid : le cœur est chargé, le jeu démarré, puis une boucle
 // exécute retro_run au rythme de l'audio et affiche chaque image avec OpenGL. Codes de sortie :
@@ -51,6 +55,9 @@ struct Args {
   // jeu annoncé (JSON : gameId, systemId, title, fileName, size, core) ; appareil.
   bool netplayHost = false;
   std::string netplayJoin, netplayPeer, netplayGame, deviceId, deviceName;
+  std::string netplayLink, linked;
+  bool netplayPackets = false, netplayMulti = false;
+  std::vector<std::string> optionsForced;  // options imposées (liaison entre consoles)
   // Mode d'essai : fenêtre cachée, N images au plus vite, dernière image enregistrée en BMP.
   std::string testFrames, screenshot, testSeconds, testOptions;
   bool testWindow = false;  // essai dans une fenêtre visible : affichage et menu capturés
@@ -71,12 +78,16 @@ Args parseArgs(int argc, char** argv) {
       {"--test-options", &a.testOptions},  // essai : écran des options du cœur, onglet N
       {"--netplay-join", &a.netplayJoin}, {"--netplay-peer", &a.netplayPeer}, {"--netplay-game", &a.netplayGame},
       {"--device-id", &a.deviceId},     {"--device-name", &a.deviceName},
+      {"--netplay-link", &a.netplayLink}, {"--linked", &a.linked},
   };
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
     if (arg == "--windowed") a.windowed = true;
     else if (arg == "--resume") a.resume = true;
     else if (arg == "--netplay-host") a.netplayHost = true;
+    else if (arg == "--netplay-packets") a.netplayPackets = true;
+    else if (arg == "--netplay-multi") a.netplayMulti = true;
+    else if (arg == "--option" && i + 1 < argc) a.optionsForced.push_back(argv[++i]);
     else if (arg == "--test-window") a.testWindow = true;
     else if (arg == "--test-menu") a.testMenu = true;
     else if (arg == "--test-keys") a.testKeys = true;
@@ -237,8 +248,9 @@ MenuState Player::menuState() const {
     s.diskIndex = (int)g.disk.get_image_index();
   }
   s.hasState = fileExists(statePath());
-  s.together = netplay_.playing();
-  s.netplay = netplay_.playing() || netplay_.open();
+  // Liaison ouverte par le cœur : état ou options changés ici couperaient la liaison.
+  s.together = netplay_.playing() || !netplay_.linked().empty();
+  s.netplay = (netplay_.playing() || netplay_.open()) && (!netplay_.isLink() || netplay_.packets());
   return s;
 }
 
@@ -452,8 +464,10 @@ void Player::present() {
   // Jeu à plusieurs : bandeau en haut (attente, partie en cours, partie proposée), demande d'un invité.
   std::string banner, requester;
   const bool request = netplay_.requestPending(requester);
+  const std::string linked = netplay_.linked();
   if (netplay_.waiting()) banner = trName("netplay_waiting", netplay_.partner());
-  else if (netplay_.playing()) banner = trName("netplay_playing", netplay_.partner());
+  else if (netplay_.playing()) banner = trName(netplay_.isLink() ? "link_playing" : "netplay_playing", netplay_.partner());
+  else if (!linked.empty()) banner = trName("link_playing", linked);
   else if (netplay_.open()) banner = menu_.tr("netplay_open");
   auto drawNetplay = [&] {
     if (!banner.empty()) {
@@ -463,7 +477,7 @@ void Player::present() {
       overlay_.text(x + 12, 16, text, 1, rgba(230, 230, 245));
     }
     if (request) {
-      std::string title = Canvas::fit(trName("netplay_request", requester), 2, overlay_.width() - 80);
+      std::string title = Canvas::fit(trName(netplay_.isLink() ? "link_request" : "netplay_request", requester), 2, overlay_.width() - 80);
       std::string hint = menu_.tr("netplay_request_hint");
       int w = std::max(Canvas::measure(title, 2), Canvas::measure(hint, 1)) + 48;
       int x = (overlay_.width() - w) / 2, y = overlay_.height() / 2 - 34;
@@ -503,7 +517,12 @@ int Player::run() {
   g.saveDir = compatiblePath(args_.saveDir);
   g.options.load(args_.options);
   for (const auto& assignment : args_.optionDefaults) g.options.setGameDefault(assignment);
+  for (const auto& assignment : args_.optionsForced) g.options.setForced(assignment);
 
+  // Réseau prêt avant le cœur : certains ouvrent eux-mêmes leurs connexions (câble Game Link de
+  // Gambatte, ad hoc de PPSSPP), sans initialiser Winsock comme le fait RetroArch.
+  WSADATA wsa;
+  WSAStartup(MAKEWORD(2, 2), &wsa);
   std::string error;
   if (!loadCore(args_.core, error)) return fail(menu_.tr("core_failed") + "\n" + args_.core + "\n" + error);
   g.video = &video_;
@@ -635,6 +654,10 @@ int Player::run() {
 
 /** Jeu à plusieurs demandé au lancement : partie proposée sur le réseau local, ou rejointe. */
 void Player::startNetplay() {
+  if (!args_.linked.empty()) {
+    netplay_.setLinked(args_.linked);
+    toast(trName("link_started", args_.linked));
+  }
   if (!args_.netplayHost && args_.netplayJoin.empty()) return;
   Netplay::Config config;
   config.role = args_.netplayHost ? Netplay::Role::Host : Netplay::Role::Guest;
@@ -654,6 +677,9 @@ void Player::startNetplay() {
     config.port = atoi(args_.netplayJoin.c_str() + colon + 1);
   }
   config.peerName = args_.netplayPeer;
+  config.link = args_.netplayLink;
+  config.packets = !config.link.empty() && args_.netplayPackets;
+  config.multi = !config.link.empty() && args_.netplayMulti;
   WIN32_FILE_ATTRIBUTE_DATA attributes;
   if (GetFileAttributesExW(widen(args_.core).c_str(), GetFileExInfoStandard, &attributes)) {
     config.coreSize = ((long long)attributes.nFileSizeHigh << 32) | attributes.nFileSizeLow;

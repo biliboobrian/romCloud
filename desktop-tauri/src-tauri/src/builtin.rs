@@ -176,7 +176,7 @@ fn sram_path(core: &str, rom: &str) -> PathBuf {
  * récentes sont récupérées avant, et à la fermeture du moteur, le temps de jeu est compté et les
  * sauvegardes modifiées sont envoyées au serveur.
  */
-pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume: bool, extra: Vec<String>) -> Result<()> {
+pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume: bool, extra: Vec<String>, save_core: Option<&str>) -> Result<()> {
     if !available() {
         return Err(AppError::new("errors.playerMissing", json!({ "path": player_path().to_string_lossy() })));
     }
@@ -188,6 +188,15 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
     let save_files: account::SaveFiles = vec![("state", state_path(core, file)), ("sram", sram_path(core, &rom))];
     let game_id = game.get("id").cloned().unwrap_or(Value::Null);
     account::download_newer(&game_id, core, &save_files).await;
+    // Liaison entre consoles avec un autre cœur que l'émulateur choisi : sauvegarde de celui-ci
+    // reprise si elle est plus récente, recopiée pour lui en quittant.
+    let linked_sram = save_core.filter(|other| *other != core).map(|other| {
+        let other_rom = if cores::needs_extraction(other, file) { rom.clone() } else { file.to_string() };
+        (other.to_string(), sram_path(other, &other_rom))
+    });
+    if let Some((_, other)) = &linked_sram {
+        copy_if_newer(other, &sram_path(core, &rom));
+    }
 
     let base = root();
     let system_key = if s(system, "shortname").is_empty() { s(system, "id") } else { s(system, "shortname") };
@@ -232,6 +241,12 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         let code = child.wait().await.ok().and_then(|s| s.code()).unwrap_or(0);
         account::add_playtime(game_id.clone(), (paths::now_ms() - started) / 1000.0).await;
         account::upload_changed(&game_id, &core, &save_files, started - 2000.0).await;
+        if let Some((other, path)) = linked_sram {
+            if let Some((_, sram)) = save_files.iter().find(|(kind, _)| *kind == "sram") {
+                copy_if_newer(sram, &path);
+            }
+            account::upload_changed(&game_id, &other, &vec![("sram", path)], started - 2000.0).await;
+        }
         if code != 0 {
             let log = last_log(&base);
             account::report_error(&format!("player:{core}"), &format!("romcloud-player exit code {code}"), log.clone());
@@ -246,6 +261,19 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         }
     });
     Ok(())
+}
+
+/// Copie [from] sur [to] s'il est plus récent (ou si [to] n'existe pas).
+fn copy_if_newer(from: &Path, to: &Path) {
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let Some(source) = modified(from) else { return };
+    if modified(to).is_some_and(|target| target >= source) {
+        return;
+    }
+    if let Some(dir) = to.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::copy(from, to);
 }
 
 /// Fin du journal du moteur (jointe à l'erreur signalée quand il s'arrête sur une erreur).

@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -31,16 +32,23 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.netplay.Peer
+import com.romcloud.app.netplay.Together
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
 
-/** Icône « jeu à plusieurs » : jeu jouable à plusieurs avec un appareil RomCloud du réseau local. */
+/** Icône d'une façon de jouer à plusieurs : jeu synchronisé (joueurs) ou consoles reliées (maillon). */
+fun togetherIcon(kind: Together) = if (kind == Together.LINK) Icons.Filled.Link else Icons.Filled.Groups
+
+/**
+ * Icône « jeu à plusieurs » : jeu jouable à plusieurs avec un appareil RomCloud du réseau local
+ * ([Together.NETPLAY]) ou console qui peut se relier à la sienne ([Together.LINK], autre icône et couleur).
+ */
 @Composable
-fun MultiplayerBadge(modifier: Modifier = Modifier, size: Dp = 18.dp) {
+fun TogetherBadge(kind: Together, modifier: Modifier = Modifier, size: Dp = 18.dp) {
     Icon(
-        Icons.Filled.Groups,
-        contentDescription = stringResource(R.string.netplay_badge),
-        tint = MaterialTheme.colorScheme.primary,
+        togetherIcon(kind),
+        contentDescription = stringResource(if (kind == Together.LINK) R.string.link_badge else R.string.netplay_badge),
+        tint = if (kind == Together.LINK) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
         modifier = modifier.size(size),
     )
 }
@@ -77,8 +85,11 @@ fun NetplayDialog(app: RomCloudApp, peers: List<Peer>, onMessage: (String) -> Un
                             Text("${peer.name} · ${platformLabel(peer.platform)}", style = MaterialTheme.typography.titleSmall)
                             val hosting = peer.hosting
                             Text(
-                                if (hosting != null) stringResource(R.string.netplay_hosting_game, hosting.title)
-                                else stringResource(R.string.netplay_available),
+                                when {
+                                    hosting?.link != null -> stringResource(R.string.link_hosting_game, hosting.title)
+                                    hosting != null -> stringResource(R.string.netplay_hosting_game, hosting.title)
+                                    else -> stringResource(R.string.netplay_available)
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -95,7 +106,7 @@ fun NetplayDialog(app: RomCloudApp, peers: List<Peer>, onMessage: (String) -> Un
                                         onDismiss()
                                     }
                                 },
-                            ) { Text(stringResource(R.string.netplay_join)) }
+                            ) { Text(stringResource(if (peer.hosting?.link != null) R.string.link_join_short else R.string.netplay_join)) }
                         }
                     }
                 }

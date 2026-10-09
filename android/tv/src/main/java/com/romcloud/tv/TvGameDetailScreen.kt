@@ -56,6 +56,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.romcloud.app.netplay.Together
+import com.romcloud.app.ui.togetherIcon
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.starsText
@@ -191,9 +193,16 @@ fun TvGameDetailScreen(
                             } else {
                                 ActionButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, primary) { viewModel.play(activity)?.let(onMessage) }
                             }
-                            if (viewModel.canPlayTogether(peers)) {
-                                SecondaryButton(stringResource(R.string.netplay_play_together), Icons.Filled.Groups) {
-                                    viewModel.hostNetplay(activity)?.let(onMessage)
+                            viewModel.together(peers)?.let { kind ->
+                                SecondaryButton(
+                                    stringResource(if (kind == Together.LINK) R.string.link_host else R.string.netplay_play_together),
+                                    togetherIcon(kind),
+                                ) { viewModel.hostNetplay(activity)?.let(onMessage) }
+                            }
+                            // Liaison proposée par un autre appareil : ce jeu s'y relie.
+                            viewModel.linkHosts(peers).forEach { peer ->
+                                SecondaryButton(stringResource(R.string.link_join, peer.name, peer.hosting?.title.orEmpty()), togetherIcon(Together.LINK)) {
+                                    viewModel.joinLink(activity, peer)?.let(onMessage)
                                 }
                             }
                             if (state.missingBios.isNotEmpty()) {

@@ -59,6 +59,11 @@ void CoreOptions::setGameDefault(const std::string& assignment) {
   if (eq != std::string::npos) gameDefaults_[trim(assignment.substr(0, eq))] = trim(assignment.substr(eq + 1));
 }
 
+void CoreOptions::setForced(const std::string& assignment) {
+  size_t eq = assignment.find('=');
+  if (eq != std::string::npos) forced_[trim(assignment.substr(0, eq))] = trim(assignment.substr(eq + 1));
+}
+
 void CoreOptions::declare(const retro_variable* vars) {
   for (; vars && vars->key; vars++) {
     CoreOption option;
@@ -145,6 +150,8 @@ void CoreOptions::declare(const retro_core_options_v2* us, const retro_core_opti
 }
 
 const char* CoreOptions::get(const std::string& key) const {
+  auto forced = forced_.find(key);
+  if (forced != forced_.end()) return forced->second.c_str();
   for (const auto& o : options_) {
     if (o.key == key) return o.value.c_str();
   }

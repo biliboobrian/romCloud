@@ -88,7 +88,7 @@
       usage: call('library:usage'),
     },
     connectivity: { state: call('connectivity:state'), check: call('connectivity:check'), onUpdate: on('connectivity:update') },
-    netplay: { peers: call('netplay:peers'), systemAllows: call('netplay:systemAllows'), onPeers: on('netplay:peers') },
+    netplay: { peers: call('netplay:peers'), systemAllows: call('netplay:systemAllows'), systemTogether: call('netplay:systemTogether'), onPeers: on('netplay:peers') },
     bios: { missing: call('bios:missing') },
     downloads: {
       start: call('downloads:start'),

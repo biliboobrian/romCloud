@@ -1,6 +1,9 @@
 package com.romcloud.app.ui
 
+import com.romcloud.app.netplay.LinkRules
 import com.romcloud.app.netplay.NetplayRules
+import com.romcloud.app.netplay.Together
+import com.romcloud.app.netplay.together
 import com.romcloud.app.netplay.Peer
 import com.romcloud.app.netplay.NetplayProtocol
 import com.romcloud.app.netplay.NetplayLaunch
@@ -77,11 +80,32 @@ fun RomCloudApp.play(
     }
 }
 
-/** Partie proposée sur le réseau local : jeu, fichier et cœur annoncés aux autres appareils. */
+/**
+ * Partie proposée sur le réseau local : jeu, fichier et cœur annoncés aux autres appareils. Console
+ * qui se relie (câble, ad hoc) : liaison proposée, avec le cœur de la liaison.
+ */
 fun RomCloudApp.hostNetplay(activity: Activity, system: GameSystem, game: Game): String? {
-    val core = launcher.selectedPlayer(system, game.fileName)?.libretroCore ?: return I18n.get(R.string.netplay_needs_builtin)
+    val player = launcher.selectedPlayer(system, game.fileName)
+    val link = LinkRules.kind(system)?.takeIf { !NetplayRules.canPlayTogether(system, game, player) }
+    if (link != null) {
+        val hosted = NetplayProtocol.HostedGame(game.id, system.id, game.title, game.fileName, game.size, link.core, link.id)
+        return play(activity, system, game, netplay = NetplayLaunch(host = true, game = hosted, saveCore = player?.libretroCore))
+    }
+    val core = player?.libretroCore ?: return I18n.get(R.string.netplay_needs_builtin)
     val hosted = NetplayProtocol.HostedGame(game.id, system.id, game.title, game.fileName, game.size, core)
     return play(activity, system, game, netplay = NetplayLaunch(host = true, game = hosted))
+}
+
+/** Relie ce jeu (de cet appareil) à la console de [peer], qui propose une liaison du même type. */
+fun RomCloudApp.joinLink(activity: Activity, system: GameSystem, game: Game, peer: Peer): String? {
+    val hosting = peer.hosting ?: return null
+    val link = LinkRules.kind(hosting.link) ?: return null
+    val player = launcher.selectedPlayer(system, game.fileName)
+    val mine = NetplayProtocol.HostedGame(game.id, system.id, game.title, game.fileName, game.size, link.core, link.id)
+    return play(
+        activity, system, game,
+        netplay = NetplayLaunch(host = false, address = peer.address, port = peer.port, peerName = peer.name, game = mine, saveCore = player?.libretroCore),
+    )
 }
 
 /**
@@ -101,10 +125,12 @@ suspend fun RomCloudApp.joinNetplay(context: Context, peer: Peer): String? {
         return I18n.get(R.string.netplay_downloading, game.title)
     }
     val file = library.fileFor(system, game)
+    // Liaison : même jeu que l'hôte, avec la sauvegarde de l'émulateur choisi ici.
+    val saveCore = hosted.link?.let { launcher.selectedPlayer(system, game.fileName)?.libretroCore }
     return try {
         launcher.launch(
             context, system, file, null, gameId = game.id,
-            netplay = NetplayLaunch(host = false, address = peer.address, port = peer.port, peerName = peer.name, game = hosted),
+            netplay = NetplayLaunch(host = false, address = peer.address, port = peer.port, peerName = peer.name, game = hosted, saveCore = saveCore),
         )
         null
     } catch (e: LaunchException) {
@@ -304,11 +330,12 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
     /** Appareils RomCloud du réseau local (jeu à plusieurs). */
     val peers = app.presence.peers
 
-    /** Jeu jouable à plusieurs en réseau (moteur intégré, jeu à plusieurs joueurs). */
-    fun canPlayTogether(game: Game): Boolean {
-        val system = _state.value.system ?: return false
-        return NetplayRules.systemAllows(system) && NetplayRules.maxPlayers(game.players) >= 2 &&
-            NetplayRules.canPlayTogether(system, game, app.launcher.selectedPlayer(system, game.fileName))
+    /** Jeu jouable à plusieurs en réseau (moteur intégré, jeu à plusieurs joueurs) ou consoles reliées ; null sinon. */
+    fun together(game: Game): Together? {
+        val system = _state.value.system ?: return null
+        if (LinkRules.kind(system) == null && !NetplayRules.systemAllows(system)) return null
+        if (NetplayRules.maxPlayers(game.players) < 2) return null
+        return NetplayRules.together(system, game, app.launcher.selectedPlayer(system, game.fileName))
     }
 
     val downloads = app.downloader.states
@@ -565,12 +592,28 @@ class GameDetailViewModel(
     /** Appareils RomCloud du réseau local (jeu à plusieurs). */
     val peers = app.presence.peers
 
-    /** « Jouer à plusieurs » : jeu présent, appareil sur le réseau local, jeu et émulateur compatibles. */
-    fun canPlayTogether(peers: List<Peer>): Boolean {
+    /** « Jouer à plusieurs » / « Relier les consoles » : jeu présent, appareil sur le réseau local, jeu et émulateur compatibles. */
+    fun together(peers: List<Peer>): Together? {
         val s = _state.value
-        val system = s.system ?: return false
-        val game = s.game ?: return false
-        return s.downloaded && peers.isNotEmpty() && NetplayRules.canPlayTogether(system, game, s.selectedPlayer)
+        val system = s.system ?: return null
+        val game = s.game ?: return null
+        if (!s.downloaded || peers.isEmpty()) return null
+        return NetplayRules.together(system, game, s.selectedPlayer)
+    }
+
+    /** Appareils qui proposent une liaison de cette console : ce jeu peut s'y relier (chacun son jeu). */
+    fun linkHosts(peers: List<Peer>): List<Peer> {
+        val s = _state.value
+        val kind = s.system?.let(LinkRules::kind) ?: return emptyList()
+        if (!s.downloaded) return emptyList()
+        return peers.filter { LinkRules.kind(it.hosting?.link) == kind }
+    }
+
+    fun joinLink(activity: Activity, peer: Peer): String? {
+        val s = _state.value
+        val system = s.system ?: return I18n.get(R.string.err_system_not_found)
+        val game = s.game ?: return I18n.get(R.string.game_not_found)
+        return app.joinLink(activity, system, game, peer)
     }
 
     /** Lance le jeu et le propose aux appareils du réseau local. */

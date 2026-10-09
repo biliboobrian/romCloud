@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.romcloud.app.data.Game
+import com.romcloud.app.netplay.Together
 import com.romcloud.core.R
 
 @Composable
@@ -76,7 +77,7 @@ fun GamesCarousel(
     /** Paysage : bannière réduite pour remonter les rangées. */
     compact: Boolean = false,
     /** Jeu jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
-    together: (Game) -> Boolean = { false },
+    together: (Game) -> Together? = { null },
 ) {
     val labels = RowLabels(
         downloaded = stringResource(R.string.row_downloaded),
@@ -160,7 +161,7 @@ private fun HeroBanner(
     onDetails: () -> Unit,
     topInset: Dp,
     compact: Boolean,
-    together: Boolean = false,
+    together: Together? = null,
 ) {
     val background = MaterialTheme.colorScheme.background
     // Hauteur de la bannière = celle de son contenu : la jaquette suit directement les filtres,
@@ -218,7 +219,7 @@ private fun HeroBanner(
                         maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (together) MultiplayerBadge(size = 24.dp)
+                    together?.let { TogetherBadge(it, size = 24.dp) }
                 }
                 val meta = listOfNotNull(game.year, game.mainGenre, partsSummary(game), formatSize(game.fullSize)).joinToString(" · ")
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -309,7 +310,7 @@ fun GameCard(
     /** Jeu affiché dans la bannière du carrousel : jaquette encadrée. */
     selected: Boolean = false,
     /** Jeu jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
-    together: Boolean = false,
+    together: Together? = null,
 ) {
     Column(
         modifier
@@ -372,7 +373,7 @@ fun GameCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (together) MultiplayerBadge(Modifier.padding(start = 4.dp, top = 1.dp), size = 16.dp)
+            together?.let { TogetherBadge(it, Modifier.padding(start = 4.dp, top = 1.dp), size = 16.dp) }
         }
         Text(
             listOfNotNull(game.year, formatSize(game.fullSize)).joinToString(" · "),

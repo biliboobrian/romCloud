@@ -95,6 +95,8 @@ import com.romcloud.app.ui.CastDialog
 import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
 import com.romcloud.app.netplay.LanPresence
+import com.romcloud.app.netplay.LinkKind
+import com.romcloud.app.netplay.LinkRules
 import com.romcloud.app.netplay.NetplayHost
 import com.romcloud.app.netplay.NetplayLaunch
 import com.romcloud.app.netplay.NetplayProtocol
@@ -167,8 +169,23 @@ class LibretroActivity : ComponentActivity() {
     /** Partie proposée, en attente d'un invité (hôte). */
     private var netplayOpen by mutableStateOf(false)
 
-    /** Port des touches de cet appareil : en partie à plusieurs, un seul joueur local (port 0, placé par l'adaptateur). */
-    private fun localPort(port: Int) = if (netplayLaunch != null) 0 else port
+    /** Liaison entre consoles (câble, adaptateur sans fil, ad hoc) : chaque appareil émule sa console. */
+    private val link: LinkKind? by lazy { netplayLaunch?.link }
+
+    /**
+     * Liaison avec un autre cœur que l'émulateur choisi pour le jeu : sauvegarde de celui-ci, reprise
+     * au lancement (plus récente) et mise à jour en quittant.
+     */
+    private val linkedSram by lazy {
+        netplayLaunch?.saveCore?.takeIf { link != null && it != core }
+            ?.let { File(filesDir, "libretro/saves/$it/${rom.nameWithoutExtension}.srm") }
+    }
+
+    /**
+     * Port des touches de cet appareil : en partie à plusieurs, un seul joueur local (port 0, placé par
+     * l'adaptateur) ; consoles reliées : chacune ses manettes.
+     */
+    private fun localPort(port: Int) = if (netplayLaunch != null && link == null) 0 else port
 
     private val gamepadMappings by lazy { GamepadMappings(this, systemId) }
     /** Boutons RetroPad enfoncés par joueur, et ceux enfoncés par une gâchette analogique. */
@@ -309,6 +326,15 @@ class LibretroActivity : ComponentActivity() {
             } else {
                 rom
             }
+            // Invité d'une liaison : l'hôte accepte avant le lancement (le cœur se relie dès son démarrage).
+            val launch = netplayLaunch
+            if (launch != null && link != null && !launch.host) {
+                phase = Phase.Loading(getString(R.string.link_connecting, launch.peerName))
+                joinFailure(launch, coreFile)?.let {
+                    phase = Phase.Failed(it)
+                    return
+                }
+            }
             startGame(coreFile, game)
         } catch (e: CancellationException) {
             throw e
@@ -319,7 +345,12 @@ class LibretroActivity : ComponentActivity() {
     }
 
     private suspend fun startGame(coreFile: File, game: File) {
-        val sram = withContext(Dispatchers.IO) { sramFile.takeIf { it.isFile }?.readBytes() }
+        val sram = withContext(Dispatchers.IO) {
+            // Liaison : sauvegarde de l'émulateur choisi reprise si elle est plus récente.
+            linkedSram?.takeIf { it.isFile && (!sramFile.isFile || it.lastModified() > sramFile.lastModified()) }
+                ?.let { runCatching { it.copyTo(sramFile, overwrite = true) } }
+            sramFile.takeIf { it.isFile }?.readBytes()
+        }
         aspectRatio = aspectRatios.load(systemId)
         val data = GLRetroViewData(this).apply {
             coreFilePath = corePath(coreFile)
@@ -329,7 +360,11 @@ class LibretroActivity : ComponentActivity() {
             saveRAMState = sram
             // Dernières options choisies pour ce système (les autres gardent la valeur par défaut du cœur).
             // Valeurs imposées par le jeu (cartouche GX4000…), sauf choix de l'utilisateur.
-            variables = (GameOptionDefaults.forGame(core, game) + optionsStore.load(systemId))
+            // Liaison entre consoles : options du cœur imposées (serveur chez l'hôte, adresse de l'hôte chez l'invité).
+            val linkOptions = netplayLaunch?.let { launch ->
+                link?.let { LinkRules.options(it, launch.host, launch.address, LanPresence.deviceId(this@LibretroActivity)) }
+            }.orEmpty()
+            variables = (GameOptionDefaults.forGame(core, game) + optionsStore.load(systemId) + linkOptions)
                 .map { (key, value) -> Variable(key, value) }.toTypedArray()
             preferLowLatencyAudio = true
             videoFilter = videoFilters.load(systemId)
@@ -379,8 +414,8 @@ class LibretroActivity : ComponentActivity() {
         val streaming = streamTarget != null
         if (streaming) StreamTap.load()
         val aspect = aspectRatio != AspectRatio.ORIGINAL
-        // Partie à plusieurs : touches échangées par l'adaptateur.
-        val netplay = netplayLaunch != null
+        // Partie à plusieurs : touches échangées par l'adaptateur ; liaison : paquets du cœur (gpSP).
+        val netplay = netplayLaunch != null && link?.packets != false
         if (!streaming && !aspect && !netplay && core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES && core !in INPUT_MASK_CORES) return coreFile.absolutePath
         throughShim = CoreShim.load()
         applyAspectRatio()
@@ -462,6 +497,7 @@ class LibretroActivity : ComponentActivity() {
             stopStreaming()
             netplayHost?.stop()
             Netplay.stop()
+            saveLinkedSram()
             CrashReports.endSession(this)
             // Processus de jeu arrêté juste après : temps de jeu et sauvegardes mis en file,
             // envoyés au serveur par l'application au retour.
@@ -510,13 +546,18 @@ class LibretroActivity : ComponentActivity() {
     // ---- Jeu à plusieurs en réseau local (touches échangées par l'adaptateur natif) ----
 
     private fun startNetplay(launch: NetplayLaunch, coreFile: File) {
-        if (!throughShim) {
+        val link = link
+        if (!throughShim && link?.packets != false) {
             toastMillis = ERROR_TOAST_MS
             toast = getString(R.string.netplay_unavailable)
             return
         }
         val app = application as RomCloudApp
-        if (launch.host) {
+        if (link != null && !launch.host) {
+            // Invité d'une liaison : déjà accepté par l'hôte (avant le lancement).
+            netplayPartner = launch.peerName
+            toast = getString(R.string.link_started, launch.peerName)
+        } else if (launch.host) {
             val presence = LanPresence(this, account.deviceName, app.api.platform)
             netplayHost = NetplayHost(
                 presence, launch.game, coreFile,
@@ -530,9 +571,10 @@ class LibretroActivity : ComponentActivity() {
                     }
                 },
                 onStarted = { name ->
-                    netplayOpen = false
-                    netplayPartner = name
-                    toast = getString(R.string.netplay_started, name)
+                    // Ad hoc de la PSP : toujours proposée aux autres consoles.
+                    netplayOpen = link?.multi == true
+                    netplayPartner = netplayPartner?.takeIf { link != null }?.let { "$it, $name" } ?: name
+                    toast = getString(if (link != null) R.string.link_started else R.string.netplay_started, name)
                 },
             ).also { it.start(lifecycleScope) }
             netplayOpen = true
@@ -567,7 +609,7 @@ class LibretroActivity : ComponentActivity() {
                 netplayWaiting = status.waiting && netplayPartner != null && !menuOpen
                 if (status.state == Netplay.State.ENDED && netplayPartner != null) {
                     toastMillis = ERROR_TOAST_MS
-                    toast = getString(R.string.netplay_ended, netplayPartner.orEmpty())
+                    toast = getString(if (link != null) R.string.link_ended else R.string.netplay_ended, netplayPartner.orEmpty())
                     netplayPartner = null
                     // Hôte : partie de nouveau proposée.
                     netplayHost?.let {
@@ -577,6 +619,41 @@ class LibretroActivity : ComponentActivity() {
                 }
                 delay(300)
             }
+        }
+    }
+
+    /**
+     * Invité d'une liaison : demande à l'hôte ; renvoie le message du refus (ou de l'échec), null si
+     * l'hôte accepte (liaison par paquets : connexion remise à l'adaptateur, utilisée au démarrage du cœur).
+     */
+    private suspend fun joinFailure(launch: NetplayLaunch, coreFile: File): String? {
+        val app = application as RomCloudApp
+        val join = NetplayProtocol.Join(
+            name = account.deviceName, platform = app.api.platform, fileName = launch.game.fileName,
+            size = launch.game.size, core = core, coreSize = coreFile.length(), link = launch.game.link,
+        )
+        return try {
+            joinNetplay(launch, join)
+            null
+        } catch (e: NetplayRefused) {
+            when (e.reason) {
+                NetplayProtocol.REFUSED -> getString(R.string.netplay_refused, launch.peerName)
+                NetplayProtocol.BUSY -> getString(R.string.netplay_busy, launch.peerName)
+                NetplayProtocol.OTHER_GAME, NetplayProtocol.OTHER_CORE -> getString(R.string.netplay_other_game)
+                NetplayProtocol.OTHER_VERSION -> getString(R.string.netplay_other_version)
+                else -> getString(R.string.netplay_unreachable, launch.peerName, e.message.orEmpty())
+            }
+        }
+    }
+
+    /** Liaison avec un autre cœur que l'émulateur choisi : sauvegarde recopiée pour celui-ci (et envoyée en ligne). */
+    private fun saveLinkedSram() {
+        val target = linkedSram ?: return
+        val saveCore = netplayLaunch?.saveCore ?: return
+        if (!sramFile.isFile || (target.isFile && target.lastModified() >= sramFile.lastModified())) return
+        runCatching {
+            sramFile.copyTo(target, overwrite = true)
+            account.queueUploads(gameId, saveCore, mapOf("sram" to target), sessionStart - 2000)
         }
     }
 
@@ -901,6 +978,7 @@ class LibretroActivity : ComponentActivity() {
             val netplayText = when {
                 phase != Phase.Running || menuOpen -> null
                 netplayWaiting -> stringResource(R.string.netplay_waiting, netplayPartner.orEmpty())
+                netplayPartner != null && link != null -> stringResource(R.string.link_started, netplayPartner.orEmpty())
                 netplayPartner != null -> stringResource(R.string.netplay_playing_with, netplayPartner.orEmpty())
                 netplayOpen -> stringResource(R.string.netplay_open)
                 else -> null
@@ -917,8 +995,8 @@ class LibretroActivity : ComponentActivity() {
             netplayRequest?.let { (join, answer) ->
                 AlertDialog(
                     onDismissRequest = { answer.complete(false) },
-                    title = { Text(stringResource(R.string.netplay_request_title)) },
-                    text = { Text(stringResource(R.string.netplay_request_text, join.name)) },
+                    title = { Text(stringResource(if (link != null) R.string.link_request_title else R.string.netplay_request_title)) },
+                    text = { Text(stringResource(if (link != null) R.string.link_request_text else R.string.netplay_request_text, join.name)) },
                     confirmButton = { FocusedButton(stringResource(R.string.netplay_accept), { answer.complete(true) }) },
                     dismissButton = { TextButton(onClick = { answer.complete(false) }) { Text(stringResource(R.string.netplay_refuse)) } },
                 )
@@ -1000,7 +1078,10 @@ class LibretroActivity : ComponentActivity() {
                         closeMenu()
                     })
                 }
-                if (netplayPartner != null || netplayOpen) add(stringResource(R.string.netplay_menu_leave) to ::leaveNetplay)
+                // Liaison ouverte par le cœur (Game Boy, PSP) : coupée seulement en quittant le jeu.
+                if ((netplayPartner != null || netplayOpen) && link?.packets != false) {
+                    add(stringResource(if (link != null) R.string.link_menu_leave else R.string.netplay_menu_leave) to ::leaveNetplay)
+                }
                 if (gameReady) add(stringResource(R.string.libretro_menu_save_quit) to ::saveAndQuit)
                 add(stringResource(R.string.libretro_menu_quit) to ::finish)
             }

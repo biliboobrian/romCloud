@@ -314,11 +314,41 @@ pub async fn resumable_online(system: &Value, game: &Value) -> Value {
     }
 }
 
+/// Liaison entre consoles (netplay::Link) : ce jeu, avec le cœur de la liaison ; proposée (`join`
+/// absent) ou reliée à l'hôte. Invité d'une liaison ouverte par le cœur : l'hôte accepte avant le lancement.
+async fn play_link(system: &Value, game: &Value, link: &'static netplay::Link, join: Option<&Value>) -> Result<Value> {
+    let main = library::file_for(system, game).to_string_lossy().into_owned();
+    if !library::is_downloaded(system, game) {
+        return Err(AppError::new("errors.notDownloaded", json!({ "file": main })));
+    }
+    let file = library::playlist(system, game).map(|p| p.to_string_lossy().into_owned()).unwrap_or(main);
+    // Émulateur choisi (moteur intégré) : sa sauvegarde est reprise par le cœur de la liaison.
+    let chosen = match prepare(system, game) {
+        Ok(Plan::Builtin { core, .. }) => Some(core),
+        _ => None,
+    };
+    let args = match join {
+        None => netplay::link_host_args(system, game, link),
+        Some(join) if link.packets => netplay::link_join_args(join, system, game, link),
+        Some(join) => {
+            netplay::link_handshake(join, game, link).await?;
+            netplay::linked_args(join, link)
+        }
+    };
+    builtin::launch(system, game, &file, link.core, false, args, chosen.as_deref()).await?;
+    Ok(json!({ "manual": false }))
+}
+
 /// Jeu à plusieurs en réseau local : `{ host: true }` (partie proposée, émulateur choisi) ou
-/// `{ join: { address, port, peerName, game } }` (partie rejointe, avec le cœur de l'hôte).
+/// `{ join: { address, port, peerName, game } }` (partie rejointe, avec le cœur de l'hôte). Console
+/// qui se relie (câble, ad hoc) : liaison proposée, ou `{ join: { …, link } }` (reliée avec ce jeu).
 async fn play_together(system: &Value, game: &Value, together: &Value) -> Result<Value> {
     let needs_builtin = || AppError::new("errors.netplayBuiltin", json!({}));
     if let Some(join) = together.get("join").filter(|j| j.is_object()) {
+        let link_id = join.get("link").and_then(Value::as_str).or_else(|| join["game"].get("link").and_then(Value::as_str));
+        if let Some(link) = link_id.and_then(netplay::link_by_id) {
+            return play_link(system, game, link, Some(join)).await;
+        }
         let core = s(&join["game"], "core");
         if !netplay::core_allows(core) || !cores::valid_core(core) {
             return Err(needs_builtin());
@@ -328,12 +358,15 @@ async fn play_together(system: &Value, game: &Value, together: &Value) -> Result
             return Err(AppError::new("errors.notDownloaded", json!({ "file": main })));
         }
         let file = library::playlist(system, game).map(|p| p.to_string_lossy().into_owned()).unwrap_or(main);
-        builtin::launch(system, game, &file, core, false, netplay::join_args(join)).await?;
+        builtin::launch(system, game, &file, core, false, netplay::join_args(join), None).await?;
         return Ok(json!({ "manual": false }));
+    }
+    if let Some(link) = netplay::link_for(system).filter(|_| !netplay::system_allows(system)) {
+        return play_link(system, game, link, None).await;
     }
     match prepare(system, game)? {
         Plan::Builtin { core, file, .. } if netplay::core_allows(&core) => {
-            builtin::launch(system, game, &file, &core, false, netplay::host_args(system, game, &core)).await?;
+            builtin::launch(system, game, &file, &core, false, netplay::host_args(system, game, &core), None).await?;
             Ok(json!({ "manual": false }))
         }
         _ => Err(needs_builtin()),
@@ -352,7 +385,7 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             Ok(json!({ "manual": false }))
         }
         Plan::Builtin { core, file, .. } => {
-            builtin::launch(system, game, &file, &core, resume, Vec::new()).await?;
+            builtin::launch(system, game, &file, &core, resume, Vec::new(), None).await?;
             Ok(json!({ "manual": false }))
         }
         Plan::Open(file) => {

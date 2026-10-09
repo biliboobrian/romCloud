@@ -528,4 +528,15 @@
     <string name="netplay_accept">Accepter</string>
     <string name="netplay_refuse">Refuser</string>
     <string name="netplay_menu_leave">Arrêter la partie à plusieurs</string>
+    <string name="link_badge">Liaison possible avec un autre appareil du réseau local</string>
+    <string name="link_host">Relier les consoles en réseau</string>
+    <string name="link_join">Se relier à %1$s (%2$s)</string>
+    <string name="link_join_short">Se relier</string>
+    <string name="link_hosting_game">Propose une liaison : %1$s</string>
+    <string name="link_connecting">Liaison avec %1$s…</string>
+    <string name="link_started">Relié à %1$s</string>
+    <string name="link_ended">Liaison avec %1$s terminée.</string>
+    <string name="link_request_title">Relier les consoles ?</string>
+    <string name="link_request_text">%1$s veut relier sa console à la vôtre.</string>
+    <string name="link_menu_leave">Couper la liaison</string>
 </resources>
