@@ -540,7 +540,9 @@ int Player::run() {
   video_.setFilter(filterFromId(g.options.setting("romcloud_filter", hasOld ? oldSmooth : "sharp")));
   video_.setAspect(aspectFromId(g.options.setting("romcloud_aspect", "core")));
   const int testFrames = args_.testFrames.empty() ? 0 : std::max(1, atoi(args_.testFrames.c_str()));
-  if (!video_.create("RomCloud — " + title(), !args_.windowed && !testFrames, testFrames > 0 && !args_.testWindow, error)) {
+  // Essais : fenêtre cachée (sauf --test-window), y compris pour la boucle réelle (--test-seconds).
+  const bool hidden = (testFrames > 0 || !args_.testSeconds.empty()) && !args_.testWindow;
+  if (!video_.create("RomCloud — " + title(), !args_.windowed && !testFrames, hidden, error)) {
     g.api.unload_game();
     g.api.deinit();
     return fail(menu_.tr("video_failed") + "\n" + error);
@@ -603,6 +605,8 @@ int Player::run() {
   while (handleEvents()) {
     if (testSeconds > 0 && (double)SDL_GetPerformanceCounter() / freq - startTime > testSeconds) {
       logf("Essai : %ld images en %.1f s (%.2f images/s, cœur %.2f)", frames, testSeconds, frames / testSeconds, g.av.timing.fps);
+      // Dernière image du jeu enregistrée (--screenshot) : vérifie l'affichage dans la boucle réelle.
+      if (!args_.screenshot.empty()) logf("Essai : capture %s", video_.saveFrame(args_.screenshot) ? "enregistrée" : "impossible");
       break;
     }
     if (menu_.isOpen()) {

@@ -23,13 +23,21 @@ class LinkRulesTest {
         assertNull(LinkRules.kind(system("snes")))
         assertTrue(LinkRules.canLink(system("gb"), game("1-2")))
         assertFalse(LinkRules.canLink(system("gb"), game("1")))
+        // GBA : seulement les jeux que gpSP sait relier, même annoncés à un joueur.
+        val emeraude = Game(2, "gba", "Pokemon - Version Emeraude (France).gba", 1, "Pokémon Version Émeraude", players = "1")
+        val bubble = Game(3, "gba", "Bubble Bobble - Old & New (Europe).gba", 1, "Bubble Bobble - Old & New", players = "1-2")
+        assertTrue(LinkRules.canLink(system("gba"), emeraude))
+        assertFalse(LinkRules.canLink(system("gba"), bubble))
+        assertTrue(LinkRules.gbaLinkGame("Pokémon Rouge Feu", ""))
+        assertTrue(LinkRules.gbaLinkGame("Mario Golf : Advance Tour", ""))
     }
 
     @Test
     fun `jeu synchronise d'abord, liaison pour les portables`() {
         assertEquals(Together.NETPLAY, NetplayRules.together(system("snes"), game("1-2"), builtin("snes9x")))
-        assertEquals(Together.LINK, NetplayRules.together(system("gba"), game("1-4"), builtin("mgba")))
-        assertNull(NetplayRules.together(system("gba"), game("1"), builtin("mgba")))
+        assertEquals(Together.LINK, NetplayRules.together(system("gb"), game("1-2"), builtin("sameboy")))
+        assertNull(NetplayRules.together(system("gb"), game("1"), builtin("sameboy")))
+        assertNull(NetplayRules.together(system("gba"), game("1-4"), builtin("mgba")))
     }
 
     @Test
