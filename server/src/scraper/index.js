@@ -6,7 +6,7 @@ import { db } from '../db.js';
 import { ensureHashes, gameFilePath, gameMediaDir, getGameRow, requireGameRow, rowToGame, titleFromFileName } from '../library.js';
 import { requireSystem } from '../systems.js';
 import { mergeDetails, parseStoredDetails } from './details.js';
-import { combineRatings, stars } from './rating.js';
+import { combineRatings } from './rating.js';
 import { libretroMetadata, scrapeLibretro, titleFromLibretroName } from './libretro.js';
 import { zipEntries, zipMainEntry } from './rom-identity.js';
 import { findArcadeGame, isArcadeSystem } from './arcade.js';
@@ -84,7 +84,7 @@ export async function scrapeGame(gameId, source = 'auto') {
       // Inconnu par son fichier (homebrew, fichier renommé) : recherche par titre.
       if (!meta && !arcade) meta = await searchScreenScraper({ system, title: titleFromFileName(row.file_name) });
       if (meta) usedSources.push('screenscraper');
-      if (meta?.rating != null) ratings.set('screenscraper', { source: 'screenscraper', rating: meta.rating });
+      if (meta?.ratingScore != null) ratings.set('screenscraper', { source: 'screenscraper', score: meta.ratingScore });
     } catch (err) {
       if (source === 'screenscraper' || err.name === 'QuotaError') {
         markStatus(row.id, 'error', 'screenscraper', err.message);
@@ -146,7 +146,7 @@ export async function scrapeGame(gameId, source = 'auto') {
     meta ||= { media: {} };
     meta.title ||= lb.title;
     for (const key of ['developer', 'publisher', 'genre', 'releaseDate', 'players']) meta[key] ||= lb[key];
-    if (lb.rating != null) ratings.set('launchbox', { source: 'launchbox', rating: lb.rating, count: lb.ratingVotes });
+    if (lb.rating != null) ratings.set('launchbox', { source: 'launchbox', score: lb.rating, count: lb.ratingVotes });
     meta.media.boxart ||= lb.media.boxart;
     meta.media.screenshot ||= lb.media.screenshot;
     meta.details = mergeDetails(meta.details, lb.details);
@@ -221,10 +221,13 @@ export async function scrapeGame(gameId, source = 'auto') {
     return rowToGame(getGameRow(row.id));
   }
 
-  // Étoiles : moyenne des sources ; détail par source (en étoiles) dans les informations du jeu.
-  if (ratings.size) {
-    meta.rating = combineRatings([...ratings.values()]);
-    meta.details = mergeDetails(meta.details, { ratings: [...ratings.values()].map((r) => ({ ...r, rating: stars(r.rating) })) });
+  // Étoiles : barème de chaque source puis moyenne ; détail par source (note brute et étoiles)
+  // dans les informations du jeu.
+  const combined = combineRatings([...ratings.values()]);
+  delete meta.ratingScore;
+  if (combined.rating !== null) {
+    meta.rating = combined.rating;
+    meta.details = mergeDetails(meta.details, { ratings: combined.ratings });
   } else {
     delete meta.rating;
   }

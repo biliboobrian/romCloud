@@ -59,7 +59,7 @@ test('ScreenScraper : langue et région préférées', async () => {
   assert.equal(meta.title, 'Super Mario World');
   assert.equal(meta.description, 'Synopsis français');
   assert.equal(meta.genre, 'Plateforme');
-  assert.equal(meta.rating, 4.5);
+  assert.equal(meta.ratingScore, 18);
   assert.equal(meta.media.boxart, 'https://x/box-eu.png');
   assert.equal(meta.media.screenshot, 'https://x/ss.png');
   const url = new URL(calls[0]);

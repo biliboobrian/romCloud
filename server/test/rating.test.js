@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { combineRatings, pressRating, reviewScore, stars } = await import('../src/scraper/rating.js');
+const { combineRatings, pressRating, reviewScore, sourceStars, stars } = await import('../src/scraper/rating.js');
 
 const review = (value, site, rank = 'normal') => ({
   rank,
@@ -30,15 +30,25 @@ test('presse : moyenne par site puis entre les sites, notes dépréciées ou ill
       review('2/10', 'Q1', 'deprecated'),
     ],
   };
-  // (0,85 + 0,9) / 2 × 5 = 4,375
-  assert.deepEqual(pressRating(claims), { rating: 4.4, count: 2 });
+  // (85 + 90) / 2 = 87,5
+  assert.deepEqual(pressRating(claims), { score: 87.5, count: 2 });
   assert.equal(pressRating({}), null);
   assert.equal(pressRating({ P444: [review('A', 'Q1')] }), null);
 });
 
-test('étoiles entières de 0 à 5', () => {
+test('étoiles selon le barème de chaque source', () => {
+  // ScreenScraper sur 20 : 17 et plus -> 5 étoiles, 14 -> 4…
+  assert.deepEqual([18, 17, 16.5, 14, 11, 8, 5].map((n) => sourceStars('screenscraper', n)), [5, 5, 4, 4, 3, 2, 1]);
+  // Communauté LaunchBox sur 5 : 4,2 et plus -> 5 étoiles (les ~13 % meilleurs jeux).
+  assert.deepEqual([4.6, 4.2, 4.1, 3.7, 3.0, 2.4, 1.8].map((n) => sourceStars('launchbox', n)), [5, 5, 4, 4, 3, 2, 1]);
+  // Presse sur 100, échelle de Metacritic.
+  assert.deepEqual([94, 85, 80, 75, 60, 45, 30].map((n) => sourceStars('press', n)), [5, 5, 4, 4, 3, 2, 1]);
+  assert.equal(sourceStars('inconnue', 4), null);
+  assert.equal(sourceStars('launchbox', null), null);
+});
+
+test('étoiles entières de 0 à 5 (note saisie à la main)', () => {
   assert.equal(stars(3.5), 4);
-  assert.equal(stars(4.4), 4);
   assert.equal(stars('2'), 2);
   assert.equal(stars(7), 5);
   assert.equal(stars(-1), 0);
@@ -47,10 +57,19 @@ test('étoiles entières de 0 à 5', () => {
   assert.equal(stars('abc'), null);
 });
 
-test('note combinée en étoiles : moyenne des notes précises des sources, chacune comptant autant', () => {
-  // (3,6 + 3,4 + 4,4) / 3 = 3,8 -> 4 étoiles (arrondir chaque source d'abord donnerait 4, 3, 4 -> 3,67)
-  assert.equal(combineRatings([{ source: 'screenscraper', rating: 3.6 }, { source: 'launchbox', rating: 3.4 }, { source: 'press', rating: 4.4 }]), 4);
-  assert.equal(combineRatings([{ source: 'launchbox', rating: 3.4 }]), 3);
-  assert.equal(combineRatings([{ source: 'x', rating: null }, { source: 'y', rating: 9 }]), null);
-  assert.equal(combineRatings([]), null);
+test('note du jeu : moyenne des étoiles des sources, demi-étoile arrondie au-dessus', () => {
+  // Super Mario World : ScreenScraper 18/20 (5), LaunchBox 4,4 (5), presse 94 (5).
+  const smw = combineRatings([
+    { source: 'screenscraper', score: 18 },
+    { source: 'launchbox', score: 4.4, count: 900 },
+    { source: 'press', score: 94, count: 1 },
+  ]);
+  assert.equal(smw.rating, 5);
+  assert.deepEqual(smw.ratings.map((r) => r.rating), [5, 5, 5]);
+  assert.equal(smw.ratings[1].count, 900);
+  // 4 et 5 -> 4,5 -> 5 ; 4, 4 et 5 -> 4,33 -> 4.
+  assert.equal(combineRatings([{ source: 'screenscraper', score: 15 }, { source: 'launchbox', score: 4.3 }]).rating, 5);
+  assert.equal(combineRatings([{ source: 'screenscraper', score: 15 }, { source: 'launchbox', score: 4 }, { source: 'press', score: 90 }]).rating, 4);
+  assert.deepEqual(combineRatings([]), { rating: null, ratings: [] });
+  assert.deepEqual(combineRatings([{ source: 'launchbox', score: null }]), { rating: null, ratings: [] });
 });
