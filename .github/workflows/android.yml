@@ -3,6 +3,8 @@ name: Android APK
 # Deux applications, même version et même clé de signature :
 #   RomCloud-<version>.apk     téléphone / tablette (com.romcloud.app)
 #   RomCloud-TV-<version>.apk  Android TV (com.romcloud.app.tv)
+# main et pull requests : tests et compilation seulement. Tag v* (ou lancement manuel) : APK signés,
+# joints à la Release du tag.
 
 on:
   push:
@@ -23,6 +25,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      PACKAGE: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
     defaults:
       run:
         working-directory: android
@@ -37,7 +41,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      - name: Tests et compilation
+        if: env.PACKAGE != 'true'
+        run: ./gradlew :core:testDebugUnitTest :app:compileDebugKotlin :tv:compileDebugKotlin --no-daemon
+
       - name: Version
+        if: env.PACKAGE == 'true'
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
@@ -51,6 +60,7 @@ jobs:
       # La clé de signature vient des secrets du dépôt. Sans eux (ex. pull request
       # depuis un fork), l'APK est signé avec une clé de debug temporaire.
       - name: Clé de signature
+        if: env.PACKAGE == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.ROMCLOUD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ROMCLOUD_KEYSTORE_PASSWORD }}
@@ -69,16 +79,19 @@ jobs:
             echo "ROMCLOUD_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
-      - name: Tests et compilation
+      - name: Tests et APK
+        if: env.PACKAGE == 'true'
         run: ./gradlew :core:testDebugUnitTest :app:assembleRelease :tv:assembleRelease --no-daemon
 
       - name: Renommer les APK
+        if: env.PACKAGE == 'true'
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/RomCloud-${ROMCLOUD_VERSION_NAME}.apk"
           cp tv/build/outputs/apk/release/tv-release.apk "dist/RomCloud-TV-${ROMCLOUD_VERSION_NAME}.apk"
 
       - uses: actions/upload-artifact@v7
+        if: env.PACKAGE == 'true'
         with:
           name: RomCloud-${{ env.ROMCLOUD_VERSION_NAME }}
           path: android/dist/*.apk

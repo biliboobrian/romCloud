@@ -1,5 +1,8 @@
 name: Serveur Docker
 
+# main et pull requests : tests du serveur seulement. Tag v* (ou lancement manuel) : tests puis image
+# multi-architecture publiée sur Docker Hub (version et latest).
+
 on:
   push:
     branches: [main]
@@ -31,16 +34,17 @@ jobs:
 
   docker:
     needs: test
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       # Publication uniquement hors pull request et si les identifiants Docker Hub sont définis.
-      PUSH: ${{ github.event_name != 'pull_request' && secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+      PUSH: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
       IMAGE: ${{ secrets.DOCKERHUB_USERNAME || 'romcloud' }}/romcloud-server
     steps:
       - uses: actions/checkout@v7
 
       - name: Identifiants Docker Hub
-        if: env.PUSH != 'true' && github.event_name != 'pull_request'
+        if: env.PUSH != 'true'
         run: |
           echo "::warning::Secrets DOCKERHUB_USERNAME / DOCKERHUB_TOKEN absents : l'image est compilée mais pas publiée."
 
@@ -53,13 +57,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Tags : latest (main), 1.2.3 / 1.2 / 1 (tag v1.2.3), sha-xxxxxxx
+      # Tags : 1.2.3 / 1.2 / 1 et latest (tag v1.2.3 ; latest aussi pour un lancement manuel sur main), sha-xxxxxxx
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
