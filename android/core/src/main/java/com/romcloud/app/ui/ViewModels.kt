@@ -116,11 +116,18 @@ suspend fun RomCloudApp.joinNetplay(context: Context, peer: Peer): String? {
     val file = library.fileFor(system, game)
     // Liaison : même jeu que l'hôte, avec la sauvegarde de l'émulateur choisi ici.
     val saveCore = hosted.link?.let { launcher.selectedPlayer(system, game.fileName)?.libretroCore }
-    return try {
-        launcher.launch(
-            context, system, file, null, gameId = game.id,
-            netplay = NetplayLaunch(host = false, address = peer.address, port = peer.port, peerName = peer.name, game = hosted, saveCore = saveCore),
+    // Par Internet : relais du serveur (le cœur d'un câble Game Boy se connecte à cet appareil, relié
+    // à l'hôte), délai des touches d'après les allers-retours mesurés.
+    val launch = if (peer.internet && hosted.session != null) {
+        NetplayLaunch(
+            host = false, address = "127.0.0.1", port = 0, peerName = peer.displayName, game = hosted, saveCore = saveCore,
+            relay = hosted.session, delay = com.romcloud.app.netplay.Relay.delayFrames(presence.internet.rtt, peer.rtt),
         )
+    } else {
+        NetplayLaunch(host = false, address = peer.address, port = peer.port, peerName = peer.name, game = hosted, saveCore = saveCore)
+    }
+    return try {
+        launcher.launch(context, system, file, null, gameId = game.id, netplay = launch)
         null
     } catch (e: LaunchException) {
         e.message

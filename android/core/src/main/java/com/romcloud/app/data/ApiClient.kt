@@ -68,6 +68,12 @@ class ApiClient(private val settings: Settings, val platform: String) {
 
     fun url(path: String): String = baseUrl() + path
 
+    /** En-tête de la clé d'API (connexions hors OkHttp : relais du jeu par Internet). */
+    fun authHeaders(): Map<String, String> {
+        val key = settings.config.value.apiKey
+        return if (key.isNotEmpty()) mapOf("Authorization" to "Bearer $key") else emptyMap()
+    }
+
     fun mediaUrl(game: Game, type: String): String? {
         val has = if (type == "boxart") game.hasBoxart else game.hasScreenshot
         if (!has || settings.config.value.serverUrl.isBlank()) return null

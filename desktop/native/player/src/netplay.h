@@ -30,6 +30,7 @@ struct NetplayGame {
   long long gameId = 0;
   std::string systemId, title, fileName, core;
   long long size = 0;
+  std::string session;  // partie aussi proposée par Internet (relais du serveur, géré par l'application)
 };
 
 class Netplay {
@@ -43,6 +44,8 @@ class Netplay {
     int port = 0;
     std::string peerName;  // invité : nom de l'hôte
     long long coreSize = 0;
+    int listenPort = 0;  // hôte : port d'écoute imposé (relié au relais par l'application), 0 : choisi
+    int delay = 0;       // invité : images de délai demandées (Internet), 0 : celui de l'hôte
     // Liaison entre consoles : type annoncé (« gb », « gba », « psp »), paquets du cœur échangés
     // ici ([packets]), plus de deux consoles ([multi] : toujours proposée).
     std::string link;

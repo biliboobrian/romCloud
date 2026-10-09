@@ -533,6 +533,7 @@
     <string name="netplay_join_peer">Rejoindre %1$s</string>
     <string name="link_join_peer">Se relier à %1$s</string>
     <string name="netplay_peer_busy">En partie</string>
+    <string name="netplay_via_internet">par Internet</string>
     <string name="link_join_short">Se relier</string>
     <string name="link_hosting_game">Propose une liaison : %1$s</string>
     <string name="link_connecting">Liaison avec %1$s…</string>

@@ -95,6 +95,10 @@ import com.romcloud.app.ui.CastDialog
 import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
 import com.romcloud.app.netplay.LanPresence
+import com.romcloud.app.netplay.tunnelHost
+import com.romcloud.app.netplay.tunnelGuest
+import com.romcloud.app.netplay.Relay
+import com.romcloud.app.netplay.PlayPresence
 import com.romcloud.app.netplay.LinkKind
 import com.romcloud.app.netplay.LinkRules
 import com.romcloud.app.netplay.NetplayRules
@@ -174,7 +178,10 @@ class LibretroActivity : ComponentActivity() {
         }
 
     /** Présence de cet appareil pendant le jeu (l'application, en arrière-plan, ne l'annonce plus). */
-    private var gamePresence: LanPresence? = null
+    private var gamePresence: PlayPresence? = null
+
+    /** Partie proposée aussi par Internet : identifiant sur le relais du serveur (profil connecté). */
+    private var relaySession: String? = null
     private var netplayRequest by mutableStateOf<Pair<NetplayProtocol.Join, CompletableDeferred<Boolean>>?>(null)
     private var netplayWaiting by mutableStateOf(false)
     /** Partie proposée, en attente d'un invité (hôte). */
@@ -344,6 +351,11 @@ class LibretroActivity : ComponentActivity() {
                 joinFailure(launch, coreFile)?.let {
                     phase = Phase.Failed(it)
                     return
+                }
+                // Câble ouvert par le cœur, par Internet : le cœur se connecte à cet appareil, relié à l'hôte.
+                val session = launch.relay
+                if (session != null && link == LinkKind.GAME_LINK) {
+                    lifecycleScope.tunnelGuest({ account.relayRequest(session, Relay.CHANNEL_LINK, "guest") }, LinkRules.GAMBATTE_PORT.toInt())
                 }
             }
             startGame(coreFile, game)
@@ -569,7 +581,7 @@ class LibretroActivity : ComponentActivity() {
             return
         }
         val app = application as RomCloudApp
-        val presence = LanPresence(this, account.deviceName, app.api.platform)
+        val presence = PlayPresence(this, account, account.deviceName, app.api.platform)
         gamePresence = presence
         // Invité : annoncé « en partie » ; hôte : annonce de la partie proposée (NetplayHost).
         if (!launch.host) presence.start(lifecycleScope)
@@ -578,8 +590,12 @@ class LibretroActivity : ComponentActivity() {
             netplayPartner = launch.peerName
             toast = getString(R.string.link_started, launch.peerName)
         } else if (launch.host) {
+            // Profil connecté : partie aussi proposée par Internet (relais du serveur), sauf l'ad hoc
+            // de la PSP (nombreux ports, réseau local seulement).
+            val session = Relay.newSession().takeIf { account.state.value.signedIn && link != LinkKind.PSP_ADHOC }
+            relaySession = session
             netplayHost = NetplayHost(
-                presence, launch.game, coreFile,
+                presence, launch.game.copy(session = session), coreFile,
                 ask = { join ->
                     val answer = CompletableDeferred<Boolean>()
                     netplayRequest = join to answer
@@ -589,12 +605,17 @@ class LibretroActivity : ComponentActivity() {
                         netplayRequest = null
                     }
                 },
-                onStarted = { name ->
+                onStarted = { name, viaRelay ->
                     // Ad hoc de la PSP : toujours proposée aux autres consoles.
                     netplayOpen = link?.multi == true
                     netplayPartner = netplayPartner?.takeIf { link != null }?.let { "$it, $name" } ?: name
                     toast = getString(if (link != null) R.string.link_started else R.string.netplay_started, name)
+                    // Câble ouvert par le cœur, invité par Internet : sa connexion au cœur passe par le relais.
+                    if (viaRelay && link == LinkKind.GAME_LINK && session != null) {
+                        lifecycleScope.tunnelHost({ account.relayRequest(session, Relay.CHANNEL_LINK, "host") }, LinkRules.GAMBATTE_PORT.toInt())
+                    }
                 },
+                relay = session?.let { s -> { channel: String -> account.relayRequest(s, channel, "host") } },
             ).also { it.start(lifecycleScope) }
             netplayOpen = true
         } else {
@@ -604,8 +625,9 @@ class LibretroActivity : ComponentActivity() {
                     val join = NetplayProtocol.Join(
                         name = account.deviceName, platform = app.api.platform,
                         fileName = launch.game.fileName, size = launch.game.size, core = core, coreSize = coreFile.length(),
+                        delay = launch.delay,
                     )
-                    val answer = joinNetplay(launch, join)
+                    val answer = joinNetplay(launch, join, guestRelay(launch))
                     netplayPartner = launch.peerName
                     val sameCore = answer.coreSize <= 0 || answer.coreSize == coreFile.length()
                     toast = getString(if (sameCore) R.string.netplay_started else R.string.netplay_core_differs, launch.peerName)
@@ -650,9 +672,10 @@ class LibretroActivity : ComponentActivity() {
         val join = NetplayProtocol.Join(
             name = account.deviceName, platform = app.api.platform, fileName = launch.game.fileName,
             size = launch.game.size, core = core, coreSize = coreFile.length(), link = launch.game.link,
+            delay = launch.delay,
         )
         return try {
-            joinNetplay(launch, join)
+            joinNetplay(launch, join, guestRelay(launch))
             null
         } catch (e: NetplayRefused) {
             when (e.reason) {
@@ -664,6 +687,9 @@ class LibretroActivity : ComponentActivity() {
             }
         }
     }
+
+    /** Invité par Internet : connexion à ouvrir sur le relais du serveur (null sans profil ou en réseau local). */
+    private fun guestRelay(launch: NetplayLaunch) = launch.relay?.let { account.relayRequest(it, Relay.CHANNEL_PLAY, "guest") }
 
     /** Liaison avec un autre cœur que l'émulateur choisi : sauvegarde recopiée pour celui-ci (et envoyée en ligne). */
     private fun saveLinkedSram() {

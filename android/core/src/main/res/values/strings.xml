@@ -542,6 +542,7 @@
     <string name="netplay_join_peer">Join %1$s</string>
     <string name="link_join_peer">Link with %1$s</string>
     <string name="netplay_peer_busy">Playing with someone</string>
+    <string name="netplay_via_internet">over the Internet</string>
     <string name="link_join_short">Link</string>
     <string name="link_hosting_game">Offers a link: %1$s</string>
     <string name="link_connecting">Linking with %1$s…</string>

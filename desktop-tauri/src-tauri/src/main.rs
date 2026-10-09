@@ -20,6 +20,7 @@ mod library;
 mod managed;
 mod netplay;
 mod paths;
+mod relay;
 mod screencast;
 mod settings;
 mod updater;

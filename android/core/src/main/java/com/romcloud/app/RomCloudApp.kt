@@ -3,7 +3,7 @@ package com.romcloud.app
 import android.app.Application
 import com.romcloud.app.netplay.Peer
 import com.romcloud.app.ui.joinNetplay
-import com.romcloud.app.netplay.LanPresence
+import com.romcloud.app.netplay.PlayPresence
 import android.os.Bundle
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -75,7 +75,8 @@ class RomCloudApp : Application(), ImageLoaderFactory {
      * Appareils RomCloud du réseau local (jeu à plusieurs) : annonce et écoute tant qu'un écran de
      * l'application est affiché.
      */
-    val presence: LanPresence by lazy { LanPresence(this, account.deviceName, api.platform) }
+    /** Appareils joignables pour jouer à plusieurs : réseau local, et Internet avec un profil connecté. */
+    val presence: PlayPresence by lazy { PlayPresence(this, account, account.deviceName, api.platform) }
 
     /** Partie à rejoindre dès la fin du téléchargement de son jeu. */
     @Volatile

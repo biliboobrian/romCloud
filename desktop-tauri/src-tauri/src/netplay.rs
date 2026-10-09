@@ -4,10 +4,11 @@
 // intégré (partie proposée ou rejointe). La partie elle-même (touches image par image) est dans le moteur.
 use crate::error::{AppError, Result};
 use crate::library::s;
-use crate::{events, launcher, managed, settings};
+use crate::{account, events, launcher, managed, relay, settings};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -66,6 +67,18 @@ struct Entry {
 
 static PEERS: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Annonce de ce PC par son moteur (même identifiant) : partie proposée, « en partie », heure.
+static OWN: Mutex<Option<(Value, bool, Instant)>> = Mutex::new(None);
+/// Appareils vus par Internet (profils connectés au même serveur).
+static INTERNET: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+/// Dernier aller-retour mesuré jusqu'au serveur (ms).
+static RTT: AtomicU64 = AtomicU64::new(0);
+/// Annonce au serveur à refaire tout de suite (partie proposée ou état changé).
+static WAKE: LazyLock<tokio::sync::Notify> = LazyLock::new(tokio::sync::Notify::new);
+/// Relais de la partie en cours (moteur ouvert) : arrêtés quand il se ferme.
+static STOP: Mutex<Option<tokio::sync::watch::Sender<bool>>> = Mutex::new(None);
+const INTERNET_ANNOUNCE: Duration = Duration::from_secs(10);
+
 /// Identifiant de ce PC (le même pour l'application et le moteur : un appareil ne se voit pas lui-même).
 pub fn device_id() -> String {
     let saved = settings::get_str("deviceId");
@@ -85,12 +98,61 @@ pub fn device_name() -> String {
 pub fn start() {
     std::thread::spawn(listen);
     std::thread::spawn(announce);
+    // Par Internet (profil connecté) : annonce au serveur toutes les 10 s, tout de suite si la partie change.
+    tauri::async_runtime::spawn(async {
+        loop {
+            announce_internet().await;
+            tokio::select! { _ = tokio::time::sleep(INTERNET_ANNOUNCE) => {}, _ = WAKE.notified() => {} }
+        }
+    });
 }
 
-/// Appareils RomCloud du réseau local : { id, name, platform, address, port, hosting, busy }.
+/// Annonce de ce PC au serveur (partie proposée par son moteur, si elle passe par le relais) ;
+/// appareils connectés en retour.
+async fn announce_internet() {
+    if !account::signed_in() {
+        if !INTERNET.lock().unwrap().is_empty() {
+            INTERNET.lock().unwrap().clear();
+            publish();
+        }
+        return;
+    }
+    let (hosting, busy) = match OWN.lock().unwrap().clone() {
+        Some((h, b, at)) if at.elapsed() < TTL => (h.get("session").filter(|s| s.is_string()).map(|_| h.clone()).unwrap_or(Value::Null), b),
+        _ => (Value::Null, false),
+    };
+    let body = json!({
+        "deviceId": device_id(), "name": device_name(), "platform": "windows", "busy": busy,
+        "rtt": RTT.load(Ordering::Relaxed), "hosting": hosting,
+    });
+    let started = Instant::now();
+    let peers: Vec<Value> = match account::play_presence(body).await {
+        Ok(r) => {
+            RTT.store(started.elapsed().as_millis() as u64, Ordering::Relaxed);
+            r["peers"].as_array().cloned().unwrap_or_default().into_iter().map(|mut p| {
+                p["internet"] = json!(true);
+                p["address"] = json!("");
+                p["port"] = json!(0);
+                p
+            }).collect()
+        }
+        Err(_) => Vec::new(),
+    };
+    *INTERNET.lock().unwrap() = peers;
+    publish();
+}
+
+/// Appareils RomCloud joignables : { id, name, platform, address, port, hosting, busy } sur le réseau
+/// local, plus ceux vus par Internet ({ …, internet, user, rtt }) ; un appareil vu des deux façons
+/// est gardé en local.
 pub fn peers() -> Value {
     let peers = PEERS.lock().unwrap();
     let mut list: Vec<Value> = peers.values().map(|e| e.peer.clone()).collect();
+    for p in INTERNET.lock().unwrap().iter() {
+        if !peers.contains_key(s(p, "id")) {
+            list.push(p.clone());
+        }
+    }
     list.sort_by_key(|p| s(p, "name").to_lowercase());
     Value::Array(list)
 }
@@ -146,7 +208,19 @@ fn listen() {
     loop {
         let Ok((length, from)) = socket.recv_from(&mut buffer) else { continue };
         let Ok(beacon) = serde_json::from_slice::<Value>(&buffer[..length]) else { continue };
-        if s(&beacon, "app") != "romcloud" || beacon["v"].as_i64() != Some(VERSION) || s(&beacon, "id") == me || s(&beacon, "id").is_empty() {
+        if s(&beacon, "app") != "romcloud" || beacon["v"].as_i64() != Some(VERSION) || s(&beacon, "id").is_empty() {
+            continue;
+        }
+        // Annonce du moteur de ce PC : partie proposée et « en partie », reprises par l'annonce au serveur.
+        if s(&beacon, "id") == me {
+            let state = (beacon.get("hosting").filter(|h| h.is_object()).cloned().unwrap_or(Value::Null), beacon["busy"] == true);
+            let mut own = OWN.lock().unwrap();
+            let changed = own.as_ref().map(|(h, b, _)| (h, *b)) != Some((&state.0, state.1));
+            *own = Some((state.0, state.1, Instant::now()));
+            drop(own);
+            if changed {
+                WAKE.notify_one();
+            }
             continue;
         }
         merge(&beacon, &from.ip().to_string(), Instant::now());
@@ -339,9 +413,94 @@ fn link_flags(link: &Link) -> Vec<String> {
     args
 }
 
+/**
+ * Partie proposée aussi par Internet (profil connecté ; pas l'ad hoc de la PSP, nombreux ports) :
+ * identifiant de relais ajouté au jeu annoncé, port d'écoute fixe du moteur, relié au relais tant
+ * que le moteur est ouvert ([link_port] : serveur du câble ouvert par le cœur, relié aussi).
+ */
+fn internet_host(game: &mut Value, link_port: Option<u16>) -> Vec<String> {
+    if !account::signed_in() {
+        return Vec::new();
+    }
+    let Some(port) = std::net::TcpListener::bind("0.0.0.0:0").ok().and_then(|l| l.local_addr().ok()).map(|a| a.port()) else {
+        return Vec::new();
+    };
+    let session = relay::new_session();
+    game["session"] = json!(session);
+    let stop = new_stop();
+    let s1 = session.clone();
+    tauri::async_runtime::spawn(relay::host_loop(move || account::relay_request(&s1, relay::CHANNEL_PLAY, "host"), port, stop.clone()));
+    if let Some(link_port) = link_port {
+        let s2 = session.clone();
+        tauri::async_runtime::spawn(relay::host_loop(move || account::relay_request(&s2, relay::CHANNEL_LINK, "host"), link_port, stop));
+    }
+    vec!["--netplay-port".into(), port.to_string()]
+}
+
+/// Nouveaux relais de partie : ceux d'avant arrêtés ; arrêtés aussi à la fermeture du moteur ([player_exited]).
+fn new_stop() -> tokio::sync::watch::Receiver<bool> {
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    if let Some(old) = STOP.lock().unwrap().replace(tx) {
+        let _ = old.send(true);
+    }
+    rx
+}
+
+/// Moteur fermé : relais de sa partie arrêtés.
+pub fn player_exited() {
+    if let Some(stop) = STOP.lock().unwrap().take() {
+        let _ = stop.send(true);
+    }
+}
+
+/// Invité par Internet ({ internet: true }) : passerelle locale vers l'hôte par le relais ; renvoie
+/// l'invitation modifiée (adresse et port locaux) et le délai des touches à demander.
+async fn internet_guest(join: &Value, channel: &str, port: u16) -> Result<Option<(Value, u32)>> {
+    if join["internet"] != true {
+        return Ok(None);
+    }
+    let session = s(&join["game"], "session").to_string();
+    let request = account::relay_request(&session, channel, "guest").ok_or_else(|| AppError::new("errors.signedOut", json!({})))?;
+    let local = relay::guest_bridge(request, port, new_stop())
+        .await
+        .ok_or_else(|| AppError::new("errors.linkUnreachable", json!({ "name": s(join, "peerName"), "detail": "port" })))?;
+    let mut local_join = join.clone();
+    local_join["address"] = json!("127.0.0.1");
+    local_join["port"] = json!(local);
+    let delay = relay::delay_frames(RTT.load(Ordering::Relaxed), join["rtt"].as_u64().unwrap_or(0));
+    Ok(Some((local_join, delay)))
+}
+
+/// Partie rejointe : par le relais pour un appareil vu par Internet, sinon directement.
+pub async fn guest_join_args(join: &Value) -> Result<Vec<String>> {
+    match internet_guest(join, relay::CHANNEL_PLAY, 0).await? {
+        Some((local, delay)) => {
+            let mut args = join_args(&local);
+            args.extend(["--netplay-delay".to_string(), delay.to_string()]);
+            Ok(args)
+        }
+        None => Ok(join_args(join)),
+    }
+}
+
+/// Liaison par paquets rejointe (gpSP) : par le relais pour un appareil vu par Internet.
+pub async fn guest_link_join_args(join: &Value, system: &Value, game: &Value, link: &Link) -> Result<Vec<String>> {
+    match internet_guest(join, relay::CHANNEL_PLAY, 0).await? {
+        Some((local, delay)) => {
+            let mut args = link_join_args(&local, system, game, link);
+            args.extend(["--netplay-delay".to_string(), delay.to_string()]);
+            Ok(args)
+        }
+        None => Ok(link_join_args(join, system, game, link)),
+    }
+}
+
 /// Liaison proposée : annonce et demandes gérées par le moteur, options du cœur côté serveur.
 pub fn link_host_args(system: &Value, game: &Value, link: &Link) -> Vec<String> {
-    let mut args = vec!["--netplay-host".to_string(), "--netplay-game".into(), link_game(system, game, link).to_string()];
+    let mut hosted = link_game(system, game, link);
+    let internet = if link.id == "psp" { Vec::new() } else { internet_host(&mut hosted, (link.id == "gb").then(|| GAMBATTE_PORT.parse().unwrap_or(56400))) };
+    let mut args = vec!["--netplay-host".to_string(), "--netplay-game".into(), hosted.to_string()];
+    args.extend(internet);
     args.extend(link_flags(link));
     args.extend(link_options(link, true, ""));
     args.extend(identity());
@@ -375,15 +534,26 @@ pub fn linked_args(join: &Value, link: &Link) -> Vec<String> {
  * Invité d'une liaison ouverte par le cœur : demande à l'hôte (même échange que le moteur et
  * l'application Android : writeUTF / readUTF de Java), avant le lancement. L'hôte a 90 s pour accepter.
  */
-pub async fn link_handshake(join: &Value, game: &Value, link: &Link) -> Result<()> {
+pub async fn link_handshake(join: &Value, game: &Value, link: &Link) -> Result<Value> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let peer = s(join, "peerName").to_string();
     let unreachable = |detail: String| AppError::new("errors.linkUnreachable", json!({ "name": peer, "detail": detail }));
-    let address = format!("{}:{}", s(join, "address"), join["port"].as_u64().unwrap_or(0));
-    let mut stream = tokio::time::timeout(Duration::from_secs(5), tokio::net::TcpStream::connect(&address))
-        .await
-        .map_err(|_| unreachable("timeout".into()))?
-        .map_err(|e| unreachable(e.to_string()))?;
+    // Par Internet : demande par le relais, puis câble du cœur relié à l'hôte par le relais lui aussi
+    // (le cœur se connecte à ce PC).
+    let internet = join["internet"] == true;
+    let mut stream: relay::Stream = if internet {
+        let session = s(&join["game"], "session").to_string();
+        let request = account::relay_request(&session, relay::CHANNEL_PLAY, "guest").ok_or_else(|| AppError::new("errors.signedOut", json!({})))?;
+        relay::open(&request).await.map_err(|e| if e.status == 404 { AppError::new("errors.linkBusy", json!({ "name": peer })) } else { unreachable(e.detail) })?
+    } else {
+        let address = format!("{}:{}", s(join, "address"), join["port"].as_u64().unwrap_or(0));
+        Box::new(
+            tokio::time::timeout(Duration::from_secs(5), tokio::net::TcpStream::connect(&address))
+                .await
+                .map_err(|_| unreachable("timeout".into()))?
+                .map_err(|e| unreachable(e.to_string()))?,
+        )
+    };
     let request = json!({
         "v": VERSION, "name": device_name(), "platform": "windows", "fileName": s(game, "fileName"),
         "size": game["size"].as_i64().unwrap_or(0), "core": link.core, "coreSize": 0, "link": link.id,
@@ -405,7 +575,14 @@ pub async fn link_handshake(join: &Value, game: &Value, link: &Link) -> Result<(
     .map_err(|e| unreachable(e.to_string()))?;
     let answer: Value = serde_json::from_slice(&answer).unwrap_or(Value::Null);
     if answer["ok"] == true {
-        return Ok(());
+        if !internet {
+            return Ok(join.clone());
+        }
+        let port = GAMBATTE_PORT.parse().unwrap_or(56400);
+        internet_guest(join, relay::CHANNEL_LINK, port).await?;
+        let mut local = join.clone();
+        local["address"] = json!("127.0.0.1");
+        return Ok(local);
     }
     Err(match s(&answer, "reason") {
         "busy" => AppError::new("errors.linkBusy", json!({ "name": peer })),
@@ -418,11 +595,13 @@ pub async fn link_handshake(join: &Value, game: &Value, link: &Link) -> Result<(
 /// Arguments du moteur intégré : partie proposée ([core] : cœur choisi) ou rejointe ([join] : adresse,
 /// port et nom de l'hôte, jeu annoncé).
 pub fn host_args(system: &Value, game: &Value, core: &str) -> Vec<String> {
-    let hosted = json!({
+    let mut hosted = json!({
         "gameId": game["id"], "systemId": s(system, "id"), "title": s(game, "title"),
         "fileName": s(game, "fileName"), "size": game["size"], "core": core,
     });
+    let internet = internet_host(&mut hosted, None);
     let mut args = vec!["--netplay-host".to_string(), "--netplay-game".into(), hosted.to_string()];
+    args.extend(internet);
     args.extend(netplay_options());
     args.extend(identity());
     args

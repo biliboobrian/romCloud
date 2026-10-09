@@ -329,10 +329,10 @@ async fn play_link(system: &Value, game: &Value, link: &'static netplay::Link, j
     };
     let args = match join {
         None => netplay::link_host_args(system, game, link),
-        Some(join) if link.packets => netplay::link_join_args(join, system, game, link),
+        Some(join) if link.packets => netplay::guest_link_join_args(join, system, game, link).await?,
         Some(join) => {
-            netplay::link_handshake(join, game, link).await?;
-            netplay::linked_args(join, link)
+            let local = netplay::link_handshake(join, game, link).await?;
+            netplay::linked_args(&local, link)
         }
     };
     builtin::launch(system, game, &file, link.core, false, args, chosen.as_deref()).await?;
@@ -358,7 +358,7 @@ async fn play_together(system: &Value, game: &Value, together: &Value) -> Result
             return Err(AppError::new("errors.notDownloaded", json!({ "file": main })));
         }
         let file = library::playlist(system, game).map(|p| p.to_string_lossy().into_owned()).unwrap_or(main);
-        builtin::launch(system, game, &file, core, false, netplay::join_args(join), None).await?;
+        builtin::launch(system, game, &file, core, false, netplay::guest_join_args(join).await?, None).await?;
         return Ok(json!({ "manual": false }));
     }
     if let Some(link) = netplay::link_for(system).filter(|_| !netplay::system_allows(system)) {

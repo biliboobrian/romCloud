@@ -4,6 +4,7 @@ import path from 'node:path';
 import express from 'express';
 import multer from 'multer';
 import * as accounts from './accounts.js';
+import * as play from './play.js';
 import { addApk, apkFilePath, deleteApk, emulatorPackages, listApks, requireApk, updateApk } from './apks.js';
 import { addBiosFiles, biosFilePath, deleteBios, requireBios, systemBios } from './bios.js';
 import { config, screenscraperEnabled } from './config.js';
@@ -474,6 +475,35 @@ api.post('/account/pair/:code/approve', signedIn, (req, res) => {
 });
 
 // Diffusion d'un jeu sur une TV du même profil (la TV s'annonce tant que l'application est ouverte).
+// ---- Jeu à plusieurs par Internet (play.js) : présence des appareils connectés à un profil ----
+api.put('/account/play/presence', signedIn, (req, res) => res.json(play.announce(req.auth, req.body || {}, accounts.clientInfo(req))));
+api.delete('/account/play/presence/:deviceId', signedIn, (req, res) => {
+  play.withdraw(req.auth, req.params.deviceId);
+  res.status(204).end();
+});
+
+/**
+ * Relais (requête « Upgrade », hors d'Express) : même contrôle que /api/account (clé des
+ * applications, puis session du joueur). Renvoie le profil connecté, ou null.
+ */
+export function relayAuth(req) {
+  const header = (name) => {
+    const v = req.headers[name];
+    return Array.isArray(v) ? v[0] : v || '';
+  };
+  const auth = header('authorization');
+  const url = new URL(req.url, 'http://relay');
+  const given = auth.startsWith('Bearer ') ? auth.slice(7) : header('x-api-key') || url.searchParams.get('key');
+  if (access(routeMethod('GET', '/account/play'), given, config) !== 'ok') return null;
+  return accounts.authenticate(header('x-romcloud-session'), {
+    device: header('x-romcloud-device').slice(0, 100),
+    platform: header('x-romcloud-platform').slice(0, 30),
+    appVersion: header('x-romcloud-version').slice(0, 40),
+    ip: String(req.socket?.remoteAddress || '').slice(0, 64),
+    userAgent: header('user-agent').slice(0, 200),
+  });
+}
+
 api.put('/account/stream/receiver', signedIn, (req, res) => {
   res.json(accounts.announceReceiver(req.auth, req.body || {}, accounts.clientInfo(req)));
 });

@@ -17,7 +17,8 @@ namespace {
 
 constexpr int kDiscoveryPort = 47321;
 constexpr int kVersion = 1;
-constexpr uint64_t kTimeoutMs = 120000;  // autre joueur muet : partie arrêtée (menu ouvert compris)
+constexpr uint64_t kTimeoutMs = 120000;
+constexpr int kDelay = 3, kMaxDelay = 15;  // images de délai : réseau local, au plus (Internet)  // autre joueur muet : partie arrêtée (menu ouvert compris)
 enum : uint8_t { kInput = 1, kState = 2, kCheck = 3, kResync = 4, kBye = 5, kPacket = 6 };
 
 void put32(uint8_t* p, uint32_t v) {
@@ -290,6 +291,7 @@ bool Netplay::start(const Config& config) {
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_port = htons((u_short)config.listenPort);
     if (listener_ == INVALID_SOCKET || bind(listener_, reinterpret_cast<sockaddr*>(&address), sizeof address) != 0 || listen(listener_, 4) != 0) {
       logf("Netplay : port d'écoute impossible (%d)", WSAGetLastError());
       if (listener_ != INVALID_SOCKET) closesocket(listener_);
@@ -396,7 +398,8 @@ void Netplay::beaconLoop() {
       beacon += ",\"port\":" + std::to_string(config_.port) + ",\"hosting\":{\"gameId\":" + std::to_string(g.gameId) +
                 ",\"systemId\":" + jsonEscape(g.systemId) + ",\"title\":" + jsonEscape(g.title) +
                 ",\"fileName\":" + jsonEscape(g.fileName) + ",\"size\":" + std::to_string(g.size) + ",\"core\":" + jsonEscape(g.core) +
-                (config_.link.empty() ? std::string() : ",\"link\":" + jsonEscape(config_.link)) + "}";
+                (config_.link.empty() ? std::string() : ",\"link\":" + jsonEscape(config_.link)) +
+                (g.session.empty() ? std::string() : ",\"session\":" + jsonEscape(g.session)) + "}";
     }
     beacon += "}";
     for (uint32_t address : broadcastAddresses()) {
@@ -423,18 +426,21 @@ void Netplay::acceptLoop() {
 void Netplay::handleClient(SOCKET client) {
   setTimeout(client, 15000);
   std::string text;
+  int delay = kDelay;
   auto reply = [&](bool ok, const char* reason) {
     std::string answer = std::string("{\"ok\":") + (ok ? "true" : "false");
     if (reason) answer += std::string(",\"reason\":\"") + reason + "\"";
-    answer += ",\"delay\":3,\"coreSize\":" + std::to_string(config_.coreSize) + "}";
+    answer += ",\"delay\":" + std::to_string(delay) + ",\"coreSize\":" + std::to_string(config_.coreSize) + "}";
     writeUtf(client, answer);
   };
   if (!readUtf(client, text)) {
     closesocket(client);
     return;
   }
-  std::string v, name, fileName, size, core, link;
+  std::string v, name, fileName, size, core, link, wanted;
   jsonField(text, "link", link);
+  // Délai demandé par l'invité (Internet : allers-retours mesurés), au moins celui du réseau local.
+  if (jsonField(text, "delay", wanted)) delay = std::clamp(atoi(wanted.c_str()), kDelay, kMaxDelay);
   jsonField(text, "v", v);
   jsonField(text, "name", name);
   jsonField(text, "fileName", fileName);
@@ -482,7 +488,7 @@ void Netplay::handleClient(SOCKET client) {
   lock.lock();
   ready_ = client;
   readyHost_ = true;
-  readyDelay_ = 3;
+  readyDelay_ = delay;
   readyPartner_ = name;
 }
 
@@ -513,7 +519,8 @@ void Netplay::joinLoop() {
   std::string join = "{\"v\":" + std::to_string(kVersion) + ",\"name\":" + jsonEscape(config_.deviceName) +
                      ",\"platform\":\"windows\",\"fileName\":" + jsonEscape(g.fileName) + ",\"size\":" + std::to_string(g.size) +
                      ",\"core\":" + jsonEscape(g.core) + ",\"coreSize\":" + std::to_string(config_.coreSize) +
-                     (config_.link.empty() ? std::string() : ",\"link\":" + jsonEscape(config_.link)) + "}";
+                     (config_.link.empty() ? std::string() : ",\"link\":" + jsonEscape(config_.link)) +
+                     (config_.delay > 0 ? ",\"delay\":" + std::to_string(config_.delay) : std::string()) + "}";
   setTimeout(s, 90000);
   std::string text;
   if (!writeUtf(s, join) || !readUtf(s, text)) {
