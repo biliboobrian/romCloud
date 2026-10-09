@@ -30,7 +30,7 @@ import kotlin.math.max
 /** Manette dessinée dans la configuration : celle de la console d'origine (même dessin que sous Windows). */
 internal enum class PadStyle {
     DEFAULT, NES, FDS, SNES, N64, PLAYSTATION, PSP, GAME_BOY, GBA, GENESIS, MASTER_SYSTEM, SATURN, DREAMCAST,
-    PC_ENGINE, NEO_GEO, NEO_GEO_POCKET, CPS, ARCADE, ATARI_2600, ATARI_7800, LYNX, GX4000,
+    PC_ENGINE, NEO_GEO, NEO_GEO_POCKET, CPS, ARCADE, ATARI_2600, ATARI_7800, LYNX, GX4000, PS2, GAMECUBE,
 }
 
 /** Boîte du dessin (unités), mise à l'échelle de la largeur disponible. */
@@ -318,11 +318,14 @@ private class PadPainter(
         when (style) {
             PadStyle.DEFAULT -> defaultPad()
             PadStyle.NES -> nes(rgb(204, 204, 204), rgb(30, 30, 32), rgb(150, 150, 152), rgb(196, 30, 40), rgb(196, 30, 40))
-            // Famicom : manette bordeaux, façade dorée.
-            PadStyle.FDS -> nes(rgb(132, 30, 36), rgb(196, 162, 92), rgb(170, 136, 70), rgb(196, 30, 40), rgb(100, 20, 24))
+            // Famicom : manette rouge, façade crème et bande dorée.
+            PadStyle.FDS -> nes(rgb(176, 34, 40), rgb(226, 208, 164), rgb(196, 166, 104), rgb(150, 26, 32), rgb(140, 26, 30))
             PadStyle.SNES -> snes()
             PadStyle.N64 -> n64()
-            PadStyle.PLAYSTATION -> playstation()
+            // PlayStation : DualShock grise ; PlayStation 2 : DualShock 2 noire.
+            PadStyle.PLAYSTATION -> playstation(rgb(202, 202, 208), rgb(112, 112, 120), rgb(170, 170, 178), rgb(72, 72, 78), rgb(70, 70, 80))
+            PadStyle.PS2 -> playstation(rgb(40, 40, 46), rgb(12, 12, 14), rgb(62, 62, 70), rgb(96, 96, 104), rgb(190, 190, 200))
+            PadStyle.GAMECUBE -> gamecube()
             PadStyle.PSP -> psp()
             PadStyle.GAME_BOY -> gameBoy()
             PadStyle.GBA -> gba()
@@ -390,7 +393,7 @@ private class PadPainter(
         button(BTN_A, 293f, 75f, 12f, buttons, LabelPlace.BELOW, print)
     }
 
-    /** Super Nintendo : « os de chien » gris, X bleu, Y vert, A rouge, B jaune, Select / Start en biais. */
+    /** Super Nintendo : « os de chien » gris, boutons violets (A et B foncés, X et Y lavande), Select / Start en biais. */
     private fun snes() {
         val color = rgb(206, 206, 214)
         val edge = rgb(128, 128, 138)
@@ -404,20 +407,22 @@ private class PadPainter(
         disc(84, 84, 36, color.shade(-0.1f))
         dpad(84f, 84f, 18f, 10f, rgb(48, 48, 54))
         disc(256, 84, 48, rgb(150, 146, 172))
-        button(BTN_X, 256f, 58f, 13f, rgb(70, 72, 176))
-        button(BTN_Y, 230f, 84f, 13f, GREEN)
-        button(BTN_A, 282f, 84f, 13f, RED)
-        button(BTN_B, 256f, 110f, 13f, YELLOW)
+        val lavender = rgb(176, 166, 224)
+        val purple = rgb(92, 72, 168)
+        button(BTN_X, 256f, 58f, 13f, lavender)
+        button(BTN_Y, 230f, 84f, 13f, lavender)
+        button(BTN_A, 282f, 84f, 13f, purple)
+        button(BTN_B, 256f, 110f, 13f, purple)
         slanted(BTN_SELECT, 132f, 102f, 144f, 90f, 8f, rgb(100, 100, 108), LabelPlace.BELOW, rgb(80, 80, 92))
         slanted(BTN_START, 196f, 102f, 208f, 90f, 8f, rgb(100, 100, 108), LabelPlace.BELOW, rgb(80, 80, 92))
     }
 
-    /** Nintendo 64 : trois poignées, stick au centre (Z dessous), Start rouge, A bleu, B vert, boutons C jaunes. */
+    /** Nintendo 64 : grise claire, trois poignées, stick au centre (Z dessous), Start rouge, A bleu, B vert, boutons C jaunes. */
     private fun n64() {
-        val color = rgb(142, 142, 152)
-        val edge = rgb(70, 70, 80)
-        shoulder(BTN_L, 36f, 4f, 70f, 18f, rgb(112, 112, 122), edge)
-        shoulder(BTN_R, 234f, 4f, 70f, 18f, rgb(112, 112, 122), edge)
+        val color = rgb(200, 200, 208)
+        val edge = rgb(118, 118, 128)
+        shoulder(BTN_L, 36f, 4f, 70f, 18f, rgb(176, 176, 186), edge)
+        shoulder(BTN_R, 234f, 4f, 70f, 18f, rgb(176, 176, 186), edge)
         body(color, edge) { g, c ->
             rect(16 - g, 18 - g, 308 + 2 * g, 60 + 2 * g, 30 + g, c)
             rect(30 - g, 48 - g, 70 + 2 * g, 100 + 2 * g, 33 + g, c)
@@ -425,9 +430,9 @@ private class PadPainter(
             rect(240 - g, 48 - g, 70 + 2 * g, 100 + 2 * g, 33 + g, c)
         }
         disc(66, 50, 28, color.shade(-0.08f))
-        dpad(66f, 50f, 14f, 8f, rgb(42, 42, 48))
-        stick(170f, 84f, 12f, rgb(72, 72, 78), color.shade(-0.3f), -1, -1, "")
-        pill(BTN_L2, 170f, 132f, 34f, 14f, rgb(60, 60, 66))
+        dpad(66f, 50f, 14f, 8f, rgb(84, 84, 92))
+        stick(170f, 84f, 12f, rgb(150, 150, 158), color.shade(-0.3f), -1, -1, "")
+        pill(BTN_L2, 170f, 132f, 34f, 14f, rgb(96, 96, 104))
         button(BTN_START, 170f, 42f, 9f, rgb(200, 40, 40), LabelPlace.ABOVE, rgb(40, 40, 48))
         button(BTN_Y, 230f, 46f, 12f, GREEN)
         button(BTN_B, 254f, 66f, 12f, rgb(42, 82, 200))
@@ -449,11 +454,11 @@ private class PadPainter(
         }
     }
 
-    /** PlayStation (DualShock) : grise, croix en quatre flèches, symboles de couleur, deux sticks. */
-    private fun playstation() {
-        val color = rgb(202, 202, 208)
-        val edge = rgb(112, 112, 120)
-        val trigger = rgb(170, 170, 178)
+    /**
+     * PlayStation (DualShock) et PlayStation 2 (DualShock 2, noire) : deux poignées, croix en quatre
+     * flèches, symboles de couleur, deux sticks ; [print] : noms de Select / Start.
+     */
+    private fun playstation(color: Color, edge: Color, trigger: Color, arrows: Color, print: Color) {
         shoulder(BTN_L2, 22f, 0f, 44f, 20f, trigger, edge)
         shoulder(BTN_L, 70f, 2f, 58f, 18f, trigger, edge)
         shoulder(BTN_R, 212f, 2f, 58f, 18f, trigger, edge)
@@ -463,19 +468,23 @@ private class PadPainter(
             disc(70, 100, 44 + g, c)
             disc(270, 100, 44 + g, c)
         }
-        disc(72, 56, 30, color.shade(-0.1f))
-        dpad(72f, 56f, 15f, 8f, rgb(72, 72, 78), separate = true)
-        disc(268, 56, 32, color.shade(-0.1f))
-        val dark = rgb(46, 46, 54)
-        symbol(BTN_X, 268f, 34f, 10.5f, dark, Symbol.TRIANGLE, rgb(76, 196, 156))
-        symbol(BTN_Y, 246f, 56f, 10.5f, dark, Symbol.SQUARE, rgb(232, 136, 206))
-        symbol(BTN_A, 290f, 56f, 10.5f, dark, Symbol.CIRCLE, rgb(232, 86, 96))
-        symbol(BTN_B, 268f, 78f, 10.5f, dark, Symbol.CROSS, rgb(120, 150, 236))
-        pill(BTN_SELECT, 146f, 56f, 24f, 8f, rgb(84, 84, 92), LabelPlace.BELOW, rgb(70, 70, 80))
-        pill(BTN_START, 194f, 56f, 24f, 8f, rgb(84, 84, 92), LabelPlace.BELOW, rgb(70, 70, 80))
+        val dark = color.red < 0.4f
+        disc(72, 56, 30, color.shade(if (dark) 0.08f else -0.1f))
+        dpad(72f, 56f, 15f, 8f, arrows, separate = true)
+        disc(268, 56, 32, color.shade(if (dark) 0.08f else -0.1f))
+        val buttons = if (dark) rgb(26, 26, 30) else rgb(46, 46, 54)
+        symbol(BTN_X, 268f, 34f, 10.5f, buttons, Symbol.TRIANGLE, rgb(76, 196, 156))
+        symbol(BTN_Y, 246f, 56f, 10.5f, buttons, Symbol.SQUARE, rgb(232, 136, 206))
+        symbol(BTN_A, 290f, 56f, 10.5f, buttons, Symbol.CIRCLE, rgb(232, 86, 96))
+        symbol(BTN_B, 268f, 78f, 10.5f, buttons, Symbol.CROSS, rgb(120, 150, 236))
+        val small = color.shade(if (dark) 0.3f else -0.55f)
+        pill(BTN_SELECT, 146f, 56f, 24f, 8f, small, LabelPlace.BELOW, print)
+        pill(BTN_START, 194f, 56f, 24f, 8f, small, LabelPlace.BELOW, print)
         disc(170, 82, 3, rgb(220, 40, 40))  // voyant « Analog »
-        stick(128f, 100f, 15f, rgb(50, 50, 56), color.shade(-0.22f), stepOf(BTN_L3), -1, "L3")
-        stick(212f, 100f, 15f, rgb(50, 50, 56), color.shade(-0.22f), stepOf(BTN_R3), rightAxis(), "R3")
+        val cap = if (dark) rgb(28, 28, 32) else rgb(50, 50, 56)
+        val well = color.shade(if (dark) 0.12f else -0.22f)
+        stick(128f, 100f, 15f, cap, well, stepOf(BTN_L3), -1, "L3")
+        stick(212f, 100f, 15f, cap, well, stepOf(BTN_R3), rightAxis(), "R3")
     }
 
     /** PSP : console portable noire, écran au centre, croix et petit stick à gauche, symboles à droite. */
@@ -528,15 +537,17 @@ private class PadPainter(
         button(BTN_A, 290f, 72f, 11f, rgb(204, 204, 214))
     }
 
-    /** Mega Drive (6 boutons) : croissant noir, croix ronde, A B C en bas et X Y Z au-dessus. */
+    /** Mega Drive (6 boutons) : noire, deux lobes arrondis, croix ronde, A B C en bas et X Y Z au-dessus. */
     private fun genesis() {
         val color = rgb(34, 34, 38)
         val edge = rgb(10, 10, 12)
         val buttons = rgb(58, 58, 66)
         body(color, edge) { g, c ->
-            rect(14 - g, 34 - g, 312 + 2 * g, 82 + 2 * g, 41 + g, c)
-            rect(80 - g, 60 - g, 180 + 2 * g, 84 + 2 * g, 42 + g, c)
+            rect(14 - g, 30 - g, 312 + 2 * g, 72 + 2 * g, 36 + g, c)
+            disc(84, 96, 46 + g, c)
+            disc(256, 96, 46 + g, c)
         }
+        rect(130, 36, 80, 12, 6, color.shade(0.1f))  // logo
         disc(80, 76, 31, rgb(22, 22, 24))
         dpad(80f, 76f, 16f, 9f, rgb(48, 48, 52))
         pill(BTN_START, 170f, 58f, 44f, 12f, rgb(64, 64, 70))
@@ -548,39 +559,42 @@ private class PadPainter(
         button(BTN_R, 270f, 44f, 9.5f, buttons)  // Z
     }
 
-    /** Master System (et Game Gear) : rectangle noir, croix carrée, boutons 1 et 2. */
+    /** Master System (et Game Gear) : rectangle noir, croix dans un cadre rouge, boutons 1 et 2. */
     private fun master() {
         val color = rgb(36, 36, 40)
         val edge = rgb(12, 12, 14)
         body(color, edge) { g, c -> rect(20 - g, 32 - g, 300 + 2 * g, 90 + 2 * g, 8 + g, c) }
         rect(28, 40, 284, 74, 4, rgb(44, 44, 50))
-        disc(84, 77, 32, rgb(56, 56, 62))
-        dpad(84f, 77f, 18f, 10f, rgb(28, 28, 30))
+        rect(48, 41, 72, 72, 4, rgb(196, 40, 44))  // cadre rouge de la croix
+        rect(51, 44, 66, 66, 3, rgb(30, 30, 34))
+        dpad(84f, 77f, 18f, 10f, rgb(56, 56, 62))
+        rect(222, 104, 78, 3, 1.5f, rgb(196, 40, 44))  // filet rouge sous 1 et 2
         pill(BTN_START, 170f, 54f, 40f, 10f, rgb(84, 84, 90), LabelPlace.BELOW)
         button(BTN_B, 238f, 82f, 15f, rgb(64, 64, 70))
         button(BTN_A, 284f, 82f, 15f, rgb(64, 64, 70))
     }
 
-    /** Saturn : « os de chien » gris foncé, A B C en bas, X Y Z plus petits au-dessus, L / R en haut. */
+    /** Saturn : « os de chien » noir, boutons gris (A B C en bas, X Y Z plus petits au-dessus), gâchettes L / R en haut. */
     private fun saturn() {
-        val color = rgb(62, 62, 70)
-        val edge = rgb(24, 24, 28)
-        shoulder(BTN_L2, 36f, 6f, 96f, 22f, rgb(92, 92, 102), edge)
-        shoulder(BTN_R2, 208f, 6f, 96f, 22f, rgb(92, 92, 102), edge)
+        val color = rgb(44, 44, 50)
+        val edge = rgb(14, 14, 16)
+        val buttons = rgb(100, 100, 110)
+        shoulder(BTN_L2, 36f, 6f, 96f, 22f, rgb(72, 72, 80), edge)
+        shoulder(BTN_R2, 208f, 6f, 96f, 22f, rgb(72, 72, 80), edge)
         body(color, edge) { g, c ->
             disc(84, 84, 58 + g, c)
             disc(256, 84, 58 + g, c)
             rect(84, 26 - g, 172, 116 + 2 * g, 8, c)
         }
-        disc(84, 84, 34, color.shade(-0.2f))
-        dpad(84f, 84f, 18f, 10f, rgb(40, 40, 46))
-        pill(BTN_START, 170f, 108f, 34f, 12f, rgb(104, 104, 114), LabelPlace.BELOW)
-        button(BTN_B, 226f, 104f, 12f, BLUE)  // A
-        button(BTN_A, 256f, 94f, 12f, GREEN)  // B
-        button(BTN_R, 286f, 84f, 12f, YELLOW)  // C
-        button(BTN_Y, 222f, 72f, 9f, rgb(124, 124, 134))  // X
-        button(BTN_X, 250f, 62f, 9f, rgb(124, 124, 134))  // Y
-        button(BTN_L, 278f, 52f, 9f, rgb(124, 124, 134))  // Z
+        disc(84, 84, 34, color.shade(-0.3f))
+        dpad(84f, 84f, 18f, 10f, rgb(78, 78, 86))
+        pill(BTN_START, 170f, 108f, 34f, 12f, rgb(110, 110, 120), LabelPlace.BELOW)
+        button(BTN_B, 226f, 104f, 12f, buttons)  // A
+        button(BTN_A, 256f, 94f, 12f, buttons)  // B
+        button(BTN_R, 286f, 84f, 12f, buttons)  // C
+        button(BTN_Y, 222f, 72f, 9f, buttons)  // X
+        button(BTN_X, 250f, 62f, 9f, buttons)  // Y
+        button(BTN_L, 278f, 52f, 9f, buttons)  // Z
     }
 
     /** Dreamcast : blanche, fente de la carte mémoire, stick en haut à gauche, A rouge, B bleu, X jaune, Y vert. */
@@ -594,8 +608,9 @@ private class PadPainter(
             disc(86, 104, 42 + g, c)
             disc(254, 104, 42 + g, c)
         }
-        rect(132, 24, 76, 46, 4, rgb(160, 160, 168))
-        rect(140, 30, 60, 34, 2, rgb(70, 70, 80))
+        rect(132, 24, 76, 46, 4, rgb(170, 170, 178))
+        rect(140, 30, 60, 34, 2, rgb(120, 164, 104))  // écran de la carte mémoire (VMU)
+        rect(140, 30, 60, 8, 2, rgb(255, 255, 255, 30))
         stick(74f, 52f, 13f, rgb(206, 206, 210), color.shade(-0.25f), -1, -1, "")
         dpad(104f, 98f, 13f, 7.5f, rgb(70, 70, 76))
         button(BTN_X, 262f, 48f, 10.5f, GREEN)  // Y
@@ -605,20 +620,27 @@ private class PadPainter(
         button(BTN_START, 170f, 96f, 7f, rgb(70, 70, 76), LabelPlace.BELOW, rgb(80, 80, 92))
     }
 
-    /** PC Engine : rectangle gris clair, Select / Run au centre, boutons II et I noirs, interrupteurs turbo. */
+    /** PC Engine (TurboPad de la TurboGrafx-16) : noir, bosse au centre, Select / Run, interrupteurs turbo au-dessus de II et I. */
     private fun pcEngine() {
-        val color = rgb(226, 226, 230)
-        val edge = rgb(136, 136, 142)
-        body(color, edge) { g, c -> rect(16 - g, 30 - g, 308 + 2 * g, 92 + 2 * g, 10 + g, c) }
-        rect(26, 40, 288, 72, 6, rgb(198, 198, 204))
-        disc(80, 76, 32, rgb(180, 180, 186))
-        dpad(80f, 76f, 18f, 10f, rgb(40, 40, 44))
-        pill(BTN_SELECT, 148f, 92f, 26f, 9f, rgb(70, 70, 76), LabelPlace.ABOVE, rgb(70, 70, 76))
-        pill(BTN_START, 192f, 92f, 26f, 9f, rgb(70, 70, 76), LabelPlace.ABOVE, rgb(70, 70, 76))
-        rect(232, 46, 16, 8, 2, rgb(120, 120, 126))
-        rect(276, 46, 16, 8, 2, rgb(120, 120, 126))
-        button(BTN_B, 240f, 82f, 14f, rgb(50, 50, 56))  // II
-        button(BTN_A, 284f, 82f, 14f, rgb(50, 50, 56))  // I
+        val color = rgb(36, 36, 40)
+        val edge = rgb(10, 10, 12)
+        body(color, edge) { g, c ->
+            rect(16 - g, 30 - g, 308 + 2 * g, 92 + 2 * g, 10 + g, c)
+            rect(122 - g, 22 - g, 96 + 2 * g, 40 + 2 * g, 14 + g, c)  // bosse
+        }
+        rect(26, 40, 288, 72, 6, rgb(44, 44, 50))
+        rect(128, 26, 84, 30, 10, rgb(54, 54, 60))
+        rect(34, 46, 30, 6, 2, rgb(200, 40, 40))  // « TURBO »
+        disc(80, 78, 30, rgb(28, 28, 32))
+        dpad(80f, 78f, 18f, 10f, rgb(64, 64, 70))
+        pill(BTN_SELECT, 148f, 92f, 26f, 9f, rgb(104, 104, 112), LabelPlace.ABOVE, rgb(200, 200, 210))
+        pill(BTN_START, 192f, 92f, 26f, 9f, rgb(104, 104, 112), LabelPlace.ABOVE, rgb(200, 200, 210))
+        for (x in listOf(232f, 276f)) {
+            rect(x, 46, 16, 8, 2, rgb(150, 150, 156))
+            rect(x + 6, 46, 4, 8, 1, rgb(200, 40, 40))
+        }
+        button(BTN_B, 240f, 84f, 14f, rgb(72, 72, 80))  // II
+        button(BTN_A, 284f, 84f, 14f, rgb(72, 72, 80))  // I
     }
 
     /** Neo Geo (manette du Neo Geo CD) : noire, joystick à gauche, A rouge, B jaune, C vert, D bleu en arc. */
@@ -690,11 +712,17 @@ private class PadPainter(
         pill(BTN_SELECT, 52f, 56f, 44f, 14f, metal, LabelPlace.BELOW)
         pill(BTN_START, 52f, 104f, 44f, 14f, metal, LabelPlace.BELOW)
         if (!proLine) {
+            // CX40 : socle carré biseauté, soufflet et manche vus de dessus.
             body(color, edge) { g, c -> rect(110 - g, 14 - g, 120 + 2 * g, 122 + 2 * g, 10 + g, c) }
-            disc(170, 82, 30, rgb(20, 20, 22))
-            disc(170, 82, 10, rgb(56, 56, 60))
+            rect(118, 22, 104, 106, 8, rgb(44, 44, 48))
+            disc(170, 82, 26, rgb(20, 20, 22))
+            ring(170, 82, 20, 1.6f, rgb(52, 52, 56))
+            ring(170, 82, 14, 1.6f, rgb(52, 52, 56))
+            disc(173, 85, 10, rgb(0, 0, 0, 120))  // ombre du manche
+            disc(170, 82, 9, rgb(14, 14, 16))
+            disc(167, 79, 3.5f, rgb(84, 84, 90))
             directions(170f, 82f, 42f, rgb(150, 150, 160))
-            button(BTN_B, 128f, 32f, 11f, RED)
+            button(BTN_B, 132f, 36f, 11f, RED)
             return
         }
         body(color, edge) { g, c -> rect(100 - g, 20 - g, 140 + 2 * g, 116 + 2 * g, 26 + g, c) }
@@ -730,5 +758,40 @@ private class PadPainter(
         dpad(86f, 77f, 18f, 10f, rgb(30, 30, 34))
         button(BTN_B, 236f, 72f, 14f, RED, LabelPlace.BELOW)
         button(BTN_A, 284f, 72f, 14f, BLUE, LabelPlace.BELOW)
+    }
+
+    /**
+     * GameCube : indigo, stick en haut à gauche, croix dessous, Start au centre, gros A vert, B rouge,
+     * X et Y gris, stick C jaune (stick droit), gâchettes L / R et bouton Z sur la tranche droite.
+     */
+    private fun gamecube() {
+        val color = rgb(84, 72, 170)
+        val edge = rgb(40, 34, 96)
+        val trigger = rgb(118, 108, 196)
+        shoulder(BTN_L2, 40f, 2f, 76f, 20f, trigger, edge)
+        shoulder(BTN_R, 186f, 8f, 44f, 14f, rgb(124, 112, 220), edge)  // Z
+        shoulder(BTN_R2, 234f, 2f, 68f, 20f, trigger, edge)
+        body(color, edge) { g, c ->
+            rect(18 - g, 20 - g, 304 + 2 * g, 82 + 2 * g, 40 + g, c)
+            disc(72, 104, 40 + g, c)
+            disc(268, 104, 40 + g, c)
+        }
+        stick(76f, 56f, 14f, rgb(170, 170, 180), color.shade(-0.3f), -1, -1, "")
+        disc(112, 102, 20, color.shade(-0.2f))
+        dpad(112f, 102f, 11f, 6f, rgb(170, 170, 180))
+        button(BTN_START, 170f, 64f, 6f, rgb(200, 200, 208), LabelPlace.BELOW)
+        button(BTN_X, 296f, 50f, 9f, rgb(206, 206, 214))  // X, à droite de A
+        button(BTN_Y, 258f, 32f, 9f, rgb(206, 206, 214))  // Y, au-dessus de A
+        button(BTN_A, 264f, 60f, 15f, rgb(60, 176, 104))
+        button(BTN_B, 236f, 84f, 9f, rgb(206, 46, 52))
+        // Stick C : axes du stick droit.
+        val axis = rightAxis()
+        if (axis >= 0) {
+            disc(232, 112, 17, color.shade(-0.3f))
+            disc(232, 113.5f, 11.5f, rgb(0, 0, 0, 100))
+            disc(232, 112, 11, rgb(232, 190, 46))
+            text(232, 112, "C", 12, rgb(90, 70, 10))
+            mark(axis, 221, 101, 22, 22, 11)
+        }
     }
 }
