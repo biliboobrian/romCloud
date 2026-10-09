@@ -73,6 +73,7 @@ import com.romcloud.app.ui.gameFacts
 import com.romcloud.app.ui.gamePlaytime
 import com.romcloud.app.ui.partsSummary
 import com.romcloud.core.R
+import kotlinx.coroutines.launch
 
 @Composable
 fun TvGameDetailScreen(
@@ -83,6 +84,7 @@ fun TvGameDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val peers by viewModel.peers.collectAsStateWithLifecycle()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val activity = LocalContext.current as Activity
     var pickEmulator by remember { mutableStateOf(false) }
     var showRetroArchHelp by remember { mutableStateOf(false) }
@@ -199,12 +201,6 @@ fun TvGameDetailScreen(
                                     togetherIcon(kind),
                                 ) { viewModel.hostNetplay(activity)?.let(onMessage) }
                             }
-                            // Liaison proposée par un autre appareil : ce jeu s'y relie.
-                            viewModel.linkHosts(peers).forEach { peer ->
-                                SecondaryButton(stringResource(R.string.link_join, peer.name, peer.hosting?.title.orEmpty()), togetherIcon(Together.LINK)) {
-                                    viewModel.joinLink(activity, peer)?.let(onMessage)
-                                }
-                            }
                             if (state.missingBios.isNotEmpty()) {
                                 SecondaryButton(stringResource(R.string.action_download_bios), Icons.Filled.CloudDownload) { viewModel.downloadBios() }
                             }
@@ -215,6 +211,16 @@ fun TvGameDetailScreen(
                             Icons.Filled.CloudDownload,
                             primary,
                         ) { viewModel.download() }
+                    }
+                    // Ce jeu proposé par un autre appareil : partie rejointe (jeu téléchargé d'abord s'il manque).
+                    if (download !is DownloadState.Running) {
+                        viewModel.hostsOfGame(peers).forEach { peer ->
+                            val link = peer.hosting?.link != null
+                            SecondaryButton(
+                                stringResource(if (link) R.string.link_join_peer else R.string.netplay_join_peer, peer.name),
+                                togetherIcon(if (link) Together.LINK else Together.NETPLAY),
+                            ) { scope.launch { viewModel.join(activity, peer)?.let(onMessage) } }
+                        }
                     }
                     if (state.players.isNotEmpty()) {
                         SecondaryButton(stringResource(R.string.tv_emulator_value, state.selectedPlayer?.name ?: "—"), Icons.Filled.SportsEsports) {

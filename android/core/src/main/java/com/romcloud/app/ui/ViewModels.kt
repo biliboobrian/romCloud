@@ -1,11 +1,11 @@
 package com.romcloud.app.ui
 
-import com.romcloud.app.netplay.LinkKind
 import com.romcloud.app.netplay.LinkRules
 import com.romcloud.app.netplay.NetplayRules
 import com.romcloud.app.netplay.Together
 import com.romcloud.app.netplay.together
 import com.romcloud.app.netplay.Peer
+import com.romcloud.app.netplay.anyAvailable
 import com.romcloud.app.netplay.NetplayProtocol
 import com.romcloud.app.netplay.NetplayLaunch
 import android.app.Activity
@@ -95,18 +95,6 @@ fun RomCloudApp.hostNetplay(activity: Activity, system: GameSystem, game: Game):
     val core = player?.libretroCore ?: return I18n.get(R.string.netplay_needs_builtin)
     val hosted = NetplayProtocol.HostedGame(game.id, system.id, game.title, game.fileName, game.size, core)
     return play(activity, system, game, netplay = NetplayLaunch(host = true, game = hosted))
-}
-
-/** Relie ce jeu (de cet appareil) à la console de [peer], qui propose une liaison du même type. */
-fun RomCloudApp.joinLink(activity: Activity, system: GameSystem, game: Game, peer: Peer): String? {
-    val hosting = peer.hosting ?: return null
-    val link = LinkRules.kind(hosting.link) ?: return null
-    val player = launcher.selectedPlayer(system, game.fileName)
-    val mine = NetplayProtocol.HostedGame(game.id, system.id, game.title, game.fileName, game.size, link.core, link.id)
-    return play(
-        activity, system, game,
-        netplay = NetplayLaunch(host = false, address = peer.address, port = peer.port, peerName = peer.name, game = mine, saveCore = player?.libretroCore),
-    )
 }
 
 /**
@@ -332,7 +320,12 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
     val peers = app.presence.peers
 
     /** Jeu jouable à plusieurs en réseau (moteur intégré, jeu à plusieurs joueurs) ou consoles reliées ; null sinon. */
-    fun together(game: Game): Together? {
+    /**
+     * Icône du jeu : jouable à plusieurs (ou consoles reliées) et soit un appareil libre sur le réseau
+     * (partie à proposer), soit ce jeu proposé par un appareil (partie à rejoindre) ; null sinon.
+     */
+    fun together(game: Game, peers: List<Peer>): Together? {
+        if (!peers.anyAvailable() && peers.none { it.hosts(game) }) return null
         val system = _state.value.system ?: return null
         if (LinkRules.kind(system) == null && !NetplayRules.systemAllows(system)) return null
         return NetplayRules.together(system, game, app.launcher.selectedPlayer(system, game.fileName))
@@ -593,30 +586,26 @@ class GameDetailViewModel(
     val peers = app.presence.peers
 
     /** « Jouer à plusieurs » / « Relier les consoles » : jeu présent, appareil sur le réseau local, jeu et émulateur compatibles. */
+    /**
+     * Proposer une partie (ou une liaison) : jeu présent et compatible, et au moins un appareil libre
+     * sur le réseau (ni hôte, ni en partie), même si ce jeu est déjà proposé ailleurs.
+     */
     fun together(peers: List<Peer>): Together? {
         val s = _state.value
         val system = s.system ?: return null
         val game = s.game ?: return null
-        if (!s.downloaded || peers.isEmpty()) return null
+        if (!s.downloaded || !peers.anyAvailable()) return null
         return NetplayRules.together(system, game, s.selectedPlayer)
     }
 
-    /** Appareils qui proposent une liaison de cette console : ce jeu peut s'y relier (chacun son jeu). */
-    fun linkHosts(peers: List<Peer>): List<Peer> {
-        val s = _state.value
-        val kind = s.system?.let(LinkRules::kind) ?: return emptyList()
-        if (!s.downloaded) return emptyList()
-        val game = s.game ?: return emptyList()
-        if (kind == LinkKind.GBA_LINK && !LinkRules.gbaLinkGame(game.title, game.fileName)) return emptyList()
-        return peers.filter { LinkRules.kind(it.hosting?.link) == kind }
+    /** Appareils qui proposent ce jeu : partie rejointe (ou consoles reliées) depuis sa fiche. */
+    fun hostsOfGame(peers: List<Peer>): List<Peer> {
+        val game = _state.value.game ?: return emptyList()
+        return peers.filter { it.hosts(game) }
     }
 
-    fun joinLink(activity: Activity, peer: Peer): String? {
-        val s = _state.value
-        val system = s.system ?: return I18n.get(R.string.err_system_not_found)
-        val game = s.game ?: return I18n.get(R.string.game_not_found)
-        return app.joinLink(activity, system, game, peer)
-    }
+    /** Rejoint la partie proposée par [peer] (ce jeu, téléchargé d'abord s'il manque). */
+    suspend fun join(context: android.content.Context, peer: Peer): String? = app.joinNetplay(context, peer)
 
     /** Lance le jeu et le propose aux appareils du réseau local. */
     fun hostNetplay(activity: Activity): String? {

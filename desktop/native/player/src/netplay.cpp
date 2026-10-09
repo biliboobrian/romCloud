@@ -307,6 +307,8 @@ bool Netplay::start(const Config& config) {
   } else if (config.role == Role::Guest) {
     message("netplay_connecting", config.peerName);
     joinThread_ = std::thread(&Netplay::joinLoop, this);
+    // Invité : annoncé « en partie » une fois relié (l'application, en arrière-plan, l'annonce sans).
+    if (!beaconThread_.joinable()) beaconThread_ = std::thread(&Netplay::beaconLoop, this);
   }
   return true;
 }
@@ -353,6 +355,17 @@ std::string Netplay::linked() const {
 void Netplay::setLinked(const std::string& name) {
   std::lock_guard<std::mutex> lock(mutex_);
   linked_ = name;
+  busy_ = !name.empty();
+}
+
+void Netplay::announce(const std::string& deviceId, const std::string& deviceName) {
+  if (beaconThread_.joinable() || deviceId.empty()) return;
+  WSADATA wsa;
+  if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return;
+  config_.deviceId = deviceId;
+  config_.deviceName = deviceName;
+  stopping_ = false;
+  beaconThread_ = std::thread(&Netplay::beaconLoop, this);
 }
 
 bool Netplay::requestPending(std::string& name) const {
@@ -377,7 +390,8 @@ void Netplay::beaconLoop() {
   const NetplayGame& g = config_.game;
   while (!stopping_) {
     std::string beacon = "{\"app\":\"romcloud\",\"v\":" + std::to_string(kVersion) + ",\"id\":" + jsonEscape(config_.deviceId) +
-                         ",\"name\":" + jsonEscape(config_.deviceName) + ",\"platform\":\"windows\"";
+                         ",\"name\":" + jsonEscape(config_.deviceName) + ",\"platform\":\"windows\"" +
+                         (busy_ ? ",\"busy\":true" : "");
     if (announcing_) {
       beacon += ",\"port\":" + std::to_string(config_.port) + ",\"hosting\":{\"gameId\":" + std::to_string(g.gameId) +
                 ",\"systemId\":" + jsonEscape(g.systemId) + ",\"title\":" + jsonEscape(g.title) +
@@ -460,6 +474,7 @@ void Netplay::handleClient(SOCKET client) {
     if (!config_.multi) announcing_ = false;
     lock.lock();
     linked_ = linked_.empty() ? name : linked_ + ", " + name;
+    busy_ = true;
     messages_.emplace_back("link_started", name);
     return;
   }
@@ -551,6 +566,7 @@ void Netplay::begin(SOCKET socket, bool host, int delay) {
   resync_ = false;
   waiting_ = false;
   state_ = State::Starting;
+  busy_ = true;
   desyncs_ = 0;
   logf("Netplay : %s avec %s (%s, délai %u images)", config_.packets ? "liaison" : "partie", partner_.c_str(), host ? "hôte" : "invité", delay_);
   message(config_.link.empty() ? "netplay_started" : "link_started", partner_);
@@ -569,6 +585,7 @@ void Netplay::end(bool notify) {
   state_ = State::Off;
   inFrame_ = false;
   waiting_ = false;
+  busy_ = !linked().empty();
 }
 
 void Netplay::resetRings() {

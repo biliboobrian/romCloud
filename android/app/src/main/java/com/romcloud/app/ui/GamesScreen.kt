@@ -278,7 +278,7 @@ fun GamesScreen(
                         },
                         topInset = topInset,
                         compact = landscape,
-                        together = { if (peers.isNotEmpty()) viewModel.together(it) else null },
+                        together = { viewModel.together(it, peers) },
                     )
                     state.grid -> LazyVerticalGrid(
                         columns = GridCells.Adaptive(116.dp),
@@ -294,7 +294,7 @@ fun GamesScreen(
                                 status = statusOf(game),
                                 onClick = { onOpenGame(game.id) },
                                 onDetails = { onOpenGame(game.id) },
-                                together = if (peers.isNotEmpty()) viewModel.together(game) else null,
+                                together = viewModel.together(game, peers),
                             )
                         }
                     }
@@ -309,7 +309,7 @@ fun GamesScreen(
                                 onResume = if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
                                     { viewModel.play(activity, game, resume = true)?.let { scope.launch { snackbar.showSnackbar(it) } } }
                                 } else null,
-                                together = if (peers.isNotEmpty()) viewModel.together(game) else null,
+                                together = viewModel.together(game, peers),
                             )
                             HorizontalDivider(Modifier.padding(start = 84.dp), thickness = 0.5.dp)
                         }

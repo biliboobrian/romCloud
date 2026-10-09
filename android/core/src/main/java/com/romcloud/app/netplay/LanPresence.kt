@@ -36,12 +36,16 @@ class LanPresence(
     @Volatile
     var hosting: Pair<Int, NetplayProtocol.HostedGame>? = null
 
+    /** En partie avec un autre appareil (annoncé : plus proposé comme partenaire libre). */
+    @Volatile
+    var busy: Boolean = false
+
     val deviceId: String = deviceId(context)
 
     private var job: Job? = null
     private var socket: DatagramSocket? = null
     private var multicastLock: WifiManager.MulticastLock? = null
-    private class Entry(val peer: Peer, val hostingAt: Long)
+    private class Entry(val peer: Peer, val hostingAt: Long, val busyAt: Long = 0L)
     private val seen = HashMap<String, Entry>()
 
     /** Annonce et écoute (jusqu'à [stop]). */
@@ -86,7 +90,7 @@ class LanPresence(
                 val host = hosting
                 val beacon = NetplayProtocol.Beacon(
                     id = deviceId, name = name, platform = platform,
-                    port = host?.first ?: 0, hosting = host?.second,
+                    port = host?.first ?: 0, hosting = host?.second, busy = busy,
                 )
                 val bytes = NetplayProtocol.json.encodeToString(NetplayProtocol.Beacon.serializer(), beacon).toByteArray()
                 for (address in broadcastAddresses()) {
@@ -126,8 +130,13 @@ class LanPresence(
                         Triple(previous.peer.port, previous.peer.hosting, previous.hostingAt)
                     else -> Triple(0, null, 0L)
                 }
-                val peer = Peer(beacon.id, beacon.name, beacon.platform, packet.address.hostAddress.orEmpty(), port, hosting, now)
-                seen[beacon.id] = Entry(peer, hostingAt)
+                // Même règle pour « en partie » : annoncé par le jeu, gardé entre les annonces de l'application.
+                val busyAt = if (beacon.busy) now else previous?.busyAt?.takeIf { now - it < NetplayProtocol.PEER_TTL_MS } ?: 0L
+                val peer = Peer(
+                    beacon.id, beacon.name, beacon.platform, packet.address.hostAddress.orEmpty(), port, hosting, now,
+                    busy = busyAt > 0L,
+                )
+                seen[beacon.id] = Entry(peer, hostingAt, busyAt)
             }
             publish()
         }
@@ -140,7 +149,11 @@ class LanPresence(
             // Partie plus annoncée (jeu quitté) : l'appareil reste, sans partie.
             for ((id, entry) in seen.entries.toList()) {
                 if (entry.peer.hosting != null && now - entry.hostingAt > NetplayProtocol.PEER_TTL_MS) {
-                    seen[id] = Entry(entry.peer.copy(port = 0, hosting = null), 0L)
+                    seen[id] = Entry(entry.peer.copy(port = 0, hosting = null), 0L, entry.busyAt)
+                }
+                val current = seen[id] ?: continue
+                if (current.peer.busy && now - current.busyAt > NetplayProtocol.PEER_TTL_MS) {
+                    seen[id] = Entry(current.peer.copy(busy = false), current.hostingAt, 0L)
                 }
             }
         }

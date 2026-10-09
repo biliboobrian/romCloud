@@ -57,6 +57,8 @@ struct Entry {
     peer: Value,
     seen: Instant,
     hosting_seen: Option<Instant>,
+    /// Dernière annonce « en partie » (du jeu) : gardée entre les annonces de l'application.
+    busy_seen: Option<Instant>,
 }
 
 static PEERS: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -82,7 +84,7 @@ pub fn start() {
     std::thread::spawn(announce);
 }
 
-/// Appareils RomCloud du réseau local : { id, name, platform, address, port, hosting }.
+/// Appareils RomCloud du réseau local : { id, name, platform, address, port, hosting, busy }.
 pub fn peers() -> Value {
     let peers = PEERS.lock().unwrap();
     let mut list: Vec<Value> = peers.values().map(|e| e.peer.clone()).collect();
@@ -161,11 +163,16 @@ fn merge(beacon: &Value, address: &str, now: Instant) {
         (None, Some(p)) if p.hosting_seen.is_some_and(|t| now.duration_since(t) < TTL) => (p.peer["port"].clone(), p.peer["hosting"].clone(), p.hosting_seen),
         _ => (json!(0), Value::Null, None),
     };
+    let busy_seen = if beacon["busy"] == true {
+        Some(now)
+    } else {
+        previous.and_then(|p| p.busy_seen).filter(|t| now.duration_since(*t) < TTL)
+    };
     let peer = json!({
         "id": id, "name": beacon["name"], "platform": beacon["platform"], "address": address,
-        "port": port, "hosting": hosting,
+        "port": port, "hosting": hosting, "busy": busy_seen.is_some(),
     });
-    peers.insert(id, Entry { peer, seen: now, hosting_seen });
+    peers.insert(id, Entry { peer, seen: now, hosting_seen, busy_seen });
 }
 
 fn expire() {
@@ -181,6 +188,11 @@ fn expire() {
                 entry.hosting_seen = None;
                 entry.peer["hosting"] = Value::Null;
                 entry.peer["port"] = json!(0);
+                changed = true;
+            }
+            if entry.busy_seen.is_some_and(|t| now.duration_since(t) >= TTL) {
+                entry.busy_seen = None;
+                entry.peer["busy"] = json!(false);
                 changed = true;
             }
         }
@@ -461,6 +473,15 @@ mod tests {
         assert_eq!(peer["port"], 4000);
         assert_eq!(peer["hosting"]["core"], "snes9x");
         assert_eq!(peer["address"], "192.168.1.5");
+    }
+
+    #[test]
+    fn appareil_en_partie_garde_entre_les_annonces_de_l_application() {
+        let now = Instant::now();
+        merge(&json!({ "id": "pc-busy", "name": "PC", "platform": "windows", "port": 0, "busy": true }), "192.168.1.6", now);
+        merge(&json!({ "id": "pc-busy", "name": "PC", "platform": "windows", "port": 0 }), "192.168.1.6", now + Duration::from_secs(1));
+        let peers = peers();
+        assert_eq!(peers.as_array().unwrap().iter().find(|p| p["id"] == "pc-busy").unwrap()["busy"], true);
     }
 
     #[test]

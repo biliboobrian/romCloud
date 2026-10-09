@@ -77,4 +77,18 @@ class LinkRulesTest {
         assertTrue(macHost != macGuest)
         assertEquals(2, macHost.substring(0, 2).toInt(16) and 3)
     }
+
+    @Test
+    fun `appareils libres et parties proposees`() {
+        val zelda = Game(7, "gbc", "zelda.gbc", 10, "Zelda", players = "1-2")
+        val hosted = NetplayProtocol.HostedGame(7, "gbc", "Zelda", "zelda.gbc", 10, "gambatte", "gb")
+        val host = Peer("a", "A", "android", "10.0.0.2", 4000, hosted, 0)
+        val busy = Peer("b", "B", "android", "10.0.0.3", 0, null, 0, busy = true)
+        val free = Peer("c", "C", "windows", "10.0.0.4", 0, null, 0)
+        assertTrue(host.hosts(zelda))
+        assertFalse(free.hosts(zelda))
+        // Hôte et appareil en partie : plus de partenaire libre, la partie ne peut plus être proposée.
+        assertFalse(listOf(host, busy).anyAvailable())
+        assertTrue(listOf(host, busy, free).anyAvailable())
+    }
 }

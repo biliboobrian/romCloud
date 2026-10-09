@@ -194,7 +194,7 @@ fun TvGamesScreen(
                 coverUrl = featured?.let { mediaUrl(it, "boxart") },
                 status = featured?.let(::statusOf),
                 resumable = featured?.let { it.id in state.resumable } == true,
-                together = featured?.takeIf { peers.isNotEmpty() }?.let(viewModel::together),
+                together = featured?.let { viewModel.together(it, peers) },
                 modifier = Modifier.padding(start = 48.dp, end = 48.dp).height(150.dp),
             )
 
@@ -215,7 +215,7 @@ fun TvGamesScreen(
                     },
                     onClick = ::onClick,
                     onDetails = { onOpenGame(it.id) },
-                    together = { if (peers.isNotEmpty()) viewModel.together(it) else null },
+                    together = { viewModel.together(it, peers) },
                     // Appui long sur un jeu avec une partie sauvegardée : reprise directe.
                     onResume = { game ->
                         if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {

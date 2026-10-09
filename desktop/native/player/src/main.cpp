@@ -660,6 +660,7 @@ int Player::run() {
 void Player::startNetplay() {
   if (!args_.linked.empty()) {
     netplay_.setLinked(args_.linked);
+    netplay_.announce(args_.deviceId, args_.deviceName.empty() ? "PC" : args_.deviceName);
     toast(trName("link_started", args_.linked));
   }
   if (!args_.netplayHost && args_.netplayJoin.empty()) return;

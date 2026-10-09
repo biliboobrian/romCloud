@@ -530,7 +530,9 @@
     <string name="netplay_menu_leave">Arrêter la partie à plusieurs</string>
     <string name="link_badge">Liaison possible avec un autre appareil du réseau local</string>
     <string name="link_host">Relier les consoles en réseau</string>
-    <string name="link_join">Se relier à %1$s (%2$s)</string>
+    <string name="netplay_join_peer">Rejoindre %1$s</string>
+    <string name="link_join_peer">Se relier à %1$s</string>
+    <string name="netplay_peer_busy">En partie</string>
     <string name="link_join_short">Se relier</string>
     <string name="link_hosting_game">Propose une liaison : %1$s</string>
     <string name="link_connecting">Liaison avec %1$s…</string>

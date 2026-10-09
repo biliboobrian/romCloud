@@ -87,6 +87,8 @@ class Netplay {
   std::string linked() const;
   /** Invité d'une liaison ouverte par le cœur : demande acceptée avant le lancement. */
   void setLinked(const std::string& name);
+  /** Annonce de cet appareil sans partie à gérer (invité d'une liaison ouverte par le cœur) : « en partie ». */
+  void announce(const std::string& deviceId, const std::string& deviceName);
   /** Liaison par paquets du cœur, séparée du jeu synchronisé ; à couper avec leave(). */
   bool packets() const { return config_.packets; }
 
@@ -132,6 +134,7 @@ class Netplay {
   std::string readyPartner_;
   std::vector<std::pair<std::string, std::string>> messages_;
   std::atomic<bool> announcing_{false};
+  std::atomic<bool> busy_{false};  // en partie avec un autre appareil (annoncé)
   std::string linked_;
   bool packetsActive_ = false;
   unsigned long packetsOut_ = 0, packetsIn_ = 0;  // paquets du cœur échangés (journal)

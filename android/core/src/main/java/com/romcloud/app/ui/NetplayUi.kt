@@ -88,6 +88,7 @@ fun NetplayDialog(app: RomCloudApp, peers: List<Peer>, onMessage: (String) -> Un
                                 when {
                                     hosting?.link != null -> stringResource(R.string.link_hosting_game, hosting.title)
                                     hosting != null -> stringResource(R.string.netplay_hosting_game, hosting.title)
+                                    peer.busy -> stringResource(R.string.netplay_peer_busy)
                                     else -> stringResource(R.string.netplay_available)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
