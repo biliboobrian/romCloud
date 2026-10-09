@@ -34,7 +34,10 @@ object NetplayProtocol {
 
     val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
 
-    /** Annonce d'un appareil ; [port] et [hosting] : partie qu'il propose de rejoindre. */
+    /**
+     * Annonce d'un appareil ; [port] et [hosting] : partie qu'il propose de rejoindre ; [busy] : en
+     * partie avec un autre appareil (ni hôte disponible, ni invité possible).
+     */
     @Serializable
     data class Beacon(
         val app: String = APP,
@@ -44,6 +47,7 @@ object NetplayProtocol {
         val platform: String,
         val port: Int = 0,
         val hosting: HostedGame? = null,
+        val busy: Boolean = false,
     )
 
     /**
@@ -81,7 +85,7 @@ object NetplayProtocol {
     const val APP = "romcloud"
 }
 
-/** Appareil RomCloud du réseau local, vu par ses annonces. */
+/** Appareil RomCloud du réseau local, vu par ses annonces ; [busy] : en partie avec un autre appareil. */
 data class Peer(
     val id: String,
     val name: String,
@@ -90,7 +94,20 @@ data class Peer(
     val port: Int,
     val hosting: NetplayProtocol.HostedGame?,
     val seenAt: Long,
-)
+    val busy: Boolean = false,
+) {
+    /** Libre : ni hôte d'une partie, ni en partie ; peut rejoindre une partie proposée. */
+    val available: Boolean get() = hosting == null && !busy
+
+    /** Propose-t-il ce jeu (même jeu du serveur, ou même fichier) ? */
+    fun hosts(game: Game): Boolean {
+        val hosted = hosting ?: return false
+        return hosted.systemId == game.systemId && (hosted.gameId == game.id || (hosted.fileName == game.fileName && hosted.size == game.size))
+    }
+}
+
+/** Au moins un appareil libre sur le réseau : une partie peut être proposée. */
+fun List<Peer>.anyAvailable(): Boolean = any { it.available }
 
 /**
  * Jeux et cœurs qui se jouent à plusieurs en réseau : consoles de salon et bornes d'arcade (plusieurs

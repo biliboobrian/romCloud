@@ -1057,16 +1057,29 @@
   const maxPlayers = (players) => Math.max(0, ...String(players || '').split(/\D+/).filter(Boolean).map(Number));
 
   /**
-   * Façon de jouer à plusieurs avec un appareil du réseau : 'netplay' (système et émulateur compatibles)
-   * ou 'link' (consoles reliées : câble, ad hoc), jeu à plusieurs joueurs ; null sinon.
+   * Façon de jouer à plusieurs avec ce jeu : 'netplay' (système et émulateur compatibles) ou 'link'
+   * (consoles reliées : câble, ad hoc), jeu à plusieurs joueurs ; null sinon.
    */
-  const together = (game) => {
+  const playKind = (game) => {
     const kind = S.netplayAllowed[game.systemId];
-    if (!S.peers.length || (kind !== 'netplay' && kind !== 'link')) return null;
+    if (kind !== 'netplay' && kind !== 'link') return null;
     // GBA : seulement les jeux que gpSP sait relier, même annoncés à un joueur (échanges Pokémon).
     if (kind === 'link' && LINK_OF[String(game.systemId).toLowerCase()] === 'gba') return gbaLinkGame(game) ? kind : null;
     return maxPlayers(game.players) >= 2 ? kind : null;
   };
+
+  /** Au moins un appareil libre sur le réseau (ni hôte d'une partie, ni en partie) : une partie peut être proposée. */
+  const anyAvailable = () => S.peers.some((p) => !p.hosting && !p.busy);
+
+  /** Appareils qui proposent ce jeu (même jeu du serveur, ou même fichier). */
+  const hostsOf = (game) => S.peers.filter((p) => p.hosting && p.hosting.systemId === game.systemId
+    && (p.hosting.gameId === game.id || (p.hosting.fileName === game.fileName && p.hosting.size === game.size)));
+
+  /** Partie à proposer (appareil libre sur le réseau), même si ce jeu est déjà proposé ailleurs. */
+  const canHost = (game) => (anyAvailable() ? playKind(game) : null);
+
+  /** Icône du jeu : partie à proposer, ou ce jeu proposé par un appareil (à rejoindre). */
+  const together = (game) => ((anyAvailable() || hostsOf(game).length) ? playKind(game) : null);
 
   /**
    * Jeux GBA que gpSP sait relier (sa liste, gba_over.h ; même règle que LinkRules.kt) : câble de
@@ -1087,13 +1100,8 @@
     return ` <span class="multi-badge${link ? ' link' : ''}" title="${esc(t(link ? 'link.badge' : 'netplay.badge'))}">${icon(link ? 'link' : 'group', 16)}</span>`;
   };
 
-  /** Appareils qui proposent une liaison de la console de [system] (même type de liaison). */
+  /** Liaison de chaque console (même règle que netplay.rs). */
   const LINK_OF = { gb: 'gb', gbc: 'gb', gbcolor: 'gb', gba: 'gba', psp: 'psp' };
-  const linkHosts = (system, game) => {
-    const kind = LINK_OF[String(system.id).toLowerCase()] || LINK_OF[String(system.shortname || '').toLowerCase()];
-    if (kind === 'gba' && !gbaLinkGame(game)) return [];
-    return kind ? S.peers.filter((p) => p.hosting?.link === kind) : [];
-  };
 
   /** Bouton de l'écran principal : appareils du réseau et parties proposées (nombre en pastille). */
   const netplayBtn = () => {
@@ -1118,7 +1126,7 @@
         ${S.peers.length ? '' : `<p>${esc(t('netplay.nobody'))}</p>`}
         <div class="netplay-list">${S.peers.map((p) => `<div class="line">
           <div style="flex:1"><strong>${esc(p.name)}</strong> <span class="muted">· ${esc(platformLabel(p.platform))}</span>
-            <div class="muted small">${esc(p.hosting?.link ? t('link.hosting', { title: p.hosting.title }) : p.hosting ? t('netplay.hosting', { title: p.hosting.title }) : t('netplay.available'))}</div></div>
+            <div class="muted small">${esc(p.hosting?.link ? t('link.hosting', { title: p.hosting.title }) : p.hosting ? t('netplay.hosting', { title: p.hosting.title }) : p.busy ? t('netplay.busyPeer') : t('netplay.available'))}</div></div>
           ${p.hosting ? `<button class="btn primary" data-join="${esc(p.id)}">${esc(t(p.hosting.link ? 'link.joinShort' : 'netplay.join'))}</button>` : ''}
         </div>`).join('')}</div>`,
       buttons: [{ label: t('app.close'), kind: 'ghost' }],
@@ -1160,17 +1168,20 @@
     play(system, game, { netplay: { join: { address: peer.address, port: peer.port, peerName: peer.name, game: hosted } } });
   }
 
+  /** État des appareils qui change les icônes et les boutons : appareils libres, parties proposées. */
+  const peersSignature = () => `${anyAvailable()}|${S.peers.filter((p) => p.hosting).map((p) => `${p.id}:${p.hosting.gameId}:${p.hosting.fileName}`).sort().join(',')}`;
+
   rc.netplay.onPeers((peers) => {
-    const before = S.peers.length;
+    const before = peersSignature();
     S.peers = peers || [];
-    // Icônes et boutons mis à jour quand un appareil apparaît ou disparaît.
+    // Icônes et boutons mis à jour quand un appareil se libère, propose une partie ou disparaît.
     if (S.route.name === 'systems') {
       $('#netplayBtn')?.remove();
       if (S.peers.length) {
         $('#topbarRight').insertAdjacentHTML('afterbegin', netplayBtn());
         $('#netplayBtn')?.addEventListener('click', showNetplay);
       }
-    } else if ((before === 0) !== (S.peers.length === 0)) {
+    } else if (before !== peersSignature()) {
       if (S.route.name === 'games') renderGamesBody();
       if (S.route.name === 'game') renderGame();
     }
@@ -1504,20 +1515,21 @@
     ].filter(Boolean);
 
     let actions = '';
+    // Ce jeu proposé par un autre appareil : partie rejointe (jeu téléchargé d'abord s'il manque).
+    const joinBtns = hostsOf(game).map((p) => `<button class="btn primary big" data-join-peer="${esc(p.id)}">${icon(p.hosting.link ? 'link' : 'group')} ${esc(t(p.hosting.link ? 'link.joinPeer' : 'netplay.joinPeer', { name: p.name }))}</button>`).join('');
     if (st.kind === 'running') {
       actions = `<div style="flex:1"><div class="bar"><div style="width:${Math.round(st.progress * 100)}%"></div></div>
         <p class="muted">${esc(t('download.progress', { bytes: formatSize(st.d.bytes), total: formatSize(st.d.total) }))}</p></div>
         <button class="btn" id="cancelBtn">${icon('close', 18)} ${esc(t('download.cancelPercent', { p: Math.round(st.progress * 100) }))}</button>`;
     } else if (st.kind === 'downloaded') {
       // Partie sauvegardée dans le moteur intégré : « Reprendre » d'abord, puis « Jouer » (nouvelle partie).
-      actions = `${resumable ? `<button class="btn primary big" id="resumeBtn">${icon('play')} ${esc(t('action.resume'))}</button>` : ''}
+      actions = `${joinBtns}${resumable ? `<button class="btn primary big" id="resumeBtn">${icon('play')} ${esc(t('action.resume'))}</button>` : ''}
         <button class="btn ${resumable ? '' : 'primary '}big" id="playBtn">${icon(resumable ? 'refresh' : 'play')} ${esc(t('action.play'))}</button>
-        ${together(game) ? `<button class="btn big" id="netplayHostBtn">${icon(together(game) === 'link' ? 'link' : 'group')} ${esc(t(together(game) === 'link' ? 'link.host' : 'netplay.playTogether'))}</button>` : ''}
-        ${linkHosts(system, game).map((p) => `<button class="btn big" data-link-join="${esc(p.id)}">${icon('link')} ${esc(t('link.join', { name: p.name, title: p.hosting.title }))}</button>`).join('')}
+        ${canHost(game) ? `<button class="btn big" id="netplayHostBtn">${icon(canHost(game) === 'link' ? 'link' : 'group')} ${esc(t(canHost(game) === 'link' ? 'link.host' : 'netplay.playTogether'))}</button>` : ''}
         <button class="btn" id="folderBtn">${icon('folder', 18)} ${esc(t('detail.showInFolder'))}</button>
         <button class="btn danger" id="deleteBtn">${icon('trash', 18)} ${esc(t('detail.delete'))}</button>`;
     } else {
-      actions = `<button class="btn primary big" id="downloadBtn">${icon('cloud')} ${esc(st.kind === 'failed' ? t('app.retry') : t('download.withSize', { size: formatSize(gameSize(game)) }))}</button>`;
+      actions = `${joinBtns}<button class="btn primary big" id="downloadBtn">${icon('cloud')} ${esc(st.kind === 'failed' ? t('app.retry') : t('download.withSize', { size: formatSize(gameSize(game)) }))}</button>`;
     }
 
     main.innerHTML = `<div class="detail">
@@ -1558,12 +1570,8 @@
     $('#resumeBtn')?.addEventListener('click', () => playChecked(system, game, { resume: true }));
     $('#playBtn')?.addEventListener('click', () => playChecked(system, game));
     $('#netplayHostBtn')?.addEventListener('click', () => play(system, game, { netplay: { host: true } }));
-    // Liaison proposée par un autre appareil : ce jeu s'y relie (chacun son jeu).
-    for (const btn of $$('[data-link-join]')) {
-      btn.addEventListener('click', () => {
-        const peer = S.peers.find((p) => p.id === btn.dataset.linkJoin && p.hosting?.link);
-        if (peer) play(system, game, { netplay: { join: { address: peer.address, port: peer.port, peerName: peer.name, link: peer.hosting.link } } });
-      });
+    for (const btn of $$('[data-join-peer]')) {
+      btn.addEventListener('click', () => joinNetplay(S.peers.find((p) => p.id === btn.dataset.joinPeer && p.hosting)));
     }
     $('#downloadBtn')?.addEventListener('click', () => startDownload(system, game, false, missingBios));
     $('#biosBtn')?.addEventListener('click', async () => {

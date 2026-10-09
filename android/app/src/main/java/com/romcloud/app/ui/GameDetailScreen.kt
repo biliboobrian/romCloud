@@ -163,6 +163,18 @@ fun GameDetailScreen(
                     if (d is DownloadState.Failed) {
                         Text(stringResource(R.string.download_failed, d.message), color = MaterialTheme.colorScheme.error)
                     }
+                    // Ce jeu proposé par un autre appareil : partie rejointe (jeu téléchargé d'abord s'il manque).
+                    viewModel.hostsOfGame(peers).forEach { peer ->
+                        val link = peer.hosting?.link != null
+                        Button(
+                            onClick = { scope.launch { viewModel.join(activity, peer)?.let { snackbar.showSnackbar(it) } } },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                        ) {
+                            Icon(togetherIcon(if (link) Together.LINK else Together.NETPLAY), null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(if (link) R.string.link_join_peer else R.string.netplay_join_peer, peer.name), maxLines = 1)
+                        }
+                    }
                     if (state.downloaded) {
                         Text(stringResource(R.string.available_on_device), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -202,17 +214,6 @@ fun GameDetailScreen(
                                 Icon(togetherIcon(kind), null)
                                 Spacer(Modifier.width(8.dp))
                                 Text(stringResource(if (kind == Together.LINK) R.string.link_host else R.string.netplay_play_together))
-                            }
-                        }
-                        // Liaison proposée par un autre appareil : ce jeu s'y relie.
-                        viewModel.linkHosts(peers).forEach { peer ->
-                            OutlinedButton(
-                                onClick = { viewModel.joinLink(activity, peer)?.let { scope.launch { snackbar.showSnackbar(it) } } },
-                                modifier = Modifier.fillMaxWidth().height(52.dp),
-                            ) {
-                                Icon(togetherIcon(Together.LINK), null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.link_join, peer.name, peer.hosting?.title.orEmpty()), maxLines = 1)
                             }
                         }
                         // TV du profil allumée avec RomCloud ouvert : jeu diffusé, le téléphone sert de manette.

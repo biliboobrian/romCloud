@@ -539,7 +539,9 @@
     <string name="netplay_menu_leave">Stop playing together</string>
     <string name="link_badge">Can link with another device on the local network</string>
     <string name="link_host">Link consoles on the network</string>
-    <string name="link_join">Link with %1$s (%2$s)</string>
+    <string name="netplay_join_peer">Join %1$s</string>
+    <string name="link_join_peer">Link with %1$s</string>
+    <string name="netplay_peer_busy">Playing with someone</string>
     <string name="link_join_short">Link</string>
     <string name="link_hosting_game">Offers a link: %1$s</string>
     <string name="link_connecting">Linking with %1$s…</string>

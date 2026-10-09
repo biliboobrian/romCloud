@@ -163,7 +163,17 @@ class LibretroActivity : ComponentActivity() {
     }
     private var netplayHost: NetplayHost? = null
     /** Nom de l'autre joueur (partie en cours), demande d'un invité à accepter, attente de ses touches. */
-    private var netplayPartner by mutableStateOf<String?>(null)
+    private val partnerState = mutableStateOf<String?>(null)
+    private var netplayPartner: String?
+        get() = partnerState.value
+        set(value) {
+            partnerState.value = value
+            // Annoncé sur le réseau : plus proposé comme partenaire libre.
+            gamePresence?.busy = value != null
+        }
+
+    /** Présence de cet appareil pendant le jeu (l'application, en arrière-plan, ne l'annonce plus). */
+    private var gamePresence: LanPresence? = null
     private var netplayRequest by mutableStateOf<Pair<NetplayProtocol.Join, CompletableDeferred<Boolean>>?>(null)
     private var netplayWaiting by mutableStateOf(false)
     /** Partie proposée, en attente d'un invité (hôte). */
@@ -498,6 +508,7 @@ class LibretroActivity : ComponentActivity() {
         if (isFinishing) {
             stopStreaming()
             netplayHost?.stop()
+            gamePresence?.stop()
             Netplay.stop()
             saveLinkedSram()
             CrashReports.endSession(this)
@@ -555,12 +566,15 @@ class LibretroActivity : ComponentActivity() {
             return
         }
         val app = application as RomCloudApp
+        val presence = LanPresence(this, account.deviceName, app.api.platform)
+        gamePresence = presence
+        // Invité : annoncé « en partie » ; hôte : annonce de la partie proposée (NetplayHost).
+        if (!launch.host) presence.start(lifecycleScope)
         if (link != null && !launch.host) {
             // Invité d'une liaison : déjà accepté par l'hôte (avant le lancement).
             netplayPartner = launch.peerName
             toast = getString(R.string.link_started, launch.peerName)
         } else if (launch.host) {
-            val presence = LanPresence(this, account.deviceName, app.api.platform)
             netplayHost = NetplayHost(
                 presence, launch.game, coreFile,
                 ask = { join ->
@@ -666,6 +680,8 @@ class LibretroActivity : ComponentActivity() {
         netplayHost = null
         netplayOpen = false
         netplayPartner = null
+        gamePresence?.stop()
+        gamePresence = null
         closeMenu()
     }
 
