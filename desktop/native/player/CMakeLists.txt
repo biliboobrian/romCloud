@@ -52,4 +52,8 @@ endif()
 if(MSVC)
   # Sources en UTF-8 (textes du menu accentués).
   target_compile_options(romcloud-player PRIVATE /utf-8)
+  # Relais d'appel du cœur (registres préservés de Windows) : assembleur MASM, Visual Studio
+  # n'acceptant pas l'assembleur dans le C++ en 64 bits (version GNU dans core.cpp).
+  enable_language(ASM_MASM)
+  target_sources(romcloud-player PRIVATE src/call_preserving_msvc.asm)
 endif()
