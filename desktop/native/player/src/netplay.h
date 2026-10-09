@@ -8,6 +8,10 @@
 //  - Partie : état de l'hôte copié chez l'invité, puis messages type (1 octet), longueur (4 octets,
 //    gros-boutiste), contenu : touches de chaque image (pour l'image f + délai), empreinte de l'état
 //    toutes les 120 images, demande d'état (écart constaté), fin.
+//  - Liaison entre consoles (câble, adaptateur sans fil, ad hoc) : chaque appareil émule sa console,
+//    avec son jeu. Paquets du cœur (interface netpacket, gpSP) transmis tels quels ; ou connexion
+//    ouverte par le cœur lui-même (Gambatte, PPSSPP : options imposées au lancement), la demande
+//    acceptée suffit.
 #pragma once
 
 #include <winsock2.h>
@@ -39,6 +43,10 @@ class Netplay {
     int port = 0;
     std::string peerName;  // invité : nom de l'hôte
     long long coreSize = 0;
+    // Liaison entre consoles : type annoncé (« gb », « gba », « psp »), paquets du cœur échangés
+    // ici ([packets]), plus de deux consoles ([multi] : toujours proposée).
+    std::string link;
+    bool packets = false, multi = false;
   };
   /** Touches du joueur de cet appareil (port 0 de la manette locale). */
   using LocalInput = std::function<int16_t(unsigned port, unsigned device, unsigned index, unsigned id)>;
@@ -74,6 +82,13 @@ class Netplay {
   std::vector<std::pair<std::string, std::string>> takeMessages();
   /** Fin de la partie depuis le menu : chacun continue seul (hôte : de nouveau proposée). */
   void leave();
+  bool isLink() const { return !config_.link.empty(); }
+  /** Consoles reliées par le cœur lui-même (noms des autres appareils), vide sinon. */
+  std::string linked() const;
+  /** Invité d'une liaison ouverte par le cœur : demande acceptée avant le lancement. */
+  void setLinked(const std::string& name);
+  /** Liaison par paquets du cœur, séparée du jeu synchronisé ; à couper avec leave(). */
+  bool packets() const { return config_.packets; }
 
  private:
   enum class State { Off, Starting, Running };
@@ -96,6 +111,10 @@ class Netplay {
   void compare(uint32_t frame);
   void onMessage(uint8_t type, const uint8_t* p, uint32_t size);
   void resetRings();
+  Frame preparePackets();
+  void stopPackets();
+  static void packetSend(int flags, const void* buf, size_t len, uint16_t client);
+  static void packetPollReceive();
 
   Config config_;
   std::atomic<bool> stopping_{false};
@@ -113,6 +132,9 @@ class Netplay {
   std::string readyPartner_;
   std::vector<std::pair<std::string, std::string>> messages_;
   std::atomic<bool> announcing_{false};
+  std::string linked_;
+  bool packetsActive_ = false;
+  unsigned long packetsOut_ = 0, packetsIn_ = 0;  // paquets du cœur échangés (journal)
 
   // Partie (boucle principale seulement).
   State state_ = State::Off;

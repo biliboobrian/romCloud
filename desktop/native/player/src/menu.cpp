@@ -119,6 +119,10 @@ static const struct {
     {"netplay_core_differs", "Versions de l'émulateur différentes avec {name} : risque de désynchronisation", "Different emulator versions with {name}: the game may get out of sync"},
     {"netplay_unavailable", "Jeu à plusieurs impossible (réseau)", "Playing together is unavailable (network)"},
     {"netplay_leave", "Arrêter la partie à plusieurs", "Stop playing together"},
+    {"link_started", "Relié à {name}", "Linked with {name}"},
+    {"link_playing", "Relié à {name}", "Linked with {name}"},
+    {"link_ended", "Liaison avec {name} terminée", "Link with {name} ended"},
+    {"link_request", "{name} veut relier sa console à la vôtre", "{name} wants to link their console with yours"},
 };
 
 Menu::Menu(std::string language, std::string title, std::string core)

@@ -75,6 +75,9 @@ struct Session {
   Input* input = nullptr;
   /** Jeu à plusieurs en réseau local : touches des joueurs pendant une image (sinon null). */
   Netplay* netplay = nullptr;
+  /** Liaison entre consoles : paquets du cœur (RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE, gpSP). */
+  bool hasNetpacket = false;
+  retro_netpacket_callback netpacket{};
 };
 
 extern Session g;

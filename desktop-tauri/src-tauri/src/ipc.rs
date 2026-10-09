@@ -105,6 +105,7 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "emulators:list" => launcher::list_emulators(),
         "netplay:peers" => netplay::peers(),
         "netplay:systemAllows" => json!(netplay::system_allows(&arg(a, 0))),
+        "netplay:systemTogether" => netplay::system_together(&arg(a, 0)),
         "emulators:detect" => tokio::task::spawn_blocking(launcher::detect_emulators).await.map_err(|e| AppError::msg(e.to_string()))?,
         "emulators:setPath" => launcher::set_emulator_path(&str_arg(a, 0), &str_arg(a, 1))?,
         "emulators:setArgs" => launcher::set_emulator_args(&str_arg(a, 0), &str_arg(a, 1))?,

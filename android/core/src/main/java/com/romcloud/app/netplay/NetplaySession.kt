@@ -18,7 +18,11 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 
-/** Partie à plusieurs demandée au lancement du jeu : proposée (hôte) ou rejointe (invité, adresse de l'hôte). */
+/**
+ * Partie à plusieurs demandée au lancement du jeu : proposée (hôte) ou rejointe (invité, adresse de
+ * l'hôte). Liaison entre consoles ([NetplayProtocol.HostedGame.link]) : [game] est le jeu de cet
+ * appareil ; [saveCore] : émulateur choisi pour le jeu, dont la sauvegarde est reprise par le cœur de la liaison.
+ */
 @Serializable
 data class NetplayLaunch(
     val host: Boolean,
@@ -26,13 +30,24 @@ data class NetplayLaunch(
     val port: Int = 0,
     val peerName: String = "",
     val game: NetplayProtocol.HostedGame,
-)
+    val saveCore: String? = null,
+) {
+    val link: LinkKind? get() = LinkRules.kind(game.link)
+}
 
-/** Connexion acceptée : remise à l'adaptateur natif (la socket Java est fermée, son descripteur gardé). */
-private fun handOver(socket: Socket, host: Boolean, delay: Int) {
+/**
+ * Connexion acceptée : remise à l'adaptateur natif (la socket Java est fermée, son descripteur gardé),
+ * touches échangées ou, liaison par paquets ([packets]), paquets du cœur. Liaison ouverte par le cœur
+ * lui-même : la connexion ne sert plus.
+ */
+private fun handOver(socket: Socket, host: Boolean, delay: Int, link: LinkKind?) {
+    if (link != null && !link.packets) {
+        socket.close()
+        return
+    }
     val fd = ParcelFileDescriptor.fromSocket(socket).detachFd()
     socket.close()
-    Netplay.start(fd, host, if (host) 0 else 1, delay)
+    Netplay.start(fd, host, if (host) 0 else 1, delay, packets = link != null)
 }
 
 /**
@@ -77,7 +92,10 @@ class NetplayHost(
             val refusal = when {
                 join.v != NetplayProtocol.VERSION -> NetplayProtocol.OTHER_VERSION
                 playing -> NetplayProtocol.BUSY
-                join.fileName != game.fileName || join.size != game.size -> NetplayProtocol.OTHER_GAME
+                // Liaison : chacun son jeu, même liaison (même cœur).
+                game.link != null && join.link == null -> NetplayProtocol.OTHER_VERSION
+                join.link != game.link -> NetplayProtocol.OTHER_GAME
+                game.link == null && (join.fileName != game.fileName || join.size != game.size) -> NetplayProtocol.OTHER_GAME
                 join.core != game.core -> NetplayProtocol.OTHER_CORE
                 else -> null
             }
@@ -93,10 +111,14 @@ class NetplayHost(
                 client.close()
                 return
             }
-            playing = true
             answer(NetplayProtocol.Answer(ok = true, delay = NetplayProtocol.DELAY_FRAMES, coreSize = coreFile.length()))
-            presence.hosting = null
-            handOver(client, host = true, delay = NetplayProtocol.DELAY_FRAMES)
+            // Ad hoc de la PSP : d'autres consoles peuvent encore se joindre (serveur du cœur).
+            val link = LinkRules.kind(game.link)
+            if (link?.multi != true) {
+                playing = true
+                presence.hosting = null
+            }
+            handOver(client, host = true, delay = NetplayProtocol.DELAY_FRAMES, link = link)
             withContext(Dispatchers.Main) { onStarted(join.name) }
         } catch (_: Exception) {
             runCatching { client.close() }
@@ -139,7 +161,7 @@ suspend fun joinNetplay(launch: NetplayLaunch, join: NetplayProtocol.Join): Netp
         )
         if (!answer.ok) throw NetplayRefused(answer.reason, answer.reason ?: "refused")
         socket.soTimeout = 0
-        handOver(socket, host = false, delay = answer.delay)
+        handOver(socket, host = false, delay = answer.delay, link = launch.link)
         answer
     } catch (e: NetplayRefused) {
         runCatching { socket.close() }

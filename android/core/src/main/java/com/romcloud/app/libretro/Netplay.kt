@@ -15,10 +15,11 @@ object Netplay {
 
     /**
      * Commence la partie sur la connexion [fd] (gérée ensuite par l'adaptateur) : [host] (son état
-     * est copié chez l'invité), [localPort] (0 hôte, 1 invité), [delay] (images entre l'appui et son effet).
+     * est copié chez l'invité), [localPort] (0 hôte, 1 invité), [delay] (images entre l'appui et son effet) ;
+     * [packets] : liaison entre consoles, paquets du cœur échangés (interface netpacket).
      */
-    fun start(fd: Int, host: Boolean, localPort: Int, delay: Int) {
-        if (loaded) nativeStart(fd, host, localPort, delay)
+    fun start(fd: Int, host: Boolean, localPort: Int, delay: Int, packets: Boolean = false) {
+        if (loaded) nativeStart(fd, host, localPort, delay, packets)
     }
 
     /** Fin de la partie à plusieurs (chaque appareil continue seul). */
@@ -33,7 +34,7 @@ object Netplay {
         return Status(State.entries.getOrElse(values[0]) { State.OFF }, values[1] != 0, values[2], values[3])
     }
 
-    private external fun nativeStart(fd: Int, host: Boolean, localPort: Int, delay: Int)
+    private external fun nativeStart(fd: Int, host: Boolean, localPort: Int, delay: Int, packets: Boolean)
     private external fun nativeStop()
     private external fun nativeStatus(out: IntArray)
 }

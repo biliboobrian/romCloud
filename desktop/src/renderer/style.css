@@ -282,5 +282,6 @@ body.pad-nav .list-row:focus { outline: none; background: var(--surface); box-sh
 .netplay-btn .pill { position: absolute; top: 2px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
   background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; }
 .multi-badge { display: inline-flex; vertical-align: -3px; color: var(--accent); margin-left: 4px; }
+.multi-badge.link { color: var(--ok); }
 .netplay-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .netplay-list .line { display: flex; align-items: center; gap: 12px; }

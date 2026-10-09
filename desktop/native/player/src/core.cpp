@@ -129,9 +129,17 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
       g.hasDiskControl = false;
       return true;
     }
+    if (cmd == RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE) {
+      g.hasNetpacket = false;
+      return true;
+    }
     if (cmd != RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT) return false;
   }
   switch (cmd) {
+    case RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE:
+      g.netpacket = *static_cast<const retro_netpacket_callback*>(data);
+      g.hasNetpacket = true;
+      return true;
     case RETRO_ENVIRONMENT_GET_CAN_DUPE:
       *static_cast<bool*>(data) = true;
       return true;

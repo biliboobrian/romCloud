@@ -537,4 +537,15 @@
     <string name="netplay_accept">Accept</string>
     <string name="netplay_refuse">Decline</string>
     <string name="netplay_menu_leave">Stop playing together</string>
+    <string name="link_badge">Can link with another device on the local network</string>
+    <string name="link_host">Link consoles on the network</string>
+    <string name="link_join">Link with %1$s (%2$s)</string>
+    <string name="link_join_short">Link</string>
+    <string name="link_hosting_game">Offers a link: %1$s</string>
+    <string name="link_connecting">Linking with %1$s…</string>
+    <string name="link_started">Linked with %1$s</string>
+    <string name="link_ended">Link with %1$s ended.</string>
+    <string name="link_request_title">Link consoles?</string>
+    <string name="link_request_text">%1$s wants to link their console with yours.</string>
+    <string name="link_menu_leave">Unlink</string>
 </resources>

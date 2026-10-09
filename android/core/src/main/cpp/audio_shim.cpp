@@ -18,7 +18,8 @@
 // - format d'image choisi par l'utilisateur (CoreShim, JNI) : proportions annoncées à LibretroDroid
 //   remplacées (géométrie du cœur), y compris en cours de partie ;
 // - jeu à plusieurs en réseau local (Netplay, JNI) : touches échangées image par image avec l'autre
-//   appareil, qui émule le même jeu (section « Jeu à plusieurs » en fin de fichier).
+//   appareil, qui émule le même jeu (section « Jeu à plusieurs » en fin de fichier) ; ou liaison entre
+//   consoles (câble, adaptateur sans fil) : paquets du cœur échangés (interface netpacket de libretro).
 // Pas de bibliothèque C++ (ni STL, ni variable statique locale) : rien d'autre à embarquer.
 
 #include <GLES3/gl3.h>
@@ -101,6 +102,8 @@ static void tap_frame(const void *data, unsigned width, unsigned height, size_t 
 static void np_before_run();
 static void np_after_run();
 static bool np_input(unsigned port, unsigned device, unsigned index, unsigned id, int16_t *value);
+// Liaison entre consoles : interface netpacket déclarée par le cœur (gpSP), gérée ici.
+static bool np_on_netpacket(const void *data);
 static bool mute_local = false;
 static int16_t *silence = nullptr;
 static size_t silence_frames = 0;
@@ -270,7 +273,11 @@ static void apply_aspect() {
     frontend_environment(SET_GEOMETRY, &geometry);
 }
 
+const unsigned SET_NETPACKET_INTERFACE = 78;
+
 static bool on_environment(unsigned cmd, void *data) {
+    // Inconnue de LibretroDroid : la liaison entre consoles passe par l'adaptateur.
+    if (cmd == SET_NETPACKET_INTERFACE) return np_on_netpacket(data);
     if ((cmd == SET_SYSTEM_AV_INFO || cmd == SET_GEOMETRY) && data) {
         // Copie envoyée à LibretroDroid, proportions remplacées par le format choisi
         // (retro_system_av_info commence par sa géométrie).
@@ -604,12 +611,17 @@ EXPORT JNIEXPORT void JNICALL Java_com_romcloud_app_libretro_CoreShim_nativeSetA
 // comparée toutes les NP_CHECK images ; différence : l'invité demande l'état de l'hôte, chargé à
 // l'image où l'hôte l'a pris (l'invité revient en arrière s'il l'a dépassée : touches gardées).
 // Messages : type (1 octet), longueur du contenu (4 octets, gros-boutiste), contenu.
+//
+// Liaison entre consoles (mode « paquets ») : chaque appareil émule sa console, avec son jeu ; le cœur
+// envoie et reçoit ses propres paquets (câble, adaptateur sans fil) par l'interface netpacket de
+// libretro, transmis tels quels sur la connexion (message NP_MSG_PACKET). Hôte : client 0, invité : 1.
 
 struct np_pad {
     uint16_t buttons;   // boutons RetroPad (bit = RETRO_DEVICE_ID_JOYPAD_*)
     int16_t analog[4];  // stick gauche x / y, stick droit x / y
 };
-enum { NP_MSG_INPUT = 1, NP_MSG_STATE = 2, NP_MSG_CHECK = 3, NP_MSG_RESYNC = 4, NP_MSG_BYE = 5 };
+enum { NP_MSG_INPUT = 1, NP_MSG_STATE = 2, NP_MSG_CHECK = 3, NP_MSG_RESYNC = 4, NP_MSG_BYE = 5, NP_MSG_PACKET = 6 };
+enum { NP_MODE_INPUTS = 0, NP_MODE_PACKETS = 1 };
 enum { NP_OFF = 0, NP_STARTING = 1, NP_RUNNING = 2, NP_ENDED = 3 };
 const unsigned NP_RING = 256;      // images de touches gardées (retour en arrière compris)
 const unsigned NP_CHECK = 120;     // contrôle de l'état toutes les 2 s à 60 images/s
@@ -646,6 +658,29 @@ static uint32_t np_mine_frame[NP_CHECKS], np_mine_hash[NP_CHECKS];
 static uint32_t np_host_frame[NP_CHECKS], np_host_hash[NP_CHECKS];
 static uint8_t *np_state_buffer = nullptr;
 static size_t np_state_capacity = 0;
+
+// Liaison entre consoles : interface du cœur (retro_netpacket_callback) et session commencée.
+typedef void (*np_send_t)(int flags, const void *buf, size_t len, uint16_t client_id);
+typedef void (*np_poll_receive_t)();
+struct np_netpacket {
+    void (*start)(uint16_t client_id, np_send_t send, np_poll_receive_t poll_receive);
+    void (*receive)(const void *buf, size_t len, uint16_t client_id);
+    void (*stop)();
+    void (*poll)();
+    bool (*connected)(uint16_t client_id);
+    void (*disconnected)(uint16_t client_id);
+    const char *protocol_version;
+};
+static int np_mode = NP_MODE_INPUTS;
+static np_netpacket np_packets = {};
+static bool np_has_packets = false;
+static bool np_packets_active = false;
+
+static bool np_on_netpacket(const void *data) {
+    np_has_packets = data != nullptr;
+    if (data) np_packets = *static_cast<const np_netpacket *>(data);
+    return true;
+}
 
 static long np_now_ms() {
     timespec t;
@@ -760,6 +795,8 @@ static void np_message(uint8_t type, const uint8_t *p, uint32_t size) {
         np_compare(frame);
     } else if (type == NP_MSG_RESYNC && np_host) {
         np_resync = true;
+    } else if (type == NP_MSG_PACKET && np_packets_active && np_packets.receive) {
+        np_packets.receive(p, size, np_host ? 1 : 0);
     } else if (type == NP_MSG_BYE) {
         np_end();
     }
@@ -839,11 +876,63 @@ static bool np_wait(Ready ready) {
     return true;
 }
 
+// --- Liaison entre consoles (mode « paquets ») ---
+
+/** Paquet du cœur pour l'autre console (une seule : destinataire ignoré). */
+static void np_packet_send(int, const void *buf, size_t len, uint16_t) {
+    if (np_fd < 0 || !buf || !len) return;
+    if (!np_send(NP_MSG_PACKET, buf, len)) np_end();
+}
+
+/** Lecture demandée par le cœur entre deux images (paquets arrivés remis tout de suite). */
+static void np_packet_poll_receive() {
+    if (np_fd >= 0 && !np_pump(0)) np_end();
+}
+
+/** Session terminée (connexion perdue, liaison coupée) : signalée au cœur, hors de ses appels. */
+static void np_packets_stopped() {
+    if (!np_packets_active) return;
+    np_packets_active = false;
+    if (np_host && np_packets.disconnected) np_packets.disconnected(1);
+    if (np_packets.stop) np_packets.stop();
+}
+
+static void np_packets_frame(int state) {
+    if (state == NP_STARTING) {
+        // Cœur sans interface netpacket : pas de liaison possible.
+        if (!np_has_packets || !np_packets.start || !np_packets.receive) {
+            __android_log_print(ANDROID_LOG_WARN, LOG_TAG, "link: the core has no netpacket interface");
+            np_end();
+            return;
+        }
+        np_packets.start(np_host ? 0 : 1, np_packet_send, np_packet_poll_receive);
+        np_packets_active = true;
+        if (np_host && np_packets.connected && !np_packets.connected(1)) {
+            np_end();
+            np_packets_stopped();
+            return;
+        }
+        __atomic_store_n(&np_state, (int)NP_RUNNING, __ATOMIC_RELEASE);
+    }
+    if (!np_pump(0)) np_end();
+    if (__atomic_load_n(&np_state, __ATOMIC_ACQUIRE) != NP_RUNNING) {
+        np_packets_stopped();
+        return;
+    }
+    if (np_packets.poll) np_packets.poll();
+}
+
 static void np_before_run() {
     int state = __atomic_load_n(&np_state, __ATOMIC_ACQUIRE);
+    if (np_packets_active && state != NP_RUNNING) np_packets_stopped();
     if (state == NP_OFF || state == NP_ENDED) return;
     if (__atomic_load_n(&np_stop, __ATOMIC_ACQUIRE)) {
         np_end();
+        np_packets_stopped();
+        return;
+    }
+    if (np_mode == NP_MODE_PACKETS) {
+        np_packets_frame(state);
         return;
     }
     if (state == NP_STARTING) {
@@ -952,9 +1041,10 @@ static bool np_input(unsigned port, unsigned device, unsigned index, unsigned id
 /**
  * Commence la partie à plusieurs sur la connexion [fd] (désormais gérée ici) : [host] (hôte : son état
  * est copié chez l'invité), [localPort] (port du joueur de cet appareil : 0 hôte, 1 invité), [delay]
- * (images entre l'appui et son effet). Pris en compte à la prochaine image.
+ * (images entre l'appui et son effet) ; [packets] : liaison entre consoles (paquets du cœur échangés,
+ * chacun son jeu). Pris en compte à la prochaine image.
  */
-NP_FN(void, nativeStart)(JNIEnv *, jobject, jint fd, jboolean host, jint localPort, jint delay) {
+NP_FN(void, nativeStart)(JNIEnv *, jobject, jint fd, jboolean host, jint localPort, jint delay, jboolean packets) {
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
     np_fd = fd;
@@ -962,6 +1052,7 @@ NP_FN(void, nativeStart)(JNIEnv *, jobject, jint fd, jboolean host, jint localPo
     np_local_port = localPort == 1 ? 1 : 0;
     np_remote_port = 1 - np_local_port;
     np_delay = delay < 1 ? 1 : delay > 30 ? 30 : (unsigned)delay;
+    np_mode = packets ? NP_MODE_PACKETS : NP_MODE_INPUTS;
     np_buffer_length = 0;
     np_has_pending = false;
     np_resync = false;

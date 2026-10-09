@@ -80,6 +80,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.data.Game
+import com.romcloud.app.netplay.Together
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
 
@@ -277,7 +278,7 @@ fun GamesScreen(
                         },
                         topInset = topInset,
                         compact = landscape,
-                        together = { peers.isNotEmpty() && viewModel.canPlayTogether(it) },
+                        together = { if (peers.isNotEmpty()) viewModel.together(it) else null },
                     )
                     state.grid -> LazyVerticalGrid(
                         columns = GridCells.Adaptive(116.dp),
@@ -293,7 +294,7 @@ fun GamesScreen(
                                 status = statusOf(game),
                                 onClick = { onOpenGame(game.id) },
                                 onDetails = { onOpenGame(game.id) },
-                                together = peers.isNotEmpty() && viewModel.canPlayTogether(game),
+                                together = if (peers.isNotEmpty()) viewModel.together(game) else null,
                             )
                         }
                     }
@@ -308,7 +309,7 @@ fun GamesScreen(
                                 onResume = if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
                                     { viewModel.play(activity, game, resume = true)?.let { scope.launch { snackbar.showSnackbar(it) } } }
                                 } else null,
-                                together = peers.isNotEmpty() && viewModel.canPlayTogether(game),
+                                together = if (peers.isNotEmpty()) viewModel.together(game) else null,
                             )
                             HorizontalDivider(Modifier.padding(start = 84.dp), thickness = 0.5.dp)
                         }
@@ -435,7 +436,7 @@ private fun GameRow(
     /** Partie sauvegardée dans l'émulateur intégré : bouton « Reprendre » sur la ligne. */
     onResume: (() -> Unit)? = null,
     /** Jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
-    together: Boolean = false,
+    together: Together? = null,
 ) {
     Row(
         Modifier
@@ -449,7 +450,7 @@ private fun GameRow(
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(game.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                if (together) MultiplayerBadge()
+                together?.let { TogetherBadge(it) }
             }
             val sub = listOfNotNull(game.year, game.genre, partsSummary(game), formatSize(game.fullSize)).joinToString(" · ")
             Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

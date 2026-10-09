@@ -38,11 +38,12 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.romcloud.app.data.Game
+import com.romcloud.app.netplay.Together
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.StorageUsage
 import com.romcloud.app.ui.DownloadIndicator
 import com.romcloud.app.ui.LocalStatus
-import com.romcloud.app.ui.MultiplayerBadge
+import com.romcloud.app.ui.TogetherBadge
 import com.romcloud.app.ui.formatSize
 import com.romcloud.app.ui.pluralString
 import com.romcloud.core.R
@@ -71,7 +72,7 @@ fun TvGameCard(
     /** Élément en bas à droite de la jaquette (ex. logo de la console dans les résultats de recherche). */
     badge: (@Composable () -> Unit)? = null,
     /** Jeu jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
-    together: Boolean = false,
+    together: Together? = null,
 ) {
     Column(modifier) {
         Card(
@@ -124,7 +125,7 @@ fun TvGameCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (together) MultiplayerBadge(Modifier.padding(start = 6.dp, top = 1.dp), size = 20.dp)
+            together?.let { TogetherBadge(it, Modifier.padding(start = 6.dp, top = 1.dp), size = 20.dp) }
         }
     }
 }

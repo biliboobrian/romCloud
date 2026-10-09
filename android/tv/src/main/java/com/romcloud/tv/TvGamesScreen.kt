@@ -56,6 +56,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
+import com.romcloud.app.netplay.Together
 import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.ui.CarouselRow
 import com.romcloud.app.ui.DownloadedGreen
@@ -63,7 +64,7 @@ import com.romcloud.app.ui.GameCriteria
 import com.romcloud.app.ui.GameFilter
 import com.romcloud.app.ui.GamesViewModel
 import com.romcloud.app.ui.LocalStatus
-import com.romcloud.app.ui.MultiplayerBadge
+import com.romcloud.app.ui.TogetherBadge
 import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.PlaytimeLabel
 import com.romcloud.app.ui.RetroArchHelpDialog
@@ -193,7 +194,7 @@ fun TvGamesScreen(
                 coverUrl = featured?.let { mediaUrl(it, "boxart") },
                 status = featured?.let(::statusOf),
                 resumable = featured?.let { it.id in state.resumable } == true,
-                together = featured != null && peers.isNotEmpty() && viewModel.canPlayTogether(featured),
+                together = featured?.takeIf { peers.isNotEmpty() }?.let(viewModel::together),
                 modifier = Modifier.padding(start = 48.dp, end = 48.dp).height(150.dp),
             )
 
@@ -214,7 +215,7 @@ fun TvGamesScreen(
                     },
                     onClick = ::onClick,
                     onDetails = { onOpenGame(it.id) },
-                    together = { peers.isNotEmpty() && viewModel.canPlayTogether(it) },
+                    together = { if (peers.isNotEmpty()) viewModel.together(it) else null },
                     // Appui long sur un jeu avec une partie sauvegardée : reprise directe.
                     onResume = { game ->
                         if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
@@ -314,7 +315,7 @@ fun TvGamesScreen(
 
 /** Zone du haut : jaquette et informations du jeu sélectionné (description à côté de la jaquette). */
 @Composable
-private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, resumable: Boolean, together: Boolean, modifier: Modifier = Modifier) {
+private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, resumable: Boolean, together: Together?, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         if (game == null) return@Row
         if (coverUrl != null) {
@@ -330,7 +331,7 @@ private fun GameHero(game: Game?, coverUrl: String?, status: LocalStatus?, resum
 }
 
 @Composable
-private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean, together: Boolean) {
+private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean, together: Together?) {
     Column(Modifier.fillMaxWidth(0.7f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
@@ -342,7 +343,7 @@ private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean, t
                 modifier = Modifier.weight(1f, fill = false),
             )
             // Jouable à plusieurs avec un appareil du réseau local.
-            if (together) MultiplayerBadge(size = 32.dp)
+            together?.let { TogetherBadge(it, size = 32.dp) }
         }
         Text(
             listOfNotNull(game.year, game.genre, game.players?.let { stringResource(R.string.players_count, it) }, partsSummary(game), formatSize(game.fullSize)).joinToString("  ·  "),
@@ -388,7 +389,7 @@ private fun GameRows(
     /** Appui long : reprend la partie sauvegardée ; faux si le jeu n'en a pas (fiche du jeu à la place). */
     onResume: (Game) -> Boolean,
     /** Jeu jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
-    together: (Game) -> Boolean = { false },
+    together: (Game) -> Together? = { null },
 ) {
     // Positions de défilement (colonne et rangées) sauvegardées par Compose avec l'écran :
     // au retour, on redonne seulement le focus à la carte qui l'avait.

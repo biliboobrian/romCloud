@@ -37,6 +37,8 @@ class CoreOptions {
   void load(const std::string& file);
   /** Valeur par défaut propre au jeu (« clé=valeur »), utilisée sans valeur mémorisée ; non enregistrée. */
   void setGameDefault(const std::string& assignment);
+  /** Valeur imposée (« clé=valeur », liaison entre consoles) : remplace celle choisie ; non enregistrée. */
+  void setForced(const std::string& assignment);
   /** RETRO_ENVIRONMENT_SET_VARIABLES : garde les valeurs mémorisées si elles sont encore valides. */
   void declare(const retro_variable* vars);
   /** RETRO_ENVIRONMENT_SET_CORE_OPTIONS(_INTL) : [local] (facultatif) traduit les libellés. */
@@ -79,6 +81,7 @@ class CoreOptions {
   std::string file_;
   std::map<std::string, std::string> saved_;
   std::map<std::string, std::string> gameDefaults_;
+  std::map<std::string, std::string> forced_;
   std::vector<CoreOption> options_;
   std::vector<std::pair<std::string, std::string>> categories_;  // clé -> titre, ordre du cœur
   bool updated_ = false;

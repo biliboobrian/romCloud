@@ -69,6 +69,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import coil.compose.AsyncImage
+import com.romcloud.app.netplay.Together
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
@@ -191,15 +192,27 @@ fun GameDetailScreen(
                                 Icon(Icons.Filled.Delete, stringResource(R.string.delete_from_device))
                             }
                         }
-                        // Appareil RomCloud sur le réseau local : partie proposée, chacun avec sa manette.
-                        if (viewModel.canPlayTogether(peers)) {
+                        // Appareil RomCloud sur le réseau local : partie proposée, chacun avec sa manette ;
+                        // console portable : liaison proposée (câble, ad hoc), chacun avec son jeu.
+                        viewModel.together(peers)?.let { kind ->
                             OutlinedButton(
                                 onClick = { viewModel.hostNetplay(activity)?.let { scope.launch { snackbar.showSnackbar(it) } } },
                                 modifier = Modifier.fillMaxWidth().height(52.dp),
                             ) {
-                                Icon(Icons.Filled.Groups, null)
+                                Icon(togetherIcon(kind), null)
                                 Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.netplay_play_together))
+                                Text(stringResource(if (kind == Together.LINK) R.string.link_host else R.string.netplay_play_together))
+                            }
+                        }
+                        // Liaison proposée par un autre appareil : ce jeu s'y relie.
+                        viewModel.linkHosts(peers).forEach { peer ->
+                            OutlinedButton(
+                                onClick = { viewModel.joinLink(activity, peer)?.let { scope.launch { snackbar.showSnackbar(it) } } },
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                            ) {
+                                Icon(togetherIcon(Together.LINK), null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.link_join, peer.name, peer.hosting?.title.orEmpty()), maxLines = 1)
                             }
                         }
                         // TV du profil allumée avec RomCloud ouvert : jeu diffusé, le téléphone sert de manette.

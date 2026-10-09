@@ -46,7 +46,10 @@ object NetplayProtocol {
         val hosting: HostedGame? = null,
     )
 
-    /** Jeu d'une partie proposée : identifiant sur le serveur, fichier et cœur (les mêmes chez l'invité). */
+    /**
+     * Jeu d'une partie proposée : identifiant sur le serveur, fichier et cœur (les mêmes chez l'invité) ;
+     * [link] : liaison entre consoles ([LinkKind.id]), l'invité y relie sa console avec son propre jeu.
+     */
     @Serializable
     data class HostedGame(
         val gameId: Long,
@@ -55,9 +58,10 @@ object NetplayProtocol {
         val fileName: String,
         val size: Long,
         val core: String,
+        val link: String? = null,
     )
 
-    /** Demande de l'invité : son jeu (même fichier) et son cœur (même nom ; taille comparée). */
+    /** Demande de l'invité : son jeu (même fichier) et son cœur (même nom ; taille comparée) ; [link] : liaison demandée. */
     @Serializable
     data class Join(
         val v: Int = VERSION,
@@ -67,6 +71,7 @@ object NetplayProtocol {
         val size: Long,
         val core: String,
         val coreSize: Long,
+        val link: String? = null,
     )
 
     /** Réponse de l'hôte ; [coreSize] : taille de son cœur (différente : versions différentes). */
