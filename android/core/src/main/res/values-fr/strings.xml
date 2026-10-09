@@ -127,6 +127,9 @@
     <string name="testing">Test en cours…</string>
     <string name="settings_display">Affichage</string>
     <string name="fullscreen">Plein écran</string>
+    <string name="hide_unidentified">Masquer les jeux non identifiés</string>
+    <string name="hide_unidentified_on">✓ Masquer les jeux non identifiés</string>
+    <string name="hide_unidentified_hint">Les jeux que le serveur n’a pas pu identifier (introuvables dans les bases de jeux, ou pas encore scrapés) n’apparaissent ni dans les listes de jeux ni dans la recherche.</string>
     <string name="fullscreen_hint">Masque la barre d’état et les boutons de navigation. Glissez depuis le bord de l’écran pour les afficher.</string>
     <string name="settings_language">Langue</string>
     <string name="language_system">Système</string>

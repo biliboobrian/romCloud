@@ -104,6 +104,14 @@ class Settings(context: Context) {
         _fullscreen.value = value
     }
 
+    /**
+     * Jeux non identifiés par le serveur (introuvables dans les bases de jeux, ou pas encore
+     * scrapés) absents des listes de jeux et de la recherche.
+     */
+    var hideUnidentified: Boolean
+        get() = prefs.getBoolean("hideUnidentified", false)
+        set(value) = prefs.edit().putBoolean("hideUnidentified", value).apply()
+
     /** Affichage des jeux en cartes (jaquettes) plutôt qu'en liste. */
     var gamesAsGrid: Boolean
         get() = prefs.getBoolean(KEY_GAMES_GRID, false)

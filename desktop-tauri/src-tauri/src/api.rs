@@ -162,6 +162,27 @@ pub async fn systems() -> Result<Value> {
     with_downloaded(load_with_cache("systems.json", "/api/systems").await, index_values("systems")).await
 }
 
+/// Jeu identifié par le scraping du serveur (statut « ok ») ; sans statut (ancien cache), identifié.
+fn identified(game: &Value) -> bool {
+    game.get("scrapeStatus").and_then(Value::as_str).is_none_or(|s| s == "ok")
+}
+
+/// Liste { data, offline } sans les jeux non identifiés (introuvables ou pas encore scrapés) quand [hide].
+fn without_unidentified(mut result: Value, hide: bool) -> Value {
+    if hide {
+        if let Some(list) = result.get_mut("data").and_then(Value::as_array_mut) {
+            list.retain(identified);
+        }
+    }
+    result
+}
+
+/// Réglage « Masquer les jeux non identifiés » appliqué à une liste de jeux.
+fn visible_games(result: Result<Value>) -> Result<Value> {
+    let hide = settings::load().get("hideUnidentified").and_then(Value::as_bool).unwrap_or(false);
+    result.map(|r| without_unidentified(r, hide))
+}
+
 pub async fn games(system_id: &str) -> Result<Value> {
     let load = load_with_cache(
         &format!("games-{}.json", safe_name(system_id)),
@@ -169,7 +190,7 @@ pub async fn games(system_id: &str) -> Result<Value> {
     )
     .await;
     let extra = index_values("games").into_iter().filter(|g| g.get("systemId").and_then(Value::as_str) == Some(system_id)).collect();
-    with_downloaded(load, extra).await
+    visible_games(with_downloaded(load, extra).await)
 }
 
 /// BIOS du système sur le serveur (liste vide si le système n'en a pas ou si le serveur est injoignable).
@@ -186,6 +207,10 @@ pub async fn bios(system: &Value) -> Vec<Value> {
 
 /// Recherche dans tous les systèmes ; hors ligne, dans les listes déjà en cache.
 pub async fn search(query: &str) -> Result<Value> {
+    visible_games(search_all(query).await)
+}
+
+async fn search_all(query: &str) -> Result<Value> {
     match request(&format!("/api/search?q={}", urlencoding::encode(query)), None).await {
         Ok(text) => Ok(json!({ "data": serde_json::from_str::<Value>(&text)?, "offline": false })),
         Err(e) if e.is("errors.unreachable") => {
@@ -224,4 +249,23 @@ pub async fn test(server_url: &str, api_key: &str) -> Result<Value> {
     let info: Value = serde_json::from_str(&request("/api/info", Some((&server, &key))).await?)?;
     request("/api/status", Some((&server, &key))).await?;
     Ok(info)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jeux_non_identifies_masques() {
+        let list = json!({ "data": [
+            { "id": 1, "scrapeStatus": "ok" },
+            { "id": 2, "scrapeStatus": "notfound" },
+            { "id": 3, "scrapeStatus": "none" },
+            { "id": 4, "scrapeStatus": "error" },
+            { "id": 5 },
+        ], "offline": false });
+        let ids = |v: Value| v["data"].as_array().unwrap().iter().map(|g| g["id"].as_i64().unwrap()).collect::<Vec<_>>();
+        assert_eq!(ids(without_unidentified(list.clone(), true)), [1, 5]);
+        assert_eq!(ids(without_unidentified(list, false)), [1, 2, 3, 4, 5]);
+    }
 }

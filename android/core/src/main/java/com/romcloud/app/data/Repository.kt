@@ -22,7 +22,8 @@ private data class DownloadedIndex(
  * Les jeux téléchargés sont aussi notés à part ([rememberDownloaded]) : ils restent listés hors
  * ligne même si la liste de leur système n'a jamais été mise en cache (jeu trouvé par la recherche).
  */
-class Repository(private val api: ApiClient, private val cacheDir: File) {
+/** [hideUnidentified] : réglage « Masquer les jeux non identifiés », appliqué aux listes de jeux et à la recherche. */
+class Repository(private val api: ApiClient, private val cacheDir: File, private val hideUnidentified: () -> Boolean = { false }) {
 
     private val systemsMemory = ConcurrentHashMap<String, GameSystem>()
     private val gamesMemory = ConcurrentHashMap<String, List<Game>>()
@@ -114,8 +115,11 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
             key = { it.id },
         )
         gamesMemory[systemId] = loaded.data
-        return loaded
+        return visible(loaded)
     }
+
+    private fun visible(loaded: Loaded<List<Game>>): Loaded<List<Game>> =
+        if (hideUnidentified()) loaded.copy(data = loaded.data.filter { it.identified }) else loaded
 
     /** BIOS du système sur le serveur (liste vide sans appel réseau si le système n'en a pas). */
     suspend fun bios(system: GameSystem): List<BiosFile> {
@@ -148,7 +152,7 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
      */
     suspend fun search(query: String): Loaded<List<Game>> {
         try {
-            return Loaded(api.json.decodeFromString(gameListSerializer, api.searchRaw(query)), offline = false)
+            return visible(Loaded(api.json.decodeFromString(gameListSerializer, api.searchRaw(query)), offline = false))
         } catch (e: IOException) {
             val words = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
             val cached = withContext(Dispatchers.IO) {
@@ -159,7 +163,7 @@ class Repository(private val api: ApiClient, private val cacheDir: File) {
             val results = cached.distinctBy { it.id }
                 .filter { g -> words.all { w -> g.title.lowercase().contains(w) || g.fileName.lowercase().contains(w) } }
                 .sortedBy { it.title.lowercase() }
-            return Loaded(results, offline = true, error = e.message)
+            return visible(Loaded(results, offline = true, error = e.message))
         }
     }
 

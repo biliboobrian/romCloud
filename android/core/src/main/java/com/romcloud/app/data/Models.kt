@@ -101,7 +101,12 @@ data class Game(
     val hasScreenshot: Boolean = false,
     val addedAt: String = "",
     val updatedAt: String = "",
+    /** Scraping du serveur : ok, none (pas encore scrapé), notfound, error ; absent des anciens caches. */
+    val scrapeStatus: String = "ok",
 ) {
+    /** Jeu identifié par le scraping du serveur (réglage « Masquer les jeux non identifiés »). */
+    val identified: Boolean get() = scrapeStatus == "ok"
+
     val year: String? get() = releaseDate?.take(4)?.takeIf { it.all(Char::isDigit) }
 
     /** Premier genre (« Plateforme, Action » -> « Plateforme »), pour les rangées du carrousel. */
