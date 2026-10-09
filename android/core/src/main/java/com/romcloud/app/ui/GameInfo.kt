@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.RegionText
+import com.romcloud.app.data.starsOf
+import com.romcloud.app.data.starsText
 import com.romcloud.core.R
 
 /** Ligne de la section « Informations » de la fiche d'un jeu ; [url] : lien à ouvrir. */
@@ -34,6 +36,20 @@ fun gameFacts(game: Game): List<GameFact> {
         add(stringResource(R.string.info_release_dates), byRegion(d.releaseDates))
         add(stringResource(R.string.info_regions), d.regions.joinToString(", "))
         add(stringResource(R.string.info_languages), d.languages.joinToString(", "))
+        val press = stringResource(R.string.rating_press)
+        val votes = stringResource(R.string.rating_votes)
+        val sites = stringResource(R.string.rating_sites)
+        add(stringResource(R.string.info_ratings), d.ratings.mapNotNull { r ->
+            val stars = r.rating?.let { starsOf(it) } ?: return@mapNotNull null
+            val name = when (r.source) {
+                "screenscraper" -> "ScreenScraper"
+                "launchbox" -> "LaunchBox"
+                "press" -> press
+                else -> r.source
+            }
+            val count = r.count?.let { (if (r.source == "press") sites else votes).format(it) }
+            listOfNotNull(name, starsText(stars), count?.let { "($it)" }).joinToString(" ")
+        }.joinToString("\n"))
         add(stringResource(R.string.info_series), d.series)
         // Coopération signalée par LaunchBox sans être citée dans les modes de jeu.
         val coop = stringResource(R.string.criteria_players_coop).takeIf { d.cooperative == true && d.modes.none { it.contains("coop", true) } }

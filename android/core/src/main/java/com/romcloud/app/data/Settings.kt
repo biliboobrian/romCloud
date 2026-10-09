@@ -112,6 +112,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("hideUnidentified", false)
         set(value) = prefs.edit().putBoolean("hideUnidentified", value).apply()
 
+    /** Ordre des jeux dans les listes et les rangées : par nom ou par note (les mieux notés d'abord). */
+    var gameOrder: GameOrder
+        get() = runCatching { GameOrder.valueOf(prefs.getString("gameOrder", null) ?: "") }.getOrDefault(GameOrder.NAME)
+        set(value) = prefs.edit().putString("gameOrder", value.name).apply()
+
     /** Affichage des jeux en cartes (jaquettes) plutôt qu'en liste. */
     var gamesAsGrid: Boolean
         get() = prefs.getBoolean(KEY_GAMES_GRID, false)

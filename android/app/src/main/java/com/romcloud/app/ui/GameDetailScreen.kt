@@ -72,6 +72,7 @@ import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
 import com.romcloud.app.data.StreamReceiver
+import com.romcloud.app.data.starsText
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
@@ -134,7 +135,7 @@ fun GameDetailScreen(
                         game.developer?.let { stringResource(R.string.meta_developer, it) },
                         game.publisher?.let { stringResource(R.string.meta_publisher, it) },
                         game.players?.let { stringResource(R.string.meta_players, it) },
-                        game.rating?.let { stringResource(R.string.meta_rating, it) },
+                        game.stars?.let { stringResource(R.string.meta_rating, starsText(it)) },
                     ).forEach {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }

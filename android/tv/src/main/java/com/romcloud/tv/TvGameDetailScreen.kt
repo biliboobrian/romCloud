@@ -59,6 +59,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
+import com.romcloud.app.data.starsText
 import com.romcloud.app.ui.DownloadedGreen
 import com.romcloud.app.ui.GameDetailViewModel
 import com.romcloud.app.ui.RetroArchHelpDialog
@@ -132,7 +133,7 @@ fun TvGameDetailScreen(
                         game.genre,
                         game.developer,
                         game.players?.let { stringResource(R.string.players_count, it) },
-                        game.rating?.let { stringResource(R.string.rating_short, it) },
+                        game.stars?.let { stringResource(R.string.rating_short, starsText(it)) },
                         formatSize(game.size),
                     ).joinToString("  ·  "),
                     style = MaterialTheme.typography.bodyMedium,

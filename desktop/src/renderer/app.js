@@ -1212,6 +1212,22 @@
   }
 
   /** Informations détaillées du jeu (scraping, nom de fichier) : [libellé, valeur, lien ?]. */
+  // Note sur 5 en étoiles entières (« ★★★★☆ »).
+  function starsText(rating) {
+    const n = Math.min(5, Math.max(0, Math.round(Number(rating) || 0)));
+    return '★'.repeat(n) + '☆'.repeat(5 - n);
+  }
+
+  // Notes de chaque source combinées par le serveur (« LaunchBox ★★★★☆ (120 votes) »).
+  function ratingsText(ratings) {
+    const name = { screenscraper: 'ScreenScraper', launchbox: 'LaunchBox', press: t('info.press') };
+    return (ratings || []).filter((r) => r.rating != null).map((r) => [
+      name[r.source] || r.source,
+      starsText(r.rating),
+      r.count && `(${t(r.source === 'press' ? 'info.sites' : 'info.votes', { n: r.count })})`,
+    ].filter(Boolean).join(' ')).join('\n');
+  }
+
   function gameFacts(game) {
     const d = game.details || {};
     const region = (code) => (!code ? null : code.toLowerCase() === 'wor' ? t('info.world') : code.toUpperCase());
@@ -1222,6 +1238,7 @@
       [t('info.releaseDates'), byRegion(d.releaseDates)],
       [t('info.regions'), list(d.regions)],
       [t('info.languages'), list(d.languages)],
+      [t('info.ratings'), ratingsText(d.ratings)],
       [t('info.series'), d.series],
       // Coopération signalée par LaunchBox sans être citée dans les modes de jeu.
       [t('info.modes'), list([...(d.modes || []), ...(d.cooperative && !(d.modes || []).some((m) => /coop/i.test(m)) ? [t('criteria.players.coop')] : [])])],
@@ -1293,7 +1310,7 @@
       game.developer && t('detail.developer', { v: game.developer }),
       game.publisher && t('detail.publisher', { v: game.publisher }),
       game.players && t('detail.players', { v: game.players }),
-      game.rating != null && t('detail.rating', { v: new Intl.NumberFormat(window.I18N.language, { maximumFractionDigits: 1 }).format(game.rating) }),
+      game.rating != null && t('detail.rating', { v: starsText(game.rating) }),
     ].filter(Boolean);
 
     let actions = '';
@@ -1434,6 +1451,9 @@
       <h3>${esc(t('settings.display'))}</h3>
       <label class="check"><input type="checkbox" id="hideUnidentified"${s.hideUnidentified ? ' checked' : ''}> ${esc(t('settings.hideUnidentified'))}</label>
       <p class="muted">${esc(t('settings.hideUnidentifiedHint'))}</p>
+      <label>${esc(t('settings.gameOrder'))}</label>
+      <div class="line">${['name', 'rating'].map((o) => `<button class="chip${(s.gameOrder || 'name') === o ? ' selected' : ''}" data-order="${o}">${esc(t(`settings.order.${o}`))}</button>`).join('')}</div>
+      <p class="muted">${esc(t('settings.gameOrderHint'))}</p>
 
       <h3>${esc(t('settings.storage'))}</h3>
       <label>${esc(t('settings.romsDir'))}<span class="line"><input type="text" id="romsDir" value="${esc(s.romsDir)}"><button class="btn" id="romsBrowse">${esc(t('settings.browse'))}</button></span></label>
@@ -1492,6 +1512,13 @@
       S.settings = await call(rc.settings.save, { hideUnidentified: e.target.checked });
       S.games = { ...S.games, systemId: null, list: [] };
     };
+    for (const el of $$('[data-order]')) {
+      el.onclick = async () => {
+        S.settings = await call(rc.settings.save, { gameOrder: el.dataset.order });
+        S.games = { ...S.games, systemId: null, list: [] };
+        for (const chip of $$('[data-order]')) chip.classList.toggle('selected', chip === el);
+      };
+    }
     $('#romsBrowse').onclick = async () => {
       const dir = await call(rc.dialog.pickFolder);
       if (dir) $('#romsDir').value = dir;

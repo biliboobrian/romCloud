@@ -167,6 +167,8 @@ if (!systemColumns.includes('image')) db.exec('ALTER TABLE systems ADD COLUMN im
 if (!systemColumns.includes('platforms')) db.exec("ALTER TABLE systems ADD COLUMN platforms TEXT NOT NULL DEFAULT '[]'");
 const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
+// Notes en étoiles entières (les versions précédentes gardaient une décimale).
+db.exec('UPDATE games SET rating = MIN(5, MAX(0, ROUND(rating))) WHERE rating IS NOT NULL AND rating <> ROUND(rating)');
 const biosColumns = db.prepare('PRAGMA table_info(bios)').all().map((c) => c.name);
 if (!biosColumns.includes('sha1')) db.exec('ALTER TABLE bios ADD COLUMN sha1 TEXT');
 

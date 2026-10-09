@@ -38,7 +38,7 @@
       && (c.decade == null || decade(g) === c.decade)
       && (!c.players || matchesPlayers(g, c.players))
       && (!c.region || regions(g).includes(c.region))
-      && (c.minRating == null || (g.rating || 0) >= c.minRating)
+      && (c.minRating == null || Math.round(g.rating || 0) >= c.minRating)
       && (!c.publisher || same(mainPublisher(g), c.publisher));
   }
 
@@ -61,7 +61,7 @@
       decade: [...new Set(games.map(decade).filter((d) => d != null))].sort((a, b) => a - b),
       players: PLAYERS.filter((p) => games.some((g) => matchesPlayers(g, p))),
       region: byFrequency(games.flatMap(regions)),
-      minRating: [3, 4].filter((r) => games.some((g) => (g.rating || 0) >= r)),
+      minRating: [3, 4].filter((r) => games.some((g) => Math.round(g.rating || 0) >= r)),
       publisher: byFrequency(games.map(mainPublisher)).slice(0, MAX_PUBLISHERS),
     };
   }

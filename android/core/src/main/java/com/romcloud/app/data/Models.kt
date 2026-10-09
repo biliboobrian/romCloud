@@ -1,6 +1,9 @@
 package com.romcloud.app.data
 
+import androidx.annotation.StringRes
+import com.romcloud.core.R
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToInt
 
 @Serializable
 data class ServerInfo(
@@ -107,6 +110,9 @@ data class Game(
     /** Jeu identifié par le scraping du serveur (réglage « Masquer les jeux non identifiés »). */
     val identified: Boolean get() = scrapeStatus == "ok"
 
+    /** Note en étoiles entières (0 à 5), null sans note. */
+    val stars: Int? get() = rating?.let { starsOf(it) }
+
     val year: String? get() = releaseDate?.take(4)?.takeIf { it.all(Char::isDigit) }
 
     /** Premier genre (« Plateforme, Action » -> « Plateforme »), pour les rangées du carrousel. */
@@ -123,6 +129,25 @@ data class AgeRating(val type: String? = null, val text: String)
 
 @Serializable
 data class GameLink(val label: String, val url: String)
+
+/**
+ * Note d'une source du scraping, en étoiles : [source] screenscraper, launchbox ou press (presse
+ * relevée par Wikidata) ; [count] : votes (LaunchBox) ou sites de presse.
+ */
+@Serializable
+data class SourceRating(val source: String, val rating: Double? = null, val count: Int? = null)
+
+/** Étoiles entières (0 à 5) d'une note sur 5. */
+fun starsOf(rating: Double): Int = rating.roundToInt().coerceIn(0, 5)
+
+/** Étoiles pleines et vides (« ★★★★☆ »). */
+fun starsText(stars: Int): String = stars.coerceIn(0, 5).let { "★".repeat(it) + "☆".repeat(5 - it) }
+
+/** Ordre des jeux dans les listes et les rangées du carrousel. */
+enum class GameOrder(@StringRes val label: Int) {
+    NAME(R.string.order_name),
+    RATING(R.string.order_rating),
+}
 
 /** Informations détaillées du jeu (scraping, nom de fichier No-Intro / Redump). */
 @Serializable
@@ -147,6 +172,8 @@ data class GameDetails(
     val analog: Boolean? = null,
     /** Jeu jouable à plusieurs en coopération (LaunchBox). */
     val cooperative: Boolean? = null,
+    /** Notes de chaque source, combinées par le serveur dans la note du jeu. */
+    val ratings: List<SourceRating> = emptyList(),
     val links: List<GameLink> = emptyList(),
 )
 

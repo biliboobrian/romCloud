@@ -48,6 +48,7 @@ import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.data.GameOrder
 import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
 import com.romcloud.core.R
@@ -68,6 +69,7 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
     var safMode by remember { mutableStateOf(app.settings.retroArchSafMode) }
     var quitOnExit by remember { mutableStateOf(app.settings.retroArchQuitOnExit) }
     var hideUnidentified by remember { mutableStateOf(app.settings.hideUnidentified) }
+    var gameOrder by remember { mutableStateOf(app.settings.gameOrder) }
     val scope = rememberCoroutineScope()
     val firstField = remember { FocusRequester() }
 
@@ -151,6 +153,20 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
         }) { Text(stringResource(if (hideUnidentified) R.string.hide_unidentified_on else R.string.hide_unidentified)) }
         Text(
             stringResource(R.string.hide_unidentified_hint),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(stringResource(R.string.order_games), style = MaterialTheme.typography.titleSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
+            GameOrder.entries.forEach { order ->
+                FilterChip(selected = gameOrder == order, onClick = {
+                    gameOrder = order
+                    app.settings.gameOrder = order
+                }) { Text(stringResource(order.label)) }
+            }
+        }
+        Text(
+            stringResource(R.string.order_games_hint),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

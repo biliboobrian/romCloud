@@ -22,8 +22,16 @@ private data class DownloadedIndex(
  * Les jeux téléchargés sont aussi notés à part ([rememberDownloaded]) : ils restent listés hors
  * ligne même si la liste de leur système n'a jamais été mise en cache (jeu trouvé par la recherche).
  */
-/** [hideUnidentified] : réglage « Masquer les jeux non identifiés », appliqué aux listes de jeux et à la recherche. */
-class Repository(private val api: ApiClient, private val cacheDir: File, private val hideUnidentified: () -> Boolean = { false }) {
+/**
+ * Réglages appliqués aux listes de jeux et à la recherche : [hideUnidentified] (« Masquer les jeux
+ * non identifiés ») et [gameOrder] (par nom ou par note).
+ */
+class Repository(
+    private val api: ApiClient,
+    private val cacheDir: File,
+    private val hideUnidentified: () -> Boolean = { false },
+    private val gameOrder: () -> GameOrder = { GameOrder.NAME },
+) {
 
     private val systemsMemory = ConcurrentHashMap<String, GameSystem>()
     private val gamesMemory = ConcurrentHashMap<String, List<Game>>()
@@ -118,8 +126,10 @@ class Repository(private val api: ApiClient, private val cacheDir: File, private
         return visible(loaded)
     }
 
-    private fun visible(loaded: Loaded<List<Game>>): Loaded<List<Game>> =
-        if (hideUnidentified()) loaded.copy(data = loaded.data.filter { it.identified }) else loaded
+    private fun visible(loaded: Loaded<List<Game>>): Loaded<List<Game>> {
+        val games = if (hideUnidentified()) loaded.data.filter { it.identified } else loaded.data
+        return loaded.copy(data = sortGames(games, gameOrder()))
+    }
 
     /** BIOS du système sur le serveur (liste vide sans appel réseau si le système n'en a pas). */
     suspend fun bios(system: GameSystem): List<BiosFile> {
@@ -177,4 +187,10 @@ class Repository(private val api: ApiClient, private val cacheDir: File, private
     private companion object {
         const val DOWNLOADED = "downloaded.json"
     }
+}
+
+/** Jeux par nom, ou par note (les mieux notés d'abord, sans note à la fin, puis par nom). */
+fun sortGames(games: List<Game>, order: GameOrder): List<Game> = when (order) {
+    GameOrder.NAME -> games.sortedBy { it.title.lowercase() }
+    GameOrder.RATING -> games.sortedWith(compareByDescending<Game> { it.stars ?: -1 }.thenBy { it.title.lowercase() })
 }

@@ -315,6 +315,7 @@ export function launchboxMeta(id, data, names, images, regions) {
     players: playersOf(data.MaxPlayers),
     // Note de la communauté sur 5, seulement si assez de votes pour avoir un sens.
     rating: Number.isFinite(rating) && rating > 0 && Number(data.CommunityRatingCount) >= 3 ? Math.round(rating * 10) / 10 : null,
+    ratingVotes: Number(data.CommunityRatingCount) || null,
     media: {
       boxart: pickImage(images, 'Box - Front', regions) || pickImage(images, 'Screenshot - Game Title', regions),
       screenshot: pickImage(images, 'Screenshot - Gameplay', regions) || pickImage(images, 'Screenshot - Game Title', regions),
