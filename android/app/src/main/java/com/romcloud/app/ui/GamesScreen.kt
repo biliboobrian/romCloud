@@ -277,6 +277,7 @@ fun GamesScreen(
                         },
                         topInset = topInset,
                         compact = landscape,
+                        together = { peers.isNotEmpty() && viewModel.canPlayTogether(it) },
                     )
                     state.grid -> LazyVerticalGrid(
                         columns = GridCells.Adaptive(116.dp),
@@ -292,6 +293,7 @@ fun GamesScreen(
                                 status = statusOf(game),
                                 onClick = { onOpenGame(game.id) },
                                 onDetails = { onOpenGame(game.id) },
+                                together = peers.isNotEmpty() && viewModel.canPlayTogether(game),
                             )
                         }
                     }

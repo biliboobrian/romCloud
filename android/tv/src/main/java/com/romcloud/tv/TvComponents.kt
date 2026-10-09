@@ -42,6 +42,7 @@ import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.StorageUsage
 import com.romcloud.app.ui.DownloadIndicator
 import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.MultiplayerBadge
 import com.romcloud.app.ui.formatSize
 import com.romcloud.app.ui.pluralString
 import com.romcloud.core.R
@@ -69,6 +70,8 @@ fun TvGameCard(
     modifier: Modifier = Modifier,
     /** Élément en bas à droite de la jaquette (ex. logo de la console dans les résultats de recherche). */
     badge: (@Composable () -> Unit)? = null,
+    /** Jeu jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
+    together: Boolean = false,
 ) {
     Column(modifier) {
         Card(
@@ -112,14 +115,17 @@ fun TvGameCard(
                 }
             }
         }
-        Text(
-            game.title,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 2,
-            minLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp, start = 2.dp, end = 2.dp),
-        )
+        Row(Modifier.padding(top = 8.dp, start = 2.dp, end = 2.dp)) {
+            Text(
+                game.title,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 2,
+                minLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (together) MultiplayerBadge(Modifier.padding(start = 6.dp, top = 1.dp), size = 20.dp)
+        }
     }
 }
 

@@ -75,6 +75,8 @@ fun GamesCarousel(
     topInset: Dp = 0.dp,
     /** Paysage : bannière réduite pour remonter les rangées. */
     compact: Boolean = false,
+    /** Jeu jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
+    together: (Game) -> Boolean = { false },
 ) {
     val labels = RowLabels(
         downloaded = stringResource(R.string.row_downloaded),
@@ -102,6 +104,7 @@ fun GamesCarousel(
                 onDetails = { onDetails(game) },
                 topInset = topInset,
                 compact = compact,
+                together = together(game),
             )
         }
         // Rangée ajoutée en tête (premier jeu téléchargé du système) : la liste, gardée par Compose
@@ -133,6 +136,7 @@ fun GamesCarousel(
                                 onClick = { selectedId = game.id },
                                 onDetails = { onDetails(game) },
                                 selected = game.id == featured?.id,
+                                together = together(game),
                                 modifier = Modifier.width(118.dp),
                             )
                         }
@@ -156,6 +160,7 @@ private fun HeroBanner(
     onDetails: () -> Unit,
     topInset: Dp,
     compact: Boolean,
+    together: Boolean = false,
 ) {
     val background = MaterialTheme.colorScheme.background
     // Hauteur de la bannière = celle de son contenu : la jaquette suit directement les filtres,
@@ -207,10 +212,14 @@ private fun HeroBanner(
                 Spacer(Modifier.width(14.dp))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    game.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                    maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        game.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                        maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (together) MultiplayerBadge(size = 24.dp)
+                }
                 val meta = listOfNotNull(game.year, game.mainGenre, partsSummary(game), formatSize(game.fullSize)).joinToString(" · ")
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 PlaytimeLabel(gamePlaytime(game.id))
@@ -299,6 +308,8 @@ fun GameCard(
     badge: (@Composable () -> Unit)? = null,
     /** Jeu affiché dans la bannière du carrousel : jaquette encadrée. */
     selected: Boolean = false,
+    /** Jeu jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
+    together: Boolean = false,
 ) {
     Column(
         modifier
@@ -352,14 +363,17 @@ fun GameCard(
                 )
             }
         }
-        Text(
-            game.title,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 2,
-            minLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp, start = 2.dp, end = 2.dp),
-        )
+        Row(Modifier.padding(top = 6.dp, start = 2.dp, end = 2.dp)) {
+            Text(
+                game.title,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 2,
+                minLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (together) MultiplayerBadge(Modifier.padding(start = 4.dp, top = 1.dp), size = 16.dp)
+        }
         Text(
             listOfNotNull(game.year, formatSize(game.fullSize)).joinToString(" · "),
             style = MaterialTheme.typography.labelSmall,

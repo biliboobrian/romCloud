@@ -214,6 +214,7 @@ fun TvGamesScreen(
                     },
                     onClick = ::onClick,
                     onDetails = { onOpenGame(it.id) },
+                    together = { peers.isNotEmpty() && viewModel.canPlayTogether(it) },
                     // Appui long sur un jeu avec une partie sauvegardée : reprise directe.
                     onResume = { game ->
                         if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
@@ -386,6 +387,8 @@ private fun GameRows(
     onDetails: (Game) -> Unit,
     /** Appui long : reprend la partie sauvegardée ; faux si le jeu n'en a pas (fiche du jeu à la place). */
     onResume: (Game) -> Boolean,
+    /** Jeu jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
+    together: (Game) -> Boolean = { false },
 ) {
     // Positions de défilement (colonne et rangées) sauvegardées par Compose avec l'écran :
     // au retour, on redonne seulement le focus à la carte qui l'avait.
@@ -437,6 +440,7 @@ private fun GameRows(
                             onClick = { onDetails(game) },
                             onLongClick = { if (!onResume(game)) onDetails(game) },
                             onFocused = { onFocused(row.title, game) },
+                            together = together(game),
                             modifier = Modifier
                                 .width(PosterWidth)
                                 .then(if (isTarget) Modifier.focusRequester(restore) else Modifier),
