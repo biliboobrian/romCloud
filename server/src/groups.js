@@ -6,13 +6,19 @@
 //  - disques : « (Disc 2) », « (Disk 2 of 3) », « (CD2) », « - Disc 2 »… -> rattachés au disque
 //    de plus petit numéro du même nom ;
 //  - mises à jour et DLC : « [UPD] », « (Update v1.2) », « [DLC] », « (Add-On) »… ; identifiant Wii U
-//    (0005000E… mise à jour, 0005000C… DLC du jeu 00050000…) ; paquet PS3 / PSP / Vita (.pkg) portant
-//    le numéro de série d'un autre fichier ; sinon le jeu dont le titre commence le titre du DLC.
+//    (0005000E… mise à jour, 0005000C… DLC du jeu 00050000…) ; sinon le jeu dont le titre commence
+//    le titre du DLC ;
+//  - paquets Sony (.pkg : PS Vita, PS3, PSP) : type de contenu lu dans l'en-tête du paquet (jeu, patch,
+//    DLC), à défaut d'après l'identifiant de contenu (« EP0001-PCSB00598_00-DLC0100000000000 »,
+//    « …_patch_01.02 ») ; rattachés au jeu du même numéro de série (PCSB00598).
 // Un rattachement ou un détachement fait dans l'interface web (group_mode = 'manual') n'est plus
 // modifié par le regroupement automatique.
+import fs from 'node:fs';
+import path from 'node:path';
 import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
 import { titleFromFileName } from './library.js';
+import { requireSystem, systemDir } from './systems.js';
 
 export const PART_KINDS = ['disc', 'update', 'dlc'];
 
@@ -28,21 +34,99 @@ const WIIU_ID_RE = /\b0005000([0CE])([0-9A-F]{8})\b/i;
 // Numéro de série Sony (« BLUS30443 », « BLES-01234 »), aussi au milieu d'un identifiant de contenu
 // (« UP0001-BLUS30443_00-… »).
 const SERIAL_RE = /(?:^|[^A-Z0-9])([A-Z]{4})[-_]?(\d{5})(?![0-9])/;
+// Identifiant de contenu Sony (nommage NoPayStation) : région et éditeur, numéro de série, libellé
+// de 16 caractères, « _patch_01.02 » pour un patch.
+const CONTENT_ID_RE = /^[A-Z]{2}\d{4}-([A-Z]{4}\d{5})_\d{2}-([A-Z0-9]{16})(_patch_[\d.]+)?$/i;
+// Types de contenu des paquets Sony (métadonnée 2 de l'en-tête).
+const PKG_GAME_DATA = 0x4; // PS3 : données de jeu (DLC ou patch)
+const PKG_GAME_EXEC = 0x5; // PS3 : jeu
+const PKG_VITA_APP = 0x15; // PS Vita : jeu ou patch (drapeau 0x10)
+const PKG_VITA_DLC = 0x16; // PS Vita : DLC
+
+/** En-tête d'un paquet Sony : { type (type de contenu), patch } ; null si ce n'est pas un .pkg lisible. */
+export function parsePkgHeader(buffer) {
+  if (buffer.length < 16 || buffer.readUInt32BE(0) !== 0x7f504b47) return null;
+  let offset = buffer.readUInt32BE(8);
+  const count = buffer.readUInt32BE(12);
+  let type = null;
+  let flags = 0;
+  for (let i = 0; i < count && offset + 8 <= buffer.length; i++) {
+    const id = buffer.readUInt32BE(offset);
+    const size = buffer.readUInt32BE(offset + 4);
+    if (offset + 8 + size > buffer.length) break;
+    if (id === 2 && size >= 4) type = buffer.readUInt32BE(offset + 8);
+    if (id === 3 && size >= 4) flags = buffer.readUInt32BE(offset + 8);
+    offset += 8 + size;
+  }
+  return type === null ? null : { type, patch: (flags & 0x10) !== 0 };
+}
+
+// En-têtes déjà lus : chemin -> { key (taille et date), header }.
+const pkgCache = new Map();
+
+/** En-tête du paquet [file] (4 premiers Ko), mémorisé tant que sa taille et sa date ne changent pas. */
+export function pkgHeader(file, size, mtime) {
+  const key = `${size}:${mtime}`;
+  const cached = pkgCache.get(file);
+  if (cached?.key === key) return cached.header;
+  let header = null;
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const buffer = Buffer.alloc(4096);
+      header = parsePkgHeader(buffer.subarray(0, fs.readSync(fd, buffer, 0, buffer.length, 0)));
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    header = null;
+  }
+  pkgCache.set(file, { key, header });
+  return header;
+}
+
+/**
+ * Partie d'un paquet Sony : 'update', 'dlc', null (jeu) d'après l'en-tête [pkg] s'il est lu, sinon
+ * d'après l'identifiant de contenu ; undefined si rien ne permet de le dire.
+ */
+function pkgKind(name, pkg) {
+  const contentId = CONTENT_ID_RE.exec(name);
+  const patchName = Boolean(contentId?.[3]) || /[_\s-]patch(?:[_\s-]|$)/i.test(name);
+  switch (pkg?.type) {
+    case PKG_VITA_DLC:
+      return 'dlc';
+    case PKG_VITA_APP:
+      return pkg.patch || patchName ? 'update' : null;
+    case PKG_GAME_DATA:
+      return patchName || UPDATE_RE.test(name) ? 'update' : 'dlc';
+    case PKG_GAME_EXEC:
+      return null;
+    default:
+      break;
+  }
+  if (contentId) return patchName ? 'update' : /DLC|ADDCONT/i.test(contentId[2]) ? 'dlc' : null;
+  return undefined;
+}
 
 const base = (fileName) => fileName.replace(/\.[^.]+$/, '');
 const extension = (fileName) => (/\.([^.]+)$/.exec(fileName)?.[1] || '').toLowerCase();
 const normalize = (text) => text.toLowerCase().replace(/[\s._-]+/g, ' ').trim();
 
 /**
- * Partie d'un jeu d'après son nom de fichier :
+ * Partie d'un jeu d'après son nom de fichier (et l'en-tête [pkg] d'un paquet Sony) :
  * { kind: 'disc', index, key } (key : nom sans le numéro de disque), { kind: 'update' | 'dlc', … }
  * avec les clés de rattachement trouvées (wiiu, serial, title), ou null pour un jeu ordinaire.
  */
-export function partInfo(fileName) {
+export function partInfo(fileName, pkg = null) {
   const name = base(fileName);
   const wiiu = WIIU_ID_RE.exec(name);
   if (wiiu && wiiu[1] !== '0') {
     return { kind: wiiu[1].toUpperCase() === 'E' ? 'update' : 'dlc', wiiu: wiiu[2].toLowerCase(), code: productCode(name), title: dlcTitle(name) };
+  }
+  if (extension(fileName) === 'pkg') {
+    const kind = pkgKind(name, pkg);
+    if (kind === null) return null;
+    if (kind) return { kind, serial: serialOf(name), title: null };
   }
   const update = UPDATE_RE.test(name);
   const dlc = !update && DLC_RE.test(name);
@@ -92,7 +176,7 @@ function serialOf(name) {
 }
 
 /**
- * Regroupement automatique d'une liste de fichiers [{ id, fileName, manual }] : renvoie, pour chaque
+ * Regroupement automatique d'une liste de fichiers [{ id, fileName, manual, pkg }] : renvoie, pour chaque
  * fichier non manuel, { parentId, kind, index } (parentId null : jeu à part entière). Les fichiers
  * manuels ne sont pas modifiés mais peuvent recevoir des parties s'ils ne sont pas eux-mêmes rattachés
  * ([manualParentId] : leur rattachement).
@@ -101,14 +185,14 @@ export function autoGroups(files) {
   const result = new Map();
   const auto = files.filter((f) => !f.manual);
   for (const f of auto) result.set(f.id, { parentId: null, kind: null, index: null });
-  const infos = new Map(auto.map((f) => [f.id, partInfo(f.fileName)]));
+  const infos = new Map(auto.map((f) => [f.id, partInfo(f.fileName, f.pkg)]));
 
   // Disques : même nom sans le numéro, au moins deux fichiers ; le plus petit numéro est le jeu.
   // Un jeu réglé à la main (non rattaché) peut recevoir les autres disques, mais n'est pas déplacé.
   const discs = new Map();
   for (const f of files) {
     if (f.manual && f.manualParentId != null) continue;
-    const info = f.manual ? partInfo(f.fileName) : infos.get(f.id);
+    const info = f.manual ? partInfo(f.fileName, f.pkg) : infos.get(f.id);
     if (info?.kind === 'disc') discs.set(info.key, [...(discs.get(info.key) || []), { ...f, index: info.index }]);
   }
   for (const group of discs.values()) {
@@ -148,9 +232,16 @@ export function autoGroups(files) {
 
 /** Applique le regroupement automatique aux fichiers d'un système. */
 export function groupSystem(systemId) {
-  const rows = db.prepare('SELECT id, file_name, parent_id, group_mode FROM games WHERE system_id = ?').all(systemId);
+  const dir = systemDir(requireSystem(systemId));
+  const rows = db.prepare('SELECT id, file_name, size, mtime, parent_id, group_mode FROM games WHERE system_id = ?').all(systemId);
   const groups = autoGroups(
-    rows.map((r) => ({ id: r.id, fileName: r.file_name, manual: r.group_mode === 'manual', manualParentId: r.parent_id })),
+    rows.map((r) => ({
+      id: r.id,
+      fileName: r.file_name,
+      manual: r.group_mode === 'manual',
+      manualParentId: r.parent_id,
+      pkg: extension(r.file_name) === 'pkg' ? pkgHeader(path.join(dir, r.file_name), r.size, r.mtime) : null,
+    })),
   );
   const current = new Map(rows.map((r) => [r.id, r]));
   const update = db.prepare('UPDATE games SET parent_id = ?, part_kind = ?, part_index = ? WHERE id = ?');
