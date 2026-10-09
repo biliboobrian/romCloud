@@ -1,5 +1,6 @@
 package com.romcloud.app.ui
 
+import com.romcloud.app.netplay.LinkKind
 import com.romcloud.app.netplay.LinkRules
 import com.romcloud.app.netplay.NetplayRules
 import com.romcloud.app.netplay.Together
@@ -334,7 +335,6 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
     fun together(game: Game): Together? {
         val system = _state.value.system ?: return null
         if (LinkRules.kind(system) == null && !NetplayRules.systemAllows(system)) return null
-        if (NetplayRules.maxPlayers(game.players) < 2) return null
         return NetplayRules.together(system, game, app.launcher.selectedPlayer(system, game.fileName))
     }
 
@@ -606,6 +606,8 @@ class GameDetailViewModel(
         val s = _state.value
         val kind = s.system?.let(LinkRules::kind) ?: return emptyList()
         if (!s.downloaded) return emptyList()
+        val game = s.game ?: return emptyList()
+        if (kind == LinkKind.GBA_LINK && !LinkRules.gbaLinkGame(game.title, game.fileName)) return emptyList()
         return peers.filter { LinkRules.kind(it.hosting?.link) == kind }
     }
 

@@ -1062,8 +1062,23 @@
    */
   const together = (game) => {
     const kind = S.netplayAllowed[game.systemId];
-    return S.peers.length > 0 && (kind === 'netplay' || kind === 'link') && maxPlayers(game.players) >= 2 ? kind : null;
+    if (!S.peers.length || (kind !== 'netplay' && kind !== 'link')) return null;
+    // GBA : seulement les jeux que gpSP sait relier, même annoncés à un joueur (échanges Pokémon).
+    if (kind === 'link' && LINK_OF[String(game.systemId).toLowerCase()] === 'gba') return gbaLinkGame(game) ? kind : null;
+    return maxPlayers(game.players) >= 2 ? kind : null;
   };
+
+  /**
+   * Jeux GBA que gpSP sait relier (sa liste, gba_over.h ; même règle que LinkRules.kt) : câble de
+   * Pokémon Rubis / Saphir et d'Advance Wars, adaptateur sans fil des autres. Ailleurs, le mode à
+   * plusieurs du jeu attend une console qui ne répond jamais (écran noir).
+   */
+  const GBA_LINK_GAMES = new RegExp('pokemon.*(ruby|rubis|rubin|rubi|rubino|sapphire|saphir|zafiro|zaffiro|emerald|emeraude|smaragd|esmeralda|smeraldo|'
+    + 'fire ?red|rouge feu|feuerrot|rojo fuego|rosso fuoco|leaf ?green|vert feuille|blattgrun|verde hoja|verde foglia)'
+    + "|advance wars|mario golf|mario (power )?tennis|battle network [56]|rockman exe [56]|digimon racing|buu'?s fury"
+    + '|narnia|shrek super slam|third age|tiers age|hamtaro|hamutaro|chailien');
+  const plain = (text) => String(text || '').normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase();
+  const gbaLinkGame = (game) => GBA_LINK_GAMES.test(plain(game.title)) || GBA_LINK_GAMES.test(plain(game.fileName));
 
   const multiBadge = (game) => {
     const kind = together(game);
@@ -1074,8 +1089,9 @@
 
   /** Appareils qui proposent une liaison de la console de [system] (même type de liaison). */
   const LINK_OF = { gb: 'gb', gbc: 'gb', gbcolor: 'gb', gba: 'gba', psp: 'psp' };
-  const linkHosts = (system) => {
+  const linkHosts = (system, game) => {
     const kind = LINK_OF[String(system.id).toLowerCase()] || LINK_OF[String(system.shortname || '').toLowerCase()];
+    if (kind === 'gba' && !gbaLinkGame(game)) return [];
     return kind ? S.peers.filter((p) => p.hosting?.link === kind) : [];
   };
 
@@ -1497,7 +1513,7 @@
       actions = `${resumable ? `<button class="btn primary big" id="resumeBtn">${icon('play')} ${esc(t('action.resume'))}</button>` : ''}
         <button class="btn ${resumable ? '' : 'primary '}big" id="playBtn">${icon(resumable ? 'refresh' : 'play')} ${esc(t('action.play'))}</button>
         ${together(game) ? `<button class="btn big" id="netplayHostBtn">${icon(together(game) === 'link' ? 'link' : 'group')} ${esc(t(together(game) === 'link' ? 'link.host' : 'netplay.playTogether'))}</button>` : ''}
-        ${linkHosts(system).map((p) => `<button class="btn big" data-link-join="${esc(p.id)}">${icon('link')} ${esc(t('link.join', { name: p.name, title: p.hosting.title }))}</button>`).join('')}
+        ${linkHosts(system, game).map((p) => `<button class="btn big" data-link-join="${esc(p.id)}">${icon('link')} ${esc(t('link.join', { name: p.name, title: p.hosting.title }))}</button>`).join('')}
         <button class="btn" id="folderBtn">${icon('folder', 18)} ${esc(t('detail.showInFolder'))}</button>
         <button class="btn danger" id="deleteBtn">${icon('trash', 18)} ${esc(t('detail.delete'))}</button>`;
     } else {

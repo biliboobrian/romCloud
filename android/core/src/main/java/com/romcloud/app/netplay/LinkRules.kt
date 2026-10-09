@@ -45,9 +45,35 @@ object LinkRules {
 
     fun kind(id: String?): LinkKind? = LinkKind.entries.find { it.id == id }
 
-    /** Jeu à plusieurs d'une console qui se relie à une autre. */
-    fun canLink(system: GameSystem, game: Game): Boolean =
-        kind(system) != null && NetplayRules.maxPlayers(game.players) >= 2
+    /**
+     * Jeux GBA que gpSP sait relier (sa liste, gba_over.h) : câble de Pokémon Rubis / Saphir et
+     * d'Advance Wars, adaptateur sans fil des autres. Ailleurs, le mode à plusieurs du jeu attend une
+     * console qui ne répond jamais (écran noir) : pas de liaison proposée.
+     */
+    private val GBA_LINK_GAMES = Regex(
+        "pokemon.*(ruby|rubis|rubin|rubi|rubino|sapphire|saphir|zafiro|zaffiro|emerald|emeraude|smaragd|esmeralda|smeraldo|" +
+            "fire ?red|rouge feu|feuerrot|rojo fuego|rosso fuoco|leaf ?green|vert feuille|blattgrun|verde hoja|verde foglia)" +
+            "|advance wars|mario golf|mario (power )?tennis|battle network [56]|rockman exe [56]|digimon racing|buu'?s fury" +
+            "|narnia|shrek super slam|third age|tiers age|hamtaro|hamutaro|chailien",
+    )
+
+    /** Titre ou nom de fichier sans accents, en minuscules (« Pokémon Émeraude » -> « pokemon emeraude »). */
+    private fun plain(text: String): String =
+        java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").lowercase()
+
+    /** Jeu GBA que gpSP sait relier (voir [GBA_LINK_GAMES]). */
+    fun gbaLinkGame(title: String, fileName: String): Boolean =
+        GBA_LINK_GAMES.containsMatchIn(plain(title)) || GBA_LINK_GAMES.containsMatchIn(plain(fileName))
+
+    /**
+     * Jeu qui se relie : jeu à plusieurs d'une console qui se relie à une autre ; GBA : jeux que gpSP
+     * sait relier, quel que soit le nombre de joueurs annoncé (échanges Pokémon : un joueur par console).
+     */
+    fun canLink(system: GameSystem, game: Game): Boolean = when (kind(system)) {
+        null -> false
+        LinkKind.GBA_LINK -> gbaLinkGame(game.title, game.fileName)
+        else -> NetplayRules.maxPlayers(game.players) >= 2
+    }
 
     /**
      * Options du cœur pour la liaison : [host] (serveur) ou invité relié à [hostAddress] ; [deviceId] :
