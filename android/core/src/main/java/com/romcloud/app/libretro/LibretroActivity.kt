@@ -44,6 +44,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -93,10 +94,17 @@ import com.romcloud.app.stream.StreamTap
 import com.romcloud.app.ui.CastDialog
 import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
+import com.romcloud.app.netplay.LanPresence
+import com.romcloud.app.netplay.NetplayHost
+import com.romcloud.app.netplay.NetplayLaunch
+import com.romcloud.app.netplay.NetplayProtocol
+import com.romcloud.app.netplay.NetplayRefused
+import com.romcloud.app.netplay.joinNetplay
 import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.libretrodroid.GLRetroViewData
 import com.swordfish.libretrodroid.Variable
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -146,6 +154,21 @@ class LibretroActivity : ComponentActivity() {
     }
     private var streamSender: StreamSender? = null
     private var streamingTo by mutableStateOf<String?>(null)
+
+    /** Partie à plusieurs en réseau local demandée au lancement : proposée (hôte) ou rejointe (invité). */
+    private val netplayLaunch by lazy {
+        intent.getStringExtra(EXTRA_NETPLAY)?.let { runCatching { NetplayProtocol.json.decodeFromString(NetplayLaunch.serializer(), it) }.getOrNull() }
+    }
+    private var netplayHost: NetplayHost? = null
+    /** Nom de l'autre joueur (partie en cours), demande d'un invité à accepter, attente de ses touches. */
+    private var netplayPartner by mutableStateOf<String?>(null)
+    private var netplayRequest by mutableStateOf<Pair<NetplayProtocol.Join, CompletableDeferred<Boolean>>?>(null)
+    private var netplayWaiting by mutableStateOf(false)
+    /** Partie proposée, en attente d'un invité (hôte). */
+    private var netplayOpen by mutableStateOf(false)
+
+    /** Port des touches de cet appareil : en partie à plusieurs, un seul joueur local (port 0, placé par l'adaptateur). */
+    private fun localPort(port: Int) = if (netplayLaunch != null) 0 else port
 
     private val gamepadMappings by lazy { GamepadMappings(this, systemId) }
     /** Boutons RetroPad enfoncés par joueur, et ceux enfoncés par une gâchette analogique. */
@@ -325,8 +348,10 @@ class LibretroActivity : ComponentActivity() {
                     gameReady = true
                     startPlayClock()
                     selectControllers(view)
-                    if (resume) resumeGame()
+                    // Invité : l'état de l'hôte remplace la partie reprise.
+                    if (resume && netplayLaunch?.host != false) resumeGame()
                     streamTarget?.let { startStreaming(view, it) }
+                    netplayLaunch?.let { startNetplay(it, coreFile) }
                 }
             }
         }
@@ -354,7 +379,9 @@ class LibretroActivity : ComponentActivity() {
         val streaming = streamTarget != null
         if (streaming) StreamTap.load()
         val aspect = aspectRatio != AspectRatio.ORIGINAL
-        if (!streaming && !aspect && core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES && core !in INPUT_MASK_CORES) return coreFile.absolutePath
+        // Partie à plusieurs : touches échangées par l'adaptateur.
+        val netplay = netplayLaunch != null
+        if (!streaming && !aspect && !netplay && core !in SAMPLE_AUDIO_CORES && core !in BLIT_CORES && core !in INPUT_MASK_CORES) return coreFile.absolutePath
         throughShim = CoreShim.load()
         applyAspectRatio()
         Os.setenv("ROMCLOUD_SHIM_CORE", coreFile.absolutePath, true)
@@ -433,6 +460,8 @@ class LibretroActivity : ComponentActivity() {
         saveSram()
         if (isFinishing) {
             stopStreaming()
+            netplayHost?.stop()
+            Netplay.stop()
             CrashReports.endSession(this)
             // Processus de jeu arrêté juste après : temps de jeu et sauvegardes mis en file,
             // envoyés au serveur par l'application au retour.
@@ -476,6 +505,89 @@ class LibretroActivity : ComponentActivity() {
                 }
             }
         }.also { it.start() }
+    }
+
+    // ---- Jeu à plusieurs en réseau local (touches échangées par l'adaptateur natif) ----
+
+    private fun startNetplay(launch: NetplayLaunch, coreFile: File) {
+        if (!throughShim) {
+            toastMillis = ERROR_TOAST_MS
+            toast = getString(R.string.netplay_unavailable)
+            return
+        }
+        val app = application as RomCloudApp
+        if (launch.host) {
+            val presence = LanPresence(this, account.deviceName, app.api.platform)
+            netplayHost = NetplayHost(
+                presence, launch.game, coreFile,
+                ask = { join ->
+                    val answer = CompletableDeferred<Boolean>()
+                    netplayRequest = join to answer
+                    try {
+                        answer.await()
+                    } finally {
+                        netplayRequest = null
+                    }
+                },
+                onStarted = { name ->
+                    netplayOpen = false
+                    netplayPartner = name
+                    toast = getString(R.string.netplay_started, name)
+                },
+            ).also { it.start(lifecycleScope) }
+            netplayOpen = true
+        } else {
+            toast = getString(R.string.netplay_connecting, launch.peerName)
+            lifecycleScope.launch {
+                try {
+                    val join = NetplayProtocol.Join(
+                        name = account.deviceName, platform = app.api.platform,
+                        fileName = launch.game.fileName, size = launch.game.size, core = core, coreSize = coreFile.length(),
+                    )
+                    val answer = joinNetplay(launch, join)
+                    netplayPartner = launch.peerName
+                    val sameCore = answer.coreSize <= 0 || answer.coreSize == coreFile.length()
+                    toast = getString(if (sameCore) R.string.netplay_started else R.string.netplay_core_differs, launch.peerName)
+                } catch (e: NetplayRefused) {
+                    toastMillis = ERROR_TOAST_MS
+                    toast = when (e.reason) {
+                        NetplayProtocol.REFUSED -> getString(R.string.netplay_refused, launch.peerName)
+                        NetplayProtocol.BUSY -> getString(R.string.netplay_busy, launch.peerName)
+                        NetplayProtocol.OTHER_GAME, NetplayProtocol.OTHER_CORE -> getString(R.string.netplay_other_game)
+                        NetplayProtocol.OTHER_VERSION -> getString(R.string.netplay_other_version)
+                        else -> getString(R.string.netplay_unreachable, launch.peerName, e.message.orEmpty())
+                    }
+                }
+            }
+        }
+        // Suivi de la partie : attente des touches de l'autre joueur, fin de la partie.
+        lifecycleScope.launch {
+            while (true) {
+                val status = Netplay.status()
+                netplayWaiting = status.waiting && netplayPartner != null && !menuOpen
+                if (status.state == Netplay.State.ENDED && netplayPartner != null) {
+                    toastMillis = ERROR_TOAST_MS
+                    toast = getString(R.string.netplay_ended, netplayPartner.orEmpty())
+                    netplayPartner = null
+                    // Hôte : partie de nouveau proposée.
+                    netplayHost?.let {
+                        it.reopen()
+                        netplayOpen = true
+                    }
+                }
+                delay(300)
+            }
+        }
+    }
+
+    /** Fin de la partie à plusieurs depuis le menu : chacun continue seul. */
+    private fun leaveNetplay() {
+        Netplay.stop()
+        netplayHost?.stop()
+        netplayHost = null
+        netplayOpen = false
+        netplayPartner = null
+        closeMenu()
     }
 
     private fun stopStreaming() {
@@ -653,7 +765,7 @@ class LibretroActivity : ComponentActivity() {
             if (event.action == KeyEvent.ACTION_UP) openMenu()
             return true
         }
-        sendButton(event.action, key, GamepadInput.port(event))
+        sendButton(event.action, key, localPort(GamepadInput.port(event)))
         if (showTouchPad && event.isFromSource(InputDevice.SOURCE_GAMEPAD)) showTouchPad = false
         return true
     }
@@ -699,7 +811,7 @@ class LibretroActivity : ComponentActivity() {
         ) {
             return super.dispatchGenericMotionEvent(event)
         }
-        val port = ((event.device?.controllerNumber ?: 0) - 1).coerceAtLeast(0)
+        val port = localPort(((event.device?.controllerNumber ?: 0) - 1).coerceAtLeast(0))
         val mapping = event.device?.let(gamepadMappings::get)
         fun axis(axis: Int?, invert: Boolean, default: Int) =
             event.getAxisValue(axis ?: default) * if (axis != null && invert) -1f else 1f
@@ -785,6 +897,32 @@ class LibretroActivity : ComponentActivity() {
                     }
                 }
             }
+            // Partie à plusieurs : proposée, en cours, ou en attente des touches de l'autre joueur.
+            val netplayText = when {
+                phase != Phase.Running || menuOpen -> null
+                netplayWaiting -> stringResource(R.string.netplay_waiting, netplayPartner.orEmpty())
+                netplayPartner != null -> stringResource(R.string.netplay_playing_with, netplayPartner.orEmpty())
+                netplayOpen -> stringResource(R.string.netplay_open)
+                else -> null
+            }
+            netplayText?.let { text ->
+                Surface(
+                    color = Color.Black.copy(alpha = 0.55f),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = if (streamingTo != null) 36.dp else 8.dp),
+                ) {
+                    Text(text, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                }
+            }
+            netplayRequest?.let { (join, answer) ->
+                AlertDialog(
+                    onDismissRequest = { answer.complete(false) },
+                    title = { Text(stringResource(R.string.netplay_request_title)) },
+                    text = { Text(stringResource(R.string.netplay_request_text, join.name)) },
+                    confirmButton = { FocusedButton(stringResource(R.string.netplay_accept), { answer.complete(true) }) },
+                    dismissButton = { TextButton(onClick = { answer.complete(false) }) { Text(stringResource(R.string.netplay_refuse)) } },
+                )
+            }
             // Diffusion en cours : rappel discret (vue superposée, absente de l'image envoyée à la TV).
             streamingTo?.takeIf { phase == Phase.Running && !menuOpen }?.let { name ->
                 Surface(
@@ -820,11 +958,16 @@ class LibretroActivity : ComponentActivity() {
             // Entrées du menu (libellé, action), affichées sur deux colonnes ; « Reprendre » en premier.
             val items = buildList<Pair<String, () -> Unit>> {
                 add(stringResource(R.string.libretro_menu_resume) to ::closeMenu)
+                // Partie à plusieurs : charger un état, redémarrer ou changer une option ne se ferait que
+                // sur cet appareil (parties désynchronisées).
+                val together = netplayPartner != null
                 if (gameReady) {
                     add(stringResource(R.string.libretro_menu_save_state) to ::saveState)
-                    add(stringResource(R.string.libretro_menu_load_state) to ::loadState)
-                    add(stringResource(R.string.libretro_menu_reset) to ::reset)
-                    add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
+                    if (!together) {
+                        add(stringResource(R.string.libretro_menu_load_state) to ::loadState)
+                        add(stringResource(R.string.libretro_menu_reset) to ::reset)
+                        add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
+                    }
                     add(stringResource(R.string.libretro_menu_filter, stringResource(videoFilter.label)) to { filterPicker = true })
                     add(stringResource(R.string.libretro_menu_aspect, stringResource(aspectRatio.label)) to { aspectPicker = true })
                 }
@@ -857,6 +1000,7 @@ class LibretroActivity : ComponentActivity() {
                         closeMenu()
                     })
                 }
+                if (netplayPartner != null || netplayOpen) add(stringResource(R.string.netplay_menu_leave) to ::leaveNetplay)
                 if (gameReady) add(stringResource(R.string.libretro_menu_save_quit) to ::saveAndQuit)
                 add(stringResource(R.string.libretro_menu_quit) to ::finish)
             }
@@ -1245,6 +1389,7 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_GAME_ID = "gameId"
         private const val EXTRA_STREAM = "stream"
         private const val EXTRA_STREAM_MODE = "streamMode"
+        private const val EXTRA_NETPLAY = "netplay"
         private const val TOAST_MS = 2000L
         private const val ERROR_TOAST_MS = 8000L
         private const val RETRO_DEVICE_JOYPAD = 1
@@ -1277,6 +1422,7 @@ class LibretroActivity : ComponentActivity() {
             gameId: Long = 0,
             stream: StreamReceiver? = null,
             streamMode: StreamMode = StreamMode.NATIVE,
+            netplay: NetplayLaunch? = null,
         ): Intent =
             Intent(context, LibretroActivity::class.java)
                 .putExtra(EXTRA_SYSTEM, systemId)
@@ -1287,5 +1433,6 @@ class LibretroActivity : ComponentActivity() {
                 .putExtra(EXTRA_GAME_ID, gameId)
                 .putExtra(EXTRA_STREAM, stream?.let { StreamProtocol.json.encodeToString(StreamReceiver.serializer(), it) })
                 .putExtra(EXTRA_STREAM_MODE, streamMode.name)
+                .putExtra(EXTRA_NETPLAY, netplay?.let { NetplayProtocol.json.encodeToString(NetplayLaunch.serializer(), it) })
     }
 }

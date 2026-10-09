@@ -20,6 +20,7 @@ import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.libretro.LibretroActivity
 import com.romcloud.app.libretro.LibretroCores
+import com.romcloud.app.netplay.NetplayLaunch
 import java.io.File
 
 open class LaunchException(message: String) : Exception(message)
@@ -124,12 +125,17 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         gameId: Long = 0,
         stream: StreamReceiver? = null,
         streamMode: StreamMode = StreamMode.NATIVE,
+        netplay: NetplayLaunch? = null,
     ) {
         if (!file.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, file.absolutePath))
 
+        // Partie à plusieurs : émulateur intégré seulement ; invité : cœur de l'hôte.
+        val libretroCore = if (netplay?.host == false) netplay.game.core else player?.libretroCore
+        if (netplay != null && libretroCore == null) throw LaunchException(I18n.get(R.string.netplay_needs_builtin))
+
         // Émulateur intégré : le cœur est téléchargé si besoin par l'activité de jeu elle-même.
-        player?.libretroCore?.let { core ->
-            val intent = LibretroActivity.intent(activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode)
+        libretroCore?.let { core ->
+            val intent = LibretroActivity.intent(activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode, netplay)
             if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             activityContext.startActivity(intent)
             return

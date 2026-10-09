@@ -1,6 +1,7 @@
 package com.romcloud.tv
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -49,10 +51,12 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.NetplayDialog
 import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.SystemBadge
 import com.romcloud.app.ui.SystemsViewModel
@@ -75,6 +79,8 @@ fun TvSystemsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
     val usage by viewModel.usage.collectAsStateWithLifecycle()
+    val peers by viewModel.peers.collectAsStateWithLifecycle()
+    var showNetplay by remember { mutableStateOf(false) }
     var searchDialog by remember { mutableStateOf(false) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
@@ -107,6 +113,10 @@ fun TvSystemsScreen(
             onConfirm = { quitApp(activity) },
             onDismiss = { askQuit = false },
         )
+    }
+
+    if (showNetplay) {
+        NetplayDialog(activity.application as RomCloudApp, peers, onMessage = { Toast.makeText(activity, it, Toast.LENGTH_LONG).show() }, onDismiss = { showNetplay = false })
     }
 
     if (searchDialog) {
@@ -147,6 +157,16 @@ fun TvSystemsScreen(
                 }
             }
             Spacer(Modifier.width(SmallGap))
+            // Appareils RomCloud du réseau local : parties proposées.
+            if (peers.isNotEmpty()) {
+                Button(onClick = { showNetplay = true }) {
+                    Icon(Icons.Filled.Groups, null, modifier = IconSize)
+                    Spacer(Modifier.width(8.dp))
+                    val hosted = peers.count { it.hosting != null }
+                    Text(if (hosted > 0) stringResource(R.string.netplay_button_games, hosted) else stringResource(R.string.netplay_title))
+                }
+                Spacer(Modifier.width(SmallGap))
+            }
             Button(onClick = viewModel::refresh) {
                 Icon(Icons.Filled.Refresh, null, modifier = IconSize)
                 Spacer(Modifier.width(8.dp))

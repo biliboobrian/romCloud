@@ -1,9 +1,8 @@
 package com.romcloud.app.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.platform.LocalUriHandler
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,11 +23,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Shop
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -87,6 +88,7 @@ fun GameDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val peers by viewModel.peers.collectAsStateWithLifecycle()
     val activity = LocalContext.current as Activity
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
@@ -187,6 +189,17 @@ fun GameDetailScreen(
                             }
                             OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.height(52.dp)) {
                                 Icon(Icons.Filled.Delete, stringResource(R.string.delete_from_device))
+                            }
+                        }
+                        // Appareil RomCloud sur le réseau local : partie proposée, chacun avec sa manette.
+                        if (viewModel.canPlayTogether(peers)) {
+                            OutlinedButton(
+                                onClick = { viewModel.hostNetplay(activity)?.let { scope.launch { snackbar.showSnackbar(it) } } },
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                            ) {
+                                Icon(Icons.Filled.Groups, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.netplay_play_together))
                             }
                         }
                         // TV du profil allumée avec RomCloud ouvert : jeu diffusé, le téléphone sert de manette.

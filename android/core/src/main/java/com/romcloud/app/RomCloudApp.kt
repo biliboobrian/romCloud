@@ -1,6 +1,11 @@
 package com.romcloud.app
 
 import android.app.Application
+import com.romcloud.app.netplay.Peer
+import com.romcloud.app.ui.joinNetplay
+import com.romcloud.app.netplay.LanPresence
+import android.os.Bundle
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
@@ -66,6 +71,16 @@ class RomCloudApp : Application(), ImageLoaderFactory {
     lateinit var connectivity: Connectivity
         private set
 
+    /**
+     * Appareils RomCloud du réseau local (jeu à plusieurs) : annonce et écoute tant qu'un écran de
+     * l'application est affiché.
+     */
+    val presence: LanPresence by lazy { LanPresence(this, account.deviceName, api.platform) }
+
+    /** Partie à rejoindre dès la fin du téléchargement de son jeu. */
+    @Volatile
+    var pendingJoin: Peer? = null
+
     override fun onCreate() {
         super.onCreate()
         I18n.init(this)
@@ -80,7 +95,10 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         account = Account(this, api, appScope)
         connectivity = Connectivity(this, api, appScope)
         // Processus de l'émulateur intégré : ni suivi de la connexion, ni envoi du temps de jeu.
-        if (isMainProcess()) watchConnection()
+        if (isMainProcess()) {
+            watchConnection()
+            watchScreens()
+        }
         // Plantage de l'application : signalé à l'administration au lancement suivant.
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
@@ -96,6 +114,24 @@ class RomCloudApp : Application(), ImageLoaderFactory {
             account.reportError("crash", crash.lineSequence().first(), crash)
         }
         DownloadService.createChannel(this)
+    }
+
+    /** Présence sur le réseau local tant qu'un écran de l'application est affiché. */
+    private fun watchScreens() {
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private var started = 0
+            override fun onActivityStarted(activity: Activity) {
+                if (started++ == 0) presence.start(appScope)
+            }
+            override fun onActivityStopped(activity: Activity) {
+                if (--started == 0) presence.stop()
+            }
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityResumed(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
     }
 
     private fun isMainProcess(): Boolean {
@@ -128,6 +164,14 @@ class RomCloudApp : Application(), ImageLoaderFactory {
             downloader.events.collect { event ->
                 if (event is DownloadEvent.Completed && event.romIncluded) {
                     withContext(Dispatchers.IO) { repository.rememberDownloaded(event.system, event.game) }
+                    // Partie à plusieurs attendant ce jeu : rejointe maintenant.
+                    pendingJoin?.takeIf { it.hosting?.gameId == event.game.id }?.let { peer ->
+                        pendingJoin = null
+                        withContext(Dispatchers.Main) {
+                            val message = joinNetplay(this@RomCloudApp, presence.peers.value.find { it.id == peer.id && it.hosting != null } ?: peer)
+                            if (message != null) Toast.makeText(this@RomCloudApp, message, Toast.LENGTH_LONG).show()
+                        }
+                    }
                 }
             }
         }

@@ -1,6 +1,7 @@
 package com.romcloud.app.ui
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,10 +23,13 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -63,6 +67,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import coil.compose.AsyncImage
+import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
@@ -87,9 +92,17 @@ fun SystemsScreen(
     var searching by rememberSaveable { mutableStateOf(search.active) }
     val searchFocus = remember { FocusRequester() }
 
+    // Appareils RomCloud du réseau local : icône « jeu à plusieurs » et liste des parties proposées.
+    val peers by viewModel.peers.collectAsStateWithLifecycle()
+    var showNetplay by remember { mutableStateOf(false) }
+
     // Retour : ferme d'abord la recherche, puis demande confirmation avant de quitter l'application.
     val activity = LocalContext.current as Activity
     var askQuit by remember { mutableStateOf(false) }
+    if (showNetplay) {
+        val app = activity.application as RomCloudApp
+        NetplayDialog(app, peers, onMessage = { Toast.makeText(activity, it, Toast.LENGTH_LONG).show() }, onDismiss = { showNetplay = false })
+    }
     BackHandler {
         if (searching) {
             viewModel.setQuery("")
@@ -144,6 +157,14 @@ fun SystemsScreen(
                 },
                 actions = {
                     OfflineBadge(Modifier.padding(horizontal = 4.dp))
+                    if (peers.isNotEmpty() && !searching) {
+                        IconButton(onClick = { showNetplay = true }) {
+                            val hosted = peers.count { it.hosting != null }
+                            BadgedBox(badge = { if (hosted > 0) Badge { Text("$hosted") } }) {
+                                Icon(Icons.Filled.Groups, stringResource(R.string.netplay_title), tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
                     IconButton(onClick = {
                         if (searching) viewModel.setQuery("")
                         searching = !searching
