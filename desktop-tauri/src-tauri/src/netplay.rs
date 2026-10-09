@@ -235,6 +235,21 @@ fn ip_digits(address: &str) -> Option<String> {
     (parts.len() == 4).then(|| parts.iter().map(|n| format!("{n:03}")).collect())
 }
 
+/// Adresse IPv4 de ce PC sur le réseau local : celle de la route par défaut (socket UDP « connectée »,
+/// rien n'est envoyé), sinon la première adresse privée d'une interface active.
+fn local_address() -> Option<String> {
+    let routed = UdpSocket::bind("0.0.0.0:0").and_then(|s| s.connect("8.8.8.8:53").and_then(|_| s.local_addr())).ok();
+    if let Some(std::net::SocketAddr::V4(a)) = routed {
+        if !a.ip().is_unspecified() && !a.ip().is_loopback() {
+            return Some(a.ip().to_string());
+        }
+    }
+    if_addrs::get_if_addrs().ok()?.into_iter().filter(|iface| !iface.is_loopback()).find_map(|iface| match iface.addr {
+        if_addrs::IfAddr::V4(v4) if v4.ip.is_private() => Some(v4.ip.to_string()),
+        _ => None,
+    })
+}
+
 /// Adresse MAC (12 chiffres hexadécimaux) tirée de l'identifiant de l'appareil, administrée localement.
 fn mac(device_id: &str) -> String {
     let mut hash: u64 = 1469598103934665603;
@@ -263,11 +278,18 @@ fn link_options(link: &Link, host: bool, host_address: &str) -> Vec<String> {
         "psp" => {
             options.push(("ppsspp_enable_wlan".into(), "enabled".into()));
             options.push(("ppsspp_enable_builtin_pro_ad_hoc_server".into(), if host { "enabled" } else { "disabled" }.into()));
-            options.push(("ppsspp_change_pro_ad_hoc_server_address".into(), if host { "localhost" } else { "IP address" }.into()));
-            if !host {
-                for (i, d) in digits.chars().enumerate() {
-                    options.push((format!("ppsspp_pro_ad_hoc_server_address{:02}", i + 1), d.to_string()));
+            // Hôte : relié à son propre serveur par son adresse sur le réseau local, pas par « localhost » :
+            // le serveur annonce chaque console aux autres avec l'adresse de sa connexion (127.0.0.1
+            // sinon, injoignable pour les invités).
+            let server = if host { local_address().and_then(|a| ip_digits(&a)) } else { Some(digits.clone()) };
+            match server.filter(|d| !d.is_empty()) {
+                Some(server) => {
+                    options.push(("ppsspp_change_pro_ad_hoc_server_address".into(), "IP address".into()));
+                    for (i, d) in server.chars().enumerate() {
+                        options.push((format!("ppsspp_pro_ad_hoc_server_address{:02}", i + 1), d.to_string()));
+                    }
                 }
+                None => options.push(("ppsspp_change_pro_ad_hoc_server_address".into(), "localhost".into())),
             }
             for (i, d) in mac(&device_id()).chars().enumerate() {
                 options.push((format!("ppsspp_change_mac_address{:02}", i + 1), d.to_string()));
@@ -446,6 +468,11 @@ mod tests {
         assert!(options.contains(&"gambatte_gb_link_mode=Network Client".to_string()));
         assert!(options.contains(&"gambatte_gb_link_network_server_ip_2=1".to_string()));
         assert!(options.contains(&"gambatte_gb_link_network_server_ip_12=2".to_string()));
+        // Hôte de la PSP : relié à son serveur par son adresse sur le réseau, pas par 127.0.0.1.
+        let host = link_options(link_by_id("psp").unwrap(), true, "");
+        if local_address().is_some() {
+            assert!(host.contains(&"ppsspp_change_pro_ad_hoc_server_address=IP address".to_string()));
+        }
         assert_eq!(mac("a").len(), 12);
         assert_ne!(mac("a"), mac("b"));
         assert_eq!(u8::from_str_radix(&mac("a")[..2], 16).unwrap() & 3, 2);

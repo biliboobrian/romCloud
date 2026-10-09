@@ -51,9 +51,14 @@ class LinkRulesTest {
 
     @Test
     fun `options de ppsspp`() {
-        val host = LinkRules.options(LinkKind.PSP_ADHOC, true, "", "a")
+        val host = LinkRules.options(LinkKind.PSP_ADHOC, true, "", "a", ownAddress = "192.168.1.20")
         assertEquals("enabled", host["ppsspp_enable_builtin_pro_ad_hoc_server"])
-        assertEquals("localhost", host["ppsspp_change_pro_ad_hoc_server_address"])
+        // Hôte relié à son serveur par son adresse sur le réseau (pas 127.0.0.1, annoncée aux invités).
+        assertEquals("IP address", host["ppsspp_change_pro_ad_hoc_server_address"])
+        assertEquals("1", host["ppsspp_pro_ad_hoc_server_address09"])
+        assertEquals("2", host["ppsspp_pro_ad_hoc_server_address11"])
+        assertEquals("0", host["ppsspp_pro_ad_hoc_server_address12"])
+        assertEquals("localhost", LinkRules.options(LinkKind.PSP_ADHOC, true, "", "a")["ppsspp_change_pro_ad_hoc_server_address"])
         val guest = LinkRules.options(LinkKind.PSP_ADHOC, false, "192.168.1.5", "b")
         assertEquals("IP address", guest["ppsspp_change_pro_ad_hoc_server_address"])
         assertEquals("5", guest["ppsspp_pro_ad_hoc_server_address12"])

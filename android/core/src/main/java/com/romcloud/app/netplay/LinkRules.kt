@@ -48,9 +48,10 @@ object LinkRules {
 
     /**
      * Options du cœur pour la liaison : [host] (serveur) ou invité relié à [hostAddress] ; [deviceId] :
-     * adresse MAC propre à l'appareil (PSP : deux consoles de même adresse ne se voient pas).
+     * adresse MAC propre à l'appareil (PSP : deux consoles de même adresse ne se voient pas) ;
+     * [ownAddress] : adresse de cet appareil sur le réseau local (hôte de la PSP).
      */
-    fun options(kind: LinkKind, host: Boolean, hostAddress: String, deviceId: String): Map<String, String> = when (kind) {
+    fun options(kind: LinkKind, host: Boolean, hostAddress: String, deviceId: String, ownAddress: String? = null): Map<String, String> = when (kind) {
         LinkKind.GAME_LINK -> buildMap {
             put("gambatte_gb_link_mode", if (host) "Network Server" else "Network Client")
             put("gambatte_gb_link_network_port", GAMBATTE_PORT)
@@ -60,11 +61,15 @@ object LinkRules {
         LinkKind.PSP_ADHOC -> buildMap {
             put("ppsspp_enable_wlan", "enabled")
             put("ppsspp_enable_builtin_pro_ad_hoc_server", if (host) "enabled" else "disabled")
-            if (host) {
+            // Hôte : relié à son propre serveur par son adresse sur le réseau local, pas par « localhost » :
+            // le serveur annonce chaque console aux autres avec l'adresse de sa connexion (127.0.0.1
+            // sinon, injoignable pour les invités).
+            val server = if (host) ownAddress?.let(::ipDigits) else ipDigits(hostAddress)
+            if (server == null) {
                 put("ppsspp_change_pro_ad_hoc_server_address", "localhost")
             } else {
                 put("ppsspp_change_pro_ad_hoc_server_address", "IP address")
-                ipDigits(hostAddress)?.forEachIndexed { i, digit -> put("ppsspp_pro_ad_hoc_server_address%02d".format(i + 1), digit.toString()) }
+                server.forEachIndexed { i, digit -> put("ppsspp_pro_ad_hoc_server_address%02d".format(i + 1), digit.toString()) }
             }
             mac(deviceId).forEachIndexed { i, digit -> put("ppsspp_change_mac_address%02d".format(i + 1), digit.toString()) }
         }
