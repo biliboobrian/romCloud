@@ -14,7 +14,7 @@
 
 enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext };
 
-enum class MenuAction { None, Resume, SaveState, LoadState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, ToggleFullscreen, DiskNext, DiskPrev };
+enum class MenuAction { None, Resume, SaveState, LoadState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
 
 /** État affiché par le menu (fourni par la boucle principale). */
 struct MenuState {
@@ -24,6 +24,10 @@ struct MenuState {
   int diskIndex = -1;  // -1 : pas de changement de disque
   int diskCount = 0;
   bool hasState = false;
+  // Jeu à plusieurs : partie en cours (charger un état, redémarrer, options du cœur et disque masqués :
+  // ils ne changeraient que cet appareil), ou proposée.
+  bool together = false;
+  bool netplay = false;
 };
 
 class Menu {
@@ -58,8 +62,9 @@ class Menu {
 
  private:
   enum class Screen { Main, Options, Keys };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Disk, Filter, Aspect, Fullscreen, SaveQuit, Quit };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Disk, Filter, Aspect, Fullscreen, LeaveNetplay, SaveQuit, Quit };
 
+  std::vector<Item> items(const MenuState& state) const;
   int itemCount(const MenuState& state) const;
   Item itemAt(int index, const MenuState& state) const;
   std::string itemLabel(Item item, const MenuState& state) const;

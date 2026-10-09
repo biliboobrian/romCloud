@@ -35,11 +35,12 @@ add_executable(romcloud-player WIN32
   src/canvas.cpp
   src/menu.cpp
   src/padconfig.cpp
+  src/netplay.cpp
   src/util.cpp
   src/font8x8.c
 )
 target_include_directories(romcloud-player PRIVATE third_party src)
-target_link_libraries(romcloud-player PRIVATE SDL3::SDL3-static opengl32)
+target_link_libraries(romcloud-player PRIVATE SDL3::SDL3-static opengl32 ws2_32 iphlpapi)
 target_compile_definitions(romcloud-player PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 # Exécutable directement dans build/ (pas build/Release/ avec Visual Studio) : repris par l'installeur.
 set_target_properties(romcloud-player PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>")

@@ -2,7 +2,7 @@
 // une seule commande et répartis ici. Le pont
 // (bridge.js) renvoie à l'interface { ok, data } ou { ok: false, error }.
 use crate::error::{AppError, Result};
-use crate::{account, api, builtin, connectivity, downloads, keyboard, launcher, library, screencast, settings, updater};
+use crate::{account, api, builtin, connectivity, downloads, keyboard, launcher, library, netplay, screencast, settings, updater};
 use serde_json::{json, Value};
 use tauri_plugin_dialog::DialogExt;
 
@@ -103,6 +103,8 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
             Value::Null
         }
         "emulators:list" => launcher::list_emulators(),
+        "netplay:peers" => netplay::peers(),
+        "netplay:systemAllows" => json!(netplay::system_allows(&arg(a, 0))),
         "emulators:detect" => tokio::task::spawn_blocking(launcher::detect_emulators).await.map_err(|e| AppError::msg(e.to_string()))?,
         "emulators:setPath" => launcher::set_emulator_path(&str_arg(a, 0), &str_arg(a, 1))?,
         "emulators:setArgs" => launcher::set_emulator_args(&str_arg(a, 0), &str_arg(a, 1))?,

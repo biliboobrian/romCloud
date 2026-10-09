@@ -5,6 +5,11 @@
 //                   [--windowed] [--resume] [--state-name <nom>] [--option-default <clé>=<valeur>]…
 //                   [--keys-file <touches du clavier>] [--buttons <boutons de la console>]
 //                   [--pad-style <manette de la console>]
+//                   [--netplay-host | --netplay-join <adresse:port> --netplay-peer <nom de l'hôte>]
+//                   [--netplay-game <jeu (JSON)>] [--device-id <identifiant>] [--device-name <nom>]
+//
+// Jeu à plusieurs en réseau local (netplay.h) : partie proposée (--netplay-host) ou rejointe
+// (--netplay-join), même protocole que l'application Android.
 //
 // Fonctionnement calqué sur LibretroDroid : le cœur est chargé, le jeu démarré, puis une boucle
 // exécute retro_run au rythme de l'audio et affiche chaque image avec OpenGL. Codes de sortie :
@@ -26,6 +31,7 @@
 #include "core.h"
 #include "input.h"
 #include "menu.h"
+#include "netplay.h"
 #include "padconfig.h"
 #include "util.h"
 #include "video.h"
@@ -41,6 +47,10 @@ struct Args {
   std::string padStyle;  // manette de la console dessinée dans la configuration (--pad-style)
   bool windowed = false;
   bool resume = false;  // reprend la partie à l'état sauvegardé
+  // Jeu à plusieurs : partie proposée, ou adresse de l'hôte (« 192.168.1.20:40123 ») et son nom ;
+  // jeu annoncé (JSON : gameId, systemId, title, fileName, size, core) ; appareil.
+  bool netplayHost = false;
+  std::string netplayJoin, netplayPeer, netplayGame, deviceId, deviceName;
   // Mode d'essai : fenêtre cachée, N images au plus vite, dernière image enregistrée en BMP.
   std::string testFrames, screenshot, testSeconds, testOptions;
   bool testWindow = false;  // essai dans une fenêtre visible : affichage et menu capturés
@@ -59,11 +69,14 @@ Args parseArgs(int argc, char** argv) {
       {"--keys-file", &a.keysFile}, {"--buttons", &a.buttons}, {"--pad-style", &a.padStyle},
       {"--test-frames", &a.testFrames}, {"--screenshot", &a.screenshot}, {"--test-seconds", &a.testSeconds},
       {"--test-options", &a.testOptions},  // essai : écran des options du cœur, onglet N
+      {"--netplay-join", &a.netplayJoin}, {"--netplay-peer", &a.netplayPeer}, {"--netplay-game", &a.netplayGame},
+      {"--device-id", &a.deviceId},     {"--device-name", &a.deviceName},
   };
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
     if (arg == "--windowed") a.windowed = true;
     else if (arg == "--resume") a.resume = true;
+    else if (arg == "--netplay-host") a.netplayHost = true;
     else if (arg == "--test-window") a.testWindow = true;
     else if (arg == "--test-menu") a.testMenu = true;
     else if (arg == "--test-keys") a.testKeys = true;
@@ -115,12 +128,21 @@ class Player {
   void runFrame();
   void present();
   void shutdown();
+  void startNetplay();
+  /** Texte du moteur avec le nom de l'autre joueur à la place de {name}. */
+  std::string trName(const char* key, const std::string& name) const {
+    std::string text = menu_.tr(key);
+    size_t at = text.find("{name}");
+    if (at != std::string::npos) text.replace(at, 6, name);
+    return text;
+  }
 
   Args args_;
   Menu menu_;
   Video video_;
   Audio audio_;
   Input input_;
+  Netplay netplay_;
   std::unique_ptr<PadConfig> padConfig_;  // configuration d'une manette en cours (depuis le menu)
   Canvas overlay_{640, 360};
   std::vector<uint8_t> romData_;
@@ -215,6 +237,8 @@ MenuState Player::menuState() const {
     s.diskIndex = (int)g.disk.get_image_index();
   }
   s.hasState = fileExists(statePath());
+  s.together = netplay_.playing();
+  s.netplay = netplay_.playing() || netplay_.open();
   return s;
 }
 
@@ -271,6 +295,10 @@ void Player::onMenuAction(MenuAction action) {
     case MenuAction::ToggleFullscreen: video_.toggleFullscreen(); break;
     case MenuAction::DiskNext: changeDisk(1); break;
     case MenuAction::DiskPrev: changeDisk(-1); break;
+    case MenuAction::LeaveNetplay:
+      netplay_.leave();
+      closeMenu();
+      break;
   }
 }
 
@@ -288,6 +316,23 @@ bool Player::handleEvents() {
       continue;
     }
     if (padConfig_ && padConfig_->finished()) padConfig_.reset();
+    std::string requester;
+    if (netplay_.requestPending(requester)) {
+      if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+        if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER) {
+          netplay_.answer(true);
+          continue;
+        }
+        if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_BACKSPACE) {
+          netplay_.answer(false);
+          continue;
+        }
+      } else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+        if (e.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH) netplay_.answer(true);
+        else if (e.gbutton.button == SDL_GAMEPAD_BUTTON_EAST) netplay_.answer(false);
+        continue;
+      }
+    }
     switch (e.type) {
       case SDL_EVENT_QUIT: quit_ = true; break;
 
@@ -311,7 +356,8 @@ bool Player::handleEvents() {
         if (!menu_.isOpen()) {
           if (key == SDLK_ESCAPE || key == SDLK_F1) openMenu();
           else if (key == SDLK_F2) toast(menu_.tr(saveState() ? "state_saved" : "state_error"));
-          else if (key == SDLK_F4) toast(menu_.tr(!fileExists(statePath()) ? "no_state" : loadState() ? "state_loaded" : "state_error"));
+          // Partie à plusieurs : un état chargé ne le serait que sur cet appareil.
+          else if (key == SDLK_F4 && !netplay_.playing()) toast(menu_.tr(!fileExists(statePath()) ? "no_state" : loadState() ? "state_loaded" : "state_error"));
           break;
         }
         Nav nav;
@@ -389,6 +435,7 @@ void Player::present() {
   int canvasWidth = std::clamp(winH > 0 ? (int)std::lround((double)canvasHeight * winW / winH) : canvasHeight * 16 / 9,
                                canvasHeight * 11 / 9, canvasHeight * 32 / 9);
   if (canvasWidth != overlay_.width() || canvasHeight != overlay_.height()) overlay_.resize(canvasWidth, canvasHeight);
+  for (const auto& [key, name] : netplay_.takeMessages()) toast(trName(key.c_str(), name));
   bool showToast = SDL_GetTicks() < toastUntil_;
   if (!showToast && g.messageFrames > 0) {
     toast_ = g.message;
@@ -402,15 +449,41 @@ void Player::present() {
     overlay_.fill(x, y, w, 22, rgba(0, 0, 0, 190));
     overlay_.text(x + 12, y + 7, text, 1, rgba(240, 240, 250));
   };
+  // Jeu à plusieurs : bandeau en haut (attente, partie en cours, partie proposée), demande d'un invité.
+  std::string banner, requester;
+  const bool request = netplay_.requestPending(requester);
+  if (netplay_.waiting()) banner = trName("netplay_waiting", netplay_.partner());
+  else if (netplay_.playing()) banner = trName("netplay_playing", netplay_.partner());
+  else if (netplay_.open()) banner = menu_.tr("netplay_open");
+  auto drawNetplay = [&] {
+    if (!banner.empty()) {
+      std::string text = Canvas::fit(banner, 1, overlay_.width() - 60);
+      int w = Canvas::measure(text, 1) + 24, x = (overlay_.width() - w) / 2;
+      overlay_.fill(x, 10, w, 20, rgba(0, 0, 0, 150));
+      overlay_.text(x + 12, 16, text, 1, rgba(230, 230, 245));
+    }
+    if (request) {
+      std::string title = Canvas::fit(trName("netplay_request", requester), 2, overlay_.width() - 80);
+      std::string hint = menu_.tr("netplay_request_hint");
+      int w = std::max(Canvas::measure(title, 2), Canvas::measure(hint, 1)) + 48;
+      int x = (overlay_.width() - w) / 2, y = overlay_.height() / 2 - 34;
+      overlay_.roundRect((float)x, (float)y, (float)w, 68, 8, rgba(20, 18, 40, 235));
+      overlay_.roundRectOutline((float)x, (float)y, (float)w, 68, 8, 2, rgba(140, 130, 255));
+      overlay_.text(x + (w - Canvas::measure(title, 2)) / 2, y + 14, title, 2, rgba(245, 245, 255));
+      overlay_.text(x + (w - Canvas::measure(hint, 1)) / 2, y + 44, hint, 1, rgba(190, 190, 215));
+    }
+  };
   if (menu_.isOpen()) {
     overlay_.clear();
     if (padConfig_) padConfig_->render(overlay_);
     else menu_.render(overlay_, menuState());
     if (showToast && !toast_.empty()) drawToast();  // fin de la configuration d'une manette
+    if (request) drawNetplay();
     video_.present(overlay_.data(), overlay_.width(), overlay_.height());
-  } else if (showToast && !toast_.empty()) {
+  } else if ((showToast && !toast_.empty()) || !banner.empty() || request) {
     overlay_.clear();
-    drawToast();
+    if (showToast && !toast_.empty()) drawToast();
+    drawNetplay();
     video_.present(overlay_.data(), overlay_.width(), overlay_.height());
   } else {
     video_.present(nullptr, 0, 0);
@@ -458,7 +531,8 @@ int Player::run() {
   applySavedPadMappings();  // manettes configurées pour ce système (avant leur ouverture)
   input_.init();
   loadSram();  // avant l'état de sauvegarde, qui la contient aussi
-  if (args_.resume) {
+  // Invité d'une partie à plusieurs : l'état de l'hôte remplace la partie reprise.
+  if (args_.resume && args_.netplayJoin.empty()) {
     // Une image d'abord : certains cœurs n'acceptent un état qu'une fois le jeu démarré.
     runFrame();
     const char* result = !fileExists(statePath()) ? "no_state" : loadState() ? "state_loaded" : "state_error";
@@ -500,6 +574,7 @@ int Player::run() {
   }
   audio_.open(g.av.timing.sample_rate);
   toast(menu_.tr("menu_hint"));
+  startNetplay();
 
   const double freq = (double)SDL_GetPerformanceFrequency();
   // Essai de la boucle réelle (rythme audio) : arrêt au bout de N secondes, cadence mesurée.
@@ -535,7 +610,18 @@ int Player::run() {
       }
       nextFrame_ += 1.0 / fps;
     }
+    // Jeu à plusieurs : image émulée seulement quand les touches de l'autre joueur sont arrivées
+    // (en attendant, la fenêtre reste réactive et affiche l'attente).
+    if (netplay_.enabled()) {
+      auto local = [this](unsigned port, unsigned device, unsigned index, unsigned id) { return input_.state(port, device, index, id); };
+      if (netplay_.prepare(local) == Netplay::Frame::Wait) {
+        present();
+        SDL_Delay(1);
+        continue;
+      }
+    }
     runFrame();
+    netplay_.finishFrame();
     present();
     frames++;
   }
@@ -547,8 +633,42 @@ int Player::run() {
   return 0;
 }
 
+/** Jeu à plusieurs demandé au lancement : partie proposée sur le réseau local, ou rejointe. */
+void Player::startNetplay() {
+  if (!args_.netplayHost && args_.netplayJoin.empty()) return;
+  Netplay::Config config;
+  config.role = args_.netplayHost ? Netplay::Role::Host : Netplay::Role::Guest;
+  std::string value;
+  NetplayGame& game = config.game;
+  if (jsonField(args_.netplayGame, "gameId", value)) game.gameId = atoll(value.c_str());
+  jsonField(args_.netplayGame, "systemId", game.systemId);
+  jsonField(args_.netplayGame, "title", game.title);
+  jsonField(args_.netplayGame, "fileName", game.fileName);
+  jsonField(args_.netplayGame, "core", game.core);
+  if (jsonField(args_.netplayGame, "size", value)) game.size = atoll(value.c_str());
+  config.deviceId = args_.deviceId;
+  config.deviceName = args_.deviceName.empty() ? "PC" : args_.deviceName;
+  const size_t colon = args_.netplayJoin.rfind(':');
+  if (colon != std::string::npos) {
+    config.address = args_.netplayJoin.substr(0, colon);
+    config.port = atoi(args_.netplayJoin.c_str() + colon + 1);
+  }
+  config.peerName = args_.netplayPeer;
+  WIN32_FILE_ATTRIBUTE_DATA attributes;
+  if (GetFileAttributesExW(widen(args_.core).c_str(), GetFileExInfoStandard, &attributes)) {
+    config.coreSize = ((long long)attributes.nFileSizeHigh << 32) | attributes.nFileSizeLow;
+  }
+  if (!netplay_.start(config)) {
+    toast(menu_.tr("netplay_unavailable"));
+    return;
+  }
+  g.netplay = &netplay_;
+}
+
 /** Ordre de RetroArch et LibretroDroid : contexte du cœur, jeu, cœur, puis fenêtre. */
 void Player::shutdown() {
+  netplay_.stop();
+  g.netplay = nullptr;
   video_.destroyCoreContext();
   g.api.unload_game();
   g.api.deinit();

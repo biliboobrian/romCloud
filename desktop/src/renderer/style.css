@@ -276,3 +276,11 @@ body.pad-nav .list-row:focus { outline: none; background: var(--surface); box-sh
 .emu-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface, transparent); }
 .emu-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .emu-head span { font-size: 12px; word-break: break-all; text-align: right; }
+
+/* Jeu à plusieurs en réseau local */
+.netplay-btn { position: relative; color: var(--accent); }
+.netplay-btn .pill { position: absolute; top: 2px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+  background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; }
+.multi-badge { display: inline-flex; vertical-align: -3px; color: var(--accent); margin-left: 4px; }
+.netplay-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.netplay-list .line { display: flex; align-items: center; gap: 12px; }

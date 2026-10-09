@@ -11,6 +11,7 @@
 
 #include "audio.h"
 #include "input.h"
+#include "netplay.h"
 #include "util.h"
 #include "video.h"
 
@@ -354,6 +355,8 @@ static int16_t RETRO_CALLCONV inputState(unsigned port, unsigned device, unsigne
     unsigned long long key = ((unsigned long long)port << 48) | ((unsigned long long)device << 32) | (index << 16) | id;
     if (seen.insert(key).second) logf("[input] port %u device 0x%x index %u id %u", port, device, index, id);
   }
+  int16_t networked;
+  if (g.netplay && g.netplay->input(port, device, index, id, &networked)) return networked;
   return g.input ? g.input->state(port, device, index, id) : 0;
 }
 
