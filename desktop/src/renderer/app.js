@@ -1316,6 +1316,7 @@
         <div class="state-info">
           <strong>${esc(dateText(st.createdAt))}</strong>
           <span class="muted">${esc(st.local ? t('states.thisPc') : st.device || t('states.otherDevice'))}${st.online ? ` · ${icon('cloud', 14)} ${esc(t('states.online'))}` : ''}${st.pinned ? ` · ${esc(t('states.pinned'))}` : ''}</span>
+          ${(history.cores || []).length > 1 ? `<span class="muted small">${esc(t('states.core', { core: st.core }))}</span>` : ''}
           <div class="line">
             <button class="btn primary" data-state-play>${icon('play', 18)} ${esc(t('action.play'))}</button>
             <button class="btn ghost" data-state-pin>${esc(t(st.pinned ? 'states.unpin' : 'states.pin'))}</button>
@@ -1349,7 +1350,8 @@
       }).catch(() => {});
       $('[data-state-play]', row).onclick = () => {
         close();
-        playChecked(system, game, { state: st.id });
+        // Chargé avec le cœur qui l'a créé.
+        playChecked(system, game, { state: st.id, stateCore: st.core });
       };
       $('[data-state-pin]', row).onclick = () => run(st.pinned ? 'unpin' : 'pin', st);
       const upload = $('[data-state-upload]', row);
@@ -1651,7 +1653,8 @@
       </div>
     </div>`;
 
-    $('#resumeBtn')?.addEventListener('click', () => playChecked(system, game, { resume: true }));
+    // Partie en ligne d'un autre cœur intégré : reprise avec lui.
+    $('#resumeBtn')?.addEventListener('click', () => playChecked(system, game, { resume: true, resumeCore: !localResume && online?.core ? online.core : undefined }));
     $('#playBtn')?.addEventListener('click', () => playChecked(system, game));
     $('#statesBtn')?.addEventListener('click', () => showStates(system, game));
     $('#netplayHostBtn')?.addEventListener('click', () => play(system, game, { netplay: { host: true } }));

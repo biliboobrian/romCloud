@@ -592,4 +592,5 @@
     <string name="report_send">Send</string>
     <string name="report_sent">Report sent to the server</string>
     <string name="report_queued">Report saved: it will be sent when the server is reachable</string>
+    <string name="states_core">Emulator core: %1$s</string>
 </resources>

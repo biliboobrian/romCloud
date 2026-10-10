@@ -152,8 +152,11 @@ class StateHistory(val dir: File, private val core: String) {
          * États de l'appareil et en ligne réunis (même identifiant : un seul état), du plus récent au
          * plus ancien ; en ligne, seulement ceux d'un cœur compatible avec [core].
          */
-        fun merge(local: List<StateMeta>, online: List<OnlineState>, core: String): List<SavedState> {
-            val remote = online.filter { sameSaveCore(it.core, core) }.associateBy { it.id }
+        fun merge(local: List<StateMeta>, online: List<OnlineState>, core: String): List<SavedState> = merge(local, online, listOf(core))
+
+        /** Même chose pour plusieurs cœurs (fiche du jeu : tous les cœurs intégrés du système). */
+        fun merge(local: List<StateMeta>, online: List<OnlineState>, cores: Collection<String>): List<SavedState> {
+            val remote = online.filter { s -> cores.any { sameSaveCore(s.core, it) } }.associateBy { it.id }
             val mine = local.map { meta ->
                 val match = remote[meta.id]
                 SavedState(meta.id, meta.core, meta.createdAt, meta.device, meta.platform, match?.pinned ?: meta.pinned, meta, match)

@@ -61,5 +61,19 @@ class StateHistoryTest {
         assertTrue(merged[2].canUpload)
     }
 
+    @Test
+    fun `fiche du jeu, etats de tous les coeurs du systeme`() {
+        val online = listOf(
+            OnlineState("w", 1, "yabause", Instant.ofEpochMilli(5000).toString(), "ZEPC", "windows"),
+            OnlineState("x", 1, "snes9x", Instant.ofEpochMilli(6000).toString(), "PC", "windows"),
+        )
+        val local = listOf(StateMeta("m", "mednafen_saturn", 1000, "Pixel 8", "android"))
+        val merged = StateHistory.merge(local, online, listOf("mednafen_saturn", "yabause", "ymir"))
+        assertEquals(listOf("w", "m"), merged.map { it.id })
+        assertEquals("yabause", merged[0].core)
+        // Cœur seul (menu du jeu) : les états des autres cœurs ne s'y chargent pas.
+        assertEquals(listOf("m"), StateHistory.merge(local, online, "mednafen_saturn").map { it.id })
+    }
+
     private fun File(parent: java.io.File, name: String) = java.io.File(parent, name)
 }

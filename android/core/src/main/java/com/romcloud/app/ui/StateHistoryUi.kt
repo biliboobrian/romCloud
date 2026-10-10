@@ -85,7 +85,18 @@ class StateHistoryController(
     private val cacheDir: File,
     private val scope: CoroutineScope,
     private val onMessage: (String) -> Unit,
+    /**
+     * Cœurs dont les états sont proposés (fiche du jeu : tous les cœurs intégrés du système, l'état
+     * se chargeant avec celui qui l'a créé) ; [historyOf] : historique de l'appareil pour un cœur.
+     */
+    private val cores: List<String> = listOf(core),
+    private val historyOf: (String) -> StateHistory = { history },
 ) {
+    /** Plusieurs cœurs proposés : le cœur de chaque état est affiché. */
+    val multiCore: Boolean get() = cores.size > 1
+
+    private fun historyFor(stateCore: String): StateHistory = if (stateCore == core) history else historyOf(stateCore)
+
     data class UiState(
         val states: List<SavedState> = emptyList(),
         val loading: Boolean = true,
@@ -102,16 +113,16 @@ class StateHistoryController(
 
     fun refresh() {
         scope.launch {
-            val local = withContext(Dispatchers.IO) { history.list() }
-            _state.update { it.copy(states = StateHistory.merge(local, emptyList(), core), loading = signedIn) }
+            val local = withContext(Dispatchers.IO) { cores.flatMap { historyFor(it).list() }.distinctBy { it.id } }
+            _state.update { it.copy(states = StateHistory.merge(local, emptyList(), cores), loading = signedIn) }
             val online = if (gameId > 0) account.onlineStates(gameId) else null
-            _state.update { it.copy(states = StateHistory.merge(local, online.orEmpty(), core), loading = false, online = online != null) }
+            _state.update { it.copy(states = StateHistory.merge(local, online.orEmpty(), cores), loading = false, online = online != null) }
         }
     }
 
     /** Fichier de l'état : celui de l'appareil, sinon téléchargé (cache de l'application). */
     suspend fun file(state: SavedState): File {
-        state.local?.let { return history.stateFile(it.id) }
+        state.local?.let { return historyFor(it.core).stateFile(it.id) }
         val target = File(cacheDir, "states/${state.id}.state")
         if (!target.isFile) {
             _state.update { it.copy(busy = true) }
@@ -126,7 +137,7 @@ class StateHistoryController(
 
     /** Miniature : celle de l'appareil, sinon celle du serveur (gardée en cache). */
     suspend fun thumbnail(state: SavedState): ImageBitmap? = withContext(Dispatchers.IO) {
-        val local = state.local?.let { history.thumbnailFile(it.id) }?.takeIf { it.isFile }
+        val local = state.local?.let { historyFor(it.core).thumbnailFile(it.id) }?.takeIf { it.isFile }
         val file = local ?: File(cacheDir, "state-thumbs/${state.id}.jpg").takeIf { cached ->
             cached.isFile || (state.online?.thumbnail == true && account.stateThumbnail(state.id)?.let { bytes ->
                 cached.parentFile?.mkdirs()
@@ -138,21 +149,22 @@ class StateHistoryController(
     }
 
     fun setPinned(state: SavedState, pinned: Boolean) = act {
-        state.local?.let { withContext(Dispatchers.IO) { history.setPinned(it.id, pinned) } }
+        state.local?.let { withContext(Dispatchers.IO) { historyFor(it.core).setPinned(it.id, pinned) } }
         if (state.online != null) account.pinOnlineState(state.id, pinned)
     }
 
     fun delete(state: SavedState) = act {
-        state.local?.let { withContext(Dispatchers.IO) { history.delete(it.id) } }
+        state.local?.let { withContext(Dispatchers.IO) { historyFor(it.core).delete(it.id) } }
         if (state.online != null) account.deleteOnlineState(state.id)
     }
 
     fun upload(state: SavedState) = act {
         val meta = state.local ?: return@act
         _state.update { it.copy(busy = true) }
-        account.queueStateUpload(gameId, history, meta.id)
+        val owner = historyFor(meta.core)
+        account.queueStateUpload(gameId, owner, meta.id)
         account.flush(savesOnly = true)
-        if (withContext(Dispatchers.IO) { history.get(meta.id)?.uploaded } == true) onMessage(I18n.get(R.string.states_uploaded))
+        if (withContext(Dispatchers.IO) { owner.get(meta.id)?.uploaded } == true) onMessage(I18n.get(R.string.states_uploaded))
         else onMessage(I18n.get(R.string.states_upload_pending))
     }
 
@@ -284,6 +296,10 @@ private fun StateRow(
                     Icon(Icons.Filled.Cloud, stringResource(R.string.states_online), Modifier.size(16.dp))
                 }
                 if (state.pinned) Icon(Icons.Filled.PushPin, stringResource(R.string.states_pinned), Modifier.size(16.dp))
+            }
+            // Fiche du jeu : cœur de l'état (chargé avec lui).
+            if (controller.multiCore) {
+                Text(stringResource(R.string.states_core, state.core), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = onLoad, enabled = enabled, modifier = loadModifier) { Text(loadLabel) }

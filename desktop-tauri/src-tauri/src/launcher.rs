@@ -363,17 +363,42 @@ fn history(system: &Value, game: &Value) -> Option<(std::path::PathBuf, String)>
     }
 }
 
-/// Historique des états du jeu : { states, online, signedIn } (null : pas le moteur intégré).
-pub async fn states(system: &Value, game: &Value) -> Value {
-    match history(system, game) {
-        Some((dir, core)) => crate::states::list(&game["id"], &core, &dir).await,
-        None => Value::Null,
+/**
+ * Cœurs intégrés du système (celui choisi en premier) et fichier du jeu : un état ou une partie en
+ * ligne faits avec un autre cœur (sur un autre appareil) se reprennent avec lui.
+ */
+fn system_cores(system: &Value, game: &Value) -> Option<(Vec<String>, String)> {
+    let Ok(Plan::Builtin { core, file, .. }) = prepare(system, game) else { return None };
+    if managed::by_core(&core).is_some() {
+        return None;
     }
+    let mut list = vec![core.clone()];
+    list.extend(cores::cores(system).into_iter().filter(|c| *c != core && managed::by_core(c).is_none()));
+    Some((list, file))
+}
+
+/// Historique des états du jeu (tous les cœurs intégrés du système) : { states, cores, online, signedIn }.
+pub async fn states(system: &Value, game: &Value) -> Value {
+    let Some((list, file)) = system_cores(system, game) else { return Value::Null };
+    let histories: Vec<(String, std::path::PathBuf)> = list.iter().map(|c| (c.clone(), builtin::history_dir(c, &file))).collect();
+    crate::states::list(&game["id"], &histories).await
+}
+
+/// Cœur demandé ([wanted], état ou partie en ligne) s'il est l'un des cœurs intégrés du système.
+fn chosen_core(system: &Value, game: &Value, wanted: Option<&str>) -> Option<String> {
+    let wanted = wanted.filter(|w| !w.is_empty())?;
+    let (list, _) = system_cores(system, game)?;
+    list.into_iter().find(|c| account::same_save_core(c, wanted))
 }
 
 /// Opération sur un état de l'historique : « thumbnail », « pin », « unpin », « upload », « delete ».
 pub async fn state_action(system: &Value, game: &Value, action: &str, state: &Value) -> Result<Value> {
-    let (dir, _) = history(system, game).ok_or_else(|| AppError::msg("historique indisponible".to_string()))?;
+    let (default_dir, _) = history(system, game).ok_or_else(|| AppError::msg("historique indisponible".to_string()))?;
+    // Historique du cœur de l'état (autre cœur intégré du système).
+    let dir = match (chosen_core(system, game, state["core"].as_str()), system_cores(system, game)) {
+        (Some(core), Some((_, file))) => builtin::history_dir(&core, &file),
+        _ => default_dir,
+    };
     let id = state["id"].as_str().unwrap_or("");
     let online = state["online"].as_bool().unwrap_or(false);
     Ok(match action {
@@ -398,8 +423,18 @@ pub async fn state_action(system: &Value, game: &Value, action: &str, state: &Va
 pub async fn resumable_online(system: &Value, game: &Value) -> Value {
     let Ok(Plan::Builtin { core, .. }) = prepare(system, game) else { return Value::Null };
     let saves = account::saves(&game["id"]).await;
-    match saves.iter().find(|s| account::same_save_core(s["core"].as_str().unwrap_or(""), &core) && s["kind"] == "state") {
-        Some(save) => json!({ "device": save["device"], "savedAt": save["savedAt"] }),
+    let states: Vec<&Value> = saves.iter().filter(|s| s["kind"] == "state").collect();
+    // Partie du cœur choisi, sinon la plus récente d'un autre cœur intégré du système (reprise avec lui).
+    let same = states.iter().find(|s| account::same_save_core(s["core"].as_str().unwrap_or(""), &core));
+    let other = || {
+        let list = system_cores(system, game).map(|(l, _)| l).unwrap_or_default();
+        states
+            .iter()
+            .filter(|s| list.iter().any(|c| account::same_save_core(s["core"].as_str().unwrap_or(""), c)))
+            .max_by(|a, b| account::parse_date_ms(a["savedAt"].as_str().unwrap_or("")).total_cmp(&account::parse_date_ms(b["savedAt"].as_str().unwrap_or(""))))
+    };
+    match same.or_else(other) {
+        Some(save) => json!({ "device": save["device"], "savedAt": save["savedAt"], "core": save["core"] }),
         None => Value::Null,
     }
 }
@@ -477,6 +512,9 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
         Plan::Builtin { core, file, .. } => {
             // État de l'historique choisi dans la fiche du jeu (téléchargé s'il n'est qu'en ligne).
             let mut extra = Vec::new();
+            // Cœur de l'état choisi, ou de la partie en ligne reprise (autre cœur intégré du système).
+            let wanted = options.get("stateCore").or_else(|| options.get("resumeCore")).and_then(Value::as_str);
+            let core = chosen_core(system, game, wanted).unwrap_or(core);
             if let Some(id) = options.get("state").and_then(Value::as_str) {
                 let path = crate::states::file_for(&game["id"], &builtin::history_dir(&core, &file), id).await?;
                 extra = vec!["--state-file".to_string(), path.to_string_lossy().into_owned()];

@@ -63,6 +63,7 @@ fun RomCloudApp.play(
     streamMode: StreamMode = StreamMode.NATIVE,
     netplay: NetplayLaunch? = null,
     state: File? = null,
+    core: String? = null,
 ): String? {
     val player = launcher.selectedPlayer(system, game.fileName)
     val file = library.launchFile(system, game, player)
@@ -73,7 +74,7 @@ fun RomCloudApp.play(
         }
     }
     return try {
-        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay, state)
+        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay, state, core)
         // Émulateur externe : temps de jeu compté jusqu'au retour dans l'application (l'émulateur
         // intégré compte lui-même le temps de la partie affichée).
         if (player?.libretroCore == null) account.startExternalSession(game.id)
@@ -476,6 +477,8 @@ class GameDetailViewModel(
         val canResume: Boolean = false,
         /** État de sauvegarde en ligne du profil (émulateur intégré), récupéré au lancement s'il est plus récent. */
         val onlineSave: OnlineSave? = null,
+        /** « Reprendre » avec un autre cœur intégré du système (partie sauvegardée avec lui, ailleurs). */
+        val resumeCore: String? = null,
         /** TV du profil allumées avec RomCloud ouvert : « Jouer sur la TV » (émulateur intégré). */
         val tvs: List<StreamReceiver> = emptyList(),
         /** États de l'historique (appareil et profil en ligne) : bouton « États sauvegardés ». */
@@ -529,16 +532,24 @@ class GameDetailViewModel(
             val selected = app.launcher.selectedPlayer(system, game.fileName)
             val file = withContext(Dispatchers.IO) { app.library.launchFile(system, game, selected) }
             val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(file, selected) }
-            val online = selected?.libretroCore?.let { core -> app.account.saves(game.id).find { sameSaveCore(it.core, core) && it.kind == "state" } }
+            val cores = systemCores(system, selected)
+            val onlineSaves = if (cores.isEmpty()) emptyList() else app.account.saves(game.id).filter { it.kind == "state" }
+            // Partie en ligne du cœur choisi, sinon (plus récente) d'un autre cœur intégré du système.
+            val online = selected?.libretroCore?.let { core -> onlineSaves.find { sameSaveCore(it.core, core) } }
+                ?: onlineSaves.filter { s -> cores.any { sameSaveCore(s.core, it) } }.maxByOrNull { it.savedAtMillis }.takeIf { !localResume }
+            val resumeCore = online?.core?.takeIf { c -> !localResume && selected?.libretroCore?.let { sameSaveCore(it, c) } != true }
+                ?.let { c -> cores.firstOrNull { sameSaveCore(it, c) } }
             val canResume = localResume || (downloaded && online != null)
-            val savedStates = selected?.libretroCore?.takeIf { downloaded }?.let { core ->
-                val history = historyFor(core, file)
+            val savedStates = if (!downloaded || cores.isEmpty()) 0 else {
                 val local = withContext(Dispatchers.IO) {
-                    history.adopt(LibretroActivity.stateFile(app, core, file), app.account.deviceName, if (app.account.isTv) "androidtv" else "android")
-                    history.list()
+                    cores.flatMap { core ->
+                        val history = historyFor(core, file)
+                        history.adopt(LibretroActivity.stateFile(app, core, file), app.account.deviceName, if (app.account.isTv) "androidtv" else "android")
+                        history.list()
+                    }
                 }
-                StateHistory.merge(local, app.account.onlineStates(game.id).orEmpty(), core).size
-            } ?: 0
+                StateHistory.merge(local, app.account.onlineStates(game.id).orEmpty(), cores).size
+            }
             _state.update {
                 it.copy(
                     downloaded = downloaded,
@@ -550,6 +561,7 @@ class GameDetailViewModel(
                     missingBios = missingBios,
                     canResume = canResume,
                     onlineSave = online,
+                    resumeCore = resumeCore,
                     savedStates = savedStates,
                     emulatorFiles = emulatorFiles.map { it.name },
                     emulatorFilesFolder = ExternalEmulatorFiles.folderName(system),
@@ -609,6 +621,13 @@ class GameDetailViewModel(
 
     private fun historyFor(core: String, file: File) = StateHistory(StateHistory.dir(app, core, file), core)
 
+    /** Cœurs intégrés du système (émulateurs LibretroDroid), celui choisi en premier. */
+    private fun systemCores(system: GameSystem, selected: Player?): List<String> {
+        val all = system.players.mapNotNull { it.libretroCore }.distinct()
+        val first = selected?.libretroCore ?: return all
+        return listOf(first) + all.filter { it != first }
+    }
+
     /**
      * Historique des états du jeu pour l'émulateur intégré choisi (null : autre émulateur, ou jeu
      * absent de l'appareil) ; [onMessage] : erreurs et confirmations.
@@ -622,7 +641,11 @@ class GameDetailViewModel(
         val key = "$core|${file.absolutePath}"
         if (key != historyKey) {
             historyKey = key
-            controller = StateHistoryController(app.account, historyFor(core, file), game.id, core, app.cacheDir, viewModelScope, onMessage)
+            // États de tous les cœurs intégrés du système (Yabause sous Windows, Beetle Saturn ici…).
+            controller = StateHistoryController(
+                app.account, historyFor(core, file), game.id, core, app.cacheDir, viewModelScope, onMessage,
+                cores = systemCores(system, s.selectedPlayer), historyOf = { historyFor(it, file) },
+            )
         }
         return controller
     }
@@ -642,7 +665,8 @@ class GameDetailViewModel(
                 onMessage(e.message ?: e.javaClass.simpleName)
                 return@launch
             }
-            app.play(activity, system, game, state = file)?.let(onMessage)
+            // Chargé avec le cœur qui l'a créé.
+            app.play(activity, system, game, state = file, core = state.core)?.let(onMessage)
         }
     }
 
@@ -651,7 +675,9 @@ class GameDetailViewModel(
         val s = _state.value
         val system = s.system ?: return I18n.get(R.string.err_system_not_found)
         val game = s.game ?: return I18n.get(R.string.game_not_found)
-        return app.play(activity, system, game, resume = resume, stream = tv, streamMode = mode)
+        // Reprise d'une partie faite avec un autre cœur intégré : lancée avec lui.
+        val core = s.resumeCore?.takeIf { resume }
+        return app.play(activity, system, game, resume = resume, stream = tv, streamMode = mode, core = core)
     }
 
     /** Appareils RomCloud du réseau local (jeu à plusieurs). */
