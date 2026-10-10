@@ -31,6 +31,8 @@ export function titleFromFileName(fileName) {
     .replace(/_/g, ' ')
     // Homebrew : auteur en fin de nom (« … by Mickey McMurray », prénom et nom).
     .replace(/\s+by\s+[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*)+\s*$/, '')
+    // Nom de release (Switch : « Titre v1.1.0 Eur SuperXCi - CLC ») : tout ce qui suit la version.
+    .replace(/\s+v\d+(?:\.\d+)+\s+\S.*$/i, '')
     // Version (« v1.004 », « V2 ») en fin de titre ou avant l'article (« Gus and Rob V2, The »).
     .replace(/\s+v\d+(?:\.\d+)*(?=\s*(?:,|$))/i, '')
     .replace(/\s+/g, ' ')

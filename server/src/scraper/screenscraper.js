@@ -15,6 +15,31 @@ export class QuotaError extends I18nError {
   name = 'QuotaError';
 }
 
+// Requêtes simultanées permises au compte (ssuser.maxthreads de la dernière réponse), null avant.
+let maxThreads = null;
+
+export function screenscraperMaxThreads() {
+  return maxThreads;
+}
+
+function readUser(json) {
+  const n = Number(json?.response?.ssuser?.maxthreads);
+  if (n >= 1) maxThreads = n;
+}
+
+/**
+ * Requête à l'API : un 429 (trop de requêtes simultanées pour le compte, scraping en parallèle)
+ * est réessayé après une courte attente avant d'être traité comme un dépassement de quota.
+ */
+async function ssFetch(url, userAgent) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { headers: { 'User-Agent': userAgent } });
+    if (res.status !== 429 || attempt >= 5) return res;
+    await res.arrayBuffer().catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+  }
+}
+
 function pickText(list, key, preferred) {
   if (!Array.isArray(list) || !list.length) return null;
   for (const p of preferred) {
@@ -131,7 +156,7 @@ export async function searchScreenScraper({ system, title }) {
   if (s.password) params.set('sspassword', s.password);
   const systemId = system.screenscraperId || SCREENSCRAPER_SYSTEM_IDS[system.shortname] || SCREENSCRAPER_SYSTEM_IDS[system.id];
   if (systemId) params.set('systemeid', String(systemId));
-  const res = await fetch(`${SEARCH_API}?${params}`, { headers: { 'User-Agent': s.softName } });
+  const res = await ssFetch(`${SEARCH_API}?${params}`, s.softName);
   const body = await res.text();
   if (res.status === 404) return null;
   if (res.status === 429 || res.status === 430 || res.status === 431) {
@@ -144,6 +169,7 @@ export async function searchScreenScraper({ system, title }) {
   } catch {
     throw new I18nError('scrape.ssUnreadable', { detail: body.trim().slice(0, 200) });
   }
+  readUser(json);
   const games = (Array.isArray(json?.response?.jeux) ? json.response.jeux : []).filter((j) => j?.id);
   const match = games.find((j) => (Array.isArray(j.noms) ? j.noms : []).some((n) => n?.text && normalize(n.text) === wanted));
   return match ? parseGame(match) : null;
@@ -173,7 +199,7 @@ export async function scrapeScreenScraper({ system, fileName, size, crc32, md5 }
   // quand le nom n'est pas un titre.
   if (serial) params.set('serialnum', serial);
 
-  const res = await fetch(`${API}?${params}`, { headers: { 'User-Agent': s.softName } });
+  const res = await ssFetch(`${API}?${params}`, s.softName);
   const body = await res.text();
   if (res.status === 404) return null;
   if (res.status === 429 || res.status === 430 || res.status === 431) {
@@ -186,6 +212,7 @@ export async function scrapeScreenScraper({ system, fileName, size, crc32, md5 }
   } catch {
     throw new I18nError('scrape.ssUnreadable', { detail: body.trim().slice(0, 200) });
   }
+  readUser(json);
   const jeu = json?.response?.jeu;
   if (!jeu || !jeu.id) return null;
   return parseGame(jeu);

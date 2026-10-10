@@ -8,7 +8,8 @@ process.env.DATA_DIR = path.join(os.tmpdir(), `romcloud-test-${process.pid}`);
 process.env.SCREENSCRAPER_DEV_ID = 'dev';
 process.env.SCREENSCRAPER_DEV_PASSWORD = 'pw';
 
-const { scrapeScreenScraper, QuotaError } = await import('../src/scraper/screenscraper.js');
+const { scrapeScreenScraper, screenscraperMaxThreads, QuotaError } = await import('../src/scraper/screenscraper.js');
+const { scrapeConcurrency } = await import('../src/jobs.js');
 const { libretroName, normalize, parseDat, scrapeLibretro, titleFromLibretroName } = await import('../src/scraper/libretro.js');
 const { titleFromFileName } = await import('../src/library.js');
 
@@ -77,11 +78,38 @@ test('ScreenScraper : quota dépassé', async () => {
   await assert.rejects(scrapeScreenScraper({ system: {}, fileName: 'x.sfc', size: 1 }), QuotaError);
 });
 
+test('ScreenScraper : trop de requêtes simultanées réessayé, maxthreads du compte retenu', async () => {
+  const replies = [[429, 'Trop de threads'], [200, { response: { ssuser: { maxthreads: '4' }, jeu: sample.response.jeu } }]];
+  let calls = 0;
+  globalThis.fetch = async () => {
+    const [status, body] = replies[calls++];
+    return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
+  };
+  const meta = await scrapeScreenScraper({ system: {}, fileName: 'Super Mario World (USA).sfc', size: 1 });
+  assert.equal(calls, 2);
+  assert.equal(meta.title, 'Super Mario World');
+  assert.equal(screenscraperMaxThreads(), 4);
+});
+
+test('Scraping en parallèle : réglage borné par le compte ScreenScraper', () => {
+  assert.equal(scrapeConcurrency('auto', { configured: 8, ssEnabled: true, ssMax: 4 }), 4);
+  assert.equal(scrapeConcurrency('auto', { configured: 8, ssEnabled: true, ssMax: null }), 8); // avant la 1re réponse
+  assert.equal(scrapeConcurrency('auto', { configured: 8, ssEnabled: false, ssMax: 1 }), 8); // sans ScreenScraper
+  assert.equal(scrapeConcurrency('libretro', { configured: 8, ssEnabled: true, ssMax: 1 }), 8);
+  assert.equal(scrapeConcurrency('screenscraper', { configured: 2, ssEnabled: true, ssMax: 4 }), 2);
+});
+
 test('Noms de fichiers', () => {
   assert.equal(libretroName('Q*bert: The Game'), 'Q_bert_ The Game');
   assert.equal(titleFromFileName('Super Mario World (USA) [!].sfc'), 'Super Mario World');
   assert.equal(titleFromFileName('Zelda_no_Densetsu.nes'), 'Zelda no Densetsu');
   assert.equal(titleFromFileName('Bomberman Online v1.004 (2001)(Sega)(NTSC)(US)[!].zip'), 'Bomberman Online');
+  // Nom de release Switch : version, région et groupe retirés.
+  assert.equal(
+    titleFromFileName('The Legend of Zelda Tears of the Kingdom v1.1.0 Eur SuperXCi - CLC.xci'),
+    'The Legend of Zelda Tears of the Kingdom',
+  );
+  assert.equal(titleFromFileName('Super Mario Odyssey [0100000000010000][v0].nsp'), 'Super Mario Odyssey');
   assert.equal(
     normalize('Bomberman Online v1.004 (2001)(Sega)(NTSC)(US)[!].zip'),
     normalize('Bomberman Online (USA)'),

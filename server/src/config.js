@@ -39,6 +39,9 @@ export const config = {
   maxUploadMb: Number(env.MAX_UPLOAD_MB || 16384),
   // Au-delà de cette taille, on ne calcule pas CRC/MD5 (ScreenScraper se rabat sur nom + taille).
   hashMaxMb: Number(env.HASH_MAX_MB || 1024),
+  // Jeux scrapés en même temps par une tâche (1 à 16) ; ScreenScraper limite aussi le nombre de
+  // requêtes simultanées selon le compte (maxthreads), respecté dès sa première réponse.
+  scrapeConcurrency: Math.min(16, Math.max(1, Math.floor(Number(env.SCRAPE_CONCURRENCY) || 1))),
   daijishouBaseUrl:
     env.DAIJISHOU_BASE_URL || 'https://raw.githubusercontent.com/TapiocaFox/Daijishou/main/platforms/',
   screenscraper: {
