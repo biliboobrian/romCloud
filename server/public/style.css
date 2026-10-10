@@ -135,6 +135,14 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
   overflow: hidden; cursor: pointer; display: flex; flex-direction: column; transition: transform 0.1s, box-shadow 0.1s;
 }
 .game:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+/* Sélection de plusieurs jeux : case cochée sur la jaquette, contour de la couleur d'accent. */
+.game.selectable { position: relative; }
+.game-check { position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; border-radius: 6px; border: 2px solid #fff; background: rgba(0, 0, 0, 0.45); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.game.selected { outline: 3px solid var(--accent); outline-offset: -3px; }
+.game.selected .game-check { background: var(--accent); border-color: var(--accent); }
+.game.selected .game-check::after { content: '✓'; color: #fff; font-size: 14px; font-weight: 700; display: grid; place-items: center; height: 100%; }
+.selection-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--accent); border-radius: 10px; background: var(--surface, var(--bg)); }
+.selection-bar #selectionCount { font-weight: 600; margin-right: auto; }
 .cover {
   aspect-ratio: 3 / 4; background: var(--surface-2); display: flex; align-items: center; justify-content: center;
   color: var(--muted); font-size: 12px; padding: 8px; text-align: center; position: relative;

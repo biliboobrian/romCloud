@@ -225,6 +225,7 @@ export async function importExport(zipFile) {
     db.exec('DELETE FROM images WHERE id NOT IN (SELECT id FROM games)');
     db.exec('COMMIT');
     db.exec('CREATE INDEX names_norm ON names(norm); CREATE INDEX images_id ON images(id);');
+    db.exec(`PRAGMA user_version = ${NORM_VERSION}`);
   } catch (err) {
     db.exec('ROLLBACK');
     db.close();
@@ -274,8 +275,36 @@ async function refresh() {
   }
 }
 
+/**
+ * Version de la règle de comparaison des titres (libretro.js : normalize) des noms enregistrés ;
+ * 2 : accents retirés. Une base plus ancienne est mise à jour sur place (sans nouveau téléchargement).
+ */
+const NORM_VERSION = 2;
+
+export function migrateNorms(file) {
+  const db = new DatabaseSync(file);
+  try {
+    if (db.prepare('PRAGMA user_version').get().user_version >= NORM_VERSION) return false;
+    const rows = db.prepare('SELECT rowid, name FROM names').all();
+    const update = db.prepare('UPDATE names SET norm = ? WHERE rowid = ?');
+    db.exec('BEGIN');
+    for (const row of rows) update.run(normalize(row.name), row.rowid);
+    db.exec(`COMMIT; PRAGMA user_version = ${NORM_VERSION}`);
+    return true;
+  } finally {
+    db.close();
+  }
+}
+
 async function openDb() {
   await refresh();
+  if (!database && fs.existsSync(dbFile)) {
+    try {
+      if (migrateNorms(dbFile)) console.log('[launchbox] Titres de la base mis à jour (accents)');
+    } catch (err) {
+      console.warn(`[launchbox] Mise à jour des titres impossible : ${err.message}`);
+    }
+  }
   database ||= new DatabaseSync(dbFile, { readOnly: true });
   return database;
 }

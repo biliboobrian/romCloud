@@ -73,8 +73,29 @@
             <option value="" data-i18n="system.filterAll"></option>
             <option value="ok" data-i18n="system.filterScraped"></option>
             <option value="missing" data-i18n="system.filterMissing"></option>
+            <option value="notfound" data-i18n="system.filterNotFound"></option>
+            <option value="none" data-i18n="system.filterPending"></option>
+            <option value="error" data-i18n="system.filterError"></option>
+          </select>
+          <select id="ratingFilter">
+            <option value="" data-i18n="system.ratingAll"></option>
+            <option value="5">★★★★★</option>
+            <option value="4">★★★★☆ +</option>
+            <option value="3">★★★☆☆ +</option>
+            <option value="2">★★☆☆☆ +</option>
+            <option value="1">★☆☆☆☆ +</option>
+            <option value="unrated" data-i18n="system.ratingNone"></option>
           </select>
           <span class="muted" id="gameCount"></span>
+          <button class="btn small" id="selectModeBtn" data-i18n="system.select"></button>
+        </div>
+        <!-- Sélection de plusieurs jeux (suppression) -->
+        <div class="selection-bar hidden" id="selectionBar">
+          <span id="selectionCount"></span>
+          <button class="btn small" id="selectAllBtn" data-i18n="system.selectAll"></button>
+          <button class="btn small" id="selectNoneBtn" data-i18n="system.selectNone"></button>
+          <button class="btn small danger" id="deleteSelectedBtn" data-i18n="system.deleteSelected"></button>
+          <button class="btn small ghost" id="selectDoneBtn" data-i18n="app.cancel"></button>
         </div>
 
         <div id="games" class="games"></div>

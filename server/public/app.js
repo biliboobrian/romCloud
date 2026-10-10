@@ -13,6 +13,9 @@ const state = {
   selectedPlatforms: new Set(),
   editingGame: null,
   status: null,
+  // Sélection de plusieurs jeux (suppression) : mode actif et jeux choisis.
+  selecting: false,
+  selected: new Set(),
 };
 
 // ---------------------------------------------------------------------------
@@ -168,6 +171,8 @@ function renderSystems() {
     btn.innerHTML = `${s.hasImage ? `<img class="thumb" src="${systemImageUrl(s)}" alt="">` : ''}<span>${escapeHtml(s.name)}</span><span class="n">${s.gameCount}</span>`;
     btn.onclick = () => {
       state.current = s;
+      state.selecting = false;
+      state.selected = new Set();
       try {
         localStorage.setItem('romcloud.system', s.id);
       } catch {
@@ -204,16 +209,61 @@ async function loadGames() {
   renderGames();
 }
 
-function renderGames() {
+/** Jeux affichés : recherche, statut du scraping (trouvé, introuvable, pas encore scrapé, erreur) et note. */
+function visibleGames() {
   const q = $('#search').value.trim().toLowerCase();
   const filter = $('#statusFilter').value;
-  const games = state.games.filter((g) => {
+  const rating = $('#ratingFilter').value;
+  return state.games.filter((g) => {
     if (q && !g.title.toLowerCase().includes(q) && !g.fileName.toLowerCase().includes(q)) return false;
     if (filter === 'ok' && g.scrapeStatus !== 'ok') return false;
     if (filter === 'missing' && g.scrapeStatus === 'ok') return false;
+    if (['notfound', 'none', 'error'].includes(filter) && g.scrapeStatus !== filter) return false;
+    if (rating === 'unrated' && g.rating != null) return false;
+    if (/^\d$/.test(rating) && !(g.rating != null && g.rating >= Number(rating))) return false;
     return true;
   });
+}
+
+/** Barre de sélection : nombre et taille des jeux choisis. */
+function updateSelectionBar() {
+  const selecting = state.selecting;
+  $('#selectionBar').classList.toggle('hidden', !selecting);
+  $('#selectModeBtn').classList.toggle('hidden', selecting);
+  if (!selecting) return;
+  const chosen = state.games.filter((g) => state.selected.has(g.id));
+  const size = chosen.reduce((n, g) => n + (g.totalSize ?? g.size), 0);
+  $('#selectionCount').textContent = t('system.selected', { n: chosen.length, size: formatSize(size) });
+  $('#deleteSelectedBtn').disabled = chosen.length === 0;
+}
+
+function setSelecting(on) {
+  state.selecting = on;
+  state.selected = new Set();
+  renderGames();
+}
+
+/** Supprime les jeux choisis (fichiers, parties et images) après confirmation. */
+async function deleteSelected() {
+  const s = state.current;
+  const chosen = state.games.filter((g) => state.selected.has(g.id));
+  if (!s || !chosen.length) return;
+  const size = chosen.reduce((n, g) => n + (g.totalSize ?? g.size), 0);
+  if (!confirm(t('system.confirmDeleteSelected', { n: chosen.length, size: formatSize(size) }))) return;
+  await guard(async () => {
+    const res = await api(`/systems/${encodeURIComponent(s.id)}/games/delete`, { method: 'POST', body: { ids: chosen.map((g) => g.id) } });
+    toast(t('system.deletedSelected', { n: res.deleted, size: formatSize(res.freed) }));
+    state.selecting = false;
+    state.selected = new Set();
+    await loadSystems();
+  });
+}
+
+function renderGames() {
+  state.selected ||= new Set();
+  const games = visibleGames();
   $('#gameCount').textContent = `${games.length} / ${state.games.length}`;
+  updateSelectionBar();
   const grid = $('#games');
   grid.innerHTML = '';
   if (!state.games.length) {
@@ -222,7 +272,7 @@ function renderGames() {
   }
   for (const g of games) {
     const card = document.createElement('div');
-    card.className = 'game';
+    card.className = `game${state.selecting ? ' selectable' : ''}${state.selected.has(g.id) ? ' selected' : ''}`;
     card.innerHTML = `
       <div class="cover">${g.hasBoxart ? `<img loading="lazy" src="${mediaUrl(g, 'boxart')}" alt="">` : escapeHtml(g.title)}</div>
       <div class="game-info">
@@ -230,8 +280,16 @@ function renderGames() {
         ${g.parts?.length ? `<div class="game-badge">${escapeHtml(partsSummary(g))}</div>` : ''}
         <div class="game-sub"><span>${formatSize(g.totalSize ?? g.size)}${g.releaseDate ? ` · ${escapeHtml(g.releaseDate.slice(0, 4))}` : ''}</span>
           <span class="dot ${g.scrapeStatus}" title="${escapeHtml(t(`status.${g.scrapeStatus}`))}"></span></div>
-      </div>`;
-    card.onclick = () => openGame(g);
+      </div>
+      ${state.selecting ? '<span class="game-check" aria-hidden="true"></span>' : ''}`;
+    // Mode sélection : un clic coche ou décoche le jeu ; sinon, sa fiche.
+    card.onclick = () => {
+      if (!state.selecting) return openGame(g);
+      if (state.selected.has(g.id)) state.selected.delete(g.id);
+      else state.selected.add(g.id);
+      card.classList.toggle('selected', state.selected.has(g.id));
+      updateSelectionBar();
+    };
     grid.append(card);
   }
 }
@@ -1148,6 +1206,18 @@ function bindEvents() {
 
   $('#search').oninput = renderGames;
   $('#statusFilter').onchange = renderGames;
+  $('#ratingFilter').onchange = renderGames;
+  $('#selectModeBtn').onclick = () => setSelecting(true);
+  $('#selectDoneBtn').onclick = () => setSelecting(false);
+  $('#selectAllBtn').onclick = () => {
+    for (const g of visibleGames()) state.selected.add(g.id);
+    renderGames();
+  };
+  $('#selectNoneBtn').onclick = () => {
+    state.selected = new Set();
+    renderGames();
+  };
+  $('#deleteSelectedBtn').onclick = deleteSelected;
   $('#fileInput').onchange = (e) => {
     uploadFiles(e.target.files);
     e.target.value = '';
