@@ -11,6 +11,7 @@ mod catalog;
 mod connectivity;
 mod cores;
 mod downloads;
+mod emulator_files;
 mod error;
 mod events;
 mod ipc;

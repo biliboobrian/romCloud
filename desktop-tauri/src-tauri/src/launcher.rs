@@ -127,6 +127,7 @@ fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()>
 pub fn launch_emulator(id: &str) -> Result<()> {
     let emu = catalog::by_id(id).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": id })))?;
     let exe = emulator_path(id).ok_or_else(|| AppError::new("errors.emulatorMissing", json!({ "name": emu.name, "id": id })))?;
+    crate::emulator_files::install(emu.id, &exe);
     spawn_detached(&exe, &[], None)
 }
 
@@ -192,7 +193,8 @@ fn core_dll(retroarch_path: &str, core: &str) -> PathBuf {
 /// Préparation du lancement.
 enum Plan {
     Builtin { core: String, file: String, exe: String, args: Vec<String> },
-    Run { exe: String, args: Vec<String> },
+    /// [emulator] : identifiant du catalogue (fichiers du dossier des BIOS à installer avant le lancement).
+    Run { exe: String, args: Vec<String>, emulator: Option<&'static str> },
     Manual { exe: String, emulator: String, file: String },
     Open(String),
 }
@@ -239,7 +241,7 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
             if !dll.exists() {
                 return Err(AppError::new("errors.coreMissing", json!({ "core": core, "dir": dll.parent().map(|p| p.to_string_lossy().into_owned()) })));
             }
-            Ok(Plan::Run { exe, args: vec!["-L".into(), dll.to_string_lossy().into_owned(), playlist()] })
+            Ok(Plan::Run { exe, args: vec!["-L".into(), dll.to_string_lossy().into_owned(), playlist()], emulator: None })
         }
         "emulator" => {
             let emu = catalog::by_id(s(&option, "emuId")).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": option["emuId"] })))?;
@@ -247,7 +249,7 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
             let file = if PLAYLIST_EMULATORS.contains(&emu.id) { playlist() } else { file };
             match emulator_args(emu) {
                 None => Ok(Plan::Manual { exe, emulator: emu.name.into(), file }),
-                Some(args) => Ok(Plan::Run { exe, args: catalog::build_args(&args, &file) }),
+                Some(args) => Ok(Plan::Run { exe, args: catalog::build_args(&args, &file), emulator: Some(emu.id) }),
             }
         }
         "custom" => {
@@ -259,7 +261,7 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
                 tokens.push(file);
             }
             let exe = tokens.remove(0);
-            Ok(Plan::Run { exe, args: tokens })
+            Ok(Plan::Run { exe, args: tokens, emulator: None })
         }
         _ => Ok(Plan::Open(file)),
     }
@@ -268,7 +270,7 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
 /// Ligne de commande qui sera utilisée pour ce jeu (affichée dans la fiche), ou null.
 pub fn describe(system: &Value, game: &Value) -> Value {
     match prepare(system, game) {
-        Ok(Plan::Builtin { exe, args, .. }) | Ok(Plan::Run { exe, args }) => json!(catalog::command_line(&exe, &args)),
+        Ok(Plan::Builtin { exe, args, .. }) | Ok(Plan::Run { exe, args, .. }) => json!(catalog::command_line(&exe, &args)),
         _ => Value::Null,
     }
 }
@@ -437,7 +439,11 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             tauri_plugin_opener::open_path(&file, None::<&str>).map_err(|e| AppError::new("errors.noDefaultApp", json!({ "detail": e.to_string() })))?;
             Ok(json!({ "manual": false }))
         }
-        Plan::Run { exe, args } => {
+        Plan::Run { exe, args, emulator } => {
+            // Clés de la Switch (Eden, Ryujinx)… copiées depuis le dossier des BIOS.
+            if let Some(id) = emulator {
+                crate::emulator_files::install(id, &exe);
+            }
             spawn_detached(&exe, &args, Some(game.clone()))?;
             Ok(json!({ "manual": false }))
         }
