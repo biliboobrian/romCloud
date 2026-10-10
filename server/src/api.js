@@ -7,7 +7,7 @@ import multer from 'multer';
 import * as accounts from './accounts.js';
 import * as play from './play.js';
 import { addApk, apkFilePath, deleteApk, emulatorPackages, listApks, requireApk, updateApk } from './apks.js';
-import { addBiosFiles, biosFilePath, deleteBios, requireBios, systemBios } from './bios.js';
+import { addBiosFiles, biosFilePath, deleteBios, fetchBiosFromSource, requireBios, systemBios } from './bios.js';
 import { config, screenscraperEnabled } from './config.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { HttpError } from './http-error.js';
@@ -165,7 +165,16 @@ api.post('/systems/:id/duplicates/delete', (req, res) => {
 // ?catalog=0 : fichiers présents seulement (utilisé par les applications).
 api.get(
   '/systems/:id/bios',
-  h(async (req, res) => res.json(await systemBios(req.params.id, { catalog: req.query.catalog !== '0' }))),
+  h(async (req, res) => res.json(await systemBios(req.params.id, { catalog: req.query.catalog !== '0', language: requestLanguage(req) }))),
+);
+
+// Dernière version d'un fichier attendu récupérée sur sa source Internet ({ path }).
+api.post(
+  '/systems/:id/bios/fetch',
+  h(async (req, res) => {
+    const fetched = await fetchBiosFromSource(req.params.id, req.body?.path);
+    res.json({ fetched, ...(await systemBios(req.params.id, { language: requestLanguage(req) })) });
+  }),
 );
 
 const biosUpload = multer({
@@ -193,7 +202,7 @@ api.post(
         originalName: Buffer.from(f.originalname, 'latin1').toString('utf8'),
       }));
       const saved = await addBiosFiles(req.params.id, uploads, req.body && req.body.path);
-      res.status(201).json({ saved, ...(await systemBios(req.params.id)) });
+      res.status(201).json({ saved, ...(await systemBios(req.params.id, { language: requestLanguage(req) })) });
     } finally {
       for (const f of files) fs.rmSync(f.path, { force: true });
     }

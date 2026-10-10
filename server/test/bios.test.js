@@ -41,7 +41,15 @@ const INFOS = {
   ].join('\n'),
 };
 let requests = 0;
+// Fichiers des sources Internet simulées (firmware…) : /files/<nom>.
+const FILES = { 'PS3UPDAT.PUP': 'FIRMWARE-4.93' };
 const server = http.createServer((req, res) => {
+  if (req.url.startsWith('/files/')) {
+    const body = FILES[path.basename(req.url)];
+    if (body) res.end(body);
+    else res.writeHead(404).end();
+    return;
+  }
   requests++;
   const core = path.basename(req.url).replace(/_libretro\.info$/, '');
   if (INFOS[core]) res.end(INFOS[core]);
@@ -51,6 +59,10 @@ await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 process.env.LIBRETRO_CORE_INFO_URL = `http://127.0.0.1:${server.address().port}/`;
 
 const bios = await import('../src/bios.js');
+const systemFiles = await import('../src/system-files.js');
+// Pas de requête vers les vraies sources pendant les tests.
+for (const source of Object.values(systemFiles.SOURCES)) source.latest = async () => null;
+const filesUrl = (name) => `http://127.0.0.1:${server.address().port}/files/${name}`;
 const { createSystem, getSystem } = await import('../src/systems.js');
 const { db } = await import('../src/db.js');
 
@@ -226,4 +238,61 @@ test('dossier attendu (PCSX2) : .zip extrait dans le dossier, ancien .zip répar
     'pcsx2/resources/shaders/a.glsl',
   ]);
   assert.equal(fs.readFileSync(path.join(legacy, 'shaders', 'a.glsl'), 'utf8'), 'void main(){}');
+});
+
+test('listes de mise à jour officielles : PS3 et PS Vita', () => {
+  const ps3 = [
+    '# EU',
+    'Dest=85;CompatibleSystemSoftwareVersion=4.9300-;',
+    'Dest=85;IncrementalUpdateVersion=00010b72-00010b72;ImageVersion=00010b94;SystemSoftwareVersion=4.9300;CDN=http://x/PS3PATCH.PUP;CDN_Timeout=30;',
+    'Dest=85;ImageVersion=00010b94;SystemSoftwareVersion=4.9300;CDN=http://x/eu/PS3UPDAT.PUP;CDN_Timeout=30;',
+  ].join('\n');
+  assert.deepEqual(systemFiles.parsePs3UpdateList(ps3), { version: '4.93', url: 'http://x/eu/PS3UPDAT.PUP' });
+  const vita = `<update_data_list><region id="eu">
+    <version system_version="03.740.000" label="3.74">
+    <update_data update_type="full"><image size="133834240">http://x/rel/PSP2UPDAT.PUP?dest=eu</image></update_data></version>
+    <recovery spkg_type="systemdata"><image spkg_version="01.000.010" size="56778752">http://x/sd/PSP2UPDAT.PUP?dest=eu</image></recovery>
+    <recovery spkg_type="preinst"><image spkg_version="01.000.000" size="1">http://x/pre/PSP2UPDAT.PUP</image></recovery>
+  </region></update_data_list>`;
+  assert.deepEqual(systemFiles.parseVitaUpdateList(vita, 'full'), { version: '3.74', url: 'http://x/rel/PSP2UPDAT.PUP?dest=eu', size: 133834240 });
+  assert.deepEqual(systemFiles.parseVitaUpdateList(vita, 'systemdata'), { version: '01.000.010', url: 'http://x/sd/PSP2UPDAT.PUP?dest=eu', size: 56778752 });
+});
+
+test('clés et firmware de la Switch attendus, sans source Internet', async () => {
+  createSystem({ id: 'switch', name: 'Nintendo Switch', players: [] });
+  const state = await bios.systemBios('switch', { language: 'fr' });
+  const keys = state.expected.find((e) => e.path === 'switch/prod.keys');
+  assert.equal(keys.kind, 'keys');
+  assert.ok(keys.required && !keys.present && !keys.source);
+  assert.match(keys.description, /Switch/);
+  assert.ok(state.expected.find((e) => e.path === 'switch/firmware').folder);
+  // Envoi : rangé sous le chemin attendu d'après son nom.
+  const dir = path.join(dataDir, 'upload-test');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'k'), 'prod_key = 0123');
+  assert.deepEqual(await bios.addBiosFiles('switch', [{ tempPath: path.join(dir, 'k'), originalName: 'prod.keys' }]), ['switch/prod.keys']);
+  assert.ok((await bios.systemBios('switch')).expected.find((e) => e.path === 'switch/prod.keys').present);
+});
+
+test('firmware récupéré sur sa source : dernière version, mise à jour signalée, téléchargement incomplet refusé', async () => {
+  createSystem({ id: 'ps3', name: 'PlayStation 3', players: [] });
+  systemFiles.clearLatestCache();
+  systemFiles.SOURCES['sony-ps3'].latest = async () => ({ version: '4.93', url: filesUrl('PS3UPDAT.PUP') });
+  let entry = (await bios.systemBios('ps3')).expected.find((e) => e.path === 'ps3/PS3UPDAT.PUP');
+  assert.equal(entry.kind, 'firmware');
+  assert.deepEqual([entry.present, entry.source.latest, entry.source.installed, entry.source.updateAvailable], [false, '4.93', null, true]);
+
+  assert.deepEqual(await bios.fetchBiosFromSource('ps3', 'ps3/PS3UPDAT.PUP'), { path: 'ps3/PS3UPDAT.PUP', version: '4.93' });
+  assert.equal(fs.readFileSync(path.join(dataDir, 'bios', 'ps3', 'ps3', 'PS3UPDAT.PUP'), 'utf8'), 'FIRMWARE-4.93');
+  entry = (await bios.systemBios('ps3')).expected.find((e) => e.path === 'ps3/PS3UPDAT.PUP');
+  assert.deepEqual([entry.present, entry.source.installed, entry.source.updateAvailable], [true, '4.93', false]);
+
+  // Nouvelle version publiée : mise à jour proposée ; taille annoncée différente : refusée, ancien fichier gardé.
+  systemFiles.clearLatestCache();
+  systemFiles.SOURCES['sony-ps3'].latest = async () => ({ version: '4.94', url: filesUrl('PS3UPDAT.PUP'), size: 999 });
+  assert.ok((await bios.systemBios('ps3')).expected.find((e) => e.path === 'ps3/PS3UPDAT.PUP').source.updateAvailable);
+  await assert.rejects(bios.fetchBiosFromSource('ps3', 'ps3/PS3UPDAT.PUP'), (err) => err.status === 502);
+  assert.equal(fs.readFileSync(path.join(dataDir, 'bios', 'ps3', 'ps3', 'PS3UPDAT.PUP'), 'utf8'), 'FIRMWARE-4.93');
+  // Fichier sans source : refusé.
+  await assert.rejects(bios.fetchBiosFromSource('switch', 'switch/prod.keys'), (err) => err.status === 404);
 });

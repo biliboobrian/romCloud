@@ -210,6 +210,9 @@ for (const table of ['saves', 'state_history']) {
 }
 const biosColumns = db.prepare('PRAGMA table_info(bios)').all().map((c) => c.name);
 if (!biosColumns.includes('sha1')) db.exec('ALTER TABLE bios ADD COLUMN sha1 TEXT');
+// Fichier récupéré sur Internet (system-files.js) : source et version installée.
+if (!biosColumns.includes('source')) db.exec('ALTER TABLE bios ADD COLUMN source TEXT');
+if (!biosColumns.includes('version')) db.exec('ALTER TABLE bios ADD COLUMN version TEXT');
 
 /** Exécute fn dans une transaction. */
 export function transaction(fn) {

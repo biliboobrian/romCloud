@@ -1,13 +1,18 @@
 // BIOS des systèmes : fichiers envoyés sur le serveur (data/bios/<id du système>/<chemin>)
 // et BIOS attendus, lus dans les fiches des cœurs RetroArch des modèles d'émulateurs
-// (https://github.com/libretro/libretro-core-info : firmwareN_path / _desc / _opt, MD5 dans « notes »).
+// (https://github.com/libretro/libretro-core-info : firmwareN_path / _desc / _opt, MD5 dans « notes »),
+// complétés par les clés, firmwares et fichiers de données des autres émulateurs (system-files.js),
+// dont certains se récupèrent sur Internet (dernière version).
 // Un BIOS dont l'empreinte (MD5 ou SHA1) est connue n'est accepté que s'il y correspond.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { config } from './config.js';
 import { db } from './db.js';
 import { HttpError } from './http-error.js';
+import { SOURCES, coreFileSource, latestVersion, systemFiles } from './system-files.js';
 import { requireSystem } from './systems.js';
 import { readZipEntries, readZipEntry } from './zip.js';
 
@@ -153,7 +158,7 @@ async function hashBios(file) {
  * BIOS attendus pour un système, fusionnés entre ses cœurs (obligatoire si un cœur l'exige).
  * `md5` : référence libretro ; `md5s` / `sha1s` : toutes les empreintes acceptées.
  */
-export async function expectedBios(system) {
+export async function expectedBios(system, language = 'en') {
   const byPath = new Map();
   const cores = coresOfSystem(system);
   let available = 0;
@@ -171,6 +176,22 @@ export async function expectedBios(system) {
       entry.cores.push(core);
       byPath.set(key, entry);
     }
+  }
+  for (const entry of byPath.values()) {
+    entry.kind = coreFileSource(entry.path) ? 'data' : 'bios';
+    entry.emulators = entry.cores;
+    entry.source = coreFileSource(entry.path);
+  }
+  // Clés, firmwares et données des autres émulateurs (Switch, PS3, PS Vita…).
+  for (const f of systemFiles(system, language)) {
+    const key = f.path.toLowerCase();
+    const known = byPath.get(key);
+    if (known) {
+      known.required ||= f.required;
+      known.source ||= f.source;
+      continue;
+    }
+    byPath.set(key, { ...f, md5: null, md5s: [], cores: [] });
   }
   const extra = extraHashes();
   const list = [...byPath.values()]
@@ -193,7 +214,10 @@ export function safeBiosPath(input) {
   return parts.join('/');
 }
 
-const rowToBios = (r) => ({ id: r.id, systemId: r.system_id, path: r.path, size: r.size, md5: r.md5, sha1: r.sha1, addedAt: r.added_at });
+const rowToBios = (r) => ({
+  id: r.id, systemId: r.system_id, path: r.path, size: r.size, md5: r.md5, sha1: r.sha1, addedAt: r.added_at,
+  version: r.version ?? null,
+});
 
 export function listBiosRows(systemId) {
   return db.prepare('SELECT * FROM bios WHERE system_id = ? ORDER BY path').all(systemId).map(rowToBios);
@@ -238,8 +262,11 @@ const hashBuffer = (data) => ({
   sha1: crypto.createHash('sha1').update(data).digest('hex'),
 });
 
-/** Enregistre un BIOS (fichier ou contenu) et sa ligne en base ; écrase un BIOS de même chemin. */
-function storeBios(system, relative, { tempPath, data }, hashes) {
+/**
+ * Enregistre un BIOS (fichier ou contenu) et sa ligne en base ; écrase un BIOS de même chemin.
+ * [origin] : source et version d'un fichier récupéré sur Internet (sinon envoyé à la main).
+ */
+function storeBios(system, relative, { tempPath, data }, hashes, origin = {}) {
   const dest = path.join(biosDir(system), ...relative.split('/'));
   // Un ancien fichier porte le nom d'un dossier à créer (.zip enregistré tel quel) : retiré.
   const parts = relative.split('/');
@@ -258,10 +285,10 @@ function storeBios(system, relative, { tempPath, data }, hashes) {
   else fs.renameSync(tempPath, dest);
   const size = fs.statSync(dest).size;
   db.prepare(
-    `INSERT INTO bios (system_id, path, size, md5, sha1) VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO bios (system_id, path, size, md5, sha1, source, version) VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(system_id, path) DO UPDATE SET size = excluded.size, md5 = excluded.md5, sha1 = excluded.sha1,
-       added_at = datetime('now')`,
-  ).run(system.id, relative, size, hashes.md5, hashes.sha1);
+       source = excluded.source, version = excluded.version, added_at = datetime('now')`,
+  ).run(system.id, relative, size, hashes.md5, hashes.sha1, origin.source ?? null, origin.version ?? null);
 }
 
 /**
@@ -290,10 +317,10 @@ function expandFolderZips(system, files, folders) {
 }
 
 /** BIOS d'un système : fichiers présents (avec contrôle des empreintes) et BIOS attendus par ses cœurs. */
-export async function systemBios(systemId, { catalog: withCatalog = true } = {}) {
+export async function systemBios(systemId, { catalog: withCatalog = true, language = 'en' } = {}) {
   const system = requireSystem(systemId);
   // Sans catalogue (applications) : uniquement les fichiers présents, sans requête vers libretro.
-  const catalog = withCatalog ? await expectedBios(system) : { cores: [], coreInfoAvailable: false, expected: [] };
+  const catalog = withCatalog ? await expectedBios(system, language) : { cores: [], coreInfoAvailable: false, expected: [] };
   const folders = new Set(catalog.expected.filter((e) => e.folder).map((e) => e.path.toLowerCase()));
   let files = listBiosRows(system.id);
   if (expandFolderZips(system, files, folders)) files = listBiosRows(system.id);
@@ -305,11 +332,25 @@ export async function systemBios(systemId, { catalog: withCatalog = true } = {})
     db.prepare('UPDATE bios SET sha1 = ? WHERE id = ?').run(f.sha1, f.id);
   }
   const byPath = new Map(files.map((f) => [f.path.toLowerCase(), f]));
+  // Dernières versions des fichiers qui ont une source sur Internet (en parallèle, gardées 6 h).
+  const latest = new Map(await Promise.all(
+    [...new Set(catalog.expected.map((e) => e.source).filter(Boolean))].map(async (id) => [id, await latestVersion(id)]),
+  ));
   const expected = catalog.expected.map((e) => {
     const file = byPath.get(e.path.toLowerCase());
     // Dossier : présent dès qu'il contient un fichier.
     const inFolder = e.folder ? files.filter((f) => f.path.toLowerCase().startsWith(`${e.path.toLowerCase()}/`)) : [];
-    return { ...e, fileId: file?.id ?? null, present: Boolean(file) || inFolder.length > 0, fileCount: e.folder ? inFolder.length : undefined };
+    const present = Boolean(file) || inFolder.length > 0;
+    const source = e.source && SOURCES[e.source] ? {
+      id: e.source,
+      name: SOURCES[e.source].name,
+      page: SOURCES[e.source].page,
+      latest: latest.get(e.source)?.version ?? null,
+      installed: file?.version ?? null,
+      // Absent, envoyé à la main (version inconnue) ou plus ancien que la dernière version.
+      updateAvailable: Boolean(latest.get(e.source)) && (!file || file.version !== latest.get(e.source).version),
+    } : null;
+    return { ...e, source, fileId: file?.id ?? null, present, fileCount: e.folder ? inFolder.length : undefined };
   });
   const expectedByPath = new Map(catalog.expected.map((e) => [e.path.toLowerCase(), e]));
   const extra = extraHashes();
@@ -372,6 +413,34 @@ export async function addBiosFiles(systemId, uploads, targetPath) {
     saved.push(relative);
   }
   return saved;
+}
+
+/**
+ * Récupère la dernière version d'un fichier attendu sur sa source Internet (firmware officiel,
+ * fichier libre) et l'enregistre ; renvoie { path, version }.
+ */
+export async function fetchBiosFromSource(systemId, biosPath) {
+  const system = requireSystem(systemId);
+  const { expected } = await expectedBios(system);
+  const entry = expected.find((e) => e.path.toLowerCase() === String(biosPath || '').toLowerCase());
+  if (!entry?.source || !SOURCES[entry.source]) throw new HttpError(404, 'errors.biosNoSource', { path: biosPath });
+  const latest = await latestVersion(entry.source, { force: true });
+  if (!latest?.url) throw new HttpError(502, 'errors.biosSourceUnavailable', { path: entry.path });
+  const dir = path.join(config.dataDir, 'bios', '.upload');
+  fs.mkdirSync(dir, { recursive: true });
+  const temp = path.join(dir, crypto.randomUUID());
+  try {
+    const res = await fetch(latest.url, { headers: { 'User-Agent': 'Mozilla/5.0 (RomCloud)' }, signal: AbortSignal.timeout(30 * 60_000) });
+    if (!res.ok || !res.body) throw new HttpError(502, 'errors.downloadFailed', { url: latest.url, status: res.status });
+    await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(temp));
+    const size = fs.statSync(temp).size;
+    const announced = latest.size || Number(res.headers.get('content-length')) || 0;
+    if (!size || (announced && size !== announced)) throw new HttpError(502, 'errors.biosSourceIncomplete', { path: entry.path, size, expected: announced });
+    storeBios(system, safeBiosPath(entry.path), { tempPath: temp }, await hashBios(temp), { source: entry.source, version: latest.version });
+    return { path: entry.path, version: latest.version };
+  } finally {
+    fs.rmSync(temp, { force: true });
+  }
 }
 
 export function requireBios(id) {

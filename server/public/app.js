@@ -767,13 +767,13 @@ function biosDescription({ path, description }) {
 
 function renderBios(res) {
   const bits = [t('bios.files', { n: res.files.length })];
-  if (!res.cores.length) bits.push(t('bios.noCores'));
-  else if (!res.coreInfoAvailable) bits.push(t('bios.noCoreInfo', { cores: res.cores.join(', ') }));
-  else {
-    bits.push(t('bios.cores', { cores: res.cores.join(', ') }));
-    const required = res.expected.filter((e) => e.required && !e.present).length;
-    if (required) bits.push(t('bios.missingRequired', { n: required }));
-  }
+  if (!res.cores.length && !res.expected.length) bits.push(t('bios.noCores'));
+  else if (res.cores.length && !res.coreInfoAvailable) bits.push(t('bios.noCoreInfo', { cores: res.cores.join(', ') }));
+  else if (res.cores.length) bits.push(t('bios.cores', { cores: res.cores.join(', ') }));
+  const required = res.expected.filter((e) => e.required && !e.present).length;
+  if (required) bits.push(t('bios.missingRequired', { n: required }));
+  const updates = res.expected.filter((e) => e.source?.updateAvailable).length;
+  if (updates) bits.push(t('bios.updates', { n: updates }));
   $('#biosSummary').textContent = bits.join(' · ');
 
   const box = $('#biosContent');
@@ -794,12 +794,30 @@ function renderBios(res) {
     section(t('bios.expected'), t('bios.expectedHint'), res.expected.map((e) => {
       const row = document.createElement('div');
       row.className = 'dup-row bios-row';
-      const tag = `<span class="tag${e.required ? ' req' : ''}">${escapeHtml(t(e.required ? 'bios.required' : 'bios.optional'))}</span>`;
-      const details = [e.folder && t('bios.folder', { n: e.fileCount || 0 }), biosDescription(e), e.md5s?.length && `md5 ${e.md5s.join(' / ')}`, e.sha1s?.length && `sha1 ${e.sha1s.join(' / ')}`]
-        .filter(Boolean).join(' · ');
+      const tag = `<span class="tag">${escapeHtml(t(`bios.kind.${e.kind || 'bios'}`))}</span>
+        <span class="tag${e.required ? ' req' : ''}">${escapeHtml(t(e.required ? 'bios.required' : 'bios.optional'))}</span>`;
+      const details = [
+        e.folder && t('bios.folder', { n: e.fileCount || 0 }),
+        biosDescription(e),
+        e.emulators?.length && t('bios.emulators', { list: e.emulators.join(', ') }),
+        e.md5s?.length && `md5 ${e.md5s.join(' / ')}`,
+        e.sha1s?.length && `sha1 ${e.sha1s.join(' / ')}`,
+      ].filter(Boolean).join(' · ');
+      // Source sur Internet : versions installée et publiée.
+      const src = e.source;
+      const sourceLine = src ? `<br><span class="muted">${escapeHtml(t('bios.source', { name: src.name }))} · ${escapeHtml(
+        src.latest ? t('bios.latest', { version: src.latest }) : t('bios.latestUnknown'),
+      )}${src.installed ? ` · ${escapeHtml(t('bios.installed', { version: src.installed }))}` : ''}${src.page ? ` · <a href="${escapeHtml(src.page)}" target="_blank" rel="noopener">${escapeHtml(t('bios.sourcePage'))}</a>` : ''}</span>` : '';
       row.innerHTML = `<span class="bios-state ${e.present ? 'ok' : 'missing'}">${e.present ? '✓' : '✗'}</span>
-        <span class="name"><code>${escapeHtml(e.path)}</code><br><span class="muted">${escapeHtml(details)}</span></span>
+        <span class="name"><code>${escapeHtml(e.path)}</code><br><span class="muted">${escapeHtml(details)}</span>${sourceLine}</span>
         ${tag}`;
+      if (src?.updateAvailable) {
+        const fetchBtn = document.createElement('button');
+        fetchBtn.className = 'btn small primary';
+        fetchBtn.textContent = t(e.present ? 'bios.update' : 'bios.fetch', { version: src.latest });
+        fetchBtn.onclick = () => fetchBios(e.path, fetchBtn);
+        row.append(fetchBtn);
+      }
       // Dossier (« pcsx2/bios ») : un .zip de son contenu, extrait sur le serveur ; toujours proposé.
       if (!e.present || e.folder) {
         const label = document.createElement('label');
@@ -837,6 +855,24 @@ function renderBios(res) {
     p.textContent = t('bios.empty');
     box.append(p);
   }
+}
+
+/** Récupère la dernière version d'un fichier sur sa source Internet (firmware officiel, fichier libre). */
+function fetchBios(biosPath, button) {
+  const s = state.current;
+  if (!s) return;
+  button.disabled = true;
+  button.textContent = t('bios.fetching');
+  guard(async () => {
+    try {
+      const data = await api(`/systems/${encodeURIComponent(s.id)}/bios/fetch`, { method: 'POST', body: { path: biosPath } });
+      toast(t('bios.fetched', { path: data.fetched.path, version: data.fetched.version }));
+      renderBios(data);
+      await loadSystems();
+    } finally {
+      button.disabled = false;
+    }
+  });
 }
 
 /** Envoie des BIOS ; « target » impose le chemin (fichier choisi pour un BIOS attendu précis). */
