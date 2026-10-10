@@ -31,6 +31,7 @@ import java.io.IOException
 import java.net.URLEncoder
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import java.util.zip.GZIPOutputStream
 
 @Serializable
 data class AccountUser(val id: Long, val username: String)
@@ -475,12 +476,11 @@ class Account(private val context: Context, private val api: ApiClient, private 
     /** Envoie un état de l'historique (fichier puis miniature) ; marqué « envoyé » sur l'appareil. */
     private suspend fun uploadState(gameId: Long, history: StateHistory, meta: StateMeta) {
         val file = history.stateFile(meta.id)
-        val body = execute(
+        val body = putCompressed(
             request("/api/account/states/$gameId/${URLEncoder.encode(meta.core, "UTF-8")}/${meta.id}")
                 .header("X-Created-At", meta.createdAt.toString())
-                .header("X-Pinned", if (meta.pinned) "1" else "0")
-                .put(file.asRequestBody(BINARY)),
-            timeoutSeconds = 300,
+                .header("X-Pinned", if (meta.pinned) "1" else "0"),
+            file,
         )
         val thumbnail = history.thumbnailFile(meta.id)
         // Réponse vide : état plus ancien que ceux gardés en ligne, aussitôt retiré par le serveur.
@@ -488,6 +488,29 @@ class Account(private val context: Context, private val api: ApiClient, private 
             execute(request("/api/account/states/${meta.id}/thumbnail").put(thumbnail.asRequestBody(JPEG)), 60)
         }
         history.markUploaded(meta.id)
+    }
+
+    /**
+     * Envoie [file] (PUT), compressé en gzip quand c'est plus petit : moins de place sur le serveur et
+     * moins de données envoyées. Au téléchargement, OkHttp décompresse lui-même (Accept-Encoding).
+     */
+    private suspend fun putCompressed(builder: Request.Builder, file: File): String {
+        val packed = withContext(Dispatchers.IO) { runCatching { gzipped(file) }.getOrNull() }
+        try {
+            if (packed != null) builder.header("Content-Encoding", "gzip").header("X-Uncompressed-Size", file.length().toString())
+            return execute(builder.put((packed ?: file).asRequestBody(BINARY)), timeoutSeconds = 300)
+        } finally {
+            packed?.delete()
+        }
+    }
+
+    /** Copie compressée de [file] dans le cache ; null si la compression n'y gagne rien (état déjà compressé). */
+    private fun gzipped(file: File): File? {
+        val out = File(context.cacheDir, "upload-${System.nanoTime()}.gz")
+        GZIPOutputStream(out.outputStream().buffered(), 64 * 1024).use { gz -> file.inputStream().use { it.copyTo(gz, 64 * 1024) } }
+        if (out.length() < file.length() * MIN_GAIN) return out
+        out.delete()
+        return null
     }
 
     /** Ajoute un élément à la file (écrit d'un bloc : jamais lu à moitié par l'autre processus). */
@@ -556,12 +579,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
                     }
                     val modified = entry.lastModified()
                     try {
-                        execute(
-                            request(savePath(gameId.toLong(), core, kind))
-                                .header("X-Saved-At", file.lastModified().toString())
-                                .put(file.asRequestBody(BINARY)),
-                            timeoutSeconds = 300,
-                        )
+                        putCompressed(request(savePath(gameId.toLong(), core, kind)).header("X-Saved-At", file.lastModified().toString()), file)
                         sent++
                         // Nouvelle sauvegarde mise en file pendant l'envoi : gardée pour le prochain.
                         if (entry.lastModified() == modified) entry.delete()
@@ -618,6 +636,8 @@ class Account(private val context: Context, private val api: ApiClient, private 
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private val BINARY = "application/octet-stream".toMediaType()
         private val JPEG = "image/jpeg".toMediaType()
+        /** Compression gardée seulement si elle fait gagner au moins 5 % (états déjà compressés : PPSSPP…). */
+        private const val MIN_GAIN = 0.95
         private const val KEY_TOKEN = "token"
         private const val KEY_USER = "username"
         private const val KEY_USER_ID = "userId"

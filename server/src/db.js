@@ -201,6 +201,13 @@ if (!gameColumns.includes('parent_id')) {
 db.exec('CREATE INDEX IF NOT EXISTS games_parent ON games(parent_id)');
 // Notes en étoiles entières (les versions précédentes gardaient une décimale).
 db.exec('UPDATE games SET rating = MIN(5, MAX(0, ROUND(rating))) WHERE rating IS NOT NULL AND rating <> ROUND(rating)');
+// Sauvegardes et états compressés sur le disque (« gzip »), « identity » si la compression n'y
+// gagne rien ; NULL : fichier d'une version précédente, pas encore examiné (accounts.js).
+for (const table of ['saves', 'state_history']) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!columns.includes('encoding')) db.exec(`ALTER TABLE ${table} ADD COLUMN encoding TEXT`);
+  if (!columns.includes('stored_size')) db.exec(`ALTER TABLE ${table} ADD COLUMN stored_size INTEGER`);
+}
 const biosColumns = db.prepare('PRAGMA table_info(bios)').all().map((c) => c.name);
 if (!biosColumns.includes('sha1')) db.exec('ALTER TABLE bios ADD COLUMN sha1 TEXT');
 

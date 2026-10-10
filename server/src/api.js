@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import express from 'express';
 import multer from 'multer';
 import * as accounts from './accounts.js';
@@ -519,19 +520,47 @@ api.post('/account/playtime', signedIn, (req, res) => {
 });
 
 api.get('/account/saves', signedIn, (req, res) => res.json(accounts.listSaves(req.auth.user.id, req.query.gameId)));
-api.get('/account/saves/:gameId/:core/:kind', signedIn, (req, res) => {
-  const { file, save } = accounts.getSave(req.auth.user.id, req.params.gameId, req.params.core, req.params.kind);
+/**
+ * Envoi compressé par l'application (Content-Encoding: gzip) : gardé compressé. L'en-tête est mis de
+ * côté pour que la lecture du corps ne le décompresse pas.
+ */
+function keepCompressed(req, res, next) {
+  req.uploadEncoding = req.headers['content-encoding'];
+  delete req.headers['content-encoding'];
+  next();
+}
+
+/**
+ * Fichier de sauvegarde ou d'état : compressé par l'application qui l'a envoyé, il est renvoyé tel
+ * quel aux applications qui acceptent gzip (Content-Encoding, décompressé chez elles), décompressé
+ * ici pour les versions précédentes qui ne l'annoncent pas.
+ */
+function sendStored(req, res, next, file, encoding) {
+  res.type('application/octet-stream');
+  if (encoding !== 'gzip') return res.sendFile(file);
+  res.vary('Accept-Encoding');
+  if (/\bgzip\b/.test(req.get('accept-encoding') || '')) {
+    res.set('Content-Encoding', 'gzip');
+    return res.sendFile(file);
+  }
+  fs.createReadStream(file).on('error', next).pipe(zlib.createGunzip()).on('error', next).pipe(res);
+}
+
+api.get('/account/saves/:gameId/:core/:kind', signedIn, (req, res, next) => {
+  const { file, encoding, save } = accounts.getSave(req.auth.user.id, req.params.gameId, req.params.core, req.params.kind);
   res.set('X-Saved-At', save.savedAt);
-  res.sendFile(file);
+  sendStored(req, res, next, file, encoding);
 });
 api.put(
   '/account/saves/:gameId/:core/:kind',
   signedIn,
+  keepCompressed,
   express.raw({ type: () => true, limit: '1024mb' }),
-  (req, res) => {
+  h(async (req, res) => {
     const { gameId, core, kind } = req.params;
-    res.json(accounts.putSave(req.auth.user.id, gameId, core, kind, req.body, req.get('x-saved-at'), accounts.clientInfo(req)));
-  },
+    const stored = { encoding: accounts.uploadEncoding(req.uploadEncoding), size: req.get('x-uncompressed-size') };
+    res.json(await accounts.putSave(req.auth.user.id, gameId, core, kind, req.body, req.get('x-saved-at'), accounts.clientInfo(req), stored));
+  }),
 );
 api.delete('/account/saves/:gameId/:core/:kind', signedIn, (req, res) => {
   accounts.deleteSave(req.auth.user.id, req.params.gameId, req.params.core, req.params.kind);
@@ -540,10 +569,10 @@ api.delete('/account/saves/:gameId/:core/:kind', signedIn, (req, res) => {
 
 // Historique des états de sauvegarde du profil (plusieurs par jeu, par appareil, avec miniature).
 api.get('/account/states', signedIn, (req, res) => res.json(accounts.listStates(req.auth.user.id, req.query.gameId)));
-api.get('/account/states/:id', signedIn, (req, res) => {
-  const { file, state } = accounts.getState(req.auth.user.id, req.params.id);
+api.get('/account/states/:id', signedIn, (req, res, next) => {
+  const { file, encoding, state } = accounts.getState(req.auth.user.id, req.params.id);
   res.set('X-Created-At', state.createdAt);
-  res.sendFile(file);
+  sendStored(req, res, next, file, encoding);
 });
 api.get('/account/states/:id/thumbnail', signedIn, (req, res) => {
   const { file, type } = accounts.getStateThumbnail(req.auth.user.id, req.params.id);
@@ -552,14 +581,20 @@ api.get('/account/states/:id/thumbnail', signedIn, (req, res) => {
 api.put(
   '/account/states/:gameId/:core/:id',
   signedIn,
+  keepCompressed,
   express.raw({ type: () => true, limit: '1024mb' }),
-  (req, res) => {
+  h(async (req, res) => {
     const { gameId, core, id } = req.params;
-    const meta = { createdAt: req.get('x-created-at'), pinned: req.get('x-pinned') === '1' };
-    const state = accounts.putState(req.auth.user.id, gameId, core, id, req.body, meta, accounts.clientInfo(req));
+    const meta = {
+      createdAt: req.get('x-created-at'),
+      pinned: req.get('x-pinned') === '1',
+      encoding: accounts.uploadEncoding(req.uploadEncoding),
+      size: req.get('x-uncompressed-size'),
+    };
+    const state = await accounts.putState(req.auth.user.id, gameId, core, id, req.body, meta, accounts.clientInfo(req));
     if (state) res.json(state);
     else res.status(204).end(); // plus ancien que les états gardés : aussitôt retiré
-  },
+  }),
 );
 api.put('/account/states/:id/thumbnail', signedIn, express.raw({ type: () => true, limit: '4mb' }), (req, res) => {
   res.json(accounts.putStateThumbnail(req.auth.user.id, req.params.id, req.body, req.get('content-type')));
