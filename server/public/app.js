@@ -220,7 +220,8 @@ function visibleGames() {
     if (filter === 'missing' && g.scrapeStatus === 'ok') return false;
     if (['notfound', 'none', 'error'].includes(filter) && g.scrapeStatus !== filter) return false;
     if (rating === 'unrated' && g.rating != null) return false;
-    if (/^\d$/.test(rating) && !(g.rating != null && g.rating >= Number(rating))) return false;
+    // Note exacte (« 1 étoile » : les jeux notés 1).
+    if (/^\d$/.test(rating) && g.rating !== Number(rating)) return false;
     return true;
   });
 }
