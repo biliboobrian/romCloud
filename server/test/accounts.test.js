@@ -261,3 +261,14 @@ test('erreurs des applications, avec ou sans joueur', () => {
   assert.deepEqual(log.slice(0, 2).map((e) => [e.message, e.username]), [['Anonyme', null], ['Cœur introuvable', 'Alice']]);
   assert.equal(accounts.adminUserDetail(auth.user.id).errors.length, 1);
 });
+
+test('rapport gardé hors ligne : date de l’erreur conservée, long journal accepté', () => {
+  const twoDaysAgo = Date.now() - 2 * 86400_000;
+  accounts.logError({ context: 'report', message: 'Écran noir', details: 'x'.repeat(150_000), at: twoDaysAgo }, null, phone);
+  accounts.logError({ context: 'report', message: 'Date future', at: Date.now() + 86400_000 * 365 }, null, phone);
+  const rows = db.prepare("SELECT message, at, length(details) AS size FROM error_logs WHERE context = 'report' ORDER BY id").all();
+  const day = (ms) => new Date(ms).toISOString().slice(0, 10);
+  assert.equal(rows[0].at.slice(0, 10), day(twoDaysAgo));
+  assert.equal(rows[0].size, 150_000);
+  assert.equal(rows[1].at.slice(0, 10), day(Date.now())); // date invraisemblable : maintenant
+});

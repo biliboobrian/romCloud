@@ -342,17 +342,40 @@ export async function scrapeLaunchBox({ system, titles, regions = config.screens
     `SELECT g.id, g.platform, g.data FROM names n JOIN games g ON g.id = n.id
      WHERE n.norm = ? AND g.platform IN (${platforms.map(() => '?').join(', ')})`,
   );
+  const namesOf = (id) => db.prepare('SELECT name, region FROM names WHERE id = ?').all(id);
+  const meta = ({ id, data }) =>
+    launchboxMeta(id, JSON.parse(data), namesOf(id), db.prepare('SELECT type, region, file FROM images WHERE id = ?').all(id), regions);
+  // Plusieurs plateformes possibles (Neo Geo AES / MVS) : l'ordre de la liste départage.
+  const byPlatform = (rows) => rows.sort((a, b) => platforms.indexOf(a.platform) - platforms.indexOf(b.platform));
   for (const title of titles) {
     const norm = title && normalize(title);
     if (!norm) continue;
     const rows = find.all(norm, ...platforms);
-    if (!rows.length) continue;
-    // Plusieurs plateformes possibles (Neo Geo AES / MVS) : l'ordre de la liste départage.
-    rows.sort((a, b) => platforms.indexOf(a.platform) - platforms.indexOf(b.platform));
-    const { id, data } = rows[0];
-    const names = db.prepare('SELECT name, region FROM names WHERE id = ?').all(id);
-    const images = db.prepare('SELECT type, region, file FROM images WHERE id = ?').all(id);
-    return launchboxMeta(id, JSON.parse(data), names, images, regions);
+    if (rows.length) return meta(byPlatform(rows)[0]);
+  }
+  // « Titre - Sous-titre » introuvable (jeu d'une compilation nommé d'après l'un de ses jeux :
+  // « Parodius - Fantastic Journey » pour « Parodius ») : le titre seul, si sa fiche cite le
+  // sous-titre (résumé ou autre nom) ; sinon rien (« Tomb Raider - Chronicles » n'est pas « Tomb Raider »).
+  for (const title of titles) {
+    const split = splitSubtitle(title);
+    if (!split) continue;
+    const match = byPlatform(find.all(normalize(split.main), ...platforms))
+      .find(({ id, data }) => citesSubtitle(JSON.parse(data).Overview, namesOf(id).map((n) => n.name), split.subtitle));
+    if (match) return meta(match);
   }
   return null;
+}
+
+/** « Parodius - Fantastic Journey » -> { main: « Parodius », subtitle: « Fantastic Journey » } ; null sans sous-titre assez long. */
+export function splitSubtitle(title) {
+  const parts = String(title || '').split(/\s+-\s+/);
+  if (parts.length < 2) return null;
+  const subtitle = parts.slice(1).join(' ');
+  return normalize(subtitle).length >= 6 ? { main: parts[0], subtitle } : null;
+}
+
+/** La fiche (résumé ou l'un de ses noms) cite-t-elle le sous-titre ? */
+export function citesSubtitle(overview, names, subtitle) {
+  const wanted = normalize(subtitle);
+  return normalize(String(overview || '')).includes(wanted) || names.some((n) => normalize(n).includes(wanted));
 }

@@ -573,4 +573,14 @@
     <string name="settings_auto_upload_states_hint">Avec un profil connecté : chaque état sauvegardé dans l’émulateur intégré est envoyé sur votre profil, avec cet appareil et sa date. Sinon, envoyez-les depuis l’historique des états.</string>
     <string name="settings_auto_upload_states_on">États envoyés en ligne automatiquement</string>
     <string name="emulator_files_hint">Pour Eden : %2$s dans Téléchargements › %1$s. Dans Eden, installez les clés et le firmware depuis ses paramètres, en choisissant ces fichiers.</string>
+    <string name="report_default_title">Rapport de problème</string>
+    <string name="report_section">Signaler un problème</string>
+    <string name="report_hint">Envoie un rapport à votre serveur RomCloud, visible par son administrateur (Paramètres › Erreurs). Les erreurs et plantages sont déjà signalés automatiquement.</string>
+    <string name="report_button">Envoyer un rapport d’erreur</string>
+    <string name="report_title">Rapport d’erreur</string>
+    <string name="report_description">Que s’est-il passé ? (jeu, émulateur, étapes)</string>
+    <string name="report_with_logs">Joindre le journal de l’application</string>
+    <string name="report_send">Envoyer</string>
+    <string name="report_sent">Rapport envoyé au serveur</string>
+    <string name="report_queued">Rapport enregistré : il sera envoyé dès que le serveur sera joignable</string>
 </resources>

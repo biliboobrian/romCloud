@@ -552,6 +552,8 @@ class Account(private val context: Context, private val api: ApiClient, private 
      * envoyé que par l'application, pour ne jamais être compté deux fois).
      */
     suspend fun flush(savesOnly: Boolean = false): Int {
+        // Erreurs en attente : envoyées avec ou sans profil.
+        if (!savesOnly) flushErrors()
         if (token == null) return 0
         var sent = 0
         flushLock.withLock {
@@ -629,20 +631,100 @@ class Account(private val context: Context, private val api: ApiClient, private 
     // Erreurs
     // -------------------------------------------------------------------------
 
-    /** Signale une erreur à l'administration (avec le profil connecté) ; sans effet hors ligne. */
+    /**
+     * Signale une erreur à l'administration (avec le profil connecté s'il y en a un) : mise en file
+     * (fichier partagé avec le processus de l'émulateur intégré), envoyée aussitôt si le serveur est
+     * joignable, sinon au retour de la connexion ([flushErrors]).
+     */
     fun reportError(context: String, message: String, details: String? = null) {
         if (runCatching { api.url("") }.isFailure || message.isBlank()) return
-        scope.launch {
-            runCatching {
-                execute(request("/api/account/errors").post(jsonBody("context" to context, "message" to message.take(2000), "details" to details?.take(20000))), 10)
+        queueError(context, message, details?.take(MAX_ERROR_DETAILS))
+        scope.launch { flushErrors() }
+    }
+
+    private fun queueError(context: String, message: String, details: String?) {
+        // File bornée : les plus anciennes erreurs non envoyées laissent la place.
+        queued("error-").dropLast(MAX_QUEUED_ERRORS - 1).forEach { it.delete() }
+        val body = buildJsonObject {
+            put("context", JsonPrimitive(context))
+            put("message", JsonPrimitive(message.take(2000)))
+            details?.let { put("details", JsonPrimitive(it)) }
+            put("at", JsonPrimitive(System.currentTimeMillis()))
+        }
+        enqueue("error-${System.currentTimeMillis()}-${System.nanoTime()}", body.toString())
+    }
+
+    /** Envoie les erreurs en attente ; renvoie vrai si la file est vide (tout est parti). */
+    suspend fun flushErrors(): Boolean = withContext(Dispatchers.IO) {
+        for (entry in queued("error-")) {
+            val body = runCatching { entry.readText() }.getOrNull()
+            if (body.isNullOrBlank()) {
+                entry.delete()
+                continue
+            }
+            try {
+                execute(request("/api/account/errors").post(body.toRequestBody(JSON)), 30)
+                entry.delete()
+            } catch (e: ApiException) {
+                if (e.code == 0) return@withContext false // serveur non configuré
+                entry.delete() // refusé par le serveur : abandonné
+            } catch (e: IOException) {
+                return@withContext false // injoignable : réessayé plus tard
             }
         }
+        true
     }
+
+    /**
+     * Rapport envoyé par l'utilisateur (paramètres) : sa description, l'appareil et, si [withLogs],
+     * le journal récent de l'application et celui de la dernière partie dans l'émulateur intégré.
+     * Renvoie vrai s'il est parti, faux s'il attend le retour du serveur.
+     */
+    suspend fun sendReport(description: String, withLogs: Boolean): Boolean {
+        val details = withContext(Dispatchers.IO) {
+            buildString {
+                appendLine("RomCloud ${appVersion} (${api.platform})")
+                appendLine("Appareil : ${Build.MANUFACTURER} ${Build.MODEL} — $deviceName")
+                appendLine("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), ${Build.SUPPORTED_ABIS.joinToString()}")
+                appendLine("Profil : ${if (token != null) state.value.username else "non connecté"}")
+                if (description.isNotBlank()) {
+                    appendLine()
+                    appendLine("--- Description ---")
+                    appendLine(description.trim())
+                }
+                if (withLogs) {
+                    appendLine()
+                    appendLine("--- Journal de l'application (dernières lignes) ---")
+                    append(appLog())
+                    val session = File(context.filesDir, "libretro/session.log")
+                    if (session.isFile) {
+                        appendLine()
+                        appendLine("--- Journal de la dernière partie (émulateur intégré) ---")
+                        session.readLines().takeLast(300).forEach { appendLine(it) }
+                    }
+                }
+            }
+        }
+        val title = description.lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(200) ?: I18n.get(R.string.report_default_title)
+        queueError("report", title, details.take(MAX_ERROR_DETAILS))
+        return flushErrors()
+    }
+
+    /** Journal récent du processus de l'application (logcat ; sans autorisation : le sien seulement). */
+    private fun appLog(): String = runCatching {
+        val process = ProcessBuilder("logcat", "-d", "-v", "time", "-t", "1500", "--pid=${android.os.Process.myPid()}")
+            .redirectErrorStream(true)
+            .start()
+        process.inputStream.bufferedReader().use { it.readText() }.takeLast(150_000)
+    }.getOrElse { "(journal indisponible : ${it.message})\n" }
 
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private val BINARY = "application/octet-stream".toMediaType()
         private val JPEG = "image/jpeg".toMediaType()
+        /** Détail d'un rapport (journal joint) : limite du serveur. */
+        private const val MAX_ERROR_DETAILS = 200_000
+        private const val MAX_QUEUED_ERRORS = 50
         /** Compression gardée seulement si elle fait gagner au moins 5 % (états déjà compressés : PPSSPP…). */
         private const val MIN_GAIN = 0.95
         private const val KEY_TOKEN = "token"

@@ -51,6 +51,7 @@ import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.GameOrder
 import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
+import com.romcloud.app.ui.ErrorReportSection
 import com.romcloud.app.ui.appVersion
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
@@ -146,6 +147,9 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
 
         Section(stringResource(R.string.settings_language))
         LanguageSelector(app)
+
+        Section(stringResource(R.string.report_section))
+        ErrorReportSection(app)
 
         Section(stringResource(R.string.settings_display))
         FilterChip(selected = hideUnidentified, onClick = {

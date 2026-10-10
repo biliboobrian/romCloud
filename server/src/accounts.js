@@ -517,13 +517,23 @@ export function deleteState(userId, id) {
 // Erreurs des applications
 // ---------------------------------------------------------------------------
 
+/** Détail d'un rapport (journal de l'application joint par l'utilisateur) : 200 000 caractères au plus. */
+const MAX_ERROR_DETAILS = 200_000;
+
+/**
+ * Enregistre une erreur ou un rapport envoyé par une application ; [body.at] : moment de l'erreur
+ * (ms ou ISO), pour un rapport gardé hors ligne puis envoyé plus tard (30 jours au plus, sinon maintenant).
+ */
 export function logError(body, auth, client) {
   const message = text(body?.message, 2000);
   if (!message) throw new HttpError(400, 'errors.messageRequired');
-  db.prepare(`INSERT INTO error_logs (user_id, session_id, platform, device, app_version, context, message, details, ip)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+  const at = new Date(Number(body.at) || body.at || Date.now());
+  const recent = !Number.isNaN(at.getTime()) && at.getTime() <= Date.now() + 60_000 && at.getTime() > Date.now() - 30 * 86400_000;
+  const when = (recent ? at : new Date()).toISOString().replace('T', ' ').slice(0, 19);
+  db.prepare(`INSERT INTO error_logs (user_id, session_id, platform, device, app_version, context, message, details, ip, at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(auth?.user.id ?? null, auth?.sessionId ?? null, client.platform, client.device, client.appVersion,
-      text(body.context, 200), message, text(body.details, 20000), client.ip);
+      text(body.context, 200), message, text(body.details, MAX_ERROR_DETAILS), client.ip, when);
 }
 
 // ---------------------------------------------------------------------------

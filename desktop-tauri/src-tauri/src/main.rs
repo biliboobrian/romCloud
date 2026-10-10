@@ -47,6 +47,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![ipc::ipc, ipc::cast_chunk])
         .setup(|app| {
             events::init(app.handle().clone());
+            // Plantage de l'application : signalé au serveur (au lancement suivant).
+            account::install_panic_hook();
             // Jeu à plusieurs : annonce de ce PC et appareils RomCloud du réseau local.
             netplay::start();
             let mut window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()));

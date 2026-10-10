@@ -211,6 +211,9 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
             Text(stringResource(R.string.settings_language), style = MaterialTheme.typography.titleMedium)
             LanguageSelector(app)
 
+            Text(stringResource(R.string.report_section), style = MaterialTheme.typography.titleMedium)
+            ErrorReportSection(app)
+
             Text(stringResource(R.string.settings_emulators), style = MaterialTheme.typography.titleMedium)
             var quitOnExit by remember { mutableStateOf(app.settings.retroArchQuitOnExit) }
             Row(verticalAlignment = Alignment.CenterVertically) {
