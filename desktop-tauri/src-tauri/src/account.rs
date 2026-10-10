@@ -32,6 +32,7 @@ pub fn version() -> String {
 pub(crate) enum Body {
     None,
     Json(Value),
+    /// Fichier de sauvegarde ou d'état : compressé en gzip quand c'est plus petit ([gzip_if_smaller]).
     Bytes(Vec<u8>),
     /// Image (miniature d'un état) : contenu et type (« image/png »).
     Image(Vec<u8>, &'static str),
@@ -42,7 +43,26 @@ pub(crate) struct Response {
     pub bytes: Vec<u8>,
 }
 
-/// Requête au serveur ; `raw` : corps binaire reçu ([Response::bytes]).
+/// Compression gardée seulement si elle fait gagner au moins 5 % (états déjà compressés : PPSSPP…).
+const MIN_GAIN: f64 = 0.95;
+
+/// Données compressées en gzip, ou None si la compression n'y gagne rien.
+pub(crate) fn gzip_if_smaller(data: &[u8]) -> Option<Vec<u8>> {
+    use std::io::Write;
+    let mut encoder = flate2::write::GzEncoder::new(Vec::with_capacity(data.len() / 4), flate2::Compression::new(6));
+    encoder.write_all(data).ok()?;
+    let packed = encoder.finish().ok()?;
+    ((packed.len() as f64) < data.len() as f64 * MIN_GAIN).then_some(packed)
+}
+
+fn gunzip(data: &[u8]) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut out = Vec::with_capacity(data.len() * 4);
+    flate2::read::GzDecoder::new(data).read_to_end(&mut out)?;
+    Ok(out)
+}
+
+/// Requête au serveur ; `raw` : corps binaire reçu ([Response::bytes], décompressé s'il arrive en gzip).
 pub(crate) async fn call(api_path: &str, method: reqwest::Method, body: Body, raw: bool, extra: &[(&str, String)], timeout: Duration) -> Result<Response> {
     let server = settings::get_str("serverUrl");
     if server.is_empty() {
@@ -60,10 +80,23 @@ pub(crate) async fn call(api_path: &str, method: reqwest::Method, body: Body, ra
     for (k, v) in extra {
         request = request.header(*k, v);
     }
+    // Fichiers reçus : le serveur les renvoie compressés tels qu'ils ont été envoyés.
+    if raw {
+        request = request.header("Accept-Encoding", "gzip");
+    }
     request = match body {
         Body::None => request,
         Body::Json(v) => request.json(&v),
-        Body::Bytes(b) => request.header("Content-Type", "application/octet-stream").body(b),
+        Body::Bytes(b) => {
+            // Sauvegardes et états : compressés ici (moins de place sur le serveur, moins à envoyer).
+            let size = b.len();
+            let packed = tokio::task::spawn_blocking(move || gzip_if_smaller(&b).ok_or(b)).await.map_err(|e| AppError::msg(e.to_string()))?;
+            let request = request.header("Content-Type", "application/octet-stream");
+            match packed {
+                Ok(gz) => request.header("Content-Encoding", "gzip").header("X-Uncompressed-Size", size.to_string()).body(gz),
+                Err(b) => request.body(b),
+            }
+        }
         Body::Image(b, mime) => request.header("Content-Type", mime).body(b),
     };
     let res = match request.send().await {
@@ -93,7 +126,14 @@ pub(crate) async fn call(api_path: &str, method: reqwest::Method, body: Body, ra
         return Err(err);
     }
     if raw {
-        return Ok(Response { json: Value::Null, bytes: res.bytes().await?.to_vec() });
+        let gzipped = res.headers().get("content-encoding").and_then(|v| v.to_str().ok()).is_some_and(|v| v.eq_ignore_ascii_case("gzip"));
+        let bytes = res.bytes().await?.to_vec();
+        let bytes = if gzipped {
+            tokio::task::spawn_blocking(move || gunzip(&bytes)).await.map_err(|e| AppError::msg(e.to_string()))??
+        } else {
+            bytes
+        };
+        return Ok(Response { json: Value::Null, bytes });
     }
     Ok(Response { json: res.json().await.unwrap_or(Value::Null), bytes: vec![] })
 }
@@ -416,4 +456,24 @@ pub fn report_error(context: &str, message: &str, details: Option<String>) {
     tauri::async_runtime::spawn(async move {
         let _ = call("/api/account/errors", reqwest::Method::POST, Body::Json(body), false, &[], Duration::from_secs(8)).await;
     });
+}
+
+#[cfg(test)]
+mod compression_tests {
+    use super::*;
+
+    #[test]
+    fn sauvegarde_compressee_seulement_si_plus_petite() {
+        let state: Vec<u8> = (0..200_000u32).map(|i| if i % 97 == 0 { (i % 251) as u8 } else { 0 }).collect();
+        let packed = gzip_if_smaller(&state).expect("état répétitif compressé");
+        assert!(packed.len() < state.len() / 5);
+        assert_eq!(gunzip(&packed).unwrap(), state);
+        // Données sans répétition (état déjà compressé) : envoyées telles quelles.
+        let mut seed = 12345u32;
+        let noise: Vec<u8> = (0..50_000).map(|_| {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            (seed >> 16) as u8
+        }).collect();
+        assert!(gzip_if_smaller(&noise).is_none());
+    }
 }

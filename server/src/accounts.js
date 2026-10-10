@@ -7,6 +7,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { config } from './config.js';
 import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
@@ -33,6 +34,36 @@ export const STATE_HISTORY_LIMIT = 10;
 const THUMBNAIL_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 
 const text = (value, max) => (value == null || value === '' ? null : String(value).slice(0, max));
+
+// ---------------------------------------------------------------------------
+// Fichiers des sauvegardes et des états, compressés par les applications
+// ---------------------------------------------------------------------------
+
+/**
+ * Encodage d'un envoi : « gzip » (compressé par l'application, Content-Encoding) ou « identity »
+ * (version précédente des applications, ou compression sans gain). Gardé tel quel sur le disque.
+ */
+export function uploadEncoding(contentEncoding) {
+  const value = String(contentEncoding || 'identity').trim().toLowerCase();
+  if (value !== 'gzip' && value !== 'identity') throw new HttpError(415, 'errors.unsupportedEncoding');
+  return value;
+}
+
+/** Écrit le fichier reçu tel quel (remplacement atomique). */
+function writeStored(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, data);
+  fs.renameSync(`${file}.tmp`, file);
+}
+
+/** Contenu d'origine d'un fichier enregistré ([encoding] : celui de l'envoi). */
+export function readStored(file, encoding) {
+  const data = fs.readFileSync(file);
+  return encoding === 'gzip' ? zlib.gunzipSync(data) : data;
+}
+
+/** Taille d'origine annoncée par l'application (X-Uncompressed-Size), sinon celle reçue. */
+const originalSize = (data, encoding, size) => (encoding === 'gzip' && Number(size) > 0 ? Math.round(Number(size)) : data.length);
 
 // ---------------------------------------------------------------------------
 // Mots de passe et jetons
@@ -325,31 +356,33 @@ export function listSaves(userId, gameId) {
   return rows.map(saveRow);
 }
 
-/** Enregistre une sauvegarde ; [savedAt] : date du fichier sur l'appareil (ms), pour garder la plus récente. */
-export function putSave(userId, gameId, core, kind, data, savedAt, client) {
+/**
+ * Enregistre une sauvegarde ; [savedAt] : date du fichier sur l'appareil (ms), pour garder la plus
+ * récente ; [encoding] : « gzip » si l'application l'a compressée ([size] : taille d'origine).
+ */
+export async function putSave(userId, gameId, core, kind, data, savedAt, client, { encoding = 'identity', size } = {}) {
   const key = saveKey(gameId, core, kind);
   if (!Buffer.isBuffer(data) || !data.length) throw new HttpError(400, 'errors.emptySave');
   const time = Number(savedAt) > 0 ? Math.round(Number(savedAt)) : Date.now();
   const file = saveFile(userId, key.id, key.core, key.kind);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(`${file}.tmp`, data);
-  fs.renameSync(`${file}.tmp`, file);
+  writeStored(file, data);
   const md5 = crypto.createHash('md5').update(data).digest('hex');
-  db.prepare(`INSERT INTO saves (user_id, game_id, core, kind, size, md5, saved_at, device, platform)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  db.prepare(`INSERT INTO saves (user_id, game_id, core, kind, size, md5, saved_at, device, platform, encoding, stored_size)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT (user_id, game_id, core, kind) DO UPDATE SET size = excluded.size, md5 = excluded.md5,
-                saved_at = excluded.saved_at, device = excluded.device, platform = excluded.platform, uploaded_at = datetime('now')`)
-    .run(userId, key.id, key.core, key.kind, data.length, md5, time, client.device, client.platform);
+                saved_at = excluded.saved_at, device = excluded.device, platform = excluded.platform,
+                encoding = excluded.encoding, stored_size = excluded.stored_size, uploaded_at = datetime('now')`)
+    .run(userId, key.id, key.core, key.kind, originalSize(data, encoding, size), md5, time, client.device, client.platform, encoding, data.length);
   return saveRow(db.prepare('SELECT * FROM saves WHERE user_id = ? AND game_id = ? AND core = ? AND kind = ?').get(userId, key.id, key.core, key.kind));
 }
 
-/** Fichier et informations d'une sauvegarde (404 si absente). */
+/** Fichier, encodage sur le disque et informations d'une sauvegarde (404 si absente). */
 export function getSave(userId, gameId, core, kind) {
   const key = saveKey(gameId, core, kind);
   const row = db.prepare('SELECT * FROM saves WHERE user_id = ? AND game_id = ? AND core = ? AND kind = ?').get(userId, key.id, key.core, key.kind);
   const file = saveFile(userId, key.id, key.core, key.kind);
   if (!row || !fs.existsSync(file)) throw new HttpError(404, 'errors.saveNotFound');
-  return { file, save: saveRow(row) };
+  return { file, encoding: row.encoding, save: saveRow(row) };
 }
 
 export function deleteSave(userId, gameId, core, kind) {
@@ -409,7 +442,7 @@ export function listStates(userId, gameId) {
  * Enregistre un état de l'historique (renvoyé avec le même identifiant : remplacé). [createdAt] :
  * date de l'état sur l'appareil (ms) ; l'appareil d'origine est celui qui l'envoie.
  */
-export function putState(userId, gameId, core, id, data, { createdAt, pinned } = {}, client) {
+export async function putState(userId, gameId, core, id, data, { createdAt, pinned, encoding = 'identity', size } = {}, client) {
   const game = requireGame(gameId);
   const stateId = requireStateId(id);
   if (!CORE_RE.test(String(core))) throw new HttpError(400, 'errors.invalidCore');
@@ -419,15 +452,14 @@ export function putState(userId, gameId, core, id, data, { createdAt, pinned } =
   if (existing && (existing.user_id !== userId || existing.game_id !== game)) throw new HttpError(409, 'errors.stateConflict');
   const time = Number(createdAt) > 0 ? Math.round(Number(createdAt)) : Date.now();
   const file = stateFile(userId, game, stateId);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(`${file}.tmp`, data);
-  fs.renameSync(`${file}.tmp`, file);
+  writeStored(file, data);
   const md5 = crypto.createHash('md5').update(data).digest('hex');
-  db.prepare(`INSERT INTO state_history (id, user_id, game_id, core, created_at, device, platform, size, md5, pinned)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  db.prepare(`INSERT INTO state_history (id, user_id, game_id, core, created_at, device, platform, size, md5, pinned, encoding, stored_size)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT (id) DO UPDATE SET core = excluded.core, created_at = excluded.created_at, size = excluded.size,
-                md5 = excluded.md5, pinned = excluded.pinned, uploaded_at = datetime('now')`)
-    .run(stateId, userId, game, String(core), time, client.device, client.platform, data.length, md5, pinned ? 1 : 0);
+                md5 = excluded.md5, pinned = excluded.pinned, encoding = excluded.encoding, stored_size = excluded.stored_size,
+                uploaded_at = datetime('now')`)
+    .run(stateId, userId, game, String(core), time, client.device, client.platform, originalSize(data, encoding, size), md5, pinned ? 1 : 0, encoding, data.length);
   const row = db.prepare('SELECT * FROM state_history WHERE id = ?').get(stateId);
   pruneStates(userId, game, row.device, row.platform);
   const kept = db.prepare('SELECT * FROM state_history WHERE id = ?').get(stateId);
@@ -447,12 +479,12 @@ export function putStateThumbnail(userId, id, data, type) {
   return stateRow({ ...row, thumbnail: mime });
 }
 
-/** Fichier de l'état (404 si absent). */
+/** Fichier de l'état et son encodage sur le disque (404 si absent). */
 export function getState(userId, id) {
   const row = requireState(userId, id);
   const file = stateFile(userId, row.game_id, row.id);
   if (!fs.existsSync(file)) throw new HttpError(404, 'errors.stateNotFound');
-  return { file, state: stateRow(row) };
+  return { file, encoding: row.encoding, state: stateRow(row) };
 }
 
 /** Fichier de la miniature et son type (404 si l'état n'en a pas). */
@@ -507,8 +539,8 @@ export function adminListUsers() {
       (SELECT MAX(last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at,
       (SELECT COALESCE(SUM(seconds), 0) FROM playtime p WHERE p.user_id = u.id) AS play_seconds,
       (SELECT COUNT(*) FROM playtime p WHERE p.user_id = u.id) AS games_played,
-      (SELECT COALESCE(SUM(size), 0) FROM saves v WHERE v.user_id = u.id)
-        + (SELECT COALESCE(SUM(size), 0) FROM state_history h WHERE h.user_id = u.id) AS saves_size,
+      (SELECT COALESCE(SUM(COALESCE(stored_size, size)), 0) FROM saves v WHERE v.user_id = u.id)
+        + (SELECT COALESCE(SUM(COALESCE(stored_size, size)), 0) FROM state_history h WHERE h.user_id = u.id) AS saves_size,
       (SELECT COUNT(*) FROM error_logs e WHERE e.user_id = u.id) AS error_count
     FROM users u ORDER BY u.username COLLATE NOCASE`).all().map((r) => ({
     ...publicUser(r),

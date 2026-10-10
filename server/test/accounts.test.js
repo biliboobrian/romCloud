@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 process.env.DATA_DIR = path.join(os.tmpdir(), `romcloud-accounts-test-${process.pid}`);
 const accounts = await import('../src/accounts.js');
-const { access, routeMethod } = await import('../src/api.js');
+const { access, api, routeMethod } = await import('../src/api.js');
 const { db } = await import('../src/db.js');
 
 db.prepare("INSERT INTO systems (id, name, shortname, folder) VALUES ('snes', 'Super Nintendo', 'snes', 'snes')").run();
@@ -14,6 +15,15 @@ const gameId = Number(db.prepare("INSERT INTO games (system_id, file_name, size,
 
 const phone = { device: 'Pixel 8', platform: 'android', appVersion: '1.0', ip: '10.0.0.2', userAgent: 'okhttp' };
 const tv = { device: 'Shield', platform: 'androidtv', appVersion: '1.0', ip: '10.0.0.3', userAgent: 'okhttp' };
+
+const statusAsync = async (promise) => {
+  try {
+    await promise;
+  } catch (err) {
+    return err.status;
+  }
+  return 200;
+};
 
 const status = (fn) => {
   try {
@@ -128,18 +138,18 @@ test('temps de jeu cumulé par jeu', () => {
   assert.equal(accounts.adminListUsers().find((u) => u.id === user.id).playSeconds, 1800);
 });
 
-test('sauvegardes en ligne : enregistrées, relues, remplacées, supprimées', () => {
+test('sauvegardes en ligne : enregistrées, relues, remplacées, supprimées', async () => {
   const { user } = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
   assert.equal(status(() => accounts.getSave(user.id, gameId, 'snes9x', 'state')), 404);
-  assert.equal(status(() => accounts.putSave(user.id, gameId, '../x', 'state', Buffer.from('a'), 1, phone)), 400);
-  assert.equal(status(() => accounts.putSave(user.id, gameId, 'snes9x', 'autre', Buffer.from('a'), 1, phone)), 400);
+  assert.equal(await statusAsync(accounts.putSave(user.id, gameId, '../x', 'state', Buffer.from('a'), 1, phone)), 400);
+  assert.equal(await statusAsync(accounts.putSave(user.id, gameId, 'snes9x', 'autre', Buffer.from('a'), 1, phone)), 400);
 
-  accounts.putSave(user.id, gameId, 'snes9x', 'state', Buffer.from('v1'), 1000, phone);
-  const saved = accounts.putSave(user.id, gameId, 'snes9x', 'state', Buffer.from('v2'), 2000, tv);
+  await accounts.putSave(user.id, gameId, 'snes9x', 'state', Buffer.from('v1'), 1000, phone);
+  const saved = await accounts.putSave(user.id, gameId, 'snes9x', 'state', Buffer.from('v2'), 2000, tv);
   assert.equal(saved.savedAt, new Date(2000).toISOString());
   assert.equal(saved.device, 'Shield');
-  const { file } = accounts.getSave(user.id, gameId, 'snes9x', 'state');
-  assert.equal(fs.readFileSync(file, 'utf8'), 'v2');
+  const { file, encoding } = accounts.getSave(user.id, gameId, 'snes9x', 'state');
+  assert.equal(accounts.readStored(file, encoding).toString(), 'v2');
   assert.equal(accounts.listSaves(user.id, gameId).length, 1);
 
   accounts.deleteSave(user.id, gameId, 'snes9x', 'state');
@@ -147,14 +157,14 @@ test('sauvegardes en ligne : enregistrées, relues, remplacées, supprimées', (
   assert.ok(!fs.existsSync(file));
 });
 
-test('historique des états : 10 par appareil, épinglés gardés, miniature, profils séparés', () => {
+test('historique des états : 10 par appareil, épinglés gardés, miniature, profils séparés', async () => {
   const { user } = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
   const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
-  assert.equal(status(() => accounts.putState(user.id, gameId, 'snes9x', '../x', Buffer.from('a'), {}, phone)), 400);
+  assert.equal(await statusAsync(accounts.putState(user.id, gameId, 'snes9x', '../x', Buffer.from('a'), {}, phone)), 400);
 
   // 12 états du téléphone (le premier épinglé) et 1 de la TV.
-  for (let n = 1; n <= 12; n++) accounts.putState(user.id, gameId, 'snes9x', id(n), Buffer.from(`s${n}`), { createdAt: n * 1000, pinned: n === 1 }, phone);
-  accounts.putState(user.id, gameId, 'snes9x', id(100), Buffer.from('tv'), { createdAt: 500 }, tv);
+  for (let n = 1; n <= 12; n++) await accounts.putState(user.id, gameId, 'snes9x', id(n), Buffer.from(`s${n}`), { createdAt: n * 1000, pinned: n === 1 }, phone);
+  await accounts.putState(user.id, gameId, 'snes9x', id(100), Buffer.from('tv'), { createdAt: 500 }, tv);
   const list = accounts.listStates(user.id, gameId);
   const fromPhone = list.filter((s) => s.device === 'Pixel 8');
   assert.equal(fromPhone.length, 11); // 10 plus récents + l'épinglé
@@ -168,7 +178,8 @@ test('historique des états : 10 par appareil, épinglés gardés, miniature, pr
   assert.equal(status(() => accounts.putStateThumbnail(user.id, id(12), Buffer.from('x'), 'text/plain')), 400);
   assert.ok(accounts.putStateThumbnail(user.id, id(12), Buffer.from('jpeg'), 'image/jpeg').thumbnail);
   assert.equal(fs.readFileSync(accounts.getStateThumbnail(user.id, id(12)).file, 'utf8'), 'jpeg');
-  assert.equal(fs.readFileSync(accounts.getState(user.id, id(12)).file, 'utf8'), 's12');
+  const { file: s12, encoding: e12 } = accounts.getState(user.id, id(12));
+  assert.equal(accounts.readStored(s12, e12).toString(), 's12');
 
   // Désépinglé : au-delà de la limite, supprimé avec ses fichiers.
   const pinnedFile = accounts.getState(user.id, id(1)).file;
@@ -179,12 +190,66 @@ test('historique des états : 10 par appareil, épinglés gardés, miniature, pr
   const erin = accounts.authenticate(accounts.register('erin', 'secret1', phone).token, phone).user;
   assert.equal(accounts.listStates(erin.id, gameId).length, 0);
   assert.equal(status(() => accounts.getState(erin.id, id(12))), 404);
-  assert.equal(status(() => accounts.putState(erin.id, gameId, 'snes9x', id(12), Buffer.from('b'), {}, phone)), 409);
+  assert.equal(await statusAsync(accounts.putState(erin.id, gameId, 'snes9x', id(12), Buffer.from('b'), {}, phone)), 409);
 
   const thumb = accounts.getStateThumbnail(user.id, id(12)).file;
   accounts.deleteState(user.id, id(12));
   assert.ok(!fs.existsSync(thumb));
   assert.equal(status(() => accounts.getState(user.id, id(12))), 404);
+});
+
+test('sauvegardes compressées par les applications : gardées telles quelles, décompressées pour les anciennes', async () => {
+  const http = await import('node:http');
+  const zlib = await import('node:zlib');
+  const express = (await import('express')).default;
+  const app = express().use('/api', api);
+  const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  const { port } = server.address();
+  const { token } = accounts.login('alice', 'secret1', phone);
+  const request = (method, path, { body, headers = {} } = {}) => new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, method, path, headers: { 'X-RomCloud-Session': token, ...headers } }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+  try {
+    // État typique : mémoire en grande partie répétitive.
+    const state = Buffer.alloc(200_000, 0);
+    for (let i = 0; i < state.length; i += 97) state[i] = i % 251;
+    const packed = zlib.gzipSync(state);
+    const put = await request('PUT', `/api/account/saves/${gameId}/genesis_plus_gx/state`, {
+      body: packed,
+      headers: { 'Content-Type': 'application/octet-stream', 'Content-Encoding': 'gzip', 'X-Uncompressed-Size': String(state.length), 'X-Saved-At': '5000' },
+    });
+    assert.equal(put.status, 200);
+    assert.equal(JSON.parse(put.body).size, state.length);
+    const { user } = accounts.authenticate(token, phone);
+    const { file, encoding } = accounts.getSave(user.id, gameId, 'genesis_plus_gx', 'state');
+    assert.equal(encoding, 'gzip');
+    assert.deepEqual(fs.readFileSync(file), packed); // gardé compressé
+    assert.deepEqual(accounts.readStored(file, encoding), state);
+
+    // Application qui accepte gzip : fichier compressé renvoyé tel quel.
+    const gz = await request('GET', `/api/account/saves/${gameId}/genesis_plus_gx/state`, { headers: { 'Accept-Encoding': 'gzip' } });
+    assert.equal(gz.headers['content-encoding'], 'gzip');
+    assert.deepEqual(zlib.gunzipSync(gz.body), state);
+    // Version précédente (sans Accept-Encoding) : décompressé par le serveur.
+    const plain = await request('GET', `/api/account/saves/${gameId}/genesis_plus_gx/state`);
+    assert.equal(plain.headers['content-encoding'], undefined);
+    assert.deepEqual(plain.body, state);
+
+    // Envoi non compressé (version précédente) : gardé tel quel ; encodage inconnu refusé.
+    const raw = await request('PUT', `/api/account/saves/${gameId}/ppsspp/state`, { body: Buffer.from('brut'), headers: { 'Content-Type': 'application/octet-stream' } });
+    assert.equal(raw.status, 200);
+    assert.equal(accounts.getSave(user.id, gameId, 'ppsspp', 'state').encoding, 'identity');
+    const br = await request('PUT', `/api/account/saves/${gameId}/ppsspp/state`, { body: Buffer.from('x'), headers: { 'Content-Encoding': 'br' } });
+    assert.equal(br.status, 415);
+  } finally {
+    server.close();
+  }
 });
 
 test('erreurs des applications, avec ou sans joueur', () => {
