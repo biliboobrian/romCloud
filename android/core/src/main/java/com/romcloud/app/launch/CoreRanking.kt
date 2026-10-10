@@ -3,7 +3,9 @@ package com.romcloud.app.launch
 /**
  * Ordre des cœurs libretro de chaque console : du plus abouti, qui fait tourner le plus de jeux,
  * au moins abouti. Même table que desktop-tauri/src-tauri/src/cores.rs (application Windows). Les cœurs
- * absents de la table gardent l'ordre des modèles du serveur, après ceux de la table.
+ * absents de la table gardent l'ordre des modèles du serveur, après ceux de la table. Un cœur absent
+ * d'une seule plateforme (Azahar sous Android, ARMSX2 sous Windows) est placé après les autres : le
+ * cœur par défaut, puis le 2e, le 3e… sont les mêmes sous Windows et Android (états compatibles).
  * PlayStation 2 : LRPS2 (pcsx2) seul à afficher une image avec LibretroDroid (rendu logiciel).
  * Arcade : le nombre de jeux dépend surtout de la version du romset (MAME 0.78 -> mame2003_plus).
  */
@@ -19,7 +21,7 @@ internal object CoreRanking {
         "n64" to listOf("mupen64plus_next_gles3", "mupen64plus_next", "mupen64plus_next_gles2", "parallel_n64"),
         "nds" to listOf("melondsds", "desmume", "melonds", "desmume2015", "noods", "skyemu"),
         "ndsi" to listOf("melondsds", "melonds", "desmume", "desmume2015"),
-        "3ds" to listOf("azahar", "citra", "panda3ds"),
+        "3ds" to listOf("citra", "panda3ds", "azahar"),
         "gc" to listOf("dolphin"),
         "wii" to listOf("dolphin"),
         "virtualboy" to listOf("mednafen_vb"),
@@ -32,7 +34,7 @@ internal object CoreRanking {
         "saturn" to listOf("mednafen_saturn", "ymir", "yabasanshiro", "yabause", "kronos"),
         "dreamcast" to listOf("flycast"),
         "psx" to listOf("mednafen_psx_hw", "swanstation", "mednafen_psx", "pcsx_rearmed", "duckstation", "goosestation"),
-        "ps2" to listOf("pcsx2", "pcee2", "armsx2", "play"),
+        "ps2" to listOf("pcsx2", "pcee2", "play", "armsx2"),
         "psp" to listOf("ppsspp"),
         "tg16" to listOf("mednafen_pce", "mednafen_pce_fast", "mednafen_supergrafx"),
         "tgcd" to listOf("mednafen_pce", "mednafen_pce_fast", "mednafen_supergrafx"),

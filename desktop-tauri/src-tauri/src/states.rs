@@ -64,9 +64,12 @@ async fn online(game_id: &Value) -> Option<Vec<Value>> {
     Some(list.as_array().cloned().unwrap_or_default())
 }
 
-/// Réunit les états de ce PC et ceux du profil en ligne (même identifiant : un seul état).
-pub fn merge(local: &[Value], remote: &[Value], core: &str) -> Vec<Value> {
-    let remote: Vec<&Value> = remote.iter().filter(|s| account::same_save_core(s["core"].as_str().unwrap_or(""), core)).collect();
+/// Réunit les états de ce PC et ceux du profil en ligne (même identifiant : un seul état), des cœurs [cores].
+pub fn merge(local: &[Value], remote: &[Value], cores: &[String]) -> Vec<Value> {
+    let remote: Vec<&Value> = remote
+        .iter()
+        .filter(|s| cores.iter().any(|c| account::same_save_core(s["core"].as_str().unwrap_or(""), c)))
+        .collect();
     let mut list: Vec<Value> = local
         .iter()
         .map(|m| {
@@ -93,12 +96,24 @@ pub fn merge(local: &[Value], remote: &[Value], core: &str) -> Vec<Value> {
     list
 }
 
-/// Historique affiché dans la fiche du jeu : { states, online (serveur joint), signedIn }.
-pub async fn list(game_id: &Value, core: &str, dir: &Path) -> Value {
-    let local = read_dir(dir);
+/**
+ * Historique affiché dans la fiche du jeu : { states, cores, online (serveur joint), signedIn } ;
+ * [histories] : (cœur, dossier) de chaque cœur intégré du système (un état se charge avec le sien).
+ */
+pub async fn list(game_id: &Value, histories: &[(String, PathBuf)]) -> Value {
+    let mut local: Vec<Value> = Vec::new();
+    for (_, dir) in histories {
+        for meta in read_dir(dir) {
+            if !local.iter().any(|m| m["id"] == meta["id"]) {
+                local.push(meta);
+            }
+        }
+    }
+    let cores: Vec<String> = histories.iter().map(|(c, _)| c.clone()).collect();
     let remote = online(game_id).await;
     json!({
-        "states": merge(&local, remote.as_deref().unwrap_or(&[]), core),
+        "states": merge(&local, remote.as_deref().unwrap_or(&[]), &cores),
+        "cores": cores,
         "online": remote.is_some(),
         "signedIn": account::signed_in(),
     })
@@ -304,7 +319,7 @@ mod tests {
             json!({ "id": "cccccccc", "core": "snes9x", "createdAt": "1970-01-01T00:00:02Z", "device": "Pixel 8", "thumbnail": true }),
             json!({ "id": "dddddddd", "core": "bsnes", "createdAt": "1970-01-01T00:00:04Z", "device": "Shield" }),
         ];
-        let merged = merge(&local, &remote, "snes9x");
+        let merged = merge(&local, &remote, &["snes9x".to_string()]);
         let ids: Vec<&str> = merged.iter().map(|s| s["id"].as_str().unwrap()).collect();
         assert_eq!(ids, ["aaaaaaaa", "cccccccc", "bbbbbbbb"]);
         assert_eq!(merged[0]["pinned"], true);

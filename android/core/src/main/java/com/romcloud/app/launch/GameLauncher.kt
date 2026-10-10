@@ -128,11 +128,13 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         streamMode: StreamMode = StreamMode.NATIVE,
         netplay: NetplayLaunch? = null,
         state: File? = null,
+        core: String? = null,
     ) {
         if (!file.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, file.absolutePath))
 
         // Partie à plusieurs : émulateur intégré seulement ; invité : cœur de l'hôte ; liaison : cœur de la liaison.
-        val libretroCore = if (netplay != null && (!netplay.host || netplay.link != null)) netplay.game.core else player?.libretroCore
+        // [core] : cœur imposé (état ou sauvegarde d'un autre cœur intégré du système).
+        val libretroCore = core ?: if (netplay != null && (!netplay.host || netplay.link != null)) netplay.game.core else player?.libretroCore
         if (netplay != null && libretroCore == null) throw LaunchException(I18n.get(R.string.netplay_needs_builtin))
 
         // Émulateur intégré : le cœur est téléchargé si besoin par l'activité de jeu elle-même.

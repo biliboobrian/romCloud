@@ -23,7 +23,7 @@ fn ranking(system: &str) -> &'static [&'static str] {
         "n64" => &["mupen64plus_next_gles3", "mupen64plus_next", "mupen64plus_next_gles2", "parallel_n64"],
         "nds" => &["melondsds", "desmume", "melonds", "desmume2015", "noods", "skyemu"],
         "ndsi" => &["melondsds", "melonds", "desmume", "desmume2015"],
-        "3ds" => &["azahar", "citra", "panda3ds"],
+        "3ds" => &["citra", "panda3ds", "azahar"],
         "gc" | "wii" => &["dolphin"],
         "virtualboy" => &["mednafen_vb"],
         "master" | "gamegear" => SEGA_8BIT,
@@ -33,7 +33,7 @@ fn ranking(system: &str) -> &'static [&'static str] {
         "saturn" => &["mednafen_saturn", "ymir", "yabasanshiro", "yabause", "kronos"],
         "dreamcast" => &["flycast"],
         "psx" => &["mednafen_psx_hw", "swanstation", "mednafen_psx", "pcsx_rearmed", "duckstation", "goosestation"],
-        "ps2" => &["pcsx2", "pcee2", "armsx2", "play"],
+        "ps2" => &["pcsx2", "pcee2", "play", "armsx2"],
         "psp" => &["ppsspp"],
         "tg16" | "tgcd" => &["mednafen_pce", "mednafen_pce_fast", "mednafen_supergrafx"],
         "supergrafx" => &["mednafen_supergrafx", "mednafen_pce"],
@@ -58,6 +58,11 @@ pub fn has_builtin_cores(system: &str) -> bool {
 
 /// Cœurs absents du buildbot libretro pour Windows (vérifié en octobre 2026) : proposés en dernier.
 const UNAVAILABLE: &[&str] = &["bnes", "duckstation", "goosestation", "mamearcade", "armsx2"];
+/// Même liste pour Android (CoreRanking.kt) : la table place ces cœurs après ceux des deux plateformes,
+/// pour que le cœur par défaut, puis le 2e, le 3e… soient les mêmes sous Windows et sous Android
+/// (un état ne se charge qu'avec le cœur qui l'a créé).
+#[cfg(test)]
+const ANDROID_UNAVAILABLE: &[&str] = &["bnes", "duckstation", "goosestation", "azahar", "mame", "mupen64plus_next"];
 
 /// Cœur téléchargeable pour le moteur intégré (présent sur le buildbot libretro pour Windows).
 pub fn core_available(core: &str) -> bool {
@@ -291,6 +296,7 @@ mod tests {
     fn coeurs_classes() {
         assert_eq!(cores(&system("gba", &["vba_next", "vbam", "mgba", "inconnu", "gpsp", "autre"])), ["mgba", "vbam", "vba_next", "gpsp", "inconnu", "autre"]);
         assert_eq!(cores(&system("ps2", &["play", "pcee2", "armsx2", "pcsx2"])), ["pcsx2", "pcee2", "play", "armsx2"]); // armsx2 : absent sous Windows
+        assert_eq!(cores(&system("3ds", &["azahar", "panda3ds", "citra"])), ["citra", "panda3ds", "azahar"]); // azahar : absent sous Android
         assert_eq!(cores(&system("mame", &["mame2003_plus", "mamearcade", "mame2010"])), ["mame", "mame2010", "mame2003_plus"]);
         assert_eq!(cores(&system("psx", &["duckstation", "pcsx_rearmed"])), ["pcsx_rearmed", "duckstation"]);
         assert_eq!(cores(&system("perso", &["b", "a"])), ["b", "a"]);
@@ -377,5 +383,22 @@ mod tests {
         assert!(game_option_defaults("cap32", r"D:\Jeux\Disque.dsk").is_empty());
         let args = player_args(&PlayerArgs { option_defaults: game_option_defaults("cap32", "Pang.cpr"), ..base() });
         assert_eq!(value(&args, "--option-default"), "cap32_model=6128+ (experimental)");
+    }
+
+    /// Même ordre effectif sous Windows et Android : dans chaque table, un cœur absent d'une seule des
+    /// deux plateformes vient après tous les autres (absent des deux : en dernier partout, même ordre).
+    /// Équivalents comptés comme présents :
+    /// mamearcade (« mame » sous Windows), mame et mupen64plus_next (mamearcade, variante GLES sous Android).
+    #[test]
+    fn meme_ordre_des_coeurs_sous_windows_et_android() {
+        let equivalent = ["mamearcade", "mame", "mupen64plus_next"];
+        let missing = |core: &&str| {
+            !equivalent.contains(core) && (UNAVAILABLE.contains(core) != ANDROID_UNAVAILABLE.contains(core))
+        };
+        for system in ["nes", "snes", "gb", "gba", "n64", "nds", "3ds", "gc", "genesis", "saturn", "dreamcast", "psx", "ps2", "psp", "tg16", "neogeo", "mame", "atari2600", "cpc"] {
+            let table = ranking(system);
+            let first_missing = table.iter().position(missing).unwrap_or(table.len());
+            assert!(table[first_missing..].iter().all(missing), "{system} : {table:?}");
+        }
     }
 }

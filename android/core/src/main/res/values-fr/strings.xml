@@ -583,4 +583,5 @@
     <string name="report_send">Envoyer</string>
     <string name="report_sent">Rapport envoyé au serveur</string>
     <string name="report_queued">Rapport enregistré : il sera envoyé dès que le serveur sera joignable</string>
+    <string name="states_core">Cœur de l’émulateur : %1$s</string>
 </resources>

@@ -252,7 +252,7 @@ class LibretroActivity : ComponentActivity() {
     /** Historique des états du jeu pour ce cœur (plusieurs états, avec miniature). */
     private val history by lazy { StateHistory(StateHistory.dir(this, core, rom), core) }
     private val historyController by lazy {
-        StateHistoryController(account, history, gameId, core, cacheDir, lifecycleScope) { toast = it }
+        StateHistoryController(account, history, gameId, core, cacheDir, lifecycleScope, onMessage = { toast = it })
     }
     /** État de l'historique choisi dans la fiche du jeu, chargé dès la première image. */
     private val startState by lazy { intent.getStringExtra(EXTRA_STATE)?.let(::File) }
