@@ -157,6 +157,16 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        var autoUploadStates by remember { mutableStateOf(app.settings.autoUploadStates) }
+        FilterChip(selected = autoUploadStates, onClick = {
+            autoUploadStates = !autoUploadStates
+            app.settings.autoUploadStates = autoUploadStates
+        }) { Text(stringResource(if (autoUploadStates) R.string.settings_auto_upload_states_on else R.string.settings_auto_upload_states)) }
+        Text(
+            stringResource(R.string.settings_auto_upload_states_hint),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(stringResource(R.string.order_games), style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
             GameOrder.entries.forEach { order ->

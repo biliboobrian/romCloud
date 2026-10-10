@@ -1,5 +1,7 @@
 package com.romcloud.app.ui
 
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -93,6 +96,8 @@ fun GameDetailScreen(
     val activity = LocalContext.current as Activity
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
+    /** Historique des états affiché (« États sauvegardés »). */
+    var showStates by remember { mutableStateOf(false) }
     // Plusieurs TV du profil allumées : choix de celle qui affiche le jeu.
     var chooseTv by remember { mutableStateOf(false) }
     /** TV choisie : type de diffusion demandé avant de lancer le jeu. */
@@ -202,6 +207,14 @@ fun GameDetailScreen(
                             }
                             OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.height(52.dp)) {
                                 Icon(Icons.Filled.Delete, stringResource(R.string.delete_from_device))
+                            }
+                        }
+                        // Historique des états (émulateur intégré) : partie lancée à partir de l'un d'eux.
+                        if (state.savedStates > 0) {
+                            OutlinedButton(onClick = { showStates = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                                Icon(Icons.Filled.History, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("${stringResource(R.string.states_button)} (${state.savedStates})")
                             }
                         }
                         // Appareil RomCloud sur le réseau local : partie proposée, chacun avec sa manette ;
@@ -376,6 +389,30 @@ fun GameDetailScreen(
             confirmButton = { TextButton(onClick = { streamTv = null }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
+    if (showStates) {
+        val message = { text: String -> scope.launch { snackbar.showSnackbar(text) }; Unit }
+        viewModel.stateHistory(message)?.let { controller ->
+            Dialog(
+                onDismissRequest = { showStates = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                StateHistoryList(
+                    controller = controller,
+                    title = stringResource(R.string.states_title),
+                    loadLabel = stringResource(R.string.states_play),
+                    onLoad = {
+                        showStates = false
+                        viewModel.playState(activity, it, message)
+                    },
+                    onClose = {
+                        showStates = false
+                        viewModel.refreshLocal()
+                    },
+                )
+            }
+        } ?: run { showStates = false }
+    }
+
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },

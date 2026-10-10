@@ -16,11 +16,12 @@ fn changed() {
     events::emit("account:update", ());
 }
 
-fn session() -> Option<Value> {
+pub(crate) fn session() -> Option<Value> {
     settings::load().get("session").filter(|s| s.is_object()).cloned()
 }
 
-fn hostname() -> String {
+/// Nom de ce PC (appareil d'origine des sauvegardes et des états envoyés).
+pub(crate) fn hostname() -> String {
     std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PC".into())
 }
 
@@ -28,19 +29,21 @@ pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-enum Body {
+pub(crate) enum Body {
     None,
     Json(Value),
     Bytes(Vec<u8>),
+    /// Image (miniature d'un état) : contenu et type (« image/png »).
+    Image(Vec<u8>, &'static str),
 }
 
-struct Response {
-    json: Value,
-    bytes: Vec<u8>,
+pub(crate) struct Response {
+    pub json: Value,
+    pub bytes: Vec<u8>,
 }
 
 /// Requête au serveur ; `raw` : corps binaire reçu ([Response::bytes]).
-async fn call(api_path: &str, method: reqwest::Method, body: Body, raw: bool, extra: &[(&str, String)], timeout: Duration) -> Result<Response> {
+pub(crate) async fn call(api_path: &str, method: reqwest::Method, body: Body, raw: bool, extra: &[(&str, String)], timeout: Duration) -> Result<Response> {
     let server = settings::get_str("serverUrl");
     if server.is_empty() {
         return Err(AppError::new("errors.noServer", json!({})));
@@ -61,6 +64,7 @@ async fn call(api_path: &str, method: reqwest::Method, body: Body, raw: bool, ex
         Body::None => request,
         Body::Json(v) => request.json(&v),
         Body::Bytes(b) => request.header("Content-Type", "application/octet-stream").body(b),
+        Body::Image(b, mime) => request.header("Content-Type", mime).body(b),
     };
     let res = match request.send().await {
         Ok(res) => res,
@@ -121,7 +125,7 @@ pub fn relay_request(session: &str, channel: &str, role: &str) -> Option<crate::
     Some(crate::relay::Request { url: format!("{server}/api/play/relay?session={session}&channel={channel}&role={role}"), headers })
 }
 
-async fn get(api_path: &str, timeout_ms: u64) -> Result<Value> {
+pub(crate) async fn get(api_path: &str, timeout_ms: u64) -> Result<Value> {
     Ok(call(api_path, reqwest::Method::GET, Body::None, false, &[], Duration::from_millis(timeout_ms)).await?.json)
 }
 
@@ -178,11 +182,11 @@ pub async fn state() -> Value {
 // Temps de jeu
 // ---------------------------------------------------------------------------
 
-fn pending(key: &str) -> Vec<Value> {
+pub(crate) fn pending(key: &str) -> Vec<Value> {
     settings::load().get(key).and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
-fn game_key(v: &Value) -> String {
+pub(crate) fn game_key(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         other => other.to_string(),
@@ -258,7 +262,7 @@ fn save_path(game_id: &Value, core: &str, kind: &str) -> String {
     format!("/api/account/saves/{}/{}/{kind}", game_key(game_id), urlencoding::encode(core))
 }
 
-fn parse_date_ms(s: &str) -> f64 {
+pub(crate) fn parse_date_ms(s: &str) -> f64 {
     chrono::DateTime::parse_from_rfc3339(s).map(|d| d.timestamp_millis() as f64).unwrap_or(0.0)
 }
 
@@ -372,7 +376,7 @@ pub async fn flush() -> usize {
         return 0;
     }
     flush_playtime().await;
-    let mut sent = 0;
+    let mut sent = crate::states::flush_pending().await;
     for entry in pending("pendingSaves") {
         if !send_save(&entry).await {
             break; // serveur de nouveau injoignable : le reste attend
@@ -388,7 +392,7 @@ pub async fn flush() -> usize {
 
 /// Nombre d'envois en attente (sauvegardes et durées de jeu).
 pub fn pending_count() -> usize {
-    pending("pendingSaves").len() + pending("pendingPlaytime").len()
+    pending("pendingSaves").len() + pending("pendingPlaytime").len() + pending("pendingStates").len()
 }
 
 /// Sauvegardes en ligne du jeu (fiche du jeu) : [{ core, kind, savedAt, device, … }].

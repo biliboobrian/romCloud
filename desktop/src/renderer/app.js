@@ -1293,6 +1293,72 @@
     return root;
   }
 
+  /**
+   * Historique des états du jeu (moteur intégré) : états de ce PC et du profil en ligne, avec leur
+   * miniature ; jouer à partir d'un état, l'épingler, l'envoyer en ligne ou le supprimer.
+   */
+  async function showStates(system, game) {
+    const history = await call(rc.states.list, system, game).catch((e) => {
+      toast(e.message, { type: 'error' });
+      return null;
+    });
+    if (!history) return;
+    const states = history.states || [];
+    const dateText = (ms) => new Date(ms).toLocaleString(window.I18N.language, { dateStyle: 'medium', timeStyle: 'short' });
+    const rows = states.map((st) => `<div class="state-row" data-id="${esc(st.id)}">
+        <div class="state-thumb">${icon('pad', 32)}</div>
+        <div class="state-info">
+          <strong>${esc(dateText(st.createdAt))}</strong>
+          <span class="muted">${esc(st.local ? t('states.thisPc') : st.device || t('states.otherDevice'))}${st.online ? ` · ${icon('cloud', 14)} ${esc(t('states.online'))}` : ''}${st.pinned ? ` · ${esc(t('states.pinned'))}` : ''}</span>
+          <div class="line">
+            <button class="btn primary" data-state-play>${icon('play', 18)} ${esc(t('action.play'))}</button>
+            <button class="btn ghost" data-state-pin>${esc(t(st.pinned ? 'states.unpin' : 'states.pin'))}</button>
+            ${st.canUpload && history.signedIn ? `<button class="btn ghost" data-state-upload>${icon('cloud', 18)} ${esc(t('states.upload'))}</button>` : ''}
+            <button class="btn ghost danger" data-state-delete title="${esc(t('states.delete'))}">${icon('trash', 18)}</button>
+          </div>
+        </div>
+      </div>`).join('');
+    const root = modal({
+      title: t('states.title'),
+      body: `${history.signedIn && !history.online ? `<p class="muted">${esc(t('states.offline'))}</p>` : ''}
+        ${states.length ? `<div class="state-list">${rows}</div>` : `<p>${esc(t('states.empty'))}</p>`}`,
+      buttons: [{ label: t('app.close'), kind: 'ghost' }],
+    });
+    $('.modal', root).classList.add('wide');
+    const close = () => (root.innerHTML = '');
+    const run = async (action, st) => {
+      try {
+        await call(rc.states.action, system, game, action, st);
+        if (action === 'upload') toast(t('states.uploaded'));
+      } catch (e) {
+        toast(e.message, { type: 'error' });
+      }
+      showStates(system, game);
+      if (action === 'delete') renderGame();
+    };
+    for (const row of $$('.state-row', root)) {
+      const st = states.find((s) => s.id === row.dataset.id);
+      call(rc.states.action, system, game, 'thumbnail', st).then((url) => {
+        if (url) $('.state-thumb', row).innerHTML = `<img src="${esc(url)}" alt="">`;
+      }).catch(() => {});
+      $('[data-state-play]', row).onclick = () => {
+        close();
+        playChecked(system, game, { state: st.id });
+      };
+      $('[data-state-pin]', row).onclick = () => run(st.pinned ? 'unpin' : 'pin', st);
+      const upload = $('[data-state-upload]', row);
+      if (upload) upload.onclick = () => run('upload', st);
+      $('[data-state-delete]', row).onclick = () => modal({
+        title: t('states.deleteTitle'),
+        body: `<p>${esc(t(st.online ? 'states.deleteTextOnline' : 'states.deleteText', { date: dateText(st.createdAt) }))}</p>`,
+        buttons: [
+          { label: t('app.cancel'), kind: 'ghost', onClick: () => showStates(system, game) },
+          { label: t('states.delete'), kind: 'danger', onClick: () => run('delete', st) },
+        ],
+      });
+    }
+  }
+
   async function askDownload(system, game, lastError) {
     const missing = await call(rc.bios.missing, system).catch(() => []);
     const root = modal({
@@ -1487,7 +1553,7 @@
       return;
     }
     const downloaded = new Set(await call(rc.library.downloaded, [system], [game]));
-    const [emu, localPath, missingBios, emulators, command, localResume, online] = await Promise.all([
+    const [emu, localPath, missingBios, emulators, command, localResume, online, history] = await Promise.all([
       call(rc.launcher.options, system),
       call(rc.library.path, system, game),
       system.biosCount ? call(rc.bios.missing, system).catch(() => []) : [],
@@ -1495,7 +1561,10 @@
       call(rc.launcher.describe, system, game),
       call(rc.launcher.resumable, system, game),
       S.account.signedIn ? call(rc.launcher.resumableOnline, system, game).catch(() => null) : null,
+      // Historique des états (moteur intégré) : null pour un autre émulateur.
+      rc.states && downloaded.size ? call(rc.states.list, system, game).catch(() => null) : null,
     ]);
+    const savedStates = history?.states?.length || 0;
     // Jeu à plusieurs : compatibilité de l'émulateur choisi (relue : il a pu changer).
     await refreshNetplaySystem(system, true);
     // Partie à reprendre : état sur ce PC ou sauvegarde en ligne (récupérée au lancement si plus récente).
@@ -1533,6 +1602,7 @@
       // Partie sauvegardée dans le moteur intégré : « Reprendre » d'abord, puis « Jouer » (nouvelle partie).
       actions = `${joinBtns}${resumable ? `<button class="btn primary big" id="resumeBtn">${icon('play')} ${esc(t('action.resume'))}</button>` : ''}
         <button class="btn ${resumable ? '' : 'primary '}big" id="playBtn">${icon(resumable ? 'refresh' : 'play')} ${esc(t('action.play'))}</button>
+        ${savedStates ? `<button class="btn big" id="statesBtn">${icon('timer')} ${esc(t('states.button', { n: savedStates }))}</button>` : ''}
         ${canHost(game) ? `<button class="btn big" id="netplayHostBtn">${icon(canHost(game) === 'link' ? 'link' : 'group')} ${esc(t(canHost(game) === 'link' ? 'link.host' : 'netplay.playTogether'))}</button>` : ''}
         <button class="btn" id="folderBtn">${icon('folder', 18)} ${esc(t('detail.showInFolder'))}</button>
         <button class="btn danger" id="deleteBtn">${icon('trash', 18)} ${esc(t('detail.delete'))}</button>`;
@@ -1577,6 +1647,7 @@
 
     $('#resumeBtn')?.addEventListener('click', () => playChecked(system, game, { resume: true }));
     $('#playBtn')?.addEventListener('click', () => playChecked(system, game));
+    $('#statesBtn')?.addEventListener('click', () => showStates(system, game));
     $('#netplayHostBtn')?.addEventListener('click', () => play(system, game, { netplay: { host: true } }));
     for (const btn of $$('[data-join-peer]')) {
       btn.addEventListener('click', () => joinNetplay(S.peers.find((p) => p.id === btn.dataset.joinPeer && p.hosting)));
@@ -1667,6 +1738,8 @@
       <h3>${esc(t('settings.display'))}</h3>
       <label class="check"><input type="checkbox" id="hideUnidentified"${s.hideUnidentified ? ' checked' : ''}> ${esc(t('settings.hideUnidentified'))}</label>
       <p class="muted">${esc(t('settings.hideUnidentifiedHint'))}</p>
+      <label class="check"><input type="checkbox" id="autoUploadStates"${s.autoUploadStates !== false ? ' checked' : ''}> ${esc(t('settings.autoUploadStates'))}</label>
+      <p class="muted">${esc(t('settings.autoUploadStatesHint'))}</p>
       <label>${esc(t('settings.gameOrder'))}</label>
       <div class="line">${['name', 'rating'].map((o) => `<button class="chip${(s.gameOrder || 'name') === o ? ' selected' : ''}" data-order="${o}">${esc(t(`settings.order.${o}`))}</button>`).join('')}</div>
       <p class="muted">${esc(t('settings.gameOrderHint'))}</p>
@@ -1727,6 +1800,9 @@
     $('#hideUnidentified').onchange = async (e) => {
       S.settings = await call(rc.settings.save, { hideUnidentified: e.target.checked });
       S.games = { ...S.games, systemId: null, list: [] };
+    };
+    $('#autoUploadStates').onchange = async (e) => {
+      S.settings = await call(rc.settings.save, { autoUploadStates: e.target.checked });
     };
     for (const el of $$('[data-order]')) {
       el.onclick = async () => {

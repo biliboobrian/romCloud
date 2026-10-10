@@ -158,6 +158,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
         for ((k, v) in pairs) when (v) {
             null -> Unit
             is Number -> put(k, JsonPrimitive(v))
+            is Boolean -> put(k, JsonPrimitive(v))
             else -> put(k, JsonPrimitive(v.toString()))
         }
     }.toString().toRequestBody(JSON)
@@ -412,6 +413,83 @@ class Account(private val context: Context, private val api: ApiClient, private 
         return updated
     }
 
+    // -------------------------------------------------------------------------
+    // Historique des états (plusieurs par jeu, par appareil, avec miniature)
+    // -------------------------------------------------------------------------
+
+    /** États en ligne du jeu (null : sans profil ou serveur injoignable). */
+    suspend fun onlineStates(gameId: Long): List<OnlineState>? {
+        if (token == null || gameId <= 0) return null
+        return runCatching {
+            json.decodeFromString(ListSerializer(OnlineState.serializer()), execute(request("/api/account/states?gameId=$gameId"), 10))
+        }.getOrNull()
+    }
+
+    /**
+     * Met en file l'envoi d'un état de l'historique (et de sa miniature) ; [sendNow] : envoyé tout de
+     * suite depuis ce processus, sinon par l'application au retour ([flush]).
+     */
+    fun queueStateUpload(gameId: Long, history: StateHistory, id: String, sendNow: Boolean = false) {
+        if (token == null || gameId <= 0) return
+        enqueue("state-$id", "$gameId\n${history.dir.absolutePath}")
+        if (sendNow) scope.launch { flush(savesOnly = true) }
+    }
+
+    /** Télécharge l'état en ligne [id] dans [target]. */
+    suspend fun downloadState(id: String, target: File) = withContext(Dispatchers.IO) {
+        val client = api.http.newBuilder().readTimeout(120, TimeUnit.SECONDS).build()
+        client.newCall(request("/api/account/states/$id").build()).execute().use { response ->
+            if (!response.isSuccessful) throw failure(response.code, response.body?.string().orEmpty())
+            target.parentFile?.mkdirs()
+            val part = File(target.path + ".download")
+            response.body!!.byteStream().use { input -> part.outputStream().use { input.copyTo(it) } }
+            if (!part.renameTo(target)) {
+                part.copyTo(target, overwrite = true)
+                part.delete()
+            }
+        }
+    }
+
+    /** Miniature d'un état en ligne (null sans réseau ou sans miniature). */
+    suspend fun stateThumbnail(id: String): ByteArray? = runCatching {
+        withContext(Dispatchers.IO) {
+            api.http.newCall(request("/api/account/states/$id/thumbnail").build()).execute().use { response ->
+                if (response.isSuccessful) response.body?.bytes() else null
+            }
+        }
+    }.getOrNull()
+
+    /** Épingle ou désépingle un état en ligne. */
+    suspend fun pinOnlineState(id: String, pinned: Boolean) {
+        execute(request("/api/account/states/$id").patch(jsonBody("pinned" to pinned)))
+    }
+
+    suspend fun deleteOnlineState(id: String) {
+        try {
+            execute(request("/api/account/states/$id").delete())
+        } catch (e: ApiException) {
+            if (e.code != 404) throw e
+        }
+    }
+
+    /** Envoie un état de l'historique (fichier puis miniature) ; marqué « envoyé » sur l'appareil. */
+    private suspend fun uploadState(gameId: Long, history: StateHistory, meta: StateMeta) {
+        val file = history.stateFile(meta.id)
+        val body = execute(
+            request("/api/account/states/$gameId/${URLEncoder.encode(meta.core, "UTF-8")}/${meta.id}")
+                .header("X-Created-At", meta.createdAt.toString())
+                .header("X-Pinned", if (meta.pinned) "1" else "0")
+                .put(file.asRequestBody(BINARY)),
+            timeoutSeconds = 300,
+        )
+        val thumbnail = history.thumbnailFile(meta.id)
+        // Réponse vide : état plus ancien que ceux gardés en ligne, aussitôt retiré par le serveur.
+        if (body.isNotBlank() && thumbnail.isFile) {
+            execute(request("/api/account/states/${meta.id}/thumbnail").put(thumbnail.asRequestBody(JPEG)), 60)
+        }
+        history.markUploaded(meta.id)
+    }
+
     /** Ajoute un élément à la file (écrit d'un bloc : jamais lu à moitié par l'autre processus). */
     private fun enqueue(name: String, content: String) {
         queueDir.mkdirs()
@@ -494,6 +572,29 @@ class Account(private val context: Context, private val api: ApiClient, private 
                         // réessayé au retour de la connexion ou dans l'application
                     }
                 }
+                for (entry in queued("state-")) {
+                    val id = entry.name.removePrefix("state-")
+                    val lines = runCatching { entry.readText().lines() }.getOrNull()
+                    val gameId = lines?.getOrNull(0)?.toLongOrNull()
+                    val dir = lines?.getOrNull(1)?.let(::File)
+                    val core = dir?.parentFile?.name
+                    val meta = if (dir != null && core != null) StateHistory(dir, core).get(id) else null
+                    // État supprimé de l'historique entre-temps : rien à envoyer.
+                    if (gameId == null || dir == null || core == null || meta == null) {
+                        entry.delete()
+                        continue
+                    }
+                    try {
+                        uploadState(gameId, StateHistory(dir, core), meta)
+                        sent++
+                        entry.delete()
+                    } catch (e: ApiException) {
+                        entry.delete()
+                        reportError("states", e.message ?: "upload", id)
+                    } catch (e: IOException) {
+                        // réessayé au retour de la connexion ou dans l'application
+                    }
+                }
             }
         }
         return sent
@@ -516,6 +617,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private val BINARY = "application/octet-stream".toMediaType()
+        private val JPEG = "image/jpeg".toMediaType()
         private const val KEY_TOKEN = "token"
         private const val KEY_USER = "username"
         private const val KEY_USER_ID = "userId"

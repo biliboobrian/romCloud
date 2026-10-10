@@ -150,6 +150,24 @@ db.exec(`
     UNIQUE (user_id, game_id, core, kind)
   );
 
+  -- Historique des états de sauvegarde (plusieurs par jeu) : identifiant donné par l'appareil,
+  -- date de l'état sur l'appareil, appareil d'origine ; fichiers dans data/states/<utilisateur>/<jeu>/.
+  CREATE TABLE IF NOT EXISTS state_history (
+    id          TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id     INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    core        TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    device      TEXT,
+    platform    TEXT,
+    size        INTEGER NOT NULL,
+    md5         TEXT NOT NULL,
+    thumbnail   TEXT,
+    pinned      INTEGER NOT NULL DEFAULT 0,
+    uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS state_history_game ON state_history(user_id, game_id);
+
   CREATE TABLE IF NOT EXISTS error_logs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,

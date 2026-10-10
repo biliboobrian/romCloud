@@ -4,7 +4,7 @@
 // options\<système>.cfg, keyboard.cfg (touches du clavier), player.log (journal).
 use crate::error::{AppError, Result};
 use crate::library::s;
-use crate::{account, api, cores, events, keyboard, managed, paths, settings};
+use crate::{account, api, cores, events, keyboard, managed, paths, settings, states};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Read;
@@ -143,6 +143,11 @@ pub fn state_path(core: &str, file: &str) -> PathBuf {
     root().join("states").join(core).join(format!("{}.state", paths::stem(file)))
 }
 
+/// Historique des états du jeu (plusieurs états avec miniature, voir states.rs).
+pub fn history_dir(core: &str, file: &str) -> PathBuf {
+    root().join("states").join(core).join(format!("{}.history", paths::stem(file)))
+}
+
 fn options_file(system_id: &str) -> PathBuf {
     root().join("options").join(format!("{}.cfg", safe(system_id)))
 }
@@ -188,6 +193,9 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
     let save_files: account::SaveFiles = vec![("state", state_path(core, file)), ("sram", sram_path(core, &rom))];
     let game_id = game.get("id").cloned().unwrap_or(Value::Null);
     account::download_newer(&game_id, core, &save_files).await;
+    // Historique des états : ceux des autres appareils du profil, proposés par le menu du moteur.
+    let history = history_dir(core, file);
+    states::prefetch(&game_id, core, &history).await;
     // Liaison entre consoles avec un autre cœur que l'émulateur choisi : sauvegarde de celui-ci
     // reprise si elle est plus récente, recopiée pour lui en quittant.
     let linked_sram = save_core.filter(|other| *other != core).map(|other| {
@@ -220,7 +228,8 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         pad_style: Some(keyboard::console_pad(system_key, core).to_string()),
         option_defaults: cores::game_option_defaults(core, &rom),
     });
-    // Jeu à plusieurs en réseau local (netplay.rs) : partie proposée ou rejointe.
+    args.extend(["--history-dir".to_string(), text(history.clone()), "--history-device".to_string(), account::hostname()]);
+    // Jeu à plusieurs en réseau local (netplay.rs) : partie proposée ou rejointe ; état choisi.
     args.extend(extra);
     std::fs::create_dir_all(&base)?;
     if !keys_file().exists() {
@@ -242,6 +251,7 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         crate::netplay::player_exited();
         account::add_playtime(game_id.clone(), (paths::now_ms() - started) / 1000.0).await;
         account::upload_changed(&game_id, &core, &save_files, started - 2000.0).await;
+        states::after_session(&game_id, &history).await;
         if let Some((other, path)) = linked_sram {
             if let Some((_, sram)) = save_files.iter().find(|(kind, _)| *kind == "sram") {
                 copy_if_newer(sram, &path);

@@ -58,6 +58,12 @@ static const struct {
     {"state_loaded", "État chargé", "State loaded"},
     {"state_error", "Impossible de sauvegarder ou de charger l'état", "The state could not be saved or loaded"},
     {"no_state", "Aucun état sauvegardé pour ce jeu", "No saved state for this game"},
+    {"states_title", "Charger un état", "Load a state"},
+    {"states_info", "États de ce PC et de votre profil en ligne (téléchargés avant la partie).",
+     "States of this PC and of your online profile (downloaded before playing)."},
+    {"states_hint", "A / Entrée : charger   B / Échap : retour", "A / Enter: load   B / Esc: back"},
+    {"this_pc", "Ce PC", "This PC"},
+    {"pinned", "épinglé", "pinned"},
     {"load_failed", "Le jeu n'a pas pu démarrer avec ce cœur (fichier non pris en charge ou BIOS manquant ?).",
      "The game could not be started with this core (unsupported file or missing BIOS?)."},
     {"core_failed", "Le cœur n'a pas pu être chargé :", "The core could not be loaded:"},
@@ -173,6 +179,13 @@ void Menu::openOptions() {
   optionScroll_ = 0;
 }
 
+void Menu::openStates(std::vector<std::string> rows) {
+  screen_ = Screen::States;
+  stateRows_ = std::move(rows);
+  stateSelected_ = 0;
+  stateScroll_ = 0;
+}
+
 void Menu::openKeys() {
   screen_ = Screen::Keys;
   keySelected_ = 0;
@@ -226,6 +239,17 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
 
 MenuAction Menu::handle(Nav nav, const MenuState& state) {
   if (screen_ == Screen::Keys) return handleKeys(nav);
+  if (screen_ == Screen::States) {
+    const int count = (int)stateRows_.size();
+    switch (nav) {
+      case Nav::Up: if (count) stateSelected_ = (stateSelected_ + count - 1) % count; break;
+      case Nav::Down: if (count) stateSelected_ = (stateSelected_ + 1) % count; break;
+      case Nav::Confirm: if (count) return MenuAction::LoadHistoryState; break;
+      case Nav::Back: screen_ = Screen::Main; break;
+      default: break;
+    }
+    return MenuAction::None;
+  }
   if (screen_ == Screen::Options) {
     const auto groups = g.options.groups();
     const int tabs = std::max(1, (int)groups.size());
@@ -315,6 +339,10 @@ void Menu::render(Canvas& c, const MenuState& state) const {
     renderKeys(c);
     return;
   }
+  if (screen_ == Screen::States) {
+    renderStates(c);
+    return;
+  }
   int y = 32;
   c.text(40, y, Canvas::fit(title_, 2, c.width() - 80), 2, kText);
   y += 22;
@@ -333,6 +361,27 @@ void Menu::render(Canvas& c, const MenuState& state) const {
   }
   std::string hint = tr("hint");
   c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 18, hint, 1, kMuted);
+}
+
+void Menu::renderStates(Canvas& c) const {
+  int y = 20;
+  c.text(24, y, tr("states_title") + " — " + title_, 2, kText);
+  y += 22;
+  c.text(24, y, Canvas::fit(tr("states_info"), 1, c.width() - 48), 1, kMuted);
+  y += 22;
+  if (stateRows_.empty()) c.text(24, y, tr("no_state"), 2, kText);
+  const int lineHeight = 26;
+  int visible = std::max(1, (c.height() - y - 26) / lineHeight);
+  if (stateSelected_ < stateScroll_) stateScroll_ = stateSelected_;
+  if (stateSelected_ >= stateScroll_ + visible) stateScroll_ = stateSelected_ - visible + 1;
+  for (int row = stateScroll_; row < std::min((int)stateRows_.size(), stateScroll_ + visible); row++) {
+    bool sel = row == stateSelected_;
+    c.fill(16, y - 6, c.width() - 32, 22, sel ? kSelection : rgba(255, 255, 255, 18));
+    c.text(24, y, Canvas::fit(stateRows_[(size_t)row], 2, c.width() - 48), 2, sel ? rgba(255, 255, 255) : kText);
+    y += lineHeight;
+  }
+  std::string hint = tr("states_hint");
+  c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, kMuted);
 }
 
 void Menu::renderOptions(Canvas& c) const {

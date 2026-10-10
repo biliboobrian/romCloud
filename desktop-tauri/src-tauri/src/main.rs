@@ -23,6 +23,7 @@ mod paths;
 mod relay;
 mod screencast;
 mod settings;
+mod states;
 mod updater;
 
 use tauri::webview::NewWindowResponse;

@@ -114,7 +114,8 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
     /**
      * Lance le jeu avec l'émulateur choisi ([resume] : reprend la partie sauvegardée, émulateur
-     * intégré ; [stream] : diffusé sur cette TV du profil, émulateur intégré, image [streamMode]). Sans modèle d'émulateur (système personnalisé), ouvre le sélecteur d'applications.
+     * intégré ; [state] : à partir de cet état de l'historique ; [stream] : diffusé sur cette TV du
+     * profil, émulateur intégré, image [streamMode]). Sans modèle d'émulateur (système personnalisé), ouvre le sélecteur d'applications.
      */
     fun launch(
         activityContext: Context,
@@ -126,6 +127,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         stream: StreamReceiver? = null,
         streamMode: StreamMode = StreamMode.NATIVE,
         netplay: NetplayLaunch? = null,
+        state: File? = null,
     ) {
         if (!file.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, file.absolutePath))
 
@@ -135,7 +137,10 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
         // Émulateur intégré : le cœur est téléchargé si besoin par l'activité de jeu elle-même.
         libretroCore?.let { core ->
-            val intent = LibretroActivity.intent(activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode, netplay)
+            val intent = LibretroActivity.intent(
+                activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode, netplay,
+                state = state, autoUploadStates = settings.autoUploadStates,
+            )
             if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             activityContext.startActivity(intent)
             return

@@ -162,6 +162,11 @@ function renderDetail(box, d) {
       <td><strong>${e(s.title || `#${s.gameId}`)}</strong><br><span class="muted">${e([s.system, s.core].filter(Boolean).join(' · '))}</span></td>
       <td>${e(t(`users.kind.${s.kind}`))}</td><td>${e(formatSize(s.size))}</td><td>${e(formatDate(s.savedAt))}</td>
       <td>${e(device(s))}</td></tr>`), t('users.noSaves'))}</section>
+      <section class="user-section"><h4>${e(t('users.statesTitle'))}</h4>
+    ${table([t('users.game'), t('users.size'), t('users.savedAt'), t('users.device')], (d.states || []).map((s) => `<tr>
+      <td><strong>${e(s.title || `#${s.gameId}`)}</strong>${s.pinned ? ` <span class="muted">${e(t('users.pinned'))}</span>` : ''}<br><span class="muted">${e([s.system, s.core].filter(Boolean).join(' · '))}</span></td>
+      <td>${e(formatSize(s.size))}</td><td>${e(formatDate(s.createdAt))}</td>
+      <td>${e(device(s))}</td></tr>`), t('users.noStates'))}</section>
       <section class="user-section"><h4>${e(t('users.loginsTitle'))}</h4>
     ${table([t('users.date'), t('users.eventCol'), t('users.device'), t('users.ip')], loginRows(d.logins, false), t('users.noLogins'))}</section>
       <section class="user-section"><h4>${e(t('users.errorsTitle'))}</h4>

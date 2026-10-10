@@ -199,8 +199,9 @@ Une icône de profil, à côté des paramètres, permet de **créer un compte** 
 
 - le **temps de jeu par jeu**, affiché dans la bannière de la liste des jeux et dans la fiche du jeu (émulateur intégré : temps de la partie affichée, menu fermé ; émulateurs externes : du lancement au retour dans RomCloud ; parties de moins de 10 s ignorées ; envoyé plus tard si le serveur est injoignable) ;
 - les **sauvegardes en ligne de l’émulateur intégré** (état de la partie et mémoire du jeu, par cœur) : envoyées en quittant le jeu, récupérées avant de jouer si elles sont plus récentes — une partie commencée sur la TV continue sur le téléphone ou le PC (même cœur ; un état d’une autre version du cœur peut être refusé). La fiche du jeu indique la sauvegarde en ligne et propose *Reprendre*.
+- l’**historique des états** de chaque jeu (émulateur intégré, Android, Android TV et Windows) : chaque *Sauvegarder l’état* (F2 sous Windows) et *Sauvegarder et quitter* ajoute un état daté avec une **miniature** de l’écran du jeu ; les **10 derniers par jeu et par appareil** sont gardés, plus les états **épinglés** (jamais supprimés automatiquement). *Charger l’état* (menu du jeu) et *États sauvegardés* (fiche du jeu, pour jouer à partir de l’un d’eux) listent ceux de l’appareil et ceux du profil en ligne, avec la **date, l’heure et l’appareil** d’origine : épingler, envoyer en ligne, supprimer (de l’appareil et en ligne). **Envoi automatique** réglable sur chaque appareil (*Paramètres › Envoyer les états en ligne automatiquement*, activé par défaut) : sous Android dès la sauvegarde, sous Windows à la fin de la partie (les états récents des autres appareils sont téléchargés avant la partie pour le menu du moteur) ; sinon bouton *Envoyer en ligne* sur chaque état. Hors ligne, l’envoi attend le retour du serveur.
 
-Mots de passe hachés (scrypt), jetons de session aléatoires (seule leur empreinte est stockée), 10 tentatives échouées par quart d’heure et par nom d’utilisateur. Sauvegardes dans `DATA_DIR/saves/<utilisateur>/<jeu>/`.
+Mots de passe hachés (scrypt), jetons de session aléatoires (seule leur empreinte est stockée), 10 tentatives échouées par quart d’heure et par nom d’utilisateur. Sauvegardes dans `DATA_DIR/saves/<utilisateur>/<jeu>/`, historique des états dans `DATA_DIR/states/<utilisateur>/<jeu>/`.
 
 ### Configuration (`.env`)
 
@@ -264,6 +265,10 @@ Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <clé>` (ou 
 | GET · POST | `/api/account/playtime` | Temps de jeu par jeu · `{ "gameId", "seconds" }` ajoute une partie |
 | GET | `/api/account/saves?gameId=` | Sauvegardes en ligne (`core`, `kind` : `state` ou `sram`, `savedAt`, appareil) |
 | GET/PUT/DELETE | `/api/account/saves/:gameId/:core/:kind` | Fichier de sauvegarde (PUT : corps binaire, `X-Saved-At` = date du fichier en ms) |
+| GET | `/api/account/states?gameId=` | Historique des états (`id`, `core`, `createdAt`, `device`, `platform`, `pinned`, `thumbnail`) |
+| PUT | `/api/account/states/:gameId/:core/:id` | État (corps binaire, `X-Created-At` = date en ms, `X-Pinned: 1`) ; 10 gardés par jeu et par appareil, hors épinglés |
+| GET · PUT | `/api/account/states/:id` · `/api/account/states/:id/thumbnail` | Fichier de l’état · miniature (JPEG ou PNG) |
+| PATCH · DELETE | `/api/account/states/:id` | `{ "pinned": true }` épingle · supprime l’état |
 | POST | `/api/account/errors` | `{ "message", "context", "details" }` : erreur d’une application (avec ou sans session) |
 | GET/POST · GET/PUT/DELETE | `/api/users` · `/api/users/:id` | Administration des profils (détail : sessions, connexions, temps de jeu, sauvegardes, erreurs) |
 | DELETE | `/api/users/:id/sessions/:sessionId` | Déconnecte un appareil |
