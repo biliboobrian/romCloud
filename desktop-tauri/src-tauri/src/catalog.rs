@@ -42,6 +42,10 @@ pub static EMULATORS: &[Emulator] = &[
     emu!("dolphin", "Dolphin", ["gc", "wii", "wiiware", "triforce"], "https://dolphin-emu.org/download/", ["Dolphin.exe"],
         ["Dolphin", "Dolphin-x64", "Dolphin Emulator"], ["-b", "-e", "{file}"]),
     emu!("cemu", "Cemu", ["wiiu"], "https://cemu.info/", ["Cemu.exe"], ["Cemu"], ["-f", "-g", "{file}"]),
+    // Switch : clés (prod.keys) et firmware à installer dans l'émulateur.
+    emu!("ryujinx", "Ryujinx", ["switch"], "https://ryujinx.app/download", ["Ryujinx.exe"], ["Ryujinx", "ryujinx"],
+        ["--fullscreen", "{file}"]),
+    emu!("eden", "Eden", ["switch"], "https://eden-emu.dev/download", ["eden.exe"], ["Eden", "eden"], ["-f", "-g", "{file}"]),
     emu!("project64", "Project64", ["n64"], "https://www.pj64-emu.com/", ["Project64.exe"], ["Project64 3.0", "Project64"], ["{file}"]),
     emu!("melonds", "melonDS", ["nds", "ndsi"], "https://melonds.kuribo64.net/downloads.php", ["melonDS.exe"], ["melonDS"], ["{file}"]),
     emu!("azahar", "Azahar", ["3ds"], "https://azahar-emu.org/", ["azahar.exe"], ["Azahar"], ["{file}"]),
@@ -121,6 +125,7 @@ pub fn system_name(id: &str) -> String {
     let name = match id {
         "psx" => "PlayStation", "ps2" => "PlayStation 2", "ps3" => "PlayStation 3", "psp" => "PSP", "pspminis" => "PSP Minis",
         "vita" => "PS Vita", "gc" => "GameCube", "wii" => "Wii", "wiiware" => "WiiWare", "triforce" => "Triforce", "wiiu" => "Wii U",
+        "switch" => "Nintendo Switch",
         "n64" => "Nintendo 64", "nds" => "Nintendo DS", "ndsi" => "Nintendo DSi", "3ds" => "Nintendo 3DS", "gba" => "Game Boy Advance",
         "gb" => "Game Boy", "gbc" => "Game Boy Color", "snes" => "Super Nintendo", "satellaview" => "Satellaview", "nes" => "NES",
         "fds" => "Famicom Disk System", "tg16" => "PC Engine", "tgcd" => "PC Engine CD", "supergrafx" => "SuperGrafx", "pcfx" => "PC-FX",

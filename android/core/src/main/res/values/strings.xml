@@ -296,6 +296,9 @@
     <string name="apk_permission_text">To install %1$s, Android must allow RomCloud to install apps. Enable “Allow from this source” for RomCloud, then come back: the installation will continue.</string>
     <string name="action_open_settings">Open the settings</string>
     <string name="apk_install_failed">Installation of %1$s failed: %2$s</string>
+    <string name="apk_wrong_package">the downloaded APK installs %1$s instead of %2$s</string>
+    <string name="apk_release_available">Latest version on %4$s: %1$s %2$s (%3$s).</string>
+    <string name="action_download_latest">Download the latest version</string>
     <string name="apk_no_installer">No app installer available on this device</string>
 
     <!-- Émulateur intégré (LibretroDroid) -->

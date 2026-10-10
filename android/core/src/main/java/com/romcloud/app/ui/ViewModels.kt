@@ -536,7 +536,7 @@ class GameDetailViewModel(
     }
 
     /**
-     * Propose d'installer l'émulateur (APK du serveur RomCloud s'il existe, ou Play Store) ;
+     * Propose d'installer l'émulateur (dernière version de l'émulateur, APK du serveur RomCloud, ou Play Store) ;
      * renvoie un message d'erreur ou null.
      */
     fun installPlayer(player: Player): String? {

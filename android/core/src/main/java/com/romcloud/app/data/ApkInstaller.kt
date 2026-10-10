@@ -25,8 +25,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Installation d'un émulateur depuis un APK du serveur (ou d'une mise à jour de RomCloud depuis
- * GitHub, [EmulatorApk.url]) : téléchargement dans le cache de
+ * Installation d'un émulateur depuis la dernière Release de l'émulateur ou un APK du serveur (ou
+ * d'une mise à jour de RomCloud depuis GitHub, [EmulatorApk.url]) : téléchargement dans le cache de
  * l'application (avec reprise), puis ouverture de l'installateur d'Android. Android demande
  * d'autoriser RomCloud à installer des applications (« sources inconnues ») la première fois.
  */
@@ -84,6 +84,13 @@ class ApkInstaller(
                     }
                 }
                 _progress.value = null
+                // APK d'une Release : il doit bien installer le paquet attendu (sinon l'émulateur
+                // resterait introuvable au lancement).
+                val archive = context.packageManager.getPackageArchiveInfo(file.path, 0)?.packageName
+                if (archive != null && archive != apk.packageName) {
+                    file.delete()
+                    throw IllegalStateException(I18n.get(R.string.apk_wrong_package, archive, apk.packageName))
+                }
                 withContext(Dispatchers.Main) { openInstaller(activity, file) }
             } catch (e: CancellationException) {
                 _progress.value = null
