@@ -43,9 +43,11 @@ pub static EMULATORS: &[Emulator] = &[
         ["Dolphin", "Dolphin-x64", "Dolphin Emulator"], ["-b", "-e", "{file}"]),
     emu!("cemu", "Cemu", ["wiiu"], "https://cemu.info/", ["Cemu.exe"], ["Cemu"], ["-f", "-g", "{file}"]),
     // Switch : clés (prod.keys) et firmware à installer dans l'émulateur.
+    // eden-cli en premier : lance le jeu sans l'interface d'Eden ; configuration (manettes…) reprise de eden.exe (emulator_files.rs).
+    emu!("eden-cli", "Eden (eden-cli)", ["switch"], "https://eden-emu.dev/downloads/", ["eden-cli.exe"], ["Eden", "eden"], ["-f", "-g", "{file}"]),
     emu!("ryujinx", "Ryujinx", ["switch"], "https://ryujinx.app/download", ["Ryujinx.exe"], ["Ryujinx", "ryujinx"],
         ["--fullscreen", "{file}"]),
-    emu!("eden", "Eden", ["switch"], "https://eden-emu.dev/download", ["eden.exe"], ["Eden", "eden"], ["-f", "-g", "{file}"]),
+    emu!("eden", "Eden", ["switch"], "https://eden-emu.dev/downloads/", ["eden.exe"], ["Eden", "eden"], ["-f", "-g", "{file}"]),
     emu!("project64", "Project64", ["n64"], "https://www.pj64-emu.com/", ["Project64.exe"], ["Project64 3.0", "Project64"], ["{file}"]),
     emu!("melonds", "melonDS", ["nds", "ndsi"], "https://melonds.kuribo64.net/downloads.php", ["melonDS.exe"], ["melonDS"], ["{file}"]),
     emu!("azahar", "Azahar", ["3ds"], "https://azahar-emu.org/", ["azahar.exe"], ["Azahar"], ["{file}"]),

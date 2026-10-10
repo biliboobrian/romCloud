@@ -12,6 +12,7 @@ mod connectivity;
 mod cores;
 mod downloads;
 mod emulator_files;
+mod emulator_updates;
 mod error;
 mod events;
 mod ipc;

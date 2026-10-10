@@ -1691,7 +1691,9 @@
         ${emu.path ? `<button class="btn" data-emu-launch>${icon('open', 18)} ${esc(t('emulator.launch', { name: emu.name }))}</button>` : `<button class="btn primary" data-emu-download>${icon('cloud', 18)} ${esc(t('emulator.download', { name: emu.name }))}</button>`}
         <button class="btn" data-emu-browse>${icon('folder', 18)} ${esc(t('emulator.browse'))}</button>
         ${emu.path ? `<button class="btn ghost" data-emu-download>${esc(t('emulator.website'))}</button>` : `<button class="btn ghost" data-emu-detect>${icon('search', 18)} ${esc(t('emulator.detect'))}</button>`}
+        ${emu.updatable ? `<button class="btn ghost" data-emu-check>${icon('refresh', 18)} ${esc(t('emulator.checkUpdate'))}</button>` : ''}
       </div>
+      ${emu.updatable ? '<div class="emu-update" data-emu-update></div>' : ''}
       ${args}
     </div>`;
   }
@@ -1713,6 +1715,43 @@
       await call(rc.emulators.setArgs, emu.id, e.target.value);
       refresh();
     });
+    $('[data-emu-check]', block)?.addEventListener('click', (e) => checkEmulatorUpdate(emu, block, e.currentTarget, refresh));
+  }
+
+  /**
+   * Dernière version de l'émulateur (Eden) : comparée à celle installée, avec un bouton pour
+   * l'installer (même variante que l'actuelle, dans son dossier).
+   */
+  async function checkEmulatorUpdate(emu, block, button, refresh) {
+    const box = $('[data-emu-update]', block);
+    button.disabled = true;
+    box.innerHTML = `<span class="muted">${esc(t('emulator.checking'))}</span>`;
+    try {
+      const u = await call(rc.emulators.checkUpdate, emu.id);
+      const installed = u.installed ? t('emulator.installedVersion', { version: u.installed, variant: u.variant }) : t('emulator.notInstalledVersion');
+      const status = !u.asset ? t('emulator.noBuild') : u.updateAvailable ? t(u.installed ? 'emulator.updateAvailable' : 'emulator.installAvailable', { version: u.latest }) : t('emulator.upToDate');
+      box.innerHTML = `<div class="${u.updateAvailable ? 'good' : 'muted'}">${esc(installed)} · ${esc(t('emulator.latestVersion', { version: u.latest }))} — ${esc(status)}</div>
+        ${u.updateAvailable ? `<div class="line"><button class="btn primary" data-emu-install>${icon('cloud', 18)} ${esc(t(u.installed ? 'emulator.updateTo' : 'emulator.installVersion', { version: u.latest }))}</button>
+          <span class="muted small">${esc(t('emulator.installHint', { file: u.asset, dir: u.dir }))}</span></div>` : ''}`;
+      $('[data-emu-install]', box)?.addEventListener('click', async (e) => {
+        const install = e.currentTarget;
+        install.disabled = true;
+        install.textContent = t('emulator.installing');
+        try {
+          const done = await call(rc.emulators.update, emu.id);
+          toast(t('emulator.installed', { name: emu.name, version: done.installed || done.latest }));
+          refresh();
+        } catch (err) {
+          toast(err.message, { type: 'error' });
+          install.disabled = false;
+          install.textContent = t(u.installed ? 'emulator.updateTo' : 'emulator.installVersion', { version: u.latest });
+        }
+      });
+    } catch (err) {
+      box.innerHTML = `<div class="bad">${esc(err.message)}</div>`;
+    } finally {
+      button.disabled = false;
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.OnlineSave
+import com.romcloud.app.data.ExternalEmulatorFiles
 import com.romcloud.app.data.Player
 import com.romcloud.app.data.SavedState
 import com.romcloud.app.data.StateHistory
@@ -479,6 +480,9 @@ class GameDetailViewModel(
         val tvs: List<StreamReceiver> = emptyList(),
         /** États de l'historique (appareil et profil en ligne) : bouton « États sauvegardés ». */
         val savedStates: Int = 0,
+        /** Fichiers à importer dans l'émulateur externe (clés, firmware) et leur dossier (Téléchargements/…). */
+        val emulatorFiles: List<String> = emptyList(),
+        val emulatorFilesFolder: String? = null,
     ) {
         val canStream: Boolean get() = downloaded && selectedPlayer?.libretroCore != null && tvs.isNotEmpty()
     }
@@ -521,6 +525,7 @@ class GameDetailViewModel(
                     app.launcher.compatiblePlayers(system, game.fileName).map { it to app.launcher.isInstalled(it) }
             }
             val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(s.bios) }
+            val emulatorFiles = withContext(Dispatchers.IO) { runCatching { app.library.exportForEmulators(system) }.getOrDefault(emptyList()) }
             val selected = app.launcher.selectedPlayer(system, game.fileName)
             val file = withContext(Dispatchers.IO) { app.library.launchFile(system, game, selected) }
             val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(file, selected) }
@@ -546,6 +551,8 @@ class GameDetailViewModel(
                     canResume = canResume,
                     onlineSave = online,
                     savedStates = savedStates,
+                    emulatorFiles = emulatorFiles.map { it.name },
+                    emulatorFilesFolder = ExternalEmulatorFiles.folderName(system),
                 )
             }
         }

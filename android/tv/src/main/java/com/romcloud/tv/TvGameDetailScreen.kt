@@ -170,6 +170,15 @@ fun TvGameDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // Clés et firmware pour l'émulateur externe (Eden) : à importer depuis son menu.
+                val emulatorFolder = state.emulatorFilesFolder
+                if (state.emulatorFiles.isNotEmpty() && emulatorFolder != null) {
+                    Text(
+                        stringResource(R.string.emulator_files_hint, emulatorFolder, state.emulatorFiles.joinToString(", ")),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 // BIOS du système : téléchargés avec le jeu, ou via le bouton si le jeu est déjà présent.
                 if (state.bios.isNotEmpty() && download !is DownloadState.Running) {
                     val missing = state.missingBios

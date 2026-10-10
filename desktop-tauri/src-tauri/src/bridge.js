@@ -114,6 +114,8 @@
       setPath: call('emulators:setPath'),
       setArgs: call('emulators:setArgs'),
       launch: call('emulators:launch'),
+      checkUpdate: call('emulators:checkUpdate'),
+      update: call('emulators:update'),
     },
     dialog: { pickFile: call('dialog:pickFile'), pickFolder: call('dialog:pickFolder') },
     shell: { showItem: call('shell:showItem'), openExternal: call('shell:openExternal') },

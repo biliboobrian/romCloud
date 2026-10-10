@@ -26,10 +26,11 @@ const FILES = {
       description: { fr: 'Clés des jeux achetés (à extraire de votre Switch)', en: 'Keys of purchased games (dumped from your Switch)' },
     },
     {
-      path: 'switch/firmware', kind: 'firmware', required: false, folder: true, emulators: ['Eden', 'Ryujinx', 'Citron'],
+      // Gardé en .zip (pas extrait) : seul format accepté par Eden pour Android, aussi lu par Ryujinx.
+      path: 'switch/firmware.zip', kind: 'firmware', required: false, emulators: ['Eden', 'Ryujinx', 'Citron'],
       description: {
-        fr: 'Firmware de la console (fichiers .nca, à extraire de votre Switch) : envoyez un .zip, à installer depuis l’émulateur',
-        en: 'Console firmware (.nca files, dumped from your Switch): send a .zip, to install from the emulator',
+        fr: 'Firmware de la console (.zip des fichiers .nca, à extraire de votre Switch), à installer depuis l’émulateur',
+        en: 'Console firmware (.zip of the .nca files, dumped from your Switch), to install from the emulator',
       },
     },
   ],

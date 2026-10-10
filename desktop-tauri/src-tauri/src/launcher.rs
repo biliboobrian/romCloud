@@ -71,6 +71,8 @@ pub fn list_emulators() -> Value {
                     "systems": emu.systems,
                     "url": emu.url,
                     "path": exe,
+                    // RomCloud sait vérifier et installer sa dernière version (emulator_updates.rs).
+                    "updatable": crate::emulator_updates::supported(emu.id),
                     "defaultLocation": catalog::default_location(emu).to_string_lossy(),
                     "direct": args.is_some(),
                     "defaultArgs": catalog::args_line(emu.args),
@@ -127,8 +129,8 @@ fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()>
 pub fn launch_emulator(id: &str) -> Result<()> {
     let emu = catalog::by_id(id).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": id })))?;
     let exe = emulator_path(id).ok_or_else(|| AppError::new("errors.emulatorMissing", json!({ "name": emu.name, "id": id })))?;
-    crate::emulator_files::install(emu.id, &exe);
-    spawn_detached(&exe, &[], None)
+    let args = crate::emulator_files::prepare(emu.id, &exe, Vec::new());
+    spawn_detached(&exe, &args, None)
 }
 
 // ---------------------------------------------------------------------------
@@ -440,10 +442,12 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             Ok(json!({ "manual": false }))
         }
         Plan::Run { exe, args, emulator } => {
-            // Clés de la Switch (Eden, Ryujinx)… copiées depuis le dossier des BIOS.
-            if let Some(id) = emulator {
-                crate::emulator_files::install(id, &exe);
-            }
+            // Clés de la Switch (Eden, Ryujinx)… copiées depuis le dossier des BIOS ; eden-cli :
+            // lancé avec la configuration d'eden.exe (manettes).
+            let args = match emulator {
+                Some(id) => crate::emulator_files::prepare(id, &exe, args),
+                None => args,
+            };
             spawn_detached(&exe, &args, Some(game.clone()))?;
             Ok(json!({ "manual": false }))
         }

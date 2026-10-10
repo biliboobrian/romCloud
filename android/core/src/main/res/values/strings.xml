@@ -581,4 +581,5 @@
     <string name="settings_auto_upload_states">Send save states online automatically</string>
     <string name="settings_auto_upload_states_hint">With a profile signed in: each state saved in the built-in emulator is sent to your profile, with this device and its date. Otherwise, send them from the state history.</string>
     <string name="settings_auto_upload_states_on">States sent online automatically</string>
+    <string name="emulator_files_hint">For Eden: %2$s in Downloads › %1$s. In Eden, install the keys and the firmware from its settings, choosing these files.</string>
 </resources>

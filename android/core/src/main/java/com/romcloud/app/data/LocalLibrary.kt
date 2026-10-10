@@ -69,6 +69,13 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         bios.path.split('/').filter { it.isNotEmpty() && it != "." && it != ".." }.joinToString("/"),
     )
 
+    /**
+     * Fichiers du dossier des BIOS que les émulateurs externes importent eux-mêmes (clés et
+     * firmware de la Switch pour Eden) recopiés dans Téléchargements/RomCloud ; renvoie ceux disponibles.
+     */
+    fun exportForEmulators(system: GameSystem): List<File> =
+        ExternalEmulatorFiles.export(context, system, File(settings.config.value.biosDir))
+
     /** BIOS absents de l'appareil (ou de taille différente). */
     fun missingBios(files: List<BiosFile>): List<BiosFile> =
         files.filterNot { biosFile(it).let { f -> f.isFile && f.length() == it.size } }
