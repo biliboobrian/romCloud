@@ -70,7 +70,7 @@ data class BiosFile(
 @Serializable
 data class BiosList(val files: List<BiosFile> = emptyList())
 
-/** APK d'un émulateur Android disponible sur le serveur (un par paquet). */
+/** APK d'un émulateur Android : sur le serveur (un par paquet) ou dans la dernière Release de l'émulateur. */
 @Serializable
 data class EmulatorApk(
     val id: Long,
@@ -79,8 +79,10 @@ data class EmulatorApk(
     val versionName: String? = null,
     val versionCode: Long? = null,
     val size: Long,
-    /** Adresse de téléchargement hors serveur RomCloud (mise à jour de l'application). */
+    /** Adresse de téléchargement hors serveur RomCloud (mise à jour de l'application, Release de l'émulateur). */
     val url: String? = null,
+    /** Site de la Release de l'émulateur (« github.com ») ; null pour un APK du serveur. */
+    val source: String? = null,
 )
 
 @Serializable

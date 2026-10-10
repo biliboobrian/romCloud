@@ -14,6 +14,7 @@ import coil.ImageLoaderFactory
 import com.romcloud.app.data.Account
 import com.romcloud.app.data.ApiClient
 import com.romcloud.app.data.ApkInstaller
+import com.romcloud.app.data.EmulatorReleases
 import com.romcloud.app.data.AppUpdater
 import com.romcloud.app.data.Connectivity
 import com.romcloud.app.data.DownloadEvent
@@ -64,6 +65,9 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         private set
     lateinit var updater: AppUpdater
         private set
+    /** Dernière version des émulateurs sur leur gestionnaire de versions (GitHub, Forgejo). */
+    lateinit var emulatorReleases: EmulatorReleases
+        private set
     /** Profil du joueur : temps de jeu, sauvegardes en ligne, erreurs signalées. */
     lateinit var account: Account
         private set
@@ -93,6 +97,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         launcher = GameLauncher(this, settings)
         apkInstaller = ApkInstaller(this, api, appScope)
         updater = AppUpdater(this, api)
+        emulatorReleases = EmulatorReleases(api)
         account = Account(this, api, appScope)
         connectivity = Connectivity(this, api, appScope)
         // Processus de l'émulateur intégré : ni suivi de la connexion, ni envoi du temps de jeu.

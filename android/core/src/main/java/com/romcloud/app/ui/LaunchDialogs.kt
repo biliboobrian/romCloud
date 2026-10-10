@@ -51,7 +51,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * Comportements globaux communs aux applications téléphone et TV : fins de téléchargement
- * (lancement automatique ou proposition « Jouer »), émulateur manquant (APK du serveur ou Play Store),
+ * (lancement automatique ou proposition « Jouer »), émulateur manquant (dernière version de
+ * l'émulateur, APK du serveur ou Play Store),
  * émulateur à fermer avant le lancement (Android 14+), autorisation des notifications.
  */
 @Composable
@@ -96,16 +97,20 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         }
     }
 
-    // Émulateur absent : proposer l'APK du serveur RomCloud (s'il en a un) ou le Google Play Store.
+    // Émulateur absent : proposer la dernière version publiée par l'émulateur (Release GitHub ou
+    // Forgejo), à défaut l'APK du serveur RomCloud (s'il en a un), ou le Google Play Store.
     val missing by app.missingEmulator.collectAsStateWithLifecycle()
     missing?.let { emulator ->
         val scope = rememberCoroutineScope()
         val unavailable = stringResource(R.string.play_store_unavailable)
-        // null = liste des APK en cours de chargement.
+        // null = recherche en cours.
         val apk by produceState<Result<EmulatorApk?>?>(null, emulator) {
-            value = Result.success(app.repository.apks().find { it.packageName == emulator.packageName })
+            val release = app.emulatorReleases.latest(emulator.packageName)
+            value = Result.success(release ?: app.repository.apks().find { it.packageName == emulator.packageName })
         }
-        val serverApk = apk?.getOrNull()
+        val found = apk?.getOrNull()
+        val release = found?.takeIf { it.source != null }
+        val serverApk = found?.takeIf { it.source == null }
         AlertDialog(
             onDismissRequest = { app.missingEmulator.value = null },
             title = { Text(stringResource(R.string.missing_emulator_title)) },
@@ -120,6 +125,10 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                     )
                     when {
                         apk == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                        release != null -> Text(
+                            stringResource(R.string.apk_release_available, release.label, release.versionName.orEmpty(), formatSize(release.size), release.source.orEmpty()),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                         serverApk != null -> Text(
                             stringResource(R.string.apk_available, serverApk.label, serverApk.versionName.orEmpty(), formatSize(serverApk.size)),
                             color = MaterialTheme.colorScheme.primary,
@@ -138,11 +147,11 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                             scope.launch { snackbar.showSnackbar(e.message ?: unavailable) }
                         }
                     }) { Text(stringResource(R.string.action_open_play_store)) }
-                    if (serverApk != null) {
+                    found?.let { download ->
                         TextButton(onClick = {
                             app.missingEmulator.value = null
-                            app.apkInstaller.install(activity, serverApk)
-                        }) { Text(stringResource(R.string.action_install_from_server)) }
+                            app.apkInstaller.install(activity, download)
+                        }) { Text(stringResource(if (release != null) R.string.action_download_latest else R.string.action_install_from_server)) }
                     }
                 }
             },
@@ -172,7 +181,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         )
     }
 
-    // Installation d'un APK du serveur : erreurs, autorisation « sources inconnues », progression.
+    // Installation d'un APK (Release de l'émulateur ou serveur) : erreurs, autorisation « sources inconnues », progression.
     LaunchedEffect(Unit) {
         app.apkInstaller.errors.collect { launch { snackbar.showSnackbar(it) } }
     }
