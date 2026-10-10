@@ -103,3 +103,24 @@ test('espace disque : ROMs par système, sauvegardes par profil, base de donnée
   assert.equal(tree.size, tree.children.reduce((n, c) => n + c.size, 0));
   assert.ok(disks[0].total > 0);
 });
+
+test('suppression de plusieurs jeux d’un système', async () => {
+  const post = (pathname, body) => new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req = http.request({ host: '127.0.0.1', port: server.address().port, path: pathname, method: 'POST', agent: false,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+      let text = '';
+      res.on('data', (c) => (text += c));
+      res.on('end', () => resolve({ status: res.statusCode, json: text ? JSON.parse(text) : null }));
+    });
+    req.on('error', reject);
+    req.end(data);
+  });
+  for (const name of ['a.sfc', 'b.sfc']) fs.writeFileSync(path.join(dataDir, 'roms', 'snes', name), Buffer.alloc(10));
+  const ids = ['a.sfc', 'b.sfc'].map((name) => Number(db.prepare("INSERT INTO games (system_id, file_name, size, mtime, title) VALUES ('snes', ?, 10, 0, ?)").run(name, name).lastInsertRowid));
+  assert.equal((await post('/api/systems/snes/games/delete', { ids: [...ids, 999999] })).status, 400); // jeu d'un autre système
+  const res = await post('/api/systems/snes/games/delete', { ids });
+  assert.deepEqual(res.json, { deleted: 2, freed: 20 });
+  assert.ok(!fs.existsSync(path.join(dataDir, 'roms', 'snes', 'a.sfc')));
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM games WHERE id IN (?, ?)').get(...ids).n, 0);
+});

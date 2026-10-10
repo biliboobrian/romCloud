@@ -30,6 +30,12 @@ export function normalize(name) {
     // Version à la TOSEC : "Bomberman Online v1.004 (2001)(Sega)…"
     .replace(/\s+v\d+(?:\.\d+)*\s*$/i, '')
     .toLowerCase()
+    // Accents retirés (« Pokémon » = « Pokemon »), ligatures développées.
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/æ/g, 'ae')
+    .replace(/œ/g, 'oe')
+    .replace(/ß/g, 'ss')
     .replace(/^the\s+|,\s*the\b/g, '')
     .replace(/[^a-z0-9]+/g, '');
 }

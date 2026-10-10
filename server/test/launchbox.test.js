@@ -92,3 +92,23 @@ test('titre « Compilation - Jeu » : titre seul, si la fiche cite le sous-titre
   assert.ok(!citesSubtitle('Lara Croft explores tombs.', ['Tomb Raider'], 'Mystery Edition'));
   assert.ok(citesSubtitle('', ['Street Fighter Alpha: Warriors’ Dreams'], 'Warriors Dreams'));
 });
+
+test('titres comparés sans accents ; ancienne base LaunchBox mise à jour sur place', async () => {
+  const { normalize } = await import('../src/scraper/libretro.js');
+  assert.equal(normalize('Pokémon Legends: Z-A'), normalize('Pokemon Legends Z-A [0100F43008C44000][v0].nsp'));
+  assert.equal(normalize('Æon Flux'), 'aeonflux');
+  const { DatabaseSync } = await import('node:sqlite');
+  const fs = await import('node:fs');
+  const file = path.join(os.tmpdir(), `romcloud-lbnorm-${process.pid}.db`);
+  fs.rmSync(file, { force: true });
+  const db = new DatabaseSync(file);
+  db.exec("CREATE TABLE names (norm TEXT NOT NULL, id INTEGER NOT NULL, name TEXT NOT NULL, region TEXT); INSERT INTO names VALUES ('pokmonlegendsza', 1, 'Pokémon Legends: Z-A', NULL);");
+  db.close();
+  const { migrateNorms } = await import('../src/scraper/launchbox.js');
+  assert.equal(migrateNorms(file), true);
+  assert.equal(migrateNorms(file), false); // déjà à jour
+  const check = new DatabaseSync(file, { readOnly: true });
+  assert.equal(check.prepare('SELECT norm FROM names').get().norm, 'pokemonlegendsza');
+  check.close();
+  fs.rmSync(file, { force: true });
+});

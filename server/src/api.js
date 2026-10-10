@@ -162,6 +162,11 @@ api.post('/systems/:id/duplicates/delete', (req, res) => {
   res.json(deleteGamesOfSystem(req.params.id, (req.body && req.body.ids) || []));
 });
 
+// Suppression de plusieurs jeux d'un système ({ ids }) : fichiers, parties et images compris.
+api.post('/systems/:id/games/delete', (req, res) => {
+  res.json(deleteGamesOfSystem(req.params.id, (req.body && req.body.ids) || []));
+});
+
 // ---- BIOS ----
 // { cores, coreInfoAvailable, files: BIOS présents, expected: BIOS attendus par les cœurs RetroArch }
 // ?catalog=0 : fichiers présents seulement (utilisé par les applications).
