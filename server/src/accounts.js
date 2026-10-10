@@ -347,6 +347,8 @@ const saveFile = (userId, gameId, core, kind) => path.join(savesDir, String(user
 const saveRow = (r) => ({
   gameId: r.game_id, core: r.core, kind: r.kind, size: r.size, md5: r.md5,
   savedAt: new Date(r.saved_at).toISOString(), device: r.device, platform: r.platform, uploadedAt: r.uploaded_at,
+  // Place sur le disque (compressé par l'application) ; null pour un fichier d'une version précédente.
+  storedSize: r.stored_size ?? null, compressed: r.encoding === 'gzip',
 });
 
 export function listSaves(userId, gameId) {
@@ -401,6 +403,7 @@ const thumbnailFile = (userId, gameId, id, type) => path.join(statesDir, String(
 const stateRow = (r) => ({
   id: r.id, gameId: r.game_id, core: r.core, createdAt: new Date(r.created_at).toISOString(), device: r.device,
   platform: r.platform, size: r.size, md5: r.md5, thumbnail: Boolean(r.thumbnail), pinned: Boolean(r.pinned), uploadedAt: r.uploaded_at,
+  storedSize: r.stored_size ?? null, compressed: r.encoding === 'gzip',
 });
 
 function requireStateId(id) {

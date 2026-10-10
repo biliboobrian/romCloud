@@ -175,7 +175,7 @@ async fn fetch_to(url: &str, target: &Path, expected: u64, cancelled: &AtomicBoo
         std::fs::remove_file(&part)?;
         offset = 0;
     }
-    let mut request = api::client().get(url).headers(api::headers(&settings::get_str("apiKey")));
+    let mut request = api::client().get(url).headers(api::headers(&settings::get_str("apiKey"))).headers(crate::account::client_headers());
     if offset > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
     }

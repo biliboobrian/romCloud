@@ -34,6 +34,13 @@ class ApiClient(private val settings: Settings, val platform: String) {
     var onReachability: (Boolean) -> Unit = {}
 
     /**
+     * En-têtes ajoutés aux requêtes vers le serveur (appareil, version, session du profil) : le
+     * serveur note qui télécharge quoi. Ceux déjà présents dans la requête sont gardés.
+     */
+    @Volatile
+    var clientHeaders: () -> Map<String, String> = { emptyMap() }
+
+    /**
      * Requêtes destinées au serveur configuré (y compris les images Coil) : clé d'API, langue
      * de l'application (le serveur renvoie ses messages d'erreur dans cette langue) et plateforme.
      */
@@ -44,6 +51,8 @@ class ApiClient(private val settings: Settings, val platform: String) {
         val sameServer = base != null && request.url.host == base.host && request.url.port == base.port
         if (!sameServer) return@Interceptor chain.proceed(request)
         val builder = request.newBuilder().header("Accept-Language", I18n.language()).header("X-RomCloud-Platform", platform)
+        // Valeur refusée par OkHttp (caractère hors ASCII dans le nom de l'appareil) : en-tête omis.
+        for ((name, value) in clientHeaders()) if (request.header(name) == null) runCatching { builder.header(name, value) }
         if (config.apiKey.isNotEmpty()) builder.header("Authorization", "Bearer ${config.apiKey}")
         try {
             chain.proceed(builder.build()).also { onReachability(true) }

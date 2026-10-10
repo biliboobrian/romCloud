@@ -138,6 +138,18 @@ pub(crate) async fn call(api_path: &str, method: reqwest::Method, body: Body, ra
     Ok(Response { json: res.json().await.unwrap_or(Value::Null), bytes: vec![] })
 }
 
+/// Appareil, version et session du profil : joints aux téléchargements (journal du serveur).
+pub fn client_headers() -> reqwest::header::HeaderMap {
+    let mut headers = reqwest::header::HeaderMap::new();
+    let token = session().and_then(|s| s.get("token").and_then(Value::as_str).map(String::from));
+    for (name, value) in [("X-RomCloud-Device", Some(hostname())), ("X-RomCloud-Version", Some(version())), ("X-RomCloud-Session", token)] {
+        if let Some(value) = value.and_then(|v| reqwest::header::HeaderValue::from_str(&v).ok()) {
+            headers.insert(name, value);
+        }
+    }
+    headers
+}
+
 /// Profil connecté sur ce PC.
 pub fn signed_in() -> bool {
     session().is_some()

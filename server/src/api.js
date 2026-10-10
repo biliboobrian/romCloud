@@ -9,6 +9,8 @@ import * as play from './play.js';
 import { addApk, apkFilePath, deleteApk, emulatorPackages, listApks, requireApk, updateApk } from './apks.js';
 import { addBiosFiles, biosFilePath, deleteBios, fetchBiosFromSource, requireBios, systemBios } from './bios.js';
 import { config, screenscraperEnabled } from './config.js';
+import { diskUsage } from './disk-usage.js';
+import { clearDownloads, downloadStats, listDownloads, trackDownload } from './download-logs.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
@@ -211,6 +213,7 @@ api.post(
 
 api.get('/bios/:id/file', (req, res, next) => {
   const row = requireBios(req.params.id);
+  logDownload(req, res, { kind: 'bios', itemId: row.id, systemId: row.system_id, label: row.path, fileSize: row.size });
   res.download(biosFilePath(row), path.posix.basename(row.path), { dotfiles: 'allow' }, (err) => {
     if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
   });
@@ -265,6 +268,7 @@ api.delete('/apks/:id', (req, res) => {
 
 api.get('/apks/:id/file', (req, res, next) => {
   const row = requireApk(req.params.id);
+  logDownload(req, res, { kind: 'apk', itemId: row.id, label: `${row.package_name} ${row.version_name || ''}`.trim(), fileSize: row.size });
   res.type('application/vnd.android.package-archive');
   res.download(apkFilePath(row), `${row.package_name}-${row.version_name || row.version_code}.apk`, { dotfiles: 'allow' }, (err) => {
     if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
@@ -376,6 +380,7 @@ api.delete('/games/:id', (req, res) => {
 // Téléchargement du fichier ROM (gère les requêtes Range pour la reprise).
 api.get('/games/:id/file', (req, res, next) => {
   const row = requireGameRow(req.params.id);
+  logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: row.file_name, fileSize: row.size });
   res.download(gameFilePath(row), row.file_name, { dotfiles: 'allow' }, (err) => {
     if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
   });
@@ -437,6 +442,15 @@ api.delete('/jobs/:id', (req, res) => {
 // ---- Profil du joueur (session : en-tête X-RomCloud-Session) ----
 const sessionToken = (req) => req.get('x-romcloud-session') || '';
 const userAuth = (req) => accounts.authenticate(sessionToken(req), accounts.clientInfo(req));
+
+/** Téléchargement noté dans le journal (profil connecté s'il y en a un, appareil, octets envoyés). */
+function logDownload(req, res, item) {
+  try {
+    trackDownload(req, res, item, userAuth(req), accounts.clientInfo(req));
+  } catch (err) {
+    console.warn(`[downloads] ${err.message}`);
+  }
+}
 
 /** Route réservée à un joueur connecté : req.auth = { user, sessionId }. */
 function signedIn(req, res, next) {
@@ -639,6 +653,15 @@ api.delete('/users/:id/sessions/:sessionId', (req, res) => {
 });
 api.get('/logs/logins', (req, res) => res.json(accounts.adminLoginLog(req.query.limit)));
 api.get('/logs/errors', (req, res) => res.json(accounts.adminErrorLog(req.query.limit)));
+// Journal des téléchargements (ROM, BIOS, APK) et statistiques ; filtres : kind, userId (« anonymous »), device, days.
+api.get('/logs/downloads', (req, res) => res.json(listDownloads(req.query)));
+api.get('/logs/downloads/stats', (req, res) => res.json(downloadStats(req.query)));
+// Espace disque utilisé, en arborescence (ROMs par système, sauvegardes par profil…) ; ?refresh=1 : recalculé.
+api.get('/logs/disk', h(async (req, res) => res.json(await diskUsage({ refresh: req.query.refresh === '1' }))));
+api.delete('/logs/downloads', (req, res) => {
+  clearDownloads();
+  res.status(204).end();
+});
 api.delete('/logs/errors', (req, res) => {
   accounts.adminClearErrors();
   res.status(204).end();
