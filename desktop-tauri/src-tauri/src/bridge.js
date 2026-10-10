@@ -126,6 +126,7 @@
       state: call('account:state'),
       register: call('account:register'),
       login: call('account:login'),
+      sendReport: call('account:sendReport'),
       logout: call('account:logout'),
       playtime: call('account:playtime'),
       reportError: call('account:reportError'),

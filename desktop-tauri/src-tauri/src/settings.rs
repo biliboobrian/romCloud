@@ -27,6 +27,7 @@ fn defaults() -> Map<String, Value> {
         "pendingPlaytime": [],
         "pendingSaves": [],
         "pendingStates": [],
+        "pendingErrors": [],
         // Profil connecté : états du moteur intégré envoyés en ligne après la partie.
         "autoUploadStates": true,
     });

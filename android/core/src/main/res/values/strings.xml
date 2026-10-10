@@ -582,4 +582,14 @@
     <string name="settings_auto_upload_states_hint">With a profile signed in: each state saved in the built-in emulator is sent to your profile, with this device and its date. Otherwise, send them from the state history.</string>
     <string name="settings_auto_upload_states_on">States sent online automatically</string>
     <string name="emulator_files_hint">For Eden: %2$s in Downloads › %1$s. In Eden, install the keys and the firmware from its settings, choosing these files.</string>
+    <string name="report_default_title">Problem report</string>
+    <string name="report_section">Report a problem</string>
+    <string name="report_hint">Sends a report to your RomCloud server, visible to its administrator (Settings › Errors). Errors and crashes are already reported automatically.</string>
+    <string name="report_button">Send an error report</string>
+    <string name="report_title">Error report</string>
+    <string name="report_description">What happened? (game, emulator, steps)</string>
+    <string name="report_with_logs">Attach the app log</string>
+    <string name="report_send">Send</string>
+    <string name="report_sent">Report sent to the server</string>
+    <string name="report_queued">Report saved: it will be sent when the server is reachable</string>
 </resources>

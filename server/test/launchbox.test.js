@@ -81,3 +81,14 @@ test('liens vers les sites de jeux rétro d’après les identifiants Wikidata',
     { label: 'StrategyWiki', url: 'https://strategywiki.org/wiki/Streets_of_Rage_2' },
   ]);
 });
+
+test('titre « Compilation - Jeu » : titre seul, si la fiche cite le sous-titre', async () => {
+  const { splitSubtitle, citesSubtitle } = await import('../src/scraper/launchbox.js');
+  assert.deepEqual(splitSubtitle('Parodius - Fantastic Journey'), { main: 'Parodius', subtitle: 'Fantastic Journey' });
+  assert.equal(splitSubtitle('Parodius'), null);
+  assert.equal(splitSubtitle('Ys - II'), null); // sous-titre trop court
+  const overview = "This compilation collects the first two arcade incarnations of Konami's shoot'em'up parody series on one disc: Parodius: Non-sense Story and Fantastic Journey.";
+  assert.ok(citesSubtitle(overview, ['Parodius', 'Gokujou Parodius Da! Deluxe Pack'], 'Fantastic Journey'));
+  assert.ok(!citesSubtitle('Lara Croft explores tombs.', ['Tomb Raider'], 'Mystery Edition'));
+  assert.ok(citesSubtitle('', ['Street Fighter Alpha: Warriors’ Dreams'], 'Warriors Dreams'));
+});

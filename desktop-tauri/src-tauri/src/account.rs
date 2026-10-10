@@ -424,6 +424,8 @@ static FLUSHING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 /// sauvegardes envoyées. Un seul envoi à la fois.
 pub async fn flush() -> usize {
     let Ok(_guard) = FLUSHING.try_lock() else { return 0 };
+    // Erreurs gardées hors ligne : envoyées avec ou sans profil.
+    flush_errors().await;
     if session().is_none() {
         return 0;
     }
@@ -444,7 +446,7 @@ pub async fn flush() -> usize {
 
 /// Nombre d'envois en attente (sauvegardes et durées de jeu).
 pub fn pending_count() -> usize {
-    pending("pendingSaves").len() + pending("pendingPlaytime").len() + pending("pendingStates").len()
+    pending("pendingSaves").len() + pending("pendingPlaytime").len() + pending("pendingStates").len() + pending("pendingErrors").len()
 }
 
 /// Sauvegardes en ligne du jeu (fiche du jeu) : [{ core, kind, savedAt, device, … }].
@@ -464,10 +466,119 @@ pub fn report_error(context: &str, message: &str, details: Option<String>) {
     if message.is_empty() || settings::get_str("serverUrl").is_empty() {
         return;
     }
-    let body = json!({ "context": context, "message": message, "details": details });
+    let body = error_body(context, message, details);
     tauri::async_runtime::spawn(async move {
-        let _ = call("/api/account/errors", reqwest::Method::POST, Body::Json(body), false, &[], Duration::from_secs(8)).await;
+        send_error(body).await;
     });
+}
+
+/// Détail d'un rapport (journal joint) : limite du serveur.
+const MAX_ERROR_DETAILS: usize = 200_000;
+/// Erreurs gardées hors ligne au plus (les plus anciennes laissent la place).
+const MAX_PENDING_ERRORS: usize = 50;
+
+fn error_body(context: &str, message: &str, details: Option<String>) -> Value {
+    let cut = |s: String, max: usize| s.chars().take(max).collect::<String>();
+    json!({
+        "context": context,
+        "message": cut(message.to_string(), 2000),
+        "details": details.map(|d| cut(d, MAX_ERROR_DETAILS)),
+        // Moment de l'erreur : gardé si elle part plus tard (serveur injoignable).
+        "at": paths::now_ms().round() as i64,
+    })
+}
+
+/// Envoie une erreur ; serveur injoignable : gardée pour plus tard ([flush]). Renvoie vrai si envoyée.
+async fn send_error(body: Value) -> bool {
+    match call("/api/account/errors", reqwest::Method::POST, Body::Json(body.clone()), false, &[], Duration::from_secs(30)).await {
+        Ok(_) => true,
+        Err(e) if e.is("errors.unreachable") => {
+            let mut list = pending("pendingErrors");
+            list.push(body);
+            let skip = list.len().saturating_sub(MAX_PENDING_ERRORS);
+            settings::save(json!({ "pendingErrors": list.into_iter().skip(skip).collect::<Vec<_>>() }));
+            false
+        }
+        Err(_) => true, // refusée par le serveur : abandonnée
+    }
+}
+
+/// Erreurs gardées hors ligne : envoyées dès que possible (avec ou sans profil).
+async fn flush_errors() {
+    let list = pending("pendingErrors");
+    if list.is_empty() {
+        return;
+    }
+    let mut left = Vec::new();
+    for (i, body) in list.iter().enumerate() {
+        match call("/api/account/errors", reqwest::Method::POST, Body::Json(body.clone()), false, &[], Duration::from_secs(30)).await {
+            Err(e) if e.is("errors.unreachable") => {
+                left.extend(list[i..].iter().cloned());
+                break;
+            }
+            _ => {}
+        }
+    }
+    settings::save(json!({ "pendingErrors": left }));
+}
+
+/// Fin d'un fichier texte (journal), [max] caractères au plus.
+fn tail(path: &Path, max: usize) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let chars: Vec<char> = text.chars().collect();
+    Some(chars[chars.len().saturating_sub(max)..].iter().collect())
+}
+
+/**
+ * Rapport envoyé par l'utilisateur (paramètres) : sa description, ce PC et, si [with_logs], le
+ * journal du moteur intégré (dernière partie). Renvoie { sent } : faux s'il attend le serveur.
+ */
+pub async fn send_report(description: &str, with_logs: bool) -> Value {
+    let mut details = format!(
+        "RomCloud {} (windows)\nPC : {}\nSystème : {} {}\nProfil : {}\n",
+        version(),
+        hostname(),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        session().and_then(|s| s["username"].as_str().map(String::from)).unwrap_or_else(|| "non connecté".into()),
+    );
+    if !description.trim().is_empty() {
+        details.push_str(&format!("\n--- Description ---\n{}\n", description.trim()));
+    }
+    if with_logs {
+        let log = paths::user_data().join("libretro").join("player.log");
+        details.push_str("\n--- Journal du moteur intégré (dernière partie) ---\n");
+        details.push_str(&tail(&log, 150_000).unwrap_or_else(|| "(aucun)\n".into()));
+    }
+    let title = description.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("Rapport de problème");
+    let sent = send_error(error_body("report", title, Some(details))).await;
+    json!({ "sent": sent })
+}
+
+/// Plantage de l'application (panique) : noté dans un fichier, signalé au lancement suivant.
+pub fn install_panic_hook() {
+    let file = paths::user_data().join("pending-crash.txt");
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+        let message = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "panique".into());
+        let text = format!("{message}\n{location}\nRomCloud {}\n{}", version(), std::backtrace::Backtrace::force_capture());
+        let _ = std::fs::create_dir_all(paths::user_data());
+        let _ = std::fs::write(&file, text);
+        previous(info);
+    }));
+    // Plantage de la session précédente : signalé maintenant.
+    let pending = paths::user_data().join("pending-crash.txt");
+    if let Ok(text) = std::fs::read_to_string(&pending) {
+        let _ = std::fs::remove_file(&pending);
+        let first = text.lines().next().unwrap_or("panique").to_string();
+        report_error("crash", &first, Some(text));
+    }
 }
 
 #[cfg(test)]

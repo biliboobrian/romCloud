@@ -95,11 +95,12 @@ svg.icon { width: 20px; height: 20px; fill: currentColor; flex-shrink: 0; }
 /* Fenêtre « Filtres » : une rangée de puces par critère. */
 .criteria-section h4 { font-size: 13px; color: var(--accent); margin: 4px 0 8px; }
 .criteria-values { display: flex; flex-wrap: wrap; gap: 8px; }
-input[type=text], input[type=password], input[type=search], select {
+input[type=text], input[type=password], input[type=search], select, textarea {
   font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
   border-radius: 8px; padding: 8px 12px; width: 100%; user-select: text;
 }
-input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); border-color: var(--accent); }
+textarea { resize: vertical; min-height: 90px; }
+input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); border-color: var(--accent); }
 .search-box { max-width: 420px; flex: 1; }
 
 /* ---- Contenu ---- */
