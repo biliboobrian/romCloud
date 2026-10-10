@@ -223,6 +223,26 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .bios-state.missing { color: var(--danger); }
 .tag { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
 .tag.req { color: var(--warn); border-color: var(--warn); }
+/* Téléchargements : filtres et totaux. */
+.dl-filters { flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.dl-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.dl-tiles > div { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.dl-tiles strong { font-size: 20px; }
+/* Espace disque : arborescence repliable (chevron), barre de la part du dossier parent. */
+.disk-tree { display: flex; flex-direction: column; gap: 2px; }
+.disk-row > summary, .disk-row.leaf { display: grid; grid-template-columns: minmax(140px, 1.4fr) minmax(80px, 1fr) 90px minmax(110px, auto); align-items: center; gap: 12px; padding: 6px 8px; border-radius: 8px; list-style: none; cursor: default; }
+.disk-row > summary { cursor: pointer; }
+.disk-row > summary::-webkit-details-marker { display: none; }
+.disk-row > summary:hover, .disk-row.leaf:hover { background: rgba(127, 127, 127, 0.08); }
+.disk-row > summary .disk-name::before { content: '›'; display: inline-block; width: 1em; transition: transform 0.15s; color: var(--muted); }
+.disk-row[open] > summary .disk-name::before { transform: rotate(90deg); }
+.disk-row.leaf .disk-name { padding-left: 1em; }
+.disk-children { margin-left: 18px; border-left: 1px solid var(--border); padding-left: 6px; }
+.disk-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disk-bar { height: 8px; border-radius: 4px; background: rgba(127, 127, 127, 0.15); overflow: hidden; }
+.disk-bar > span { display: block; height: 100%; background: var(--accent, #5b4fe0); }
+.disk-size { text-align: right; font-variant-numeric: tabular-nums; }
+.disk-meta { font-size: 12px; white-space: nowrap; }
 .tag.ok { color: var(--ok); border-color: var(--ok); }
 .tag.mismatch { color: var(--danger); border-color: var(--danger); }
 .dup-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--border); }

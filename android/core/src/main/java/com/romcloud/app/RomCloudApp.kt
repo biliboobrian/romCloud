@@ -99,6 +99,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         updater = AppUpdater(this, api)
         emulatorReleases = EmulatorReleases(api)
         account = Account(this, api, appScope)
+        api.clientHeaders = account::clientHeaders
         connectivity = Connectivity(this, api, appScope)
         // Processus de l'émulateur intégré : ni suivi de la connexion, ni envoi du temps de jeu.
         if (isMainProcess()) {

@@ -147,6 +147,13 @@ class Account(private val context: Context, private val api: ApiClient, private 
     // Requêtes
     // -------------------------------------------------------------------------
 
+    /** Appareil, version et session du profil : joints aux téléchargements (journal du serveur). */
+    fun clientHeaders(): Map<String, String> = buildMap {
+        put("X-RomCloud-Device", deviceName)
+        put("X-RomCloud-Version", appVersion)
+        token?.let { put("X-RomCloud-Session", it) }
+    }
+
     private fun request(path: String, withSession: Boolean = true): Request.Builder =
         Request.Builder().url(api.url(path)).apply {
             header("X-RomCloud-Device", deviceName)
