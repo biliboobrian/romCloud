@@ -29,17 +29,18 @@ macro_rules! emu {
     };
 }
 
+// Seulement les systèmes sans cœur du moteur intégré (Windows et Android, voir cores.rs) : les
+// consoles déjà émulées par le moteur intégré n'ont pas d'émulateur externe (Mesen, Snes9x, mGBA,
+// Stella, DuckStation, PCSX2, Project64, melonDS, Azahar, Redream retirés) ; un émulateur qui gère
+// aussi d'autres systèmes n'est proposé que pour ceux-là. PS3 et Wii U : moteur intégré sous Windows
+// seulement (RPCS3, Cemu gérés par RomCloud), émulateurs gardés pour qui les a déjà installés.
 pub static EMULATORS: &[Emulator] = &[
-    emu!("duckstation", "DuckStation", ["psx"], "https://github.com/stenzek/duckstation/releases",
-        ["duckstation-qt-x64-ReleaseLTCG.exe", "duckstation-qt.exe"], ["DuckStation"], ["-batch", "-fullscreen", "{file}"]),
-    emu!("pcsx2", "PCSX2", ["ps2"], "https://pcsx2.net/downloads", ["pcsx2-qt.exe", "pcsx2.exe"], ["PCSX2"],
-        ["-batch", "-fullscreen", "--", "{file}"]),
     emu!("rpcs3", "RPCS3", ["ps3"], "https://rpcs3.net/download", ["rpcs3.exe"], ["RPCS3"], ["--no-gui", "{file}"]),
-    emu!("ppsspp", "PPSSPP", ["psp", "pspminis"], "https://www.ppsspp.org/download/", ["PPSSPPWindows64.exe", "PPSSPPWindows.exe"],
+    emu!("ppsspp", "PPSSPP", ["pspminis"], "https://www.ppsspp.org/download/", ["PPSSPPWindows64.exe", "PPSSPPWindows.exe"],
         ["PPSSPP"], ["--fullscreen", "{file}"]),
     // Les jeux doivent d'abord être installés dans Vita3K (fichiers .vpk / .pkg) : pas de lancement direct.
     emu!("vita3k", "Vita3K", ["vita"], "https://vita3k.org/", ["Vita3K.exe"], ["Vita3K"], None),
-    emu!("dolphin", "Dolphin", ["gc", "wii", "wiiware", "triforce"], "https://dolphin-emu.org/download/", ["Dolphin.exe"],
+    emu!("dolphin", "Dolphin", ["wiiware", "triforce"], "https://dolphin-emu.org/download/", ["Dolphin.exe"],
         ["Dolphin", "Dolphin-x64", "Dolphin Emulator"], ["-b", "-e", "{file}"]),
     emu!("cemu", "Cemu", ["wiiu"], "https://cemu.info/", ["Cemu.exe"], ["Cemu"], ["-f", "-g", "{file}"]),
     // Switch : clés (prod.keys) et firmware à installer dans l'émulateur.
@@ -48,28 +49,18 @@ pub static EMULATORS: &[Emulator] = &[
     emu!("eden", "Eden", ["switch"], "https://eden-emu.dev/downloads/", ["eden-cli.exe", "eden.exe"], ["Eden", "eden"], ["-f", "-g", "{file}"]),
     emu!("ryujinx", "Ryujinx", ["switch"], "https://ryujinx.app/download", ["Ryujinx.exe"], ["Ryujinx", "ryujinx"],
         ["--fullscreen", "{file}"]),
-    emu!("project64", "Project64", ["n64"], "https://www.pj64-emu.com/", ["Project64.exe"], ["Project64 3.0", "Project64"], ["{file}"]),
-    emu!("melonds", "melonDS", ["nds", "ndsi"], "https://melonds.kuribo64.net/downloads.php", ["melonDS.exe"], ["melonDS"], ["{file}"]),
-    emu!("azahar", "Azahar", ["3ds"], "https://azahar-emu.org/", ["azahar.exe"], ["Azahar"], ["{file}"]),
-    emu!("mgba", "mGBA", ["gba", "gb", "gbc"], "https://mgba.io/downloads.html", ["mGBA.exe"], ["mGBA"], ["-f", "{file}"]),
-    emu!("snes9x", "Snes9x", ["snes", "satellaview"], "https://www.snes9x.com/", ["snes9x-x64.exe", "snes9x.exe"], ["Snes9x", "snes9x"], ["{file}"]),
-    emu!("mesen", "Mesen", ["nes", "fds", "snes", "gb", "gbc", "gba", "tg16", "tgcd", "supergrafx", "master", "gamegear", "ws", "wsc"],
-        "https://www.mesen.ca/", ["Mesen.exe"], ["Mesen", "Mesen2"], ["{file}"]),
-    emu!("ares", "ares", ["n64", "nes", "snes", "gb", "gbc", "gba", "genesis", "segacd", "sega32x", "master", "gamegear", "sg1000", "tg16", "tgcd", "supergrafx", "ngp", "ngpc", "ws", "wsc", "coleco", "msx"],
-        "https://ares-emu.net/download", ["ares.exe"], ["ares"], ["--fullscreen", "{file}"]),
-    emu!("flycast", "Flycast", ["dreamcast", "naomi", "atomiswave"], "https://github.com/flyinghead/flycast/releases", ["flycast.exe"],
+    emu!("snes9x", "Snes9x", ["satellaview"], "https://www.snes9x.com/", ["snes9x-x64.exe", "snes9x.exe"], ["Snes9x", "snes9x"], ["{file}"]),
+    emu!("ares", "ares", ["coleco", "msx"], "https://ares-emu.net/download", ["ares.exe"], ["ares"], ["--fullscreen", "{file}"]),
+    emu!("flycast", "Flycast", ["naomi", "atomiswave"], "https://github.com/flyinghead/flycast/releases", ["flycast.exe"],
         ["Flycast", "flycast"], ["{file}"]),
-    emu!("redream", "Redream", ["dreamcast"], "https://redream.io/download", ["redream.exe"], ["redream", "Redream"], ["{file}"]),
-    emu!("mednafen", "Mednafen", ["saturn", "psx", "tg16", "tgcd", "supergrafx", "pcfx", "lynx", "virtualboy", "ngp", "ngpc", "ws", "wsc"],
-        "https://mednafen.github.io/releases/", ["mednafen.exe"], ["mednafen", "Mednafen"], ["{file}"]),
+    emu!("mednafen", "Mednafen", ["pcfx"], "https://mednafen.github.io/releases/", ["mednafen.exe"], ["mednafen", "Mednafen"], ["{file}"]),
     emu!("supermodel", "Supermodel", ["model3"], "https://www.supermodel3.com/Download.html", ["Supermodel.exe"], ["Supermodel"], ["{file}"]),
     // MAME attend le nom court du jeu et le dossier qui contient le zip.
-    emu!("mame", "MAME", ["mame", "fbneo", "cps1", "cps2", "cps3", "neogeo", "stv", "naomi"], "https://www.mamedev.org/release.html",
+    emu!("mame", "MAME", ["cps1", "cps2", "cps3", "stv", "naomi"], "https://www.mamedev.org/release.html",
         ["mame.exe", "mame64.exe"], ["MAME", "mame"], ["-rompath", "{dir}", "{basename}"]),
     emu!("xemu", "xemu", ["xbox"], "https://xemu.app/", ["xemu.exe"], ["xemu"], ["-full-screen", "-dvd_path", "{file}"]),
     emu!("xenia", "Xenia Canary", ["xbox360"], "https://github.com/xenia-canary/xenia-canary-releases/releases",
         ["xenia_canary.exe", "xenia.exe"], ["Xenia", "xenia", "xenia_canary"], ["{file}"]),
-    emu!("stella", "Stella", ["atari2600"], "https://stella-emu.github.io/downloads.html", ["Stella.exe"], ["Stella"], ["{file}"]),
     // Détecte le jeu contenu dans le dossier du fichier.
     emu!("scummvm", "ScummVM", ["scummvm"], "https://www.scummvm.org/downloads/", ["scummvm.exe"], ["ScummVM"], ["-p", "{dir}", "--auto-detect"]),
 ];
@@ -288,23 +279,39 @@ mod tests {
     }
 
     #[test]
+    fn aucun_emulateur_externe_pour_les_consoles_du_moteur_integre() {
+        for emu in EMULATORS {
+            for system in emu.systems {
+                assert!(!crate::cores::has_builtin_cores(system), "{} : {system} est émulé par le moteur intégré", emu.id);
+            }
+        }
+        for removed in ["mesen", "mgba", "stella", "duckstation", "pcsx2", "project64", "melonds", "azahar", "redream"] {
+            assert!(by_id(removed).is_none(), "{removed}");
+        }
+    }
+
+    #[test]
     fn emulateurs_selon_le_systeme() {
         let names = |system: Value| for_system(&system).iter().map(|e| e.id).collect::<Vec<_>>();
-        assert_eq!(names(json!({ "id": "psx", "shortname": "psx" })), ["duckstation", "mednafen"]);
-        assert_eq!(names(json!({ "id": "gamecube", "shortname": "gc" })), ["dolphin"]);
-        assert!(names(json!({ "id": "n64", "shortname": "n64" })).contains(&"project64"));
+        // Consoles du moteur intégré : pas d'émulateur externe.
+        assert!(names(json!({ "id": "psx", "shortname": "psx" })).is_empty());
+        assert!(names(json!({ "id": "gamecube", "shortname": "gc" })).is_empty());
+        assert!(names(json!({ "id": "n64", "shortname": "n64" })).is_empty());
+        assert_eq!(names(json!({ "id": "wiiware", "shortname": "wiiware" })), ["dolphin"]);
+        assert_eq!(names(json!({ "id": "naomi", "shortname": "naomi" })), ["flycast", "mame"]);
         assert_eq!(names(json!({ "id": "vita", "shortname": "vita" })), ["vita3k"]);
+        assert_eq!(names(json!({ "id": "switch", "shortname": "switch" })), ["eden", "ryujinx"]);
         assert!(names(json!({ "id": "custom", "shortname": "custom" })).is_empty());
     }
 
     #[test]
     fn arguments_et_ligne_de_commande() {
-        let file = r"D:\Jeux\gc\Super Mario Sunshine (Europe).rvz";
+        let file = r"D:\Jeux\wiiware\Super Mario Sunshine (Europe).rvz";
         assert_eq!(build_args(by_id("dolphin").unwrap().args.unwrap(), file), ["-b", "-e", file]);
         assert_eq!(build_args(by_id("mame").unwrap().args.unwrap(), r"D:\Jeux\mame\sf2.zip"), ["-rompath", r"D:\Jeux\mame", "sf2"]);
         assert_eq!(
             command_line(r"C:\Program Files\Dolphin\Dolphin.exe", &["-b", "-e", file]),
-            r#""C:\Program Files\Dolphin\Dolphin.exe" -b -e "D:\Jeux\gc\Super Mario Sunshine (Europe).rvz""#,
+            r#""C:\Program Files\Dolphin\Dolphin.exe" -b -e "D:\Jeux\wiiware\Super Mario Sunshine (Europe).rvz""#,
         );
         assert!(by_id("vita3k").unwrap().args.is_none());
     }
@@ -318,7 +325,7 @@ mod tests {
             std::fs::write(&file, b"").unwrap();
             file
         };
-        let pcsx2 = put(&["pf", "PCSX2", "pcsx2-qt.exe"]);
+        let rpcs3 = put(&["pf", "RPCS3", "rpcs3.exe"]);
         let supermodel = put(&["home", "Downloads", "Supermodel_0.3a", "bin", "SUPERMODEL.EXE"]);
         put(&["home", "Downloads", "a", "b", "c", "xemu.exe"]); // trop profond
         let vars = HashMap::from([
@@ -327,11 +334,11 @@ mod tests {
             ("USERPROFILE", root.join("home")),
         ]);
         let env = |name: &str| vars.get(name).map(|p| p.to_string_lossy().into_owned());
-        assert_eq!(default_location_in(by_id("pcsx2").unwrap(), &env), pcsx2);
-        let emulators = [by_id("pcsx2").unwrap(), by_id("supermodel").unwrap(), by_id("xemu").unwrap()];
+        assert_eq!(default_location_in(by_id("rpcs3").unwrap(), &env), rpcs3);
+        let emulators = [by_id("rpcs3").unwrap(), by_id("supermodel").unwrap(), by_id("xemu").unwrap()];
         let found = detect_in(&env, &emulators);
         let _ = std::fs::remove_dir_all(&root);
-        assert_eq!(found.get("pcsx2"), Some(&pcsx2.to_string_lossy().into_owned()));
+        assert_eq!(found.get("rpcs3"), Some(&rpcs3.to_string_lossy().into_owned()));
         assert_eq!(found.get("supermodel").map(|p| p.to_lowercase()), Some(supermodel.to_string_lossy().to_lowercase()));
         assert_eq!(found.get("xemu"), None);
     }

@@ -51,8 +51,18 @@ fn ranking(system: &str) -> &'static [&'static str] {
     }
 }
 
+/// Système émulé par le moteur intégré (cœurs connus pour lui, sous Windows comme sous Android).
+pub fn has_builtin_cores(system: &str) -> bool {
+    !ranking(&system.to_lowercase()).is_empty()
+}
+
 /// Cœurs absents du buildbot libretro pour Windows (vérifié en octobre 2026) : proposés en dernier.
 const UNAVAILABLE: &[&str] = &["bnes", "duckstation", "goosestation", "mamearcade", "armsx2"];
+
+/// Cœur téléchargeable pour le moteur intégré (présent sur le buildbot libretro pour Windows).
+pub fn core_available(core: &str) -> bool {
+    !UNAVAILABLE.contains(&core)
+}
 
 /// Cœurs [cores] du système [system_id] triés selon la table ; tri stable pour les autres.
 pub fn rank_cores(system_id: &str, cores: Vec<String>) -> Vec<String> {

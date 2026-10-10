@@ -122,34 +122,26 @@ Utilisation à la télécommande :
 - **Lancement des jeux** (choix par système dans la fiche du jeu → *Émulateur*) :
   - **Moteur intégré** (choix par défaut) : `romcloud-player.exe`, frontend libretro natif fourni avec l’application (C++, SDL3, OpenGL, inspiré de LibretroDroid). Il utilise les mêmes cœurs que RetroArch, téléchargés au premier lancement depuis le [buildbot libretro](https://buildbot.libretro.com/nightly/windows/x86_64/latest/) : rien à installer. Plein écran, manettes reconnues automatiquement (Xbox, DualShock 3/4, DualSense, Switch…) ou clavier (flèches, Z/X/A/S, Q/W, E/R, Entrée, Maj droite par défaut, **touches modifiables dans les paramètres ou en jeu, dans le menu du moteur, qui ne propose que les boutons de la console**), vibrations, rendu matériel OpenGL (Nintendo 64, PlayStation…), sauvegardes du jeu, état de sauvegarde rapide (F2 / F4), changement de disque. Menu avec *Échap*, le bouton central de la manette ou *Start + Select* : états, **sauvegarder et quitter** (la fiche du jeu propose ensuite **Reprendre** avant **Jouer**, comme sur Android et Android TV), redémarrage, **options du cœur mémorisées par système**, classées par onglet selon les catégories du cœur (*LB* / *RB* ou *Pg. préc.* / *Pg. suiv.*), **filtre d’image mémorisé par système** (pixels nets, lissage net par défaut — pixels nets sans largeurs inégales malgré l’agrandissement non entier —, lissage doux bicubique, lissage bilinéaire, EPX / Scale2x et xBR — contours du pixel art arrondis ou redessinés en diagonale —, AMD FSR 1 — agrandissement suivant les contours puis netteté, pour les jeux 3D (PlayStation, N64…) —, écran cathodique, écran cathodique avec masque RGB, grille LCD ; visible aussitôt derrière le menu), plein écran (aussi *F11*). Données dans `%APPDATA%\RomCloud\libretro` (cœurs, sauvegardes, options, journal `player.log`) ;
   - **Moteur intégré pour la PlayStation 3 et la Wii U** (pas de cœur libretro pour ces consoles) : RomCloud télécharge au premier lancement la dernière version de [RPCS3](https://rpcs3.net/) ou de [Cemu](https://cemu.info/) dans `%APPDATA%\RomCloud\rpcs3` ou `%APPDATA%\RomCloud\cemu` (configuration et sauvegardes y restent) et lance le jeu en plein écran sans leur interface. PS3 : firmware `PS3UPDAT.PUP` à placer dans le dossier des BIOS (ou un sous-dossier, ex. `ps3\`), installé automatiquement ; jeux en ISO, `EBOOT.BIN` ou dossier du disque zippé. Wii U : Cemu en mode portable, `keys.txt` du dossier des BIOS (`wiiu\`, `cemu\` ou racine) copié pour les jeux chiffrés (`.wud`, `.wux`) ; jeux en `.wua`, `.wux`, `.wud`, `.rpx` ou dossier `code/content/meta` zippé ; l’assistant de Cemu s’ouvre au premier lancement pour configurer les manettes. Les manettes et réglages se configurent dans l’émulateur ; pas d’état de sauvegarde rapide ni de sauvegardes en ligne. *Réinitialiser* télécharge la dernière version au lancement suivant ;
-  - **RetroArch pour Windows** : le cœur est repris des modèles d’émulateurs du système (ex. `mupen64plus_next` pour la N64) et le jeu est lancé avec `retroarch.exe -L <dossier de RetroArch>\cores\<cœur>_libretro.dll "<jeu>"`. Installez les cœurs dans RetroArch : *Mise à jour en ligne → Télécharger des cœurs* ; le guide *Configurer RetroArch* indique ce qui manque ;
-  - **émulateurs les plus connus**, proposés selon le système avec un lien de téléchargement, leur emplacement par défaut et la ligne de commande qui lance le jeu directement (modifiable) :
+  - **RetroArch pour Windows** : seulement pour un cœur que le moteur intégré n’a pas (absent du buildbot libretro pour Windows : DuckStation, ARMSX2…) ; le jeu est lancé avec `retroarch.exe -L <dossier de RetroArch>\cores\<cœur>_libretro.dll "<jeu>"`. Installez les cœurs dans RetroArch : *Mise à jour en ligne → Télécharger des cœurs* ; le guide *Configurer RetroArch* indique ce qui manque. Sous Android aussi, les modèles RetroArch d’un cœur disponible dans l’émulateur intégré ne sont plus proposés ;
+  - **émulateurs externes**, seulement pour les systèmes que le moteur intégré n’émule pas (les consoles 8 et 16 bits, PlayStation 1 et 2, N64, DS, 3DS, GameCube, Wii, Dreamcast, Saturn… n’en ont plus), proposés avec un lien de téléchargement, leur emplacement par défaut et la ligne de commande qui lance le jeu directement (modifiable) :
 
     | Émulateur | Systèmes | Lancement |
     |---|---|---|
-    | DuckStation | PlayStation | `-batch -fullscreen {file}` |
-    | PCSX2 | PlayStation 2 | `-batch -fullscreen -- {file}` |
-    | RPCS3 | PlayStation 3 | `--no-gui {file}` |
-    | PPSSPP | PSP | `--fullscreen {file}` |
-    | Vita3K | PS Vita | émulateur ouvert seul (jeux à installer dans Vita3K) |
-    | Dolphin | GameCube, Wii | `-b -e {file}` |
-    | Cemu | Wii U | `-f -g {file}` |
     | Eden | Switch | indiqué par son **dossier** (`eden.exe` et `eden-cli.exe`) : jeux lancés avec `eden-cli -f -g {file}`, manettes d’`eden.exe` recopiées (section `[Controls]` de `qt-config.ini` dans `sdl2-config.ini`, original gardé en `.romcloud.bak`) ; *Ouvrir Eden* lance `eden.exe` |
     | Ryujinx | Switch | `--fullscreen {file}` |
-    | Project64 | Nintendo 64 | `{file}` |
-    | melonDS | DS | `{file}` |
-    | Azahar | 3DS | `{file}` |
-    | mGBA | Game Boy / Color / Advance | `-f {file}` |
-    | Snes9x | Super Nintendo | `{file}` |
-    | Mesen | NES, SNES, Game Boy, PC Engine, Master System, Game Gear, WonderSwan | `{file}` |
-    | ares | Nintendo 64, NES, SNES, Mega Drive, PC Engine… | `--fullscreen {file}` |
-    | Flycast, Redream | Dreamcast (Flycast : Naomi, Atomiswave) | `{file}` |
-    | Mednafen | Saturn, PlayStation, PC Engine, Lynx, Virtual Boy… | `{file}` |
+    | RPCS3 | PlayStation 3 (aussi géré par le moteur intégré) | `--no-gui {file}` |
+    | Cemu | Wii U (aussi géré par le moteur intégré) | `-f -g {file}` |
+    | Vita3K | PS Vita | émulateur ouvert seul (jeux à installer dans Vita3K) |
+    | PPSSPP | PSP Minis | `--fullscreen {file}` |
+    | Dolphin | WiiWare, Triforce | `-b -e {file}` |
+    | Flycast | Naomi, Atomiswave | `{file}` |
+    | MAME | CPS-1, CPS-2, CPS-3, ST-V, Naomi | `-rompath {dir} {basename}` |
     | Supermodel | Sega Model 3 | `{file}` |
-    | MAME | Arcade | `-rompath {dir} {basename}` |
+    | Snes9x | Satellaview | `{file}` |
+    | ares | ColecoVision, MSX | `--fullscreen {file}` |
+    | Mednafen | PC-FX | `{file}` |
     | xemu | Xbox | `-full-screen -dvd_path {file}` |
     | Xenia Canary | Xbox 360 | `{file}` |
-    | Stella | Atari 2600 | `{file}` |
     | ScummVM | ScummVM | `-p {dir} --auto-detect` |
 
     RomCloud cherche les exécutables dans les dossiers habituels (`Program Files`, `%LOCALAPPDATA%\Programs`, Bureau, Téléchargements, `scoop\apps`, `C:\Emulators`, `C:\Emulateurs`, `D:\Games`…) ; sinon, *Indiquer l’emplacement…*. Si l’émulateur est absent au lancement, RomCloud propose de le télécharger ou de le localiser. Quand un lancement direct n’est pas possible, RomCloud ouvre l’émulateur seul et indique le fichier du jeu à charger (copie du chemin, affichage dans l’Explorateur). Le bouton *Ouvrir <émulateur>* lance l’émulateur sans jeu (configuration, manettes…). **Eden** : *Vérifier les mises à jour* compare la version installée (lue dans `eden.exe`) à la dernière publiée sur [git.eden-emu.dev](https://git.eden-emu.dev/eden-emu/eden/releases), puis *Mettre à jour* télécharge l’archive Windows de la même variante (MSVC, clang PGO ou GCC, reconnue dans l’exécutable ; PGO, recommandée par Eden, pour une première installation dans `%LOCALAPPDATA%\Programs\Eden`) et la décompresse à la place de l’ancienne (configuration et jeux gardés ; Eden doit être fermé). La liste complète est dans *Paramètres → Émulateurs* ;

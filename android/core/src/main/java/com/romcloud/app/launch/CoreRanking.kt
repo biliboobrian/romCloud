@@ -54,6 +54,9 @@ internal object CoreRanking {
     /** Cœurs absents du buildbot libretro pour Android (vérifié en octobre 2026) : proposés en dernier. */
     private val UNAVAILABLE = setOf("bnes", "duckstation", "goosestation", "azahar", "mame", "mupen64plus_next")
 
+    /** Cœur téléchargeable pour l'émulateur intégré (présent sur le buildbot libretro pour Android). */
+    fun isAvailable(core: String): Boolean = core !in UNAVAILABLE
+
     /** Cœurs [cores] du système [systemId] triés selon la table ; ordre conservé pour les autres. */
     fun <T> sort(systemId: String, cores: List<T>, coreOf: (T) -> String): List<T> {
         val order = RANKING[systemId.lowercase()].orEmpty()

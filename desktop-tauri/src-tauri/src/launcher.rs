@@ -201,7 +201,9 @@ pub fn options(system: &Value) -> Value {
             list.push(json!({ "id": format!("builtin:{core}"), "kind": "builtin", "core": core, "installed": builtin::core_installed(core) }));
         }
     }
-    for core in &system_cores {
+    // RetroArch : seulement pour un cœur que le moteur intégré n'a pas (absent du buildbot pour
+    // Windows), ou sans moteur intégré (développement).
+    for core in system_cores.iter().filter(|c| !builtin::available() || !cores::core_available(c)) {
         list.push(json!({ "id": format!("retroarch:{core}"), "kind": "retroarch", "core": core }));
     }
     for emu in catalog::for_system(system) {
@@ -247,7 +249,7 @@ enum Plan {
 }
 
 /// Émulateurs du catalogue qui lisent une liste de disques (.m3u).
-const PLAYLIST_EMULATORS: &[&str] = &["duckstation", "mednafen"];
+const PLAYLIST_EMULATORS: &[&str] = &["mednafen"];
 
 /// Vérifications avant lancement (émulateur installé, cœur présent…).
 fn prepare(system: &Value, game: &Value) -> Result<Plan> {

@@ -7,6 +7,8 @@ import com.romcloud.app.data.Player
  * Émulateur intégré LibretroDroid : pour chaque cœur proposé par les modèles RetroArch d'un
  * système, un émulateur « LibretroDroid - <cœur> » est ajouté en tête de liste (choix par défaut).
  * Le cœur est téléchargé depuis le buildbot libretro au premier lancement (voir LibretroCores).
+ * Les modèles RetroArch de ces cœurs sont retirés (même cœur, rien à installer), sauf pour les
+ * cœurs absents du buildbot pour Android, que seul un RetroArch installé à la main peut avoir.
  */
 object LibretroPlayers {
 
@@ -41,6 +43,9 @@ object LibretroPlayers {
                     libretroCore = core,
                 )
             }
-        return if (added.isEmpty()) system else system.copy(players = added + system.players)
+        if (added.isEmpty()) return system
+        val builtIn = added.mapNotNull { it.libretroCore }.filter(CoreRanking::isAvailable).toSet()
+        val others = system.players.filterNot { p -> coreOf(p)?.let { it in builtIn } == true }
+        return system.copy(players = added + others)
     }
 }
