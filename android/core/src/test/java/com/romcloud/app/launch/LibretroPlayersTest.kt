@@ -33,8 +33,9 @@ class LibretroPlayersTest {
         val result = LibretroPlayers.addTo(
             system(retroArch("ra64.snes9x", "snes9x"), other, retroArch("ra32.snes9x", "snes9x"), retroArch("ra64.bsnes", "bsnes", regex = null)),
         )
+        // Modèles RetroArch des mêmes cœurs retirés ; autres émulateurs gardés.
         assertEquals(
-            listOf("libretrodroid.bsnes", "libretrodroid.snes9x", "ra64.snes9x", "snes.ex", "ra32.snes9x", "ra64.bsnes"),
+            listOf("libretrodroid.bsnes", "libretrodroid.snes9x", "snes.ex"),
             result.players.map { it.uniqueId },
         )
         assertEquals("bsnes", result.players[0].libretroCore)
@@ -57,6 +58,8 @@ class LibretroPlayersTest {
             system(retroArch("a", "azahar"), retroArch("b", "citra"), retroArch("c", "panda3ds")).copy(id = "3ds", shortname = "3ds"),
         )
         assertEquals(listOf("libretrodroid.citra", "libretrodroid.panda3ds", "libretrodroid.azahar"), n3ds.players.take(3).map { it.uniqueId })
+        // RetroArch gardé seulement pour le cœur absent du buildbot Android (installé à la main).
+        assertEquals(listOf("a"), n3ds.players.drop(3).map { it.uniqueId })
     }
 
     @Test
