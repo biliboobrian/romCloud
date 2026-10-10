@@ -557,4 +557,28 @@
     <string name="link_request_text">%1$s wants to link their console with yours.</string>
     <string name="link_menu_leave">Unlink</string>
     <string name="settings_version">Version %1$s</string>
+
+    <!-- Historique des états -->
+    <string name="states_title">Saved states</string>
+    <string name="states_empty">No saved state for this game yet. Use “Save state” in the game menu.</string>
+    <string name="states_offline">Online states unavailable (server not reachable): only those of this device are shown.</string>
+    <string name="states_this_device">This device</string>
+    <string name="states_other_device">Other device</string>
+    <string name="states_online">Online</string>
+    <string name="states_pinned">Pinned</string>
+    <string name="states_pin">Pin (never deleted automatically)</string>
+    <string name="states_unpin">Unpin</string>
+    <string name="states_upload">Send online</string>
+    <string name="states_uploaded">State sent online</string>
+    <string name="states_upload_pending">The state will be sent when the server is reachable</string>
+    <string name="states_delete_title">Delete this state?</string>
+    <string name="states_delete_text">The state of %1$s will be deleted from this device.</string>
+    <string name="states_delete_text_online">The state of %1$s will be deleted from this device and from your profile online.</string>
+    <string name="states_load">Load</string>
+    <string name="states_play">Play</string>
+    <string name="states_button">Saved states</string>
+    <string name="states_downloading">Downloading the state…</string>
+    <string name="settings_auto_upload_states">Send save states online automatically</string>
+    <string name="settings_auto_upload_states_hint">With a profile signed in: each state saved in the built-in emulator is sent to your profile, with this device and its date. Otherwise, send them from the state history.</string>
+    <string name="settings_auto_upload_states_on">States sent online automatically</string>
 </resources>

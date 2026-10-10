@@ -1,6 +1,7 @@
 // Profils des joueurs : comptes (mot de passe haché avec scrypt), sessions par appareil (jeton
 // aléatoire, seul son empreinte SHA-256 est stockée), connexion d'une TV par QR code validé depuis un
 // téléphone déjà connecté, temps de jeu par jeu, sauvegardes en ligne (état et mémoire du jeu),
+// historique des états de chaque jeu (par appareil, avec miniature),
 // TV prêtes à recevoir un jeu diffusé depuis un téléphone du même profil, et erreurs signalées par
 // les applications. Administration : liste, détail et journaux.
 import crypto from 'node:crypto';
@@ -11,6 +12,7 @@ import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
 
 const savesDir = path.join(config.dataDir, 'saves');
+const statesDir = path.join(config.dataDir, 'states');
 
 const USERNAME_RE = /^[\p{L}\p{N}._-]{3,32}$/u;
 const MIN_PASSWORD = 6;
@@ -24,6 +26,11 @@ const RECEIVER_TTL_MS = 45 * 1000;
 const MAX_PLAY_SECONDS = 24 * 3600;
 export const SAVE_KINDS = ['state', 'sram'];
 const CORE_RE = /^[a-z0-9._-]{1,64}$/i;
+/** Identifiant d'un état de l'historique, choisi par l'appareil (UUID). */
+const STATE_ID_RE = /^[a-z0-9-]{8,64}$/i;
+/** États gardés par jeu et par appareil, hors états épinglés (les plus anciens sont supprimés). */
+export const STATE_HISTORY_LIMIT = 10;
+const THUMBNAIL_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 
 const text = (value, max) => (value == null || value === '' ? null : String(value).slice(0, max));
 
@@ -352,6 +359,126 @@ export function deleteSave(userId, gameId, core, kind) {
 }
 
 // ---------------------------------------------------------------------------
+// Historique des états de sauvegarde
+// ---------------------------------------------------------------------------
+
+const stateFile = (userId, gameId, id) => path.join(statesDir, String(userId), String(gameId), `${id}.state`);
+const thumbnailFile = (userId, gameId, id, type) => path.join(statesDir, String(userId), String(gameId), `${id}.${THUMBNAIL_TYPES[type]}`);
+
+const stateRow = (r) => ({
+  id: r.id, gameId: r.game_id, core: r.core, createdAt: new Date(r.created_at).toISOString(), device: r.device,
+  platform: r.platform, size: r.size, md5: r.md5, thumbnail: Boolean(r.thumbnail), pinned: Boolean(r.pinned), uploadedAt: r.uploaded_at,
+});
+
+function requireStateId(id) {
+  if (!STATE_ID_RE.test(String(id))) throw new HttpError(400, 'errors.invalidStateId');
+  return String(id);
+}
+
+function requireState(userId, id) {
+  const row = db.prepare('SELECT * FROM state_history WHERE id = ? AND user_id = ?').get(requireStateId(id), userId);
+  if (!row) throw new HttpError(404, 'errors.stateNotFound');
+  return row;
+}
+
+function removeStateFiles(row) {
+  fs.rmSync(stateFile(row.user_id, row.game_id, row.id), { force: true });
+  if (row.thumbnail) fs.rmSync(thumbnailFile(row.user_id, row.game_id, row.id, row.thumbnail), { force: true });
+}
+
+/** Garde les [STATE_HISTORY_LIMIT] états les plus récents du jeu pour cet appareil (épinglés en plus). */
+function pruneStates(userId, gameId, device, platform) {
+  const old = db.prepare(`SELECT * FROM state_history
+      WHERE user_id = ? AND game_id = ? AND device IS ? AND platform IS ? AND pinned = 0
+      ORDER BY created_at DESC LIMIT -1 OFFSET ?`).all(userId, gameId, device, platform, STATE_HISTORY_LIMIT);
+  for (const row of old) {
+    db.prepare('DELETE FROM state_history WHERE id = ?').run(row.id);
+    removeStateFiles(row);
+  }
+}
+
+/** États en ligne du profil (d'un jeu, ou tous), du plus récent au plus ancien. */
+export function listStates(userId, gameId) {
+  const rows = gameId == null
+    ? db.prepare('SELECT * FROM state_history WHERE user_id = ? ORDER BY created_at DESC').all(userId)
+    : db.prepare('SELECT * FROM state_history WHERE user_id = ? AND game_id = ? ORDER BY created_at DESC').all(userId, Number(gameId));
+  return rows.map(stateRow);
+}
+
+/**
+ * Enregistre un état de l'historique (renvoyé avec le même identifiant : remplacé). [createdAt] :
+ * date de l'état sur l'appareil (ms) ; l'appareil d'origine est celui qui l'envoie.
+ */
+export function putState(userId, gameId, core, id, data, { createdAt, pinned } = {}, client) {
+  const game = requireGame(gameId);
+  const stateId = requireStateId(id);
+  if (!CORE_RE.test(String(core))) throw new HttpError(400, 'errors.invalidCore');
+  if (!Buffer.isBuffer(data) || !data.length) throw new HttpError(400, 'errors.emptySave');
+  const existing = db.prepare('SELECT * FROM state_history WHERE id = ?').get(stateId);
+  // Identifiant d'un autre profil ou d'un autre jeu : refusé (jamais écrasé).
+  if (existing && (existing.user_id !== userId || existing.game_id !== game)) throw new HttpError(409, 'errors.stateConflict');
+  const time = Number(createdAt) > 0 ? Math.round(Number(createdAt)) : Date.now();
+  const file = stateFile(userId, game, stateId);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, data);
+  fs.renameSync(`${file}.tmp`, file);
+  const md5 = crypto.createHash('md5').update(data).digest('hex');
+  db.prepare(`INSERT INTO state_history (id, user_id, game_id, core, created_at, device, platform, size, md5, pinned)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT (id) DO UPDATE SET core = excluded.core, created_at = excluded.created_at, size = excluded.size,
+                md5 = excluded.md5, pinned = excluded.pinned, uploaded_at = datetime('now')`)
+    .run(stateId, userId, game, String(core), time, client.device, client.platform, data.length, md5, pinned ? 1 : 0);
+  const row = db.prepare('SELECT * FROM state_history WHERE id = ?').get(stateId);
+  pruneStates(userId, game, row.device, row.platform);
+  const kept = db.prepare('SELECT * FROM state_history WHERE id = ?').get(stateId);
+  return kept ? stateRow(kept) : null;
+}
+
+/** Miniature de l'état (image JPEG ou PNG de l'écran du jeu). */
+export function putStateThumbnail(userId, id, data, type) {
+  const row = requireState(userId, id);
+  const mime = String(type || '').split(';')[0].trim().toLowerCase();
+  if (!THUMBNAIL_TYPES[mime] || !Buffer.isBuffer(data) || !data.length) throw new HttpError(400, 'errors.invalidThumbnail');
+  if (row.thumbnail && row.thumbnail !== mime) fs.rmSync(thumbnailFile(userId, row.game_id, row.id, row.thumbnail), { force: true });
+  const file = thumbnailFile(userId, row.game_id, row.id, mime);
+  fs.writeFileSync(`${file}.tmp`, data);
+  fs.renameSync(`${file}.tmp`, file);
+  db.prepare('UPDATE state_history SET thumbnail = ? WHERE id = ?').run(mime, row.id);
+  return stateRow({ ...row, thumbnail: mime });
+}
+
+/** Fichier de l'état (404 si absent). */
+export function getState(userId, id) {
+  const row = requireState(userId, id);
+  const file = stateFile(userId, row.game_id, row.id);
+  if (!fs.existsSync(file)) throw new HttpError(404, 'errors.stateNotFound');
+  return { file, state: stateRow(row) };
+}
+
+/** Fichier de la miniature et son type (404 si l'état n'en a pas). */
+export function getStateThumbnail(userId, id) {
+  const row = requireState(userId, id);
+  const file = row.thumbnail && thumbnailFile(userId, row.game_id, row.id, row.thumbnail);
+  if (!file || !fs.existsSync(file)) throw new HttpError(404, 'errors.stateNotFound');
+  return { file, type: row.thumbnail };
+}
+
+/** Épingle (jamais supprimé par la limite de l'historique) ou désépingle un état ; null s'il a été supprimé. */
+export function pinState(userId, id, pinned) {
+  const row = requireState(userId, id);
+  db.prepare('UPDATE state_history SET pinned = ? WHERE id = ?').run(pinned ? 1 : 0, row.id);
+  if (!pinned) pruneStates(userId, row.game_id, row.device, row.platform);
+  const updated = db.prepare('SELECT * FROM state_history WHERE id = ?').get(row.id);
+  return updated ? stateRow(updated) : null;
+}
+
+export function deleteState(userId, id) {
+  const row = requireState(userId, id);
+  db.prepare('DELETE FROM state_history WHERE id = ?').run(row.id);
+  removeStateFiles(row);
+}
+
+// ---------------------------------------------------------------------------
 // Erreurs des applications
 // ---------------------------------------------------------------------------
 
@@ -380,7 +507,8 @@ export function adminListUsers() {
       (SELECT MAX(last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at,
       (SELECT COALESCE(SUM(seconds), 0) FROM playtime p WHERE p.user_id = u.id) AS play_seconds,
       (SELECT COUNT(*) FROM playtime p WHERE p.user_id = u.id) AS games_played,
-      (SELECT COALESCE(SUM(size), 0) FROM saves v WHERE v.user_id = u.id) AS saves_size,
+      (SELECT COALESCE(SUM(size), 0) FROM saves v WHERE v.user_id = u.id)
+        + (SELECT COALESCE(SUM(size), 0) FROM state_history h WHERE h.user_id = u.id) AS saves_size,
       (SELECT COUNT(*) FROM error_logs e WHERE e.user_id = u.id) AS error_count
     FROM users u ORDER BY u.username COLLATE NOCASE`).all().map((r) => ({
     ...publicUser(r),
@@ -416,6 +544,7 @@ export function adminUserDetail(id) {
     logins: db.prepare('SELECT * FROM login_events WHERE user_id = ? ORDER BY id DESC LIMIT 200').all(user.id).map(loginRow),
     playtime: listPlaytime(user.id).map(withGame),
     saves: listSaves(user.id).map(withGame),
+    states: listStates(user.id).map(withGame),
     errors: db.prepare('SELECT * FROM error_logs WHERE user_id = ? ORDER BY id DESC LIMIT 200').all(user.id).map(errorRow),
   };
 }
@@ -445,6 +574,7 @@ export function adminDeleteUser(id) {
   const user = requireUser(id);
   db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
   fs.rmSync(path.join(savesDir, String(user.id)), { recursive: true, force: true });
+  fs.rmSync(path.join(statesDir, String(user.id)), { recursive: true, force: true });
 }
 
 export function adminRevokeSession(userId, sessionId) {

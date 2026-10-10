@@ -189,8 +189,18 @@ void Video::destroy() {
 }
 
 bool Video::saveFrame(const std::string& path) {
-  if (!hasFrame_ || !frameWidth_ || !frameHeight_) return false;
+  SDL_Surface* surface = captureFrame();
+  if (!surface) return false;
+  bool ok = SDL_SaveBMP(surface, path.c_str());
+  SDL_DestroySurface(surface);
+  return ok;
+}
+
+SDL_Surface* Video::captureFrame() {
+  if (!hasFrame_ || !frameWidth_ || !frameHeight_) return nullptr;
   int w = (int)frameWidth_, h = (int)frameHeight_;
+  SDL_Surface* surface = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_RGBA32);
+  if (!surface) return nullptr;
   std::vector<uint8_t> pixels((size_t)w * h * 4);
   p_glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
   glPixelStorei(GL_PACK_ALIGNMENT, 4);
@@ -210,11 +220,10 @@ bool Video::saveFrame(const std::string& path) {
   if (flip) {
     for (int y = 0; y < h / 2; y++) std::swap_ranges(&pixels[(size_t)y * w * 4], &pixels[(size_t)(y + 1) * w * 4], &pixels[(size_t)(h - 1 - y) * w * 4]);
   }
-  SDL_Surface* surface = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_RGBA32, pixels.data(), w * 4);
-  if (!surface) return false;
-  bool ok = SDL_SaveBMP(surface, path.c_str());
-  SDL_DestroySurface(surface);
-  return ok;
+  // Image opaque (certains cœurs laissent l'alpha à 0).
+  for (size_t i = 3; i < pixels.size(); i += 4) pixels[i] = 255;
+  for (int y = 0; y < h; y++) memcpy((uint8_t*)surface->pixels + (size_t)y * surface->pitch, &pixels[(size_t)y * w * 4], (size_t)w * 4);
+  return surface;
 }
 
 void Video::toggleFullscreen() {

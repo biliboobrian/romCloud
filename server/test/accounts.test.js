@@ -147,6 +147,46 @@ test('sauvegardes en ligne : enregistrées, relues, remplacées, supprimées', (
   assert.ok(!fs.existsSync(file));
 });
 
+test('historique des états : 10 par appareil, épinglés gardés, miniature, profils séparés', () => {
+  const { user } = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
+  const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
+  assert.equal(status(() => accounts.putState(user.id, gameId, 'snes9x', '../x', Buffer.from('a'), {}, phone)), 400);
+
+  // 12 états du téléphone (le premier épinglé) et 1 de la TV.
+  for (let n = 1; n <= 12; n++) accounts.putState(user.id, gameId, 'snes9x', id(n), Buffer.from(`s${n}`), { createdAt: n * 1000, pinned: n === 1 }, phone);
+  accounts.putState(user.id, gameId, 'snes9x', id(100), Buffer.from('tv'), { createdAt: 500 }, tv);
+  const list = accounts.listStates(user.id, gameId);
+  const fromPhone = list.filter((s) => s.device === 'Pixel 8');
+  assert.equal(fromPhone.length, 11); // 10 plus récents + l'épinglé
+  assert.ok(fromPhone.some((s) => s.id === id(1) && s.pinned));
+  assert.ok(!fromPhone.some((s) => s.id === id(2)));
+  assert.ok(list.some((s) => s.id === id(100) && s.device === 'Shield')); // la TV garde le sien
+  assert.equal(list[0].id, id(12));
+  assert.equal(list[0].createdAt, new Date(12000).toISOString());
+
+  // Miniature, fichier relu.
+  assert.equal(status(() => accounts.putStateThumbnail(user.id, id(12), Buffer.from('x'), 'text/plain')), 400);
+  assert.ok(accounts.putStateThumbnail(user.id, id(12), Buffer.from('jpeg'), 'image/jpeg').thumbnail);
+  assert.equal(fs.readFileSync(accounts.getStateThumbnail(user.id, id(12)).file, 'utf8'), 'jpeg');
+  assert.equal(fs.readFileSync(accounts.getState(user.id, id(12)).file, 'utf8'), 's12');
+
+  // Désépinglé : au-delà de la limite, supprimé avec ses fichiers.
+  const pinnedFile = accounts.getState(user.id, id(1)).file;
+  assert.equal(accounts.pinState(user.id, id(1), false), null);
+  assert.ok(!fs.existsSync(pinnedFile));
+
+  // Autre profil : ne voit ni ne remplace les états d'alice.
+  const erin = accounts.authenticate(accounts.register('erin', 'secret1', phone).token, phone).user;
+  assert.equal(accounts.listStates(erin.id, gameId).length, 0);
+  assert.equal(status(() => accounts.getState(erin.id, id(12))), 404);
+  assert.equal(status(() => accounts.putState(erin.id, gameId, 'snes9x', id(12), Buffer.from('b'), {}, phone)), 409);
+
+  const thumb = accounts.getStateThumbnail(user.id, id(12)).file;
+  accounts.deleteState(user.id, id(12));
+  assert.ok(!fs.existsSync(thumb));
+  assert.equal(status(() => accounts.getState(user.id, id(12))), 404);
+});
+
 test('erreurs des applications, avec ou sans joueur', () => {
   const auth = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
   accounts.logError({ message: 'Cœur introuvable', context: 'launch', details: 'stack' }, auth, phone);

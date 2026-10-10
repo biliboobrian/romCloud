@@ -14,7 +14,7 @@
 
 enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext };
 
-enum class MenuAction { None, Resume, SaveState, LoadState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
+enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
 
 /** État affiché par le menu (fourni par la boucle principale). */
 struct MenuState {
@@ -44,6 +44,10 @@ class Menu {
 
   /** Écran des touches du clavier. */
   void openKeys();
+  /** Historique des états (une ligne par état : date, appareil) ; A / Entrée : LoadHistoryState. */
+  void openStates(std::vector<std::string> rows);
+  /** État choisi dans l'historique (index dans les lignes de openStates). */
+  int stateSelected() const { return stateSelected_; }
   /**
    * Boutons proposés dans l'écran des touches (ceux de la console) : « bouton[=nom] » séparés par
    * des virgules (--buttons) ; vide : tous les boutons du RetroPad.
@@ -61,7 +65,7 @@ class Menu {
   std::string tr(const char* key) const;
 
  private:
-  enum class Screen { Main, Options, Keys };
+  enum class Screen { Main, Options, Keys, States };
   enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Disk, Filter, Aspect, Fullscreen, LeaveNetplay, SaveQuit, Quit };
 
   std::vector<Item> items(const MenuState& state) const;
@@ -70,6 +74,7 @@ class Menu {
   std::string itemLabel(Item item, const MenuState& state) const;
   void renderOptions(Canvas& canvas) const;
   void renderKeys(Canvas& canvas) const;
+  void renderStates(Canvas& canvas) const;
   MenuAction handleKeys(Nav nav);
   std::string keyName(SDL_Scancode code) const;
   std::string buttonLabel(unsigned id) const;
@@ -85,4 +90,7 @@ class Menu {
   int keySelected_ = 0;  // 0 : « Touches par défaut », puis keyRows_
   bool waitingKey_ = false;
   std::string keyMessage_;  // touche refusée
+  std::vector<std::string> stateRows_;
+  int stateSelected_ = 0;
+  mutable int stateScroll_ = 0;
 };

@@ -304,6 +304,45 @@ pub fn resumable_ids(system: &Value, games: &[Value]) -> Vec<Value> {
     games.iter().filter(|g| resumable(system, g)).map(|g| g["id"].clone()).collect()
 }
 
+/// Historique des états du jeu (moteur intégré) : dossier et cœur, ou None pour un autre émulateur.
+fn history(system: &Value, game: &Value) -> Option<(std::path::PathBuf, String)> {
+    match prepare(system, game) {
+        Ok(Plan::Builtin { core, file, .. }) if managed::by_core(&core).is_none() => Some((builtin::history_dir(&core, &file), core)),
+        _ => None,
+    }
+}
+
+/// Historique des états du jeu : { states, online, signedIn } (null : pas le moteur intégré).
+pub async fn states(system: &Value, game: &Value) -> Value {
+    match history(system, game) {
+        Some((dir, core)) => crate::states::list(&game["id"], &core, &dir).await,
+        None => Value::Null,
+    }
+}
+
+/// Opération sur un état de l'historique : « thumbnail », « pin », « unpin », « upload », « delete ».
+pub async fn state_action(system: &Value, game: &Value, action: &str, state: &Value) -> Result<Value> {
+    let (dir, _) = history(system, game).ok_or_else(|| AppError::msg("historique indisponible".to_string()))?;
+    let id = state["id"].as_str().unwrap_or("");
+    let online = state["online"].as_bool().unwrap_or(false);
+    Ok(match action {
+        "thumbnail" => crate::states::thumbnail(&dir, id).await.map(Value::String).unwrap_or(Value::Null),
+        "pin" | "unpin" => {
+            crate::states::pin(&dir, id, action == "pin", online).await?;
+            Value::Null
+        }
+        "upload" => {
+            crate::states::upload(&game["id"], &dir, id).await?;
+            Value::Null
+        }
+        "delete" => {
+            crate::states::delete(&dir, id, online).await?;
+            Value::Null
+        }
+        other => return Err(AppError::msg(format!("action inconnue : {other}"))),
+    })
+}
+
 /// Partie à reprendre depuis une sauvegarde en ligne (moteur intégré, profil connecté).
 pub async fn resumable_online(system: &Value, game: &Value) -> Value {
     let Ok(Plan::Builtin { core, .. }) = prepare(system, game) else { return Value::Null };
@@ -385,7 +424,13 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             Ok(json!({ "manual": false }))
         }
         Plan::Builtin { core, file, .. } => {
-            builtin::launch(system, game, &file, &core, resume, Vec::new(), None).await?;
+            // État de l'historique choisi dans la fiche du jeu (téléchargé s'il n'est qu'en ligne).
+            let mut extra = Vec::new();
+            if let Some(id) = options.get("state").and_then(Value::as_str) {
+                let path = crate::states::file_for(&game["id"], &builtin::history_dir(&core, &file), id).await?;
+                extra = vec!["--state-file".to_string(), path.to_string_lossy().into_owned()];
+            }
+            builtin::launch(system, game, &file, &core, resume, extra, None).await?;
             Ok(json!({ "manual": false }))
         }
         Plan::Open(file) => {

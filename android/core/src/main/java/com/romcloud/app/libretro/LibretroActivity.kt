@@ -3,15 +3,19 @@ package com.romcloud.app.libretro
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.system.Os
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
@@ -86,12 +90,16 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.data.SavedState
+import com.romcloud.app.data.StateHistory
 import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.stream.StreamProtocol
 import com.romcloud.app.stream.StreamSender
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.stream.StreamTap
 import com.romcloud.app.ui.CastDialog
+import com.romcloud.app.ui.StateHistoryController
+import com.romcloud.app.ui.StateHistoryList
 import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
 import com.romcloud.app.netplay.LanPresence
@@ -144,6 +152,10 @@ class LibretroActivity : ComponentActivity() {
     private var toastMillis = TOAST_MS
     /** Écran « Options du cœur » du menu (null = fermé) et option dont on choisit la valeur. */
     private var options by mutableStateOf<List<CoreOption>?>(null)
+    /** Historique des états affiché (« Charger l'état » du menu). */
+    private var statesOpen by mutableStateOf(false)
+    /** Image du jeu à l'ouverture du menu : miniature de l'état sauvegardé depuis le menu. */
+    private var pausedFrame: Bitmap? = null
     private var editing by mutableStateOf<CoreOption?>(null)
     /** Onglet affiché des options (types d'options ; gardé en revenant du choix d'une valeur). */
     private var optionTab by mutableStateOf(0)
@@ -237,6 +249,16 @@ class LibretroActivity : ComponentActivity() {
     private val isTv by lazy { packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
     private val sramFile by lazy { File(filesDir, "libretro/saves/$core/${rom.nameWithoutExtension}.srm") }
     private val stateFile by lazy { stateFile(this, core, rom) }
+    /** Historique des états du jeu pour ce cœur (plusieurs états, avec miniature). */
+    private val history by lazy { StateHistory(StateHistory.dir(this, core, rom), core) }
+    private val historyController by lazy {
+        StateHistoryController(account, history, gameId, core, cacheDir, lifecycleScope) { toast = it }
+    }
+    /** État de l'historique choisi dans la fiche du jeu, chargé dès la première image. */
+    private val startState by lazy { intent.getStringExtra(EXTRA_STATE)?.let(::File) }
+    /** Profil connecté : états envoyés en ligne dès leur sauvegarde (réglage de l'appareil). */
+    private val autoUploadStates by lazy { intent.getBooleanExtra(EXTRA_AUTO_UPLOAD_STATES, true) }
+    private val platform get() = if (isTv) "androidtv" else "android"
     /** Reprendre la partie : l'état sauvegardé est chargé dès la première image. */
     private val resume by lazy { intent.getBooleanExtra(EXTRA_RESUME, false) }
     /** Jeu du serveur (temps de jeu et sauvegardes en ligne du profil) ; 0 = inconnu. */
@@ -290,6 +312,7 @@ class LibretroActivity : ComponentActivity() {
                 mappingSession != null -> mappingSession = null
                 filterPicker -> filterPicker = false
                 aspectPicker -> aspectPicker = false
+                statesOpen -> statesOpen = false
                 editing != null -> editing = null
                 options != null -> options = null
                 menuOpen -> closeMenu()
@@ -414,7 +437,10 @@ class LibretroActivity : ComponentActivity() {
                     startPlayClock()
                     selectControllers(view)
                     // Invité : l'état de l'hôte remplace la partie reprise.
-                    if (resume && netplayLaunch?.host != false) resumeGame()
+                    if (netplayLaunch?.host != false) {
+                        val chosen = startState
+                        if (chosen != null) loadStateFile(chosen) else if (resume) resumeGame()
+                    }
                     streamTarget?.let { startStreaming(view, it) }
                     netplayLaunch?.let { startNetplay(it, coreFile) }
                 }
@@ -490,6 +516,7 @@ class LibretroActivity : ComponentActivity() {
         if (menuOpen) return
         releaseButtons()
         stopPlayClock()
+        captureFrame()
         menuOpen = true
         retroView?.apply {
             audioEnabled = false
@@ -504,6 +531,8 @@ class LibretroActivity : ComponentActivity() {
         mappingSession = null
         filterPicker = false
         aspectPicker = false
+        statesOpen = false
+        pausedFrame = null
         retroView?.apply {
             onResume()
             audioEnabled = true
@@ -745,6 +774,7 @@ class LibretroActivity : ComponentActivity() {
             stateFile.writeBytes(bytes)
             // Profil connecté : état envoyé au serveur tout de suite (partie en cours).
             account.queueUploads(gameId, core, mapOf("state" to stateFile), sessionStart, sendNow = true)
+            addToHistory(bytes, sendNow = true)
             getString(R.string.libretro_state_saved)
         }.getOrElse { getString(R.string.libretro_state_error) }
         closeMenu()
@@ -782,6 +812,8 @@ class LibretroActivity : ComponentActivity() {
             val bytes = view.serializeState(false)
             stateFile.parentFile?.mkdirs()
             stateFile.writeBytes(bytes)
+            // Envoi en ligne par l'application, au retour (ce processus s'arrête avec le jeu).
+            addToHistory(bytes, sendNow = false)
         }.isSuccess
         if (saved) {
             finish()
@@ -791,15 +823,58 @@ class LibretroActivity : ComponentActivity() {
         }
     }
 
-    private fun loadState() {
+    /** « Charger l'état » : historique des états (de l'appareil et du profil en ligne). */
+    private fun openStates() {
+        // Ancien état unique (version précédente) : repris dans l'historique.
+        history.adopt(stateFile, account.deviceName, platform)
+        statesOpen = true
+    }
+
+    /** État choisi dans l'historique : téléchargé d'abord s'il n'est qu'en ligne. */
+    private fun loadSavedState(state: SavedState) {
+        lifecycleScope.launch {
+            val file = try {
+                historyController.file(state)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                toast = e.message ?: getString(R.string.libretro_state_error)
+                return@launch
+            }
+            loadStateFile(file)
+            closeMenu()
+        }
+    }
+
+    private fun loadStateFile(file: File) {
         val view = retroView ?: return
         toast = when {
-            !stateFile.isFile -> getString(R.string.libretro_no_state)
-            runCatching { view.unserializeState(stateFile.readBytes(), false) }.getOrDefault(false) ->
+            !file.isFile -> getString(R.string.libretro_no_state)
+            runCatching { view.unserializeState(file.readBytes(), false) }.getOrDefault(false) ->
                 getString(R.string.libretro_state_loaded)
             else -> getString(R.string.libretro_state_error)
         }
-        closeMenu()
+    }
+
+    /**
+     * Ajoute l'état à l'historique, avec l'image du jeu à l'ouverture du menu ; profil connecté et
+     * envoi automatique : mis en file d'envoi ([sendNow] : envoyé tout de suite, partie en cours).
+     */
+    private fun addToHistory(bytes: ByteArray, sendNow: Boolean) {
+        runCatching {
+            val entry = history.add(bytes, pausedFrame, account.deviceName, platform)
+            if (autoUploadStates && account.state.value.signedIn) account.queueStateUpload(gameId, history, entry.id, sendNow)
+        }.onFailure { account.reportError("states:$core", it.message ?: "history", rom.name) }
+    }
+
+    /** Image affichée par le jeu (copie de la surface), avant la pause du menu. */
+    private fun captureFrame() {
+        val view = retroView ?: return
+        if (!gameReady || view.width <= 0 || view.height <= 0) return
+        val bitmap = runCatching { Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888) }.getOrNull() ?: return
+        runCatching {
+            PixelCopy.request(view, bitmap, { result -> if (result == PixelCopy.SUCCESS) pausedFrame = bitmap }, Handler(Looper.getMainLooper()))
+        }
     }
 
     // ---- Options du cœur (émulation en pause : lues et modifiées hors du thread d'émulation) ----
@@ -1002,6 +1077,15 @@ class LibretroActivity : ComponentActivity() {
                         FilterPicker()
                     } else if (menuOpen && aspectPicker) {
                         AspectPicker()
+                    } else if (menuOpen && statesOpen) {
+                        StateHistoryList(
+                            controller = historyController,
+                            title = stringResource(R.string.states_title),
+                            loadLabel = stringResource(R.string.states_load),
+                            onLoad = ::loadSavedState,
+                            onClose = { statesOpen = false },
+                            modifier = Modifier.safeDrawingPadding(),
+                        )
                     } else if (menuOpen && edited != null) {
                         ValuePicker(edited)
                     } else if (menuOpen && opts != null) {
@@ -1098,7 +1182,7 @@ class LibretroActivity : ComponentActivity() {
                 if (gameReady) {
                     add(stringResource(R.string.libretro_menu_save_state) to ::saveState)
                     if (!together) {
-                        add(stringResource(R.string.libretro_menu_load_state) to ::loadState)
+                        add(stringResource(R.string.libretro_menu_load_state) to ::openStates)
                         add(stringResource(R.string.libretro_menu_reset) to ::reset)
                         add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
                     }
@@ -1527,6 +1611,8 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_STREAM = "stream"
         private const val EXTRA_STREAM_MODE = "streamMode"
         private const val EXTRA_NETPLAY = "netplay"
+        private const val EXTRA_STATE = "state"
+        private const val EXTRA_AUTO_UPLOAD_STATES = "autoUploadStates"
         private const val TOAST_MS = 2000L
         private const val ERROR_TOAST_MS = 8000L
         private const val RETRO_DEVICE_JOYPAD = 1
@@ -1547,7 +1633,9 @@ class LibretroActivity : ComponentActivity() {
          * [systemId] : système du jeu (options du cœur mémorisées par système) ;
          * [systemDir] : dossier des BIOS (dossier « system » libretro) ;
          * [resume] : reprend la partie à son état sauvegardé ;
-         * [stream] : TV du profil sur laquelle diffuser le jeu ; [streamMode] : image diffusée.
+         * [stream] : TV du profil sur laquelle diffuser le jeu ; [streamMode] : image diffusée ;
+         * [state] : état de l'historique chargé au lancement ; [autoUploadStates] : états envoyés en ligne
+         * (réglage lu par l'application : ce processus garde ses préférences en mémoire).
          */
         fun intent(
             context: Context,
@@ -1560,6 +1648,8 @@ class LibretroActivity : ComponentActivity() {
             stream: StreamReceiver? = null,
             streamMode: StreamMode = StreamMode.NATIVE,
             netplay: NetplayLaunch? = null,
+            state: File? = null,
+            autoUploadStates: Boolean = true,
         ): Intent =
             Intent(context, LibretroActivity::class.java)
                 .putExtra(EXTRA_SYSTEM, systemId)
@@ -1571,5 +1661,7 @@ class LibretroActivity : ComponentActivity() {
                 .putExtra(EXTRA_STREAM, stream?.let { StreamProtocol.json.encodeToString(StreamReceiver.serializer(), it) })
                 .putExtra(EXTRA_STREAM_MODE, streamMode.name)
                 .putExtra(EXTRA_NETPLAY, netplay?.let { NetplayProtocol.json.encodeToString(NetplayLaunch.serializer(), it) })
+                .putExtra(EXTRA_STATE, state?.absolutePath)
+                .putExtra(EXTRA_AUTO_UPLOAD_STATES, autoUploadStates)
     }
 }

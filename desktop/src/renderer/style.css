@@ -255,6 +255,14 @@ body.pad-nav .list-row:focus { outline: none; background: var(--surface); box-sh
 .modal .body { padding: 14px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 .modal .foot { padding: 14px 22px 18px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .modal .foot .left { margin-right: auto; }
+.modal.wide { width: min(760px, calc(100vw - 40px)); }
+/* Historique des états : miniature, date, appareil et actions. */
+.state-list { display: flex; flex-direction: column; gap: 14px; }
+.state-row { display: flex; gap: 16px; align-items: center; }
+.state-thumb { width: 160px; height: 120px; flex: none; border-radius: 8px; background: rgba(255, 255, 255, 0.06); display: grid; place-items: center; overflow: hidden; color: var(--muted, #888); }
+.state-thumb img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.state-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.state-info .line { flex-wrap: wrap; }
 .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .step { display: flex; gap: 12px; }
 .step .n { color: var(--accent); font-weight: 800; font-size: 18px; width: 22px; }

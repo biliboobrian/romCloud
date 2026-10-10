@@ -55,6 +55,8 @@ class Video {
 
   /** Enregistre la dernière image du cœur en BMP (mode d'essai). */
   bool saveFrame(const std::string& path);
+  /** Copie de la dernière image du cœur (RGBA, à libérer avec SDL_DestroySurface), nulle sans image. */
+  SDL_Surface* captureFrame();
 
   void toggleFullscreen();
   bool fullscreen() const { return fullscreen_; }

@@ -1,5 +1,7 @@
 package com.romcloud.tv
 
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -68,6 +71,7 @@ import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.OnlineSaveLabel
 import com.romcloud.app.ui.PlaytimeLabel
 import com.romcloud.app.ui.RetroArchHelpDialog
+import com.romcloud.app.ui.StateHistoryList
 import com.romcloud.app.ui.formatSize
 import com.romcloud.app.ui.gameFacts
 import com.romcloud.app.ui.gamePlaytime
@@ -89,6 +93,7 @@ fun TvGameDetailScreen(
     var pickEmulator by remember { mutableStateOf(false) }
     var showRetroArchHelp by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var showStates by remember { mutableStateOf(false) }
     val primaryFocus = remember { FocusRequester() }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -195,6 +200,10 @@ fun TvGameDetailScreen(
                             } else {
                                 ActionButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, primary) { viewModel.play(activity)?.let(onMessage) }
                             }
+                            // Historique des états (émulateur intégré) : partie lancée à partir de l'un d'eux.
+                            if (state.savedStates > 0) {
+                                SecondaryButton("${stringResource(R.string.states_button)} (${state.savedStates})", Icons.Filled.History) { showStates = true }
+                            }
                             viewModel.together(peers)?.let { kind ->
                                 SecondaryButton(
                                     stringResource(if (kind == Together.LINK) R.string.link_host else R.string.netplay_play_together),
@@ -273,6 +282,26 @@ fun TvGameDetailScreen(
     state.retroArchInfo?.takeIf { showRetroArchHelp }?.let { info ->
         RetroArchHelpDialog(info = info, onDismiss = { showRetroArchHelp = false }, onMessage = onMessage)
     }
+    if (showStates) {
+        viewModel.stateHistory(onMessage)?.let { controller ->
+            Dialog(onDismissRequest = { showStates = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                StateHistoryList(
+                    controller = controller,
+                    title = stringResource(R.string.states_title),
+                    loadLabel = stringResource(R.string.states_play),
+                    onLoad = {
+                        showStates = false
+                        viewModel.playState(activity, it, onMessage)
+                    },
+                    onClose = {
+                        showStates = false
+                        viewModel.refreshLocal()
+                    },
+                )
+            }
+        } ?: run { showStates = false }
+    }
+
     if (confirmDelete) {
         ConfirmDialog(
             title = stringResource(R.string.tv_delete_title),

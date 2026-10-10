@@ -26,6 +26,9 @@ fn defaults() -> Map<String, Value> {
         "session": null,
         "pendingPlaytime": [],
         "pendingSaves": [],
+        "pendingStates": [],
+        // Profil connecté : états du moteur intégré envoyés en ligne après la partie.
+        "autoUploadStates": true,
     });
     match value {
         Value::Object(map) => map,

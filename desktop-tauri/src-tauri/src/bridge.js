@@ -107,6 +107,7 @@
       resumableOnline: call('launcher:resumableOnline'),
       describe: call('launcher:describe'),
     },
+    states: { list: call('states:list'), action: call('states:action') },
     emulators: {
       list: call('emulators:list'),
       detect: call('emulators:detect'),

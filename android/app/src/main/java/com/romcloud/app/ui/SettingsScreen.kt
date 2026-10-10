@@ -171,6 +171,21 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                     app.settings.hideUnidentified = it
                 })
             }
+            var autoUploadStates by remember { mutableStateOf(app.settings.autoUploadStates) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_auto_upload_states), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        stringResource(R.string.settings_auto_upload_states_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = autoUploadStates, onCheckedChange = {
+                    autoUploadStates = it
+                    app.settings.autoUploadStates = it
+                })
+            }
             var gameOrder by remember { mutableStateOf(app.settings.gameOrder) }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.order_games), style = MaterialTheme.typography.bodyLarge)

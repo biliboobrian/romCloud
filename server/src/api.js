@@ -538,6 +538,42 @@ api.delete('/account/saves/:gameId/:core/:kind', signedIn, (req, res) => {
   res.status(204).end();
 });
 
+// Historique des états de sauvegarde du profil (plusieurs par jeu, par appareil, avec miniature).
+api.get('/account/states', signedIn, (req, res) => res.json(accounts.listStates(req.auth.user.id, req.query.gameId)));
+api.get('/account/states/:id', signedIn, (req, res) => {
+  const { file, state } = accounts.getState(req.auth.user.id, req.params.id);
+  res.set('X-Created-At', state.createdAt);
+  res.sendFile(file);
+});
+api.get('/account/states/:id/thumbnail', signedIn, (req, res) => {
+  const { file, type } = accounts.getStateThumbnail(req.auth.user.id, req.params.id);
+  res.type(type).sendFile(file);
+});
+api.put(
+  '/account/states/:gameId/:core/:id',
+  signedIn,
+  express.raw({ type: () => true, limit: '1024mb' }),
+  (req, res) => {
+    const { gameId, core, id } = req.params;
+    const meta = { createdAt: req.get('x-created-at'), pinned: req.get('x-pinned') === '1' };
+    const state = accounts.putState(req.auth.user.id, gameId, core, id, req.body, meta, accounts.clientInfo(req));
+    if (state) res.json(state);
+    else res.status(204).end(); // plus ancien que les états gardés : aussitôt retiré
+  },
+);
+api.put('/account/states/:id/thumbnail', signedIn, express.raw({ type: () => true, limit: '4mb' }), (req, res) => {
+  res.json(accounts.putStateThumbnail(req.auth.user.id, req.params.id, req.body, req.get('content-type')));
+});
+api.patch('/account/states/:id', signedIn, (req, res) => {
+  const state = accounts.pinState(req.auth.user.id, req.params.id, Boolean(req.body?.pinned));
+  if (state) res.json(state);
+  else res.status(204).end();
+});
+api.delete('/account/states/:id', signedIn, (req, res) => {
+  accounts.deleteState(req.auth.user.id, req.params.id);
+  res.status(204).end();
+});
+
 // Erreur rencontrée par une application (avec ou sans joueur connecté).
 api.post('/account/errors', (req, res) => {
   accounts.logError(req.body, userAuth(req), accounts.clientInfo(req, req.body || {}));

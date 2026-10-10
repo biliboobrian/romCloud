@@ -34,6 +34,7 @@ add_executable(romcloud-player WIN32
   src/input.cpp
   src/canvas.cpp
   src/menu.cpp
+  src/history.cpp
   src/padconfig.cpp
   src/netplay.cpp
   src/util.cpp

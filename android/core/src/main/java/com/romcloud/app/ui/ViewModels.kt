@@ -22,6 +22,8 @@ import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.OnlineSave
 import com.romcloud.app.data.Player
+import com.romcloud.app.data.SavedState
+import com.romcloud.app.data.StateHistory
 import com.romcloud.app.data.StorageUsage
 import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.stream.StreamMode
@@ -30,6 +32,7 @@ import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulator
 import com.romcloud.app.launch.MissingEmulatorException
+import com.romcloud.app.libretro.LibretroActivity
 import com.romcloud.app.launch.RetroArchInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,6 +44,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Lance un jeu déjà téléchargé ; renvoie un message d'erreur ou null.
@@ -57,6 +61,7 @@ fun RomCloudApp.play(
     stream: StreamReceiver? = null,
     streamMode: StreamMode = StreamMode.NATIVE,
     netplay: NetplayLaunch? = null,
+    state: File? = null,
 ): String? {
     val player = launcher.selectedPlayer(system, game.fileName)
     val file = library.launchFile(system, game, player)
@@ -67,7 +72,7 @@ fun RomCloudApp.play(
         }
     }
     return try {
-        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay)
+        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay, state)
         // Émulateur externe : temps de jeu compté jusqu'au retour dans l'application (l'émulateur
         // intégré compte lui-même le temps de la partie affichée).
         if (player?.libretroCore == null) account.startExternalSession(game.id)
@@ -472,6 +477,8 @@ class GameDetailViewModel(
         val onlineSave: OnlineSave? = null,
         /** TV du profil allumées avec RomCloud ouvert : « Jouer sur la TV » (émulateur intégré). */
         val tvs: List<StreamReceiver> = emptyList(),
+        /** États de l'historique (appareil et profil en ligne) : bouton « États sauvegardés ». */
+        val savedStates: Int = 0,
     ) {
         val canStream: Boolean get() = downloaded && selectedPlayer?.libretroCore != null && tvs.isNotEmpty()
     }
@@ -519,6 +526,14 @@ class GameDetailViewModel(
             val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(file, selected) }
             val online = selected?.libretroCore?.let { core -> app.account.saves(game.id).find { sameSaveCore(it.core, core) && it.kind == "state" } }
             val canResume = localResume || (downloaded && online != null)
+            val savedStates = selected?.libretroCore?.takeIf { downloaded }?.let { core ->
+                val history = historyFor(core, file)
+                val local = withContext(Dispatchers.IO) {
+                    history.adopt(LibretroActivity.stateFile(app, core, file), app.account.deviceName, if (app.account.isTv) "androidtv" else "android")
+                    history.list()
+                }
+                StateHistory.merge(local, app.account.onlineStates(game.id).orEmpty(), core).size
+            } ?: 0
             _state.update {
                 it.copy(
                     downloaded = downloaded,
@@ -530,6 +545,7 @@ class GameDetailViewModel(
                     missingBios = missingBios,
                     canResume = canResume,
                     onlineSave = online,
+                    savedStates = savedStates,
                 )
             }
         }
@@ -578,6 +594,48 @@ class GameDetailViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             app.library.delete(system, game)
             refreshLocal()
+        }
+    }
+
+    private var historyKey: String? = null
+    private var controller: StateHistoryController? = null
+
+    private fun historyFor(core: String, file: File) = StateHistory(StateHistory.dir(app, core, file), core)
+
+    /**
+     * Historique des états du jeu pour l'émulateur intégré choisi (null : autre émulateur, ou jeu
+     * absent de l'appareil) ; [onMessage] : erreurs et confirmations.
+     */
+    fun stateHistory(onMessage: (String) -> Unit): StateHistoryController? {
+        val s = _state.value
+        val system = s.system ?: return null
+        val game = s.game ?: return null
+        val core = s.selectedPlayer?.libretroCore ?: return null
+        val file = app.library.launchFile(system, game, s.selectedPlayer)
+        val key = "$core|${file.absolutePath}"
+        if (key != historyKey) {
+            historyKey = key
+            controller = StateHistoryController(app.account, historyFor(core, file), game.id, core, app.cacheDir, viewModelScope, onMessage)
+        }
+        return controller
+    }
+
+    /** Lance le jeu à partir d'un état de l'historique (téléchargé d'abord s'il n'est qu'en ligne). */
+    fun playState(activity: Activity, state: SavedState, onMessage: (String) -> Unit) {
+        val s = _state.value
+        val system = s.system ?: return
+        val game = s.game ?: return
+        val history = controller ?: return
+        viewModelScope.launch {
+            val file = try {
+                history.file(state)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onMessage(e.message ?: e.javaClass.simpleName)
+                return@launch
+            }
+            app.play(activity, system, game, state = file)?.let(onMessage)
         }
     }
 

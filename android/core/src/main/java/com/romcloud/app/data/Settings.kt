@@ -117,6 +117,14 @@ class Settings(context: Context) {
         get() = runCatching { GameOrder.valueOf(prefs.getString("gameOrder", null) ?: "") }.getOrDefault(GameOrder.NAME)
         set(value) = prefs.edit().putString("gameOrder", value.name).apply()
 
+    /**
+     * Profil connecté : chaque état sauvegardé dans l'émulateur intégré est envoyé en ligne (sinon
+     * à la demande, depuis l'historique des états). Réglage propre à cet appareil.
+     */
+    var autoUploadStates: Boolean
+        get() = prefs.getBoolean("autoUploadStates", true)
+        set(value) = prefs.edit().putBoolean("autoUploadStates", value).apply()
+
     /** Affichage des jeux en cartes (jaquettes) plutôt qu'en liste. */
     var gamesAsGrid: Boolean
         get() = prefs.getBoolean(KEY_GAMES_GRID, false)

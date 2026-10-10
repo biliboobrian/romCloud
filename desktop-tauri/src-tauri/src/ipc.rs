@@ -86,6 +86,9 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "launcher:check" => launcher::check(&arg(a, 0)),
         "launcher:resumableOnline" => launcher::resumable_online(&arg(a, 0), &arg(a, 1)).await,
         "launcher:describe" => launcher::describe(&arg(a, 0), &arg(a, 1)),
+        // Historique des états du moteur intégré (fiche du jeu).
+        "states:list" => launcher::states(&arg(a, 0), &arg(a, 1)).await,
+        "states:action" => launcher::state_action(&arg(a, 0), &arg(a, 1), &str_arg(a, 2), &arg(a, 3)).await?,
         // Moteur intégré arrêté sur une erreur : l'interface propose de réinitialiser le cœur.
         "player:resetCore" => {
             builtin::reset_core(&str_arg(a, 0), &str_arg(a, 1))?;

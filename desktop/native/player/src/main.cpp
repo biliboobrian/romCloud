@@ -5,6 +5,7 @@
 //                   [--windowed] [--resume] [--state-name <nom>] [--option-default <clé>=<valeur>]…
 //                   [--keys-file <touches du clavier>] [--buttons <boutons de la console>]
 //                   [--pad-style <manette de la console>]
+//                   [--history-dir <historique des états> --history-device <nom du PC>] [--state-file <état>]
 //                   [--netplay-host | --netplay-join <adresse:port> --netplay-peer <nom de l'hôte>]
 //                   [--netplay-game <jeu (JSON)>] [--device-id <identifiant>] [--device-name <nom>]
 //                   [--netplay-link <gb|gba|psp> [--netplay-packets] [--netplay-multi]] [--linked <nom>]
@@ -15,6 +16,10 @@
 // (--netplay-join), même protocole que l'application Android. Liaison entre consoles (--netplay-link) :
 // chacun son jeu ; paquets du cœur échangés ici (--netplay-packets, gpSP) ou connexion ouverte par le
 // cœur (options imposées par --option ; invité accepté avant le lancement : --linked <nom de l'hôte>).
+//
+// Historique des états (history.h) : chaque état sauvegardé y est ajouté avec sa miniature ;
+// « Charger l'état » liste ceux de ce PC et du profil en ligne ; --state-file : état chargé au
+// lancement (choisi dans la fiche du jeu).
 //
 // Fonctionnement calqué sur LibretroDroid : le cœur est chargé, le jeu démarré, puis une boucle
 // exécute retro_run au rythme de l'audio et affiche chaque image avec OpenGL. Codes de sortie :
@@ -34,6 +39,7 @@
 #include "audio.h"
 #include "canvas.h"
 #include "core.h"
+#include "history.h"
 #include "input.h"
 #include "menu.h"
 #include "netplay.h"
@@ -50,6 +56,8 @@ struct Args {
   std::string keysFile;  // touches du clavier « bouton=scancode », modifiées depuis le menu
   std::string buttons;  // boutons de la console proposés dans l'écran des touches (--buttons)
   std::string padStyle;  // manette de la console dessinée dans la configuration (--pad-style)
+  std::string historyDir, historyDevice;  // historique des états du jeu, nom du PC
+  std::string stateFile;  // état de l'historique chargé au lancement
   bool windowed = false;
   bool resume = false;  // reprend la partie à l'état sauvegardé
   // Jeu à plusieurs : partie proposée, ou adresse de l'hôte (« 192.168.1.20:40123 ») et son nom ;
@@ -66,6 +74,7 @@ struct Args {
   bool testMenu = false;
   bool testKeys = false;  // essai : écran des touches du clavier
   bool testPad = false;  // essai : écran de configuration des manettes
+  bool testStates = false;  // essai : historique des états (« Charger l'état »)
   bool testSaveState = false;  // essai : état enregistré après les N images
 };
 
@@ -82,6 +91,7 @@ Args parseArgs(int argc, char** argv) {
       {"--device-id", &a.deviceId},     {"--device-name", &a.deviceName},
       {"--netplay-link", &a.netplayLink}, {"--linked", &a.linked},
       {"--netplay-port", &a.netplayPort}, {"--netplay-delay", &a.netplayDelay},
+      {"--history-dir", &a.historyDir}, {"--history-device", &a.historyDevice}, {"--state-file", &a.stateFile},
   };
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
@@ -95,6 +105,7 @@ Args parseArgs(int argc, char** argv) {
     else if (arg == "--test-menu") a.testMenu = true;
     else if (arg == "--test-keys") a.testKeys = true;
     else if (arg == "--test-pad") a.testPad = true;
+    else if (arg == "--test-states") a.testStates = true;
     else if (arg == "--test-save-state") a.testSaveState = true;
     else if (arg == "--option-default" && i + 1 < argc) a.optionDefaults.push_back(argv[++i]);
     else if (values.count(arg) && i + 1 < argc) *values[arg] = argv[++i];
@@ -104,7 +115,10 @@ Args parseArgs(int argc, char** argv) {
 
 class Player {
  public:
-  explicit Player(Args args) : args_(std::move(args)), menu_(args_.lang, title(), coreName()) {}
+  explicit Player(Args args)
+      : args_(std::move(args)),
+        menu_(args_.lang, title(), coreName()),
+        history_(args_.historyDir, coreName(), args_.historyDevice.empty() ? "PC" : args_.historyDevice) {}
 
   int run();
 
@@ -126,6 +140,9 @@ class Player {
   void saveSram();
   bool saveState();
   bool loadState();
+  bool loadStateFile(const std::string& path);
+  /** « Charger l'état » : historique des états (sinon l'état unique du jeu). */
+  void openStates();
   void changeDisk(int direction);
   MenuState menuState() const;
   void openMenu();
@@ -153,6 +170,8 @@ class Player {
 
   Args args_;
   Menu menu_;
+  StateHistory history_;
+  std::vector<HistoryEntry> shownStates_;  // états listés dans le menu
   Video video_;
   Audio audio_;
   Input input_;
@@ -225,12 +244,36 @@ bool Player::saveState() {
   size_t size = g.api.serialize_size();
   if (!size) return false;
   std::vector<uint8_t> buffer(size);
-  return g.api.serialize(buffer.data(), size) && writeFile(statePath(), buffer.data(), size);
+  if (!g.api.serialize(buffer.data(), size) || !writeFile(statePath(), buffer.data(), size)) return false;
+  // Historique : l'état et l'image affichée (miniature).
+  SDL_Surface* frame = video_.captureFrame();
+  if (history_.enabled() && !history_.add(buffer, frame)) logf("Historique des états : ajout impossible");
+  if (frame) SDL_DestroySurface(frame);
+  return true;
 }
 
-bool Player::loadState() {
+bool Player::loadState() { return loadStateFile(statePath()); }
+
+bool Player::loadStateFile(const std::string& path) {
   std::vector<uint8_t> buffer;
-  return readFile(statePath(), buffer) && g.api.unserialize(buffer.data(), buffer.size());
+  return readFile(path, buffer) && g.api.unserialize(buffer.data(), buffer.size());
+}
+
+void Player::openStates() {
+  shownStates_ = history_.list();
+  if (shownStates_.empty()) {
+    // Pas d'historique (état d'une version précédente) : l'état unique du jeu.
+    toast(menu_.tr(!fileExists(statePath()) ? "no_state" : loadState() ? "state_loaded" : "state_error"));
+    closeMenu();
+    return;
+  }
+  std::vector<std::string> rows;
+  for (const auto& entry : shownStates_) {
+    std::string row = formatStateDate(entry.createdAt, args_.lang) + "   " + (entry.online ? entry.device : menu_.tr("this_pc"));
+    if (entry.pinned) row += " (" + menu_.tr("pinned") + ")";
+    rows.push_back(row);
+  }
+  menu_.openStates(std::move(rows));
 }
 
 void Player::changeDisk(int direction) {
@@ -281,10 +324,13 @@ void Player::onMenuAction(MenuAction action) {
       toast(menu_.tr(saveState() ? "state_saved" : "state_error"));
       closeMenu();
       break;
-    case MenuAction::LoadState:
-      toast(menu_.tr(!fileExists(statePath()) ? "no_state" : loadState() ? "state_loaded" : "state_error"));
+    case MenuAction::LoadState: openStates(); break;
+    case MenuAction::LoadHistoryState: {
+      size_t index = (size_t)menu_.stateSelected();
+      if (index < shownStates_.size()) toast(menu_.tr(loadStateFile(shownStates_[index].statePath) ? "state_loaded" : "state_error"));
       closeMenu();
       break;
+    }
     case MenuAction::Reset:
       g.api.reset();
       closeMenu();
@@ -558,11 +604,12 @@ int Player::run() {
   input_.init();
   loadSram();  // avant l'état de sauvegarde, qui la contient aussi
   // Invité d'une partie à plusieurs : l'état de l'hôte remplace la partie reprise.
-  if (args_.resume && args_.netplayJoin.empty()) {
+  if ((args_.resume || !args_.stateFile.empty()) && args_.netplayJoin.empty()) {
     // Une image d'abord : certains cœurs n'acceptent un état qu'une fois le jeu démarré.
     runFrame();
-    const char* result = !fileExists(statePath()) ? "no_state" : loadState() ? "state_loaded" : "state_error";
-    logf("Reprise de la partie (%s) : %s", statePath().c_str(), result);
+    const std::string path = args_.stateFile.empty() ? statePath() : args_.stateFile;
+    const char* result = !fileExists(path) ? "no_state" : loadStateFile(path) ? "state_loaded" : "state_error";
+    logf("Reprise de la partie (%s) : %s", path.c_str(), result);
     toast(menu_.tr(result));
   }
   if (testFrames) {
@@ -575,8 +622,9 @@ int Player::run() {
     }
     bool saved = true;
     if (args_.testWindow) {
-      if (args_.testMenu || args_.testKeys || args_.testPad || !args_.testOptions.empty()) menu_.open();
+      if (args_.testMenu || args_.testKeys || args_.testPad || args_.testStates || !args_.testOptions.empty()) menu_.open();
       if (args_.testKeys) menu_.openKeys();
+      if (args_.testStates) openStates();
       if (args_.testPad) startPadConfig();
       if (!args_.testOptions.empty()) {
         menu_.openOptions();
