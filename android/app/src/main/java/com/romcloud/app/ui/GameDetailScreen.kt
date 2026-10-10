@@ -295,6 +295,16 @@ fun GameDetailScreen(
                 }
             }
 
+            // Clés et firmware pour l'émulateur externe (Eden) : à importer depuis son menu.
+            val emulatorFolder = state.emulatorFilesFolder
+            if (state.emulatorFiles.isNotEmpty() && emulatorFolder != null) {
+                Text(
+                    stringResource(R.string.emulator_files_hint, emulatorFolder, state.emulatorFiles.joinToString(", ")),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             var showRetroArchHelp by remember { mutableStateOf(false) }
             PlayerSelector(
                 state = state,

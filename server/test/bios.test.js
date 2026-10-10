@@ -265,7 +265,7 @@ test('clés et firmware de la Switch attendus, sans source Internet', async () =
   assert.equal(keys.kind, 'keys');
   assert.ok(keys.required && !keys.present && !keys.source);
   assert.match(keys.description, /Switch/);
-  assert.ok(state.expected.find((e) => e.path === 'switch/firmware').folder);
+  assert.ok(!state.expected.find((e) => e.path === 'switch/firmware.zip').folder); // gardé en .zip (Eden pour Android)
   // Envoi : rangé sous le chemin attendu d'après son nom.
   const dir = path.join(dataDir, 'upload-test');
   fs.mkdirSync(dir, { recursive: true });

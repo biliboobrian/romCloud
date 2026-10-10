@@ -112,6 +112,9 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "emulators:detect" => tokio::task::spawn_blocking(launcher::detect_emulators).await.map_err(|e| AppError::msg(e.to_string()))?,
         "emulators:setPath" => launcher::set_emulator_path(&str_arg(a, 0), &str_arg(a, 1))?,
         "emulators:setArgs" => launcher::set_emulator_args(&str_arg(a, 0), &str_arg(a, 1))?,
+        // Dernière version d'un émulateur (Eden) : vérifiée puis installée à la place de l'actuelle.
+        "emulators:checkUpdate" => crate::emulator_updates::check(&str_arg(a, 0)).await?,
+        "emulators:update" => crate::emulator_updates::install(&str_arg(a, 0)).await?,
         "emulators:launch" => {
             launcher::launch_emulator(&str_arg(a, 0))?;
             Value::Null

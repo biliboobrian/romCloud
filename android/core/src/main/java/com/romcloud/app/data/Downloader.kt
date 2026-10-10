@@ -77,6 +77,8 @@ class Downloader(
                     fetch(api.biosFileUrl(file), library.biosFile(file), file.size, progress)
                     done += file.size
                 }
+                // Clés et firmware importés par l'émulateur externe (Eden) : là où son sélecteur les trouve.
+                if (bios.isNotEmpty()) runCatching { library.exportForEmulators(system) }
                 if (includeRom) {
                     for (file in game.files) {
                         fetch(api.fileUrl(file.id), File(library.systemDir(system), file.fileName), file.size, progress)

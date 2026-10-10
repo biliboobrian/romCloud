@@ -572,4 +572,5 @@
     <string name="settings_auto_upload_states">Envoyer les états en ligne automatiquement</string>
     <string name="settings_auto_upload_states_hint">Avec un profil connecté : chaque état sauvegardé dans l’émulateur intégré est envoyé sur votre profil, avec cet appareil et sa date. Sinon, envoyez-les depuis l’historique des états.</string>
     <string name="settings_auto_upload_states_on">États envoyés en ligne automatiquement</string>
+    <string name="emulator_files_hint">Pour Eden : %2$s dans Téléchargements › %1$s. Dans Eden, installez les clés et le firmware depuis ses paramètres, en choisissant ces fichiers.</string>
 </resources>

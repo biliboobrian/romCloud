@@ -1,15 +1,25 @@
 // Fichiers du dossier des BIOS (récupérés sur le serveur) installés là où les émulateurs du
-// catalogue les attendent, avant leur lancement : clés de la Switch pour Eden et Ryujinx (mode
-// portable reconnu à son dossier « user » ou « portable » à côté de l'exécutable).
+// catalogue les attendent, avant leur lancement : clés de la Switch pour Eden (et eden-cli) et
+// Ryujinx (mode portable reconnu à son dossier « user » ou « portable » à côté de l'exécutable).
+// eden-cli lit sa propre configuration (sdl2-config.ini), que l'interface d'Eden ne modifie pas :
+// il est lancé avec une copie de celle d'eden.exe (qt-config.ini : manettes, graphismes…).
 use crate::{paths, settings};
 use std::path::{Path, PathBuf};
+
+/// Dossier des données d'Eden : « user » à côté de l'exécutable (portable), sinon %APPDATA%\eden.
+fn eden_dir(exe_dir: &Path, appdata: &Path) -> PathBuf {
+    if exe_dir.join("user").is_dir() {
+        exe_dir.join("user")
+    } else {
+        appdata.join("eden")
+    }
+}
 
 /// Fichiers à installer pour l'émulateur : (fichier du dossier des BIOS, destination).
 fn files_for(emulator: &str, exe: &Path, bios: &Path, appdata: &Path) -> Vec<(PathBuf, PathBuf)> {
     let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     let keys_dir = match emulator {
-        "eden" if exe_dir.join("user").is_dir() => exe_dir.join("user").join("keys"),
-        "eden" => appdata.join("eden").join("keys"),
+        "eden" | "eden-cli" => eden_dir(&exe_dir, appdata).join("keys"),
         "ryujinx" if exe_dir.join("portable").is_dir() => exe_dir.join("portable").join("system"),
         "ryujinx" => appdata.join("Ryujinx").join("system"),
         _ => return vec![],
@@ -30,14 +40,44 @@ fn copy_if_newer(from: &Path, to: &Path) -> bool {
     std::fs::copy(from, to).is_ok()
 }
 
-/// Installe les clés et fichiers du dossier des BIOS pour l'émulateur [emulator] (identifiant du catalogue).
-pub fn install(emulator: &str, exe: &str) {
+/**
+ * eden-cli : configuration d'eden.exe (qt-config.ini) recopiée dans [target] à chaque lancement
+ * (eden-cli y réécrit ses réglages en quittant : celle d'eden.exe n'est jamais modifiée) ; renvoie
+ * les arguments « -c <copie> » à ajouter, ou rien si Eden n'a pas encore de configuration.
+ */
+fn eden_cli_config(exe: &Path, appdata: &Path, target: &Path) -> Vec<String> {
+    let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    let qt = eden_dir(&exe_dir, appdata).join("config").join("qt-config.ini");
+    if !qt.is_file() {
+        return vec![];
+    }
+    if let Some(dir) = target.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if std::fs::copy(&qt, target).is_err() {
+        return vec![];
+    }
+    vec!["-c".to_string(), target.to_string_lossy().into_owned()]
+}
+
+/**
+ * Prépare le lancement de l'émulateur [emulator] (identifiant du catalogue) : clés et fichiers du
+ * dossier des BIOS installés ; renvoie les arguments de la ligne de commande, complétés si besoin.
+ */
+pub fn prepare(emulator: &str, exe: &str, args: Vec<String>) -> Vec<String> {
     let appdata = PathBuf::from(std::env::var("APPDATA").unwrap_or_default());
     for (from, to) in files_for(emulator, Path::new(exe), &settings::bios_dir(), &appdata) {
         if copy_if_newer(&from, &to) {
             eprintln!("[emulator_files] {} -> {}", paths::file_name(&from), to.display());
         }
     }
+    // eden-cli choisi comme émulateur du catalogue, ou indiqué comme exécutable d'Eden.
+    let cli = emulator == "eden-cli" || (emulator == "eden" && paths::file_name(Path::new(exe)).to_lowercase().starts_with("eden-cli"));
+    if cli && !args.iter().any(|a| a == "-c" || a == "--config") {
+        let target = paths::user_data().join("eden").join("eden-cli-config.ini");
+        return [eden_cli_config(Path::new(exe), &appdata, &target), args].concat();
+    }
+    args
 }
 
 #[cfg(test)]
@@ -56,6 +96,7 @@ mod tests {
         let eden = root.join("Eden").join("eden.exe");
         let files = files_for("eden", &eden, &bios, &appdata);
         assert_eq!(files[0].1, appdata.join("eden").join("keys").join("prod.keys"));
+        assert_eq!(files_for("eden-cli", &eden, &bios, &appdata), files);
         assert!(copy_if_newer(&files[0].0, &files[0].1));
         assert!(!copy_if_newer(&files[0].0, &files[0].1)); // déjà à jour
         assert!(!copy_if_newer(&files[1].0, &files[1].1)); // title.keys absent
@@ -65,6 +106,23 @@ mod tests {
         std::fs::create_dir_all(root.join("Ryujinx").join("portable")).unwrap();
         assert_eq!(files_for("ryujinx", &ryujinx, &bios, &appdata)[0].1, root.join("Ryujinx").join("portable").join("system").join("prod.keys"));
         assert!(files_for("dolphin", &eden, &bios, &appdata).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn eden_cli_avec_la_configuration_d_eden() {
+        let root = std::env::temp_dir().join(format!("romcloud-edencli-{}", std::process::id()));
+        let appdata = root.join("appdata");
+        let target = root.join("romcloud").join("eden-cli-config.ini");
+        // Portable : dossier « user » à côté de l'exécutable.
+        let exe = root.join("Eden").join("eden-cli.exe");
+        assert!(eden_cli_config(&exe, &appdata, &target).is_empty()); // Eden jamais configuré
+        let config = root.join("Eden").join("user").join("config");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(config.join("qt-config.ini"), "[Controls]\nplayer_0_button_a=\"engine:sdl,button:0\"\n").unwrap();
+        let args = eden_cli_config(&exe, &appdata, &target);
+        assert_eq!(args, ["-c".to_string(), target.to_string_lossy().into_owned()]);
+        assert!(std::fs::read_to_string(&target).unwrap().contains("player_0_button_a"));
         let _ = std::fs::remove_dir_all(&root);
     }
 }
