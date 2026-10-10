@@ -14,7 +14,7 @@ const EDEN_VARIANTS: &[&str] = &["clang-pgo", "msvc-standard", "gcc-standard", "
 
 /// Émulateurs dont RomCloud sait trouver et installer la dernière version.
 pub fn supported(id: &str) -> bool {
-    matches!(id, "eden" | "eden-cli")
+    id == "eden"
 }
 
 /// Version d'Eden écrite dans son exécutable (« Eden v0.2.1 » -> « v0.2.1 »).
@@ -91,11 +91,9 @@ fn setting_map(key: &str) -> serde_json::Map<String, Value> {
     settings::load().get(key).and_then(Value::as_object).cloned().unwrap_or_default()
 }
 
-/// Exécutable installé de l'émulateur (chemin choisi ou trouvé) ; pour Eden, l'un ou l'autre des deux.
+/// Exécutable installé d'Eden (eden.exe, sinon eden-cli.exe), dans le dossier enregistré.
 fn installed_exe(id: &str) -> Option<PathBuf> {
-    let paths = setting_map("emulatorPaths");
-    let ids: &[&str] = if id.starts_with("eden") { &["eden", "eden-cli"] } else { &[id][..] };
-    ids.iter().filter_map(|i| paths.get(*i).and_then(Value::as_str)).map(PathBuf::from).find(|p| p.is_file())
+    crate::catalog::exe_in_folder(&launcher::emulator_folder(id)?, &["eden.exe", "eden-cli.exe"])
 }
 
 /// Dossier d'installation par défaut (première installation par RomCloud).
@@ -129,8 +127,7 @@ pub async fn check(id: &str) -> Result<Value> {
             let path = path.clone();
             tokio::task::spawn_blocking(move || {
                 // eden.exe de préférence (version et variante identiques à celles d'eden-cli).
-                let main = path.with_file_name("eden.exe");
-                let data = std::fs::read(if main.is_file() { &main } else { &path }).unwrap_or_default();
+                let data = std::fs::read(&path).unwrap_or_default();
                 (eden_version(&data), eden_variant(&data))
             })
             .await
@@ -208,12 +205,8 @@ pub async fn install(id: &str) -> Result<Value> {
     let mut variants = setting_map("emulatorVariants");
     variants.insert("eden".into(), json!(picked));
     settings::save(json!({ "emulatorVariants": variants }));
-    for (emulator, exe) in [("eden", "eden.exe"), ("eden-cli", "eden-cli.exe")] {
-        let path = dir.join(exe);
-        if path.is_file() {
-            launcher::set_emulator_path(emulator, &path.to_string_lossy())?;
-        }
-    }
+    // Dossier d'Eden enregistré (eden.exe et eden-cli.exe).
+    launcher::set_emulator_path("eden", &dir.to_string_lossy())?;
     eprintln!("[emulator_updates] {name} -> {}", paths::file_name(&dir));
     check(id).await
 }
