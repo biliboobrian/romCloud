@@ -43,11 +43,11 @@ pub static EMULATORS: &[Emulator] = &[
         ["Dolphin", "Dolphin-x64", "Dolphin Emulator"], ["-b", "-e", "{file}"]),
     emu!("cemu", "Cemu", ["wiiu"], "https://cemu.info/", ["Cemu.exe"], ["Cemu"], ["-f", "-g", "{file}"]),
     // Switch : clés (prod.keys) et firmware à installer dans l'émulateur.
-    // eden-cli en premier : lance le jeu sans l'interface d'Eden ; configuration (manettes…) reprise de eden.exe (emulator_files.rs).
-    emu!("eden-cli", "Eden (eden-cli)", ["switch"], "https://eden-emu.dev/downloads/", ["eden-cli.exe"], ["Eden", "eden"], ["-f", "-g", "{file}"]),
+    // Eden : indiqué par son dossier (folder_exes) ; jeux lancés avec eden-cli (sans l'interface,
+    // manettes reprises d'eden.exe : emulator_files.rs), eden.exe pour l'ouvrir seul.
+    emu!("eden", "Eden", ["switch"], "https://eden-emu.dev/downloads/", ["eden-cli.exe", "eden.exe"], ["Eden", "eden"], ["-f", "-g", "{file}"]),
     emu!("ryujinx", "Ryujinx", ["switch"], "https://ryujinx.app/download", ["Ryujinx.exe"], ["Ryujinx", "ryujinx"],
         ["--fullscreen", "{file}"]),
-    emu!("eden", "Eden", ["switch"], "https://eden-emu.dev/downloads/", ["eden.exe"], ["Eden", "eden"], ["-f", "-g", "{file}"]),
     emu!("project64", "Project64", ["n64"], "https://www.pj64-emu.com/", ["Project64.exe"], ["Project64 3.0", "Project64"], ["{file}"]),
     emu!("melonds", "melonDS", ["nds", "ndsi"], "https://melonds.kuribo64.net/downloads.php", ["melonDS.exe"], ["melonDS"], ["{file}"]),
     emu!("azahar", "Azahar", ["3ds"], "https://azahar-emu.org/", ["azahar.exe"], ["Azahar"], ["{file}"]),
@@ -73,6 +73,26 @@ pub static EMULATORS: &[Emulator] = &[
     // Détecte le jeu contenu dans le dossier du fichier.
     emu!("scummvm", "ScummVM", ["scummvm"], "https://www.scummvm.org/downloads/", ["scummvm.exe"], ["ScummVM"], ["-p", "{dir}", "--auto-detect"]),
 ];
+
+/// Émulateur indiqué par son dossier (plusieurs exécutables) : ceux qui lancent un jeu et ceux qui
+/// l'ouvrent seul, par ordre de préférence.
+pub struct FolderExes {
+    pub game: &'static [&'static str],
+    pub open: &'static [&'static str],
+}
+
+pub fn folder_exes(id: &str) -> Option<FolderExes> {
+    match id {
+        "eden" => Some(FolderExes { game: &["eden-cli.exe", "eden.exe"], open: &["eden.exe", "eden-cli.exe"] }),
+        _ => None,
+    }
+}
+
+/// Premier exécutable présent parmi [names], dans le dossier [path] (ou celui du fichier [path]).
+pub fn exe_in_folder(path: &Path, names: &[&str]) -> Option<PathBuf> {
+    let dir = if path.is_dir() { path.to_path_buf() } else { path.parent()?.to_path_buf() };
+    names.iter().map(|n| dir.join(n)).find(|p| p.is_file())
+}
 
 pub fn by_id(id: &str) -> Option<&'static Emulator> {
     EMULATORS.iter().find(|e| e.id == id)
@@ -314,5 +334,22 @@ mod tests {
         assert_eq!(found.get("pcsx2"), Some(&pcsx2.to_string_lossy().into_owned()));
         assert_eq!(found.get("supermodel").map(|p| p.to_lowercase()), Some(supermodel.to_string_lossy().to_lowercase()));
         assert_eq!(found.get("xemu"), None);
+    }
+
+    #[test]
+    fn eden_indique_par_son_dossier() {
+        let dir = std::env::temp_dir().join(format!("romcloud-edenfolder-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exes = folder_exes("eden").unwrap();
+        assert!(exe_in_folder(&dir, exes.game).is_none());
+        std::fs::write(dir.join("eden.exe"), "").unwrap();
+        assert_eq!(exe_in_folder(&dir, exes.game), Some(dir.join("eden.exe"))); // sans eden-cli : eden.exe
+        std::fs::write(dir.join("eden-cli.exe"), "").unwrap();
+        assert_eq!(exe_in_folder(&dir, exes.game), Some(dir.join("eden-cli.exe"))); // jeux : eden-cli
+        assert_eq!(exe_in_folder(&dir, exes.open), Some(dir.join("eden.exe"))); // ouvrir : eden.exe
+        // Ancien réglage : chemin d'un des exécutables.
+        assert_eq!(exe_in_folder(&dir.join("eden-cli.exe"), exes.open), Some(dir.join("eden.exe")));
+        assert!(folder_exes("dolphin").is_none() && by_id("eden-cli").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

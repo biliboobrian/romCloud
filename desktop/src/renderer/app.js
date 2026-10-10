@@ -1240,7 +1240,7 @@
         <p class="muted">${esc(t('emulator.defaultLocation', { path: emu.defaultLocation }))}</p>`,
       buttons: [
         { label: t('app.cancel'), kind: 'ghost', left: true },
-        { label: t('emulator.browse'), onClick: () => locateEmulator(emu) },
+        { label: t(emu.folder ? 'emulator.browseFolder' : 'emulator.browse'), onClick: () => locateEmulator(emu) },
         { label: t('emulator.download', { name: emu.name }), kind: 'primary', onClick: () => rc.shell.openExternal(emu.url) },
       ],
     });
@@ -1248,9 +1248,15 @@
 
   /** Choix manuel de l'exécutable d'un émulateur. */
   async function locateEmulator(emu) {
-    const file = await call(rc.dialog.pickFile, [{ name: emu.name, extensions: ['exe'] }]);
+    // Émulateur indiqué par son dossier (Eden : eden.exe et eden-cli.exe) ; sinon son exécutable.
+    const file = emu.folder ? await call(rc.dialog.pickFolder) : await call(rc.dialog.pickFile, [{ name: emu.name, extensions: ['exe'] }]);
     if (!file) return false;
-    await call(rc.emulators.setPath, emu.id, file);
+    try {
+      await call(rc.emulators.setPath, emu.id, file);
+    } catch (err) {
+      toast(err.message, { type: 'error' });
+      return false;
+    }
     toast(t('emulator.located', { name: emu.name }));
     if (S.route.name === 'game') renderGame();
     else if (S.route.name === 'settings') renderSettings();
@@ -1689,7 +1695,7 @@
       ${compact ? '' : status}
       <div class="emu-actions">
         ${emu.path ? `<button class="btn" data-emu-launch>${icon('open', 18)} ${esc(t('emulator.launch', { name: emu.name }))}</button>` : `<button class="btn primary" data-emu-download>${icon('cloud', 18)} ${esc(t('emulator.download', { name: emu.name }))}</button>`}
-        <button class="btn" data-emu-browse>${icon('folder', 18)} ${esc(t('emulator.browse'))}</button>
+        <button class="btn" data-emu-browse>${icon('folder', 18)} ${esc(t(emu.folder ? 'emulator.browseFolder' : 'emulator.browse'))}</button>
         ${emu.path ? `<button class="btn ghost" data-emu-download>${esc(t('emulator.website'))}</button>` : `<button class="btn ghost" data-emu-detect>${icon('search', 18)} ${esc(t('emulator.detect'))}</button>`}
         ${emu.updatable ? `<button class="btn ghost" data-emu-check>${icon('refresh', 18)} ${esc(t('emulator.checkUpdate'))}</button>` : ''}
       </div>

@@ -21,9 +21,37 @@ fn setting_map(key: &str) -> serde_json::Map<String, Value> {
     settings::load().get(key).and_then(Value::as_object).cloned().unwrap_or_default()
 }
 
-/// Chemin de l'exécutable : choisi par l'utilisateur ou trouvé par la dernière recherche.
+/// Emplacement enregistré : exécutable, ou dossier (émulateur indiqué par son dossier, voir
+/// catalog::folder_exes) ; un ancien chemin d'« eden-cli » (entrée séparée autrefois) vaut pour Eden.
+fn stored_location(id: &str) -> Option<String> {
+    let map = setting_map("emulatorPaths");
+    let get = |key: &str| map.get(key).and_then(Value::as_str).filter(|f| !f.is_empty() && Path::new(f).exists()).map(String::from);
+    get(id).or_else(|| if id == "eden" { get("eden-cli") } else { None })
+}
+
+/// Exécutable qui lance les jeux : choisi par l'utilisateur ou trouvé par la dernière recherche.
 fn emulator_path(id: &str) -> Option<String> {
-    setting_map("emulatorPaths").get(id).and_then(Value::as_str).filter(|f| !f.is_empty() && Path::new(f).exists()).map(String::from)
+    let stored = stored_location(id)?;
+    match catalog::folder_exes(id) {
+        Some(exes) => catalog::exe_in_folder(Path::new(&stored), exes.game).map(|p| p.to_string_lossy().into_owned()),
+        None => Some(stored),
+    }
+}
+
+/// Exécutable qui ouvre l'émulateur seul (eden.exe plutôt qu'eden-cli).
+fn emulator_open_path(id: &str) -> Option<String> {
+    let stored = stored_location(id)?;
+    match catalog::folder_exes(id) {
+        Some(exes) => catalog::exe_in_folder(Path::new(&stored), exes.open).map(|p| p.to_string_lossy().into_owned()),
+        None => Some(stored),
+    }
+}
+
+/// Dossier de l'émulateur (installé), pour les émulateurs indiqués par leur dossier.
+pub fn emulator_folder(id: &str) -> Option<PathBuf> {
+    catalog::folder_exes(id)?;
+    let stored = PathBuf::from(stored_location(id)?);
+    if stored.is_dir() { Some(stored) } else { stored.parent().map(Path::to_path_buf) }
 }
 
 /// Arguments du lancement : ceux saisis par l'utilisateur, sinon ceux du catalogue.
@@ -42,7 +70,9 @@ pub fn detect_emulators() -> Value {
     for (id, file) in found {
         let keep = paths_map.get(&id).and_then(Value::as_str).map(|p| !p.is_empty() && Path::new(p).exists()).unwrap_or(false);
         if !keep {
-            paths_map.insert(id, Value::String(file));
+            // Émulateur indiqué par son dossier : celui de l'exécutable trouvé.
+            let location = if catalog::folder_exes(&id).is_some() { paths::dirname(&file) } else { file };
+            paths_map.insert(id, Value::String(location));
         }
     }
     settings::save(json!({ "emulatorPaths": paths_map, "emulatorsDetectedAt": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true) }));
@@ -65,12 +95,15 @@ pub fn list_emulators() -> Value {
             .map(|emu| {
                 let exe = emulator_path(emu.id);
                 let args = emulator_args(emu);
+                let folder = emulator_folder(emu.id).map(|d| d.to_string_lossy().into_owned());
                 json!({
                     "id": emu.id,
                     "name": emu.name,
                     "systems": emu.systems,
                     "url": emu.url,
-                    "path": exe,
+                    // Dossier pour un émulateur indiqué par son dossier (Eden), sinon l'exécutable.
+                    "path": if catalog::folder_exes(emu.id).is_some() { exe.as_ref().and(folder) } else { exe.clone() },
+                    "folder": catalog::folder_exes(emu.id).is_some(),
                     // RomCloud sait vérifier et installer sa dernière version (emulator_updates.rs).
                     "updatable": crate::emulator_updates::supported(emu.id),
                     "defaultLocation": catalog::default_location(emu).to_string_lossy(),
@@ -86,11 +119,23 @@ pub fn list_emulators() -> Value {
 }
 
 pub fn set_emulator_path(id: &str, file: &str) -> Result<Value> {
-    if catalog::by_id(id).is_none() {
+    let Some(emu) = catalog::by_id(id) else {
         return Err(AppError::new("errors.unknownEmulator", json!({ "id": id })));
-    }
+    };
+    // Émulateur indiqué par son dossier : il doit contenir l'un de ses exécutables.
+    let location = match catalog::folder_exes(id) {
+        Some(exes) => {
+            let found = catalog::exe_in_folder(Path::new(file), exes.game)
+                .ok_or_else(|| AppError::new("errors.emulatorFolderInvalid", json!({ "name": emu.name, "files": exes.game.join(", ") })))?;
+            found.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_else(|| file.into())
+        }
+        None => file.into(),
+    };
     let mut map = setting_map("emulatorPaths");
-    map.insert(id.into(), Value::String(file.into()));
+    if id == "eden" {
+        map.remove("eden-cli");
+    }
+    map.insert(id.into(), Value::String(location));
     settings::save(json!({ "emulatorPaths": map }));
     Ok(list_emulators())
 }
@@ -128,7 +173,7 @@ fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()>
 /// Ouvre l'émulateur seul (sans jeu).
 pub fn launch_emulator(id: &str) -> Result<()> {
     let emu = catalog::by_id(id).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": id })))?;
-    let exe = emulator_path(id).ok_or_else(|| AppError::new("errors.emulatorMissing", json!({ "name": emu.name, "id": id })))?;
+    let exe = emulator_open_path(id).ok_or_else(|| AppError::new("errors.emulatorMissing", json!({ "name": emu.name, "id": id })))?;
     let args = crate::emulator_files::prepare(emu.id, &exe, Vec::new());
     spawn_detached(&exe, &args, None)
 }

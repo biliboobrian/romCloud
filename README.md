@@ -134,9 +134,8 @@ Utilisation à la télécommande :
     | Vita3K | PS Vita | émulateur ouvert seul (jeux à installer dans Vita3K) |
     | Dolphin | GameCube, Wii | `-b -e {file}` |
     | Cemu | Wii U | `-f -g {file}` |
-    | Eden (eden-cli) | Switch | `-f -g {file}`, avec la configuration d’`eden.exe` (manettes, graphismes : `qt-config.ini` recopié et passé avec `-c`) |
+    | Eden | Switch | indiqué par son **dossier** (`eden.exe` et `eden-cli.exe`) : jeux lancés avec `eden-cli -f -g {file}`, manettes d’`eden.exe` recopiées (section `[Controls]` de `qt-config.ini` dans `sdl2-config.ini`, original gardé en `.romcloud.bak`) ; *Ouvrir Eden* lance `eden.exe` |
     | Ryujinx | Switch | `--fullscreen {file}` |
-    | Eden | Switch | `-f -g {file}` |
     | Project64 | Nintendo 64 | `{file}` |
     | melonDS | DS | `{file}` |
     | Azahar | 3DS | `{file}` |
@@ -153,7 +152,7 @@ Utilisation à la télécommande :
     | Stella | Atari 2600 | `{file}` |
     | ScummVM | ScummVM | `-p {dir} --auto-detect` |
 
-    RomCloud cherche les exécutables dans les dossiers habituels (`Program Files`, `%LOCALAPPDATA%\Programs`, Bureau, Téléchargements, `scoop\apps`, `C:\Emulators`, `C:\Emulateurs`, `D:\Games`…) ; sinon, *Indiquer l’emplacement…*. Si l’émulateur est absent au lancement, RomCloud propose de le télécharger ou de le localiser. Quand un lancement direct n’est pas possible, RomCloud ouvre l’émulateur seul et indique le fichier du jeu à charger (copie du chemin, affichage dans l’Explorateur). Le bouton *Ouvrir <émulateur>* lance l’émulateur sans jeu (configuration, manettes…). **Eden** (et eden-cli) : *Vérifier les mises à jour* compare la version installée (lue dans `eden.exe`) à la dernière publiée sur [git.eden-emu.dev](https://git.eden-emu.dev/eden-emu/eden/releases), puis *Mettre à jour* télécharge l’archive Windows de la même variante (MSVC, clang PGO ou GCC, reconnue dans l’exécutable ; PGO, recommandée par Eden, pour une première installation dans `%LOCALAPPDATA%\Programs\Eden`) et la décompresse à la place de l’ancienne (configuration et jeux gardés ; Eden doit être fermé). La liste complète est dans *Paramètres → Émulateurs* ;
+    RomCloud cherche les exécutables dans les dossiers habituels (`Program Files`, `%LOCALAPPDATA%\Programs`, Bureau, Téléchargements, `scoop\apps`, `C:\Emulators`, `C:\Emulateurs`, `D:\Games`…) ; sinon, *Indiquer l’emplacement…*. Si l’émulateur est absent au lancement, RomCloud propose de le télécharger ou de le localiser. Quand un lancement direct n’est pas possible, RomCloud ouvre l’émulateur seul et indique le fichier du jeu à charger (copie du chemin, affichage dans l’Explorateur). Le bouton *Ouvrir <émulateur>* lance l’émulateur sans jeu (configuration, manettes…). **Eden** : *Vérifier les mises à jour* compare la version installée (lue dans `eden.exe`) à la dernière publiée sur [git.eden-emu.dev](https://git.eden-emu.dev/eden-emu/eden/releases), puis *Mettre à jour* télécharge l’archive Windows de la même variante (MSVC, clang PGO ou GCC, reconnue dans l’exécutable ; PGO, recommandée par Eden, pour une première installation dans `%LOCALAPPDATA%\Programs\Eden`) et la décompresse à la place de l’ancienne (configuration et jeux gardés ; Eden doit être fermé). La liste complète est dans *Paramètres → Émulateurs* ;
   - **commande personnalisée** par système, `{file}` étant le chemin du jeu, ex. `"C:\Emulateurs\Dolphin\Dolphin.exe" -b -e "{file}"` ;
   - **programme Windows par défaut** associé au type de fichier.
 
