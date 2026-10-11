@@ -62,7 +62,9 @@ test('fiche LaunchBox : textes, joueurs, note, titres alternatifs, coop, ESRB, l
   assert.equal(meta.players, '1-2');
   assert.equal(meta.rating, 4.6);
   // Pas de jaquette ni de capture : l'écran-titre sert aux deux.
-  assert.equal(meta.media.boxart, 'https://images.launchbox-app.com/t.png');
+  // Pas de jaquette : l'écran-titre n'est qu'un dernier recours (une autre source peut en avoir une).
+  assert.equal(meta.media.boxart, null);
+  assert.equal(meta.media.coverFallback, 'https://images.launchbox-app.com/t.png');
   assert.equal(meta.media.screenshot, 'https://images.launchbox-app.com/t.png');
   assert.deepEqual(meta.details.otherTitles, [{ region: null, text: 'Bare Knuckle II' }]);
   assert.equal(meta.details.cooperative, true);

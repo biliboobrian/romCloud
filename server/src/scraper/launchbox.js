@@ -360,7 +360,8 @@ export function launchboxMeta(id, data, names, images, regions) {
     rating: Number.isFinite(rating) && rating > 0 && Number(data.CommunityRatingCount) >= 3 ? Math.round(rating * 10) / 10 : null,
     ratingVotes: Number(data.CommunityRatingCount) || null,
     media: {
-      boxart: pickImage(images, 'Box - Front', regions) || pickImage(images, 'Screenshot - Game Title', regions),
+      boxart: pickImage(images, 'Box - Front', regions),
+      coverFallback: pickImage(images, 'Screenshot - Game Title', regions),
       screenshot: pickImage(images, 'Screenshot - Gameplay', regions) || pickImage(images, 'Screenshot - Game Title', regions),
       screenshots: ['Screenshot - Gameplay', 'Screenshot - Game Title', 'Screenshot - Game Select', 'Screenshot - High Scores']
         .flatMap((type) => pickImages(images, type, regions))

@@ -329,7 +329,10 @@ export async function scrapeLibretro({ system, fileName, crc32 }) {
   return {
     title: titleFromLibretroName((box ?? snap ?? title).matched),
     media: {
-      boxart: box?.url ?? title?.url ?? snap?.url,
+      // Jaquette seulement si la base en a une ; sinon écran-titre ou capture, retenus en dernier
+      // recours (une autre source peut avoir la vraie jaquette).
+      boxart: box?.url ?? null,
+      coverFallback: title?.url ?? snap?.url ?? null,
       screenshot: snap?.url ?? title?.url,
       screenshots: [snap?.url, title?.url].filter(Boolean),
     },

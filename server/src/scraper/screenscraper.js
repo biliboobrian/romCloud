@@ -131,7 +131,9 @@ function parseGame(jeu) {
     // Note sur 20, convertie en étoiles avec le barème de ScreenScraper (voir rating.js).
     ratingScore: Number.isFinite(note) && note > 0 ? note : null,
     media: {
-      boxart: pickMedia(medias, ['box-2D', 'box-3D', 'wheel'], regions),
+      boxart: pickMedia(medias, ['box-2D', 'box-3D'], regions),
+      // Logo du jeu : jaquette en dernier recours.
+      coverFallback: pickMedia(medias, ['wheel'], regions),
       screenshot: pickMedia(medias, ['ss', 'sstitle'], regions),
       screenshots: [pickMedia(medias, ['ss'], regions), pickMedia(medias, ['sstitle'], regions)].filter(Boolean),
     },
