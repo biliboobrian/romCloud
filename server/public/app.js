@@ -199,6 +199,9 @@ async function showSystem() {
   if (s.biosCount) bits.push(t('system.meta.bios', { n: s.biosCount }));
   if (s.platforms.length) bits.push(t('system.meta.platforms', { list: s.platforms.map((p) => t(`platform.${p}`)).join(', ') }));
   $('#sysMeta').textContent = bits.join(' · ');
+  const license = licenseKindOf(s);
+  $('#licenseSysBtn').classList.toggle('hidden', !license);
+  if (license) $('#licenseSysBtn').textContent = t(`licenseImport.open.${license}`);
   await loadGames();
 }
 
@@ -634,6 +637,9 @@ function renderGameParts(game) {
 }
 
 const isVitaSystem = (s) => Boolean(s) && (s.id === 'vita' || String(s.shortname).toLowerCase() === 'vita');
+const isPs3System = (s) => Boolean(s) && (s.id === 'ps3' || String(s.shortname).toLowerCase() === 'ps3');
+/** Licence des jeux .pkg du système : « zrif » (PS Vita), « rap » (PS3) ; null pour les autres. */
+const licenseKindOf = (s) => (isVitaSystem(s) ? 'zrif' : isPs3System(s) ? 'rap' : null);
 
 function openGame(game) {
   state.editingGame = game;
@@ -653,6 +659,11 @@ function fillGameDialog(game, bust = '') {
   $('#gameZrifField').classList.toggle('hidden', !vita);
   form.elements.zrif.disabled = !vita;
   form.elements.zrif.value = game.zrif ?? '';
+  // PS3 : licence RAP du jeu en .pkg, écrite dans RPCS3 avant le lancement.
+  const ps3 = isPs3System(state.current);
+  $('#gameRapField').classList.toggle('hidden', !ps3);
+  form.elements.rap.disabled = !ps3;
+  form.elements.rap.value = game.rap ?? '';
   const statusText = {
     none: t('game.never'),
     ok: t('game.scrapedVia', { source: game.scrapeSource }),
@@ -1045,6 +1056,60 @@ function renderBiosImport(report) {
 }
 
 // ---------------------------------------------------------------------------
+// Licences des jeux en bloc (zRIF : PS Vita, RAP : PS3) : liste TSV (NoPayStation) rapprochée des jeux du système
+// ---------------------------------------------------------------------------
+
+function openLicenseImport() {
+  const kind = licenseKindOf(state.current);
+  $('#licenseImportTitle').textContent = t(`licenseImport.title.${kind}`);
+  $('#licenseImportIntro').textContent = t(`licenseImport.intro.${kind}`);
+  $('#licenseImportReport').innerHTML = '';
+  $('#licenseImportDialog').showModal();
+}
+
+async function importLicenseList(file) {
+  const kind = licenseKindOf(state.current);
+  const replace = $('#licenseImportReplace').checked ? '?replace=1' : '';
+  const box = $('#licenseImportReport');
+  box.innerHTML = `<p class="muted">${escapeHtml(t('licenseImport.reading'))}</p>`;
+  try {
+    const report = await api(`/systems/${encodeURIComponent(state.current.id)}/licenses/${kind}/import${replace}`, {
+      method: 'POST',
+      body: file,
+      headers: { 'Content-Type': 'text/tab-separated-values; charset=utf-8' },
+    });
+    renderLicenseImport(report);
+    toast(t('licenseImport.done', { n: report.updated.length }));
+    await loadGames();
+  } catch (err) {
+    box.innerHTML = '';
+    toast(err.message, 'error');
+  }
+}
+
+/** Rapport : licences enregistrées, déjà présentes, gardées (autre licence saisie), jeux absents de la liste. */
+function renderLicenseImport(report) {
+  const box = $('#licenseImportReport');
+  box.innerHTML = `<p class="muted">${escapeHtml(t('licenseImport.entries', { n: report.entries }))}</p>`;
+  const sections = [
+    ['updated', 'ok'],
+    ['unchanged', 'muted'],
+    ['kept', 'mismatch'],
+    ['notFound', 'muted'],
+  ];
+  for (const [kind, tag] of sections) {
+    const list = report[kind] || [];
+    if (!list.length) continue;
+    const details = document.createElement('details');
+    details.className = 'dup-group';
+    details.open = kind === 'updated' || kind === 'kept';
+    details.innerHTML = `<summary class="dup-group-head"><span>${escapeHtml(t(`licenseImport.${kind}`, { n: list.length }))}</span><span class="tag ${tag}">${list.length}</span></summary>
+      ${list.map((g) => `<div class="dup-row bios-row"><span class="name">${escapeHtml(g.title || g.fileName)}</span> <span class="muted">${escapeHtml(g.fileName)}</span></div>`).join('')}`;
+    box.append(details);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // APK des émulateurs Android
 // ---------------------------------------------------------------------------
 
@@ -1301,6 +1366,12 @@ function bindEvents() {
   $('#dupSysBtn').onclick = openDuplicates;
   $('#dupDeleteBtn').onclick = deleteDuplicates;
   $('#biosSysBtn').onclick = openBios;
+  $('#licenseSysBtn').onclick = openLicenseImport;
+  $('#licenseImportFile').onchange = (e) => {
+    const file = e.target.files[0];
+    if (file) importLicenseList(file);
+    e.target.value = '';
+  };
   $('#apksBtn').onclick = openApks;
   $('#apksInput').onchange = (e) => {
     uploadApks([...e.target.files]);

@@ -44,7 +44,7 @@ export function titleFromFileName(fileName) {
 
 /** Partie d'un jeu (disque, mise à jour, DLC) telle que l'envoie l'API. */
 function rowToPart(row) {
-  return { id: row.id, fileName: row.file_name, size: row.size, kind: row.part_kind, index: row.part_index };
+  return { id: row.id, fileName: row.file_name, size: row.size, kind: row.part_kind, index: row.part_index, ...(row.rap ? { rap: row.rap } : {}) };
 }
 
 /** Parties des jeux [parentIds], par jeu, dans l'ordre (disques, mises à jour, DLC). */
@@ -87,6 +87,7 @@ export function rowToGame(row, parts = []) {
     players: row.players,
     rating: row.rating,
     zrif: row.zrif ?? null,
+    rap: row.rap ?? null,
     // Informations détaillées : nom de fichier (régions, langues, révision), puis scraping.
     details: mergeDetails(parseStoredDetails(row.details), fileNameDetails(row.file_name)),
     hasBoxart: Boolean(row.boxart),
@@ -174,6 +175,7 @@ const EDITABLE = {
   players: 'players',
   rating: 'rating',
   zrif: 'zrif',
+  rap: 'rap',
 };
 
 /** Licence zRIF (base64, « KO5ifR1dQ+eHBl… ») sans espaces ni retours à la ligne ; null si vide. */
@@ -182,6 +184,14 @@ export function normalizeZrif(input) {
   if (!zrif) return null;
   if (!/^[A-Za-z0-9+/]+=*$/.test(zrif) || zrif.length < 16) throw new HttpError(400, 'errors.invalidZrif');
   return zrif;
+}
+
+/** Licence RAP d'un jeu PS3 (16 octets en hexadécimal, « 1763B247… ») en majuscules ; null si vide. */
+export function normalizeRap(input) {
+  const rap = String(input ?? '').replace(/\s+/g, '').toUpperCase();
+  if (!rap) return null;
+  if (!/^[0-9A-F]{32}$/.test(rap)) throw new HttpError(400, 'errors.invalidRap');
+  return rap;
 }
 
 export function updateGame(id, input) {
@@ -193,6 +203,7 @@ export function updateGame(id, input) {
     let value = input[key] === '' ? null : input[key];
     if (key === 'rating' && value !== null) value = stars(value);
     if (key === 'zrif') value = normalizeZrif(value);
+    if (key === 'rap') value = normalizeRap(value);
     if (key === 'title' && !value) throw new HttpError(400, 'errors.titleRequired');
     sets.push(`${column} = ?`);
     values.push(value);

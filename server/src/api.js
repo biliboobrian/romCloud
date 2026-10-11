@@ -31,6 +31,7 @@ import {
   updateGame,
 } from './library.js';
 import { SCRAPE_SOURCES, saveCustomMedia, scrapeGame } from './scraper/index.js';
+import { importLicenseList } from './licenses.js';
 import {
   createSystem,
   daijishouPlayers,
@@ -161,6 +162,17 @@ api.get('/systems/:id/duplicates', h(async (req, res) => res.json(await systemDu
 api.post('/systems/:id/duplicates/delete', (req, res) => {
   res.json(deleteGamesOfSystem(req.params.id, (req.body && req.body.ids) || []));
 });
+
+// Licences des jeux en bloc (« zrif » : PS Vita, « rap » : PS3) : liste TSV (format NoPayStation)
+// envoyée en texte brut ; « ?replace=1 » remplace aussi les licences déjà saisies.
+api.post(
+  '/systems/:id/licenses/:kind/import',
+  express.text({ type: () => true, limit: '64mb' }),
+  (req, res) => {
+    const text = typeof req.body === 'string' ? req.body : '';
+    res.json(importLicenseList(req.params.id, req.params.kind, text, { replace: req.query.replace === '1' }));
+  },
+);
 
 // Suppression de plusieurs jeux d'un système ({ ids }) : fichiers, parties et images compris.
 api.post('/systems/:id/games/delete', (req, res) => {
