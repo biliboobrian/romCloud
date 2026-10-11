@@ -14,7 +14,7 @@
 
 enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext };
 
-enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, Players, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
+enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, Players, FilterSettings, FilterParam, FilterDefaults, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
 
 /** État affiché par le menu (fourni par la boucle principale). */
 struct MenuState {
@@ -28,6 +28,13 @@ struct MenuState {
   // ils ne changeraient que cet appareil), ou proposée.
   bool together = false;
   bool netplay = false;
+  bool filterSettings = false;  // le filtre choisi a des réglages
+};
+
+/** Réglage du filtre affiché dans l'écran « Réglages du filtre » (valeur montrée en pourcentage). */
+struct FilterRow {
+  std::string label;
+  float value, def, min, max, step;
 };
 
 class Menu {
@@ -61,12 +68,24 @@ class Menu {
   MenuAction handle(Nav nav, const MenuState& state);
   void render(Canvas& canvas, const MenuState& state) const;
 
+  /**
+   * Écran « Réglages du filtre » ([filter] : son nom), dessiné en bas pour garder le jeu visible :
+   * gauche / droite changent la valeur choisie (FilterParam), « Valeurs par défaut » les rétablit
+   * toutes (FilterDefaults).
+   */
+  void openFilterSettings(std::string filter, std::vector<FilterRow> rows);
+  const std::vector<FilterRow>& filterRows() const { return filterRows_; }
+  /** Réglage changé par la dernière action FilterParam. */
+  int filterRowChanged() const { return filterChanged_; }
+  /** Écran des réglages du filtre affiché (surimpression réduite, jeu visible). */
+  bool inFilterSettings() const { return open_ && screen_ == Screen::FilterSettings; }
+
   /** Texte traduit (menu et messages du moteur). */
   std::string tr(const char* key) const;
 
  private:
-  enum class Screen { Main, Options, Keys, States };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, Aspect, Fullscreen, LeaveNetplay, SaveQuit, Quit };
+  enum class Screen { Main, Options, Keys, States, FilterSettings };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, FilterSettings, Aspect, Fullscreen, LeaveNetplay, SaveQuit, Quit };
 
   std::vector<Item> items(const MenuState& state) const;
   int itemCount(const MenuState& state) const;
@@ -75,6 +94,8 @@ class Menu {
   void renderOptions(Canvas& canvas) const;
   void renderKeys(Canvas& canvas) const;
   void renderStates(Canvas& canvas) const;
+  void renderFilterSettings(Canvas& canvas) const;
+  MenuAction handleFilterSettings(Nav nav);
   MenuAction handleKeys(Nav nav);
   std::string keyName(SDL_Scancode code) const;
   std::string buttonLabel(unsigned id) const;
@@ -90,6 +111,10 @@ class Menu {
   int keySelected_ = 0;  // 0 : « Touches par défaut », puis keyRows_
   bool waitingKey_ = false;
   std::string keyMessage_;  // touche refusée
+  std::string filterName_;
+  std::vector<FilterRow> filterRows_;
+  int filterSelected_ = 0;  // réglages, puis « Valeurs par défaut »
+  int filterChanged_ = -1;
   std::vector<std::string> stateRows_;
   int stateSelected_ = 0;
   mutable int stateScroll_ = 0;

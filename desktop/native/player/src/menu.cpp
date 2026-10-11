@@ -1,5 +1,7 @@
 #include "menu.h"
 
+#include <cmath>
+
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -71,6 +73,15 @@ static const struct {
     {"keys", "Touches du clavier", "Keyboard keys"},
     {"pad_config", "Configurer la manette", "Set up controller"},
     {"players", "Joueurs des manettes", "Controller players"},
+    {"filter_settings", "Réglages du filtre", "Filter settings"},
+    {"fp_softness", "Largeur de la transition", "Transition width"},
+    {"fp_scanlines", "Lignes de balayage", "Scanlines"},
+    {"fp_mask", "Masque RGB", "RGB mask"},
+    {"fp_curvature", "Courbure de l'écran", "Screen curvature"},
+    {"fp_grid", "Grille", "Grid"},
+    {"fp_sharpness", "Netteté", "Sharpness"},
+    {"fp_defaults", "Valeurs par défaut", "Default values"},
+    {"fp_hint", "Gauche / droite : régler   Échap : retour", "Left / right: adjust   Esc: back"},
     {"players_title", "Joueurs des manettes", "Controller players"},
     {"players_press", "Appuyez sur un bouton de la manette du joueur", "Press a button on the controller of player"},
     {"players_none", "Aucune manette branchée.", "No controller connected."},
@@ -207,7 +218,9 @@ std::vector<Menu::Item> Menu::items(const MenuState& state) const {
   if (!state.together) list.insert(list.end(), {Item::LoadState, Item::Reset, Item::Options});
   list.insert(list.end(), {Item::Keys, Item::Pad, Item::Players});
   if (state.diskCount > 1 && !state.together) list.push_back(Item::Disk);
-  list.insert(list.end(), {Item::Filter, Item::Aspect, Item::Fullscreen});
+  list.push_back(Item::Filter);
+  if (state.filterSettings) list.push_back(Item::FilterSettings);
+  list.insert(list.end(), {Item::Aspect, Item::Fullscreen});
   if (state.netplay) list.push_back(Item::LeaveNetplay);
   list.insert(list.end(), {Item::SaveQuit, Item::Quit});
   return list;
@@ -229,6 +242,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::Players: return tr("players");
     case Item::Disk:
       return tr("disk") + " : " + std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
+    case Item::FilterSettings: return tr("filter_settings");
     case Item::Filter: {
       static const char* names[] = {"filter_pixels", "filter_sharp", "filter_soft", "filter_smooth", "filter_epx",
                                     "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr"};
@@ -246,7 +260,75 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
   return {};
 }
 
+void Menu::openFilterSettings(std::string filter, std::vector<FilterRow> rows) {
+  screen_ = Screen::FilterSettings;
+  filterName_ = std::move(filter);
+  filterRows_ = std::move(rows);
+  filterSelected_ = 0;
+  filterChanged_ = -1;
+}
+
+MenuAction Menu::handleFilterSettings(Nav nav) {
+  const int count = (int)filterRows_.size() + 1;  // + « Valeurs par défaut »
+  switch (nav) {
+    case Nav::Up: filterSelected_ = (filterSelected_ + count - 1) % count; break;
+    case Nav::Down: filterSelected_ = (filterSelected_ + 1) % count; break;
+    case Nav::Left:
+    case Nav::Right:
+    case Nav::Confirm: {
+      if (filterSelected_ == count - 1) {
+        if (nav != Nav::Confirm) break;
+        for (auto& row : filterRows_) row.value = row.def;
+        return MenuAction::FilterDefaults;
+      }
+      if (nav == Nav::Confirm) break;
+      FilterRow& row = filterRows_[(size_t)filterSelected_];
+      float next = row.value + (nav == Nav::Left ? -row.step : row.step);
+      next = std::round(next / row.step) * row.step;  // pas exacts malgré les arrondis
+      next = std::min(row.max, std::max(row.min, next));
+      if (next == row.value) break;
+      row.value = next;
+      filterChanged_ = filterSelected_;
+      return MenuAction::FilterParam;
+    }
+    case Nav::Back: screen_ = Screen::Main; break;
+    default: break;
+  }
+  return MenuAction::None;
+}
+
+void Menu::renderFilterSettings(Canvas& c) const {
+  // Panneau en bas : le jeu reste visible au-dessus pour juger de l'effet.
+  const int rowHeight = 22, count = (int)filterRows_.size() + 1;
+  const int height = 52 + count * rowHeight + 20;
+  const int top = c.height() - height;
+  c.fill(0, top, c.width(), height, rgba(8, 9, 14, 215));
+  int y = top + 14;
+  c.text(24, y, Canvas::fit(tr("filter_settings") + " — " + filterName_, 2, c.width() - 48), 2, kText);
+  y += 34;
+  const int barWidth = std::min(220, c.width() / 4), barX = c.width() - 24 - barWidth - 60;
+  for (int i = 0; i < count; i++) {
+    const bool sel = i == filterSelected_;
+    c.fill(16, y - 5, c.width() - 32, 18, sel ? kSelection : rgba(255, 255, 255, 18));
+    if (i == count - 1) {
+      c.text(24, y, tr("fp_defaults"), 1, sel ? rgba(255, 255, 255) : kText);
+    } else {
+      const FilterRow& row = filterRows_[(size_t)i];
+      c.text(24, y, Canvas::fit(row.label, 1, barX - 40), 1, sel ? rgba(255, 255, 255) : kText);
+      // Barre de la valeur entre ses bornes, puis la valeur en pourcentage.
+      const float t = row.max > row.min ? (row.value - row.min) / (row.max - row.min) : 0.0f;
+      c.fill(barX, y + 2, barWidth, 4, rgba(255, 255, 255, 50));
+      c.fill(barX, y + 2, (int)(barWidth * t), 4, kText);
+      c.text(barX + barWidth + 12, y, std::to_string((int)std::lround(row.value * 100)) + " %", 1, sel ? rgba(255, 255, 255) : kText);
+    }
+    y += rowHeight;
+  }
+  std::string hint = tr("fp_hint");
+  c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 14, hint, 1, kMuted);
+}
+
 MenuAction Menu::handle(Nav nav, const MenuState& state) {
+  if (screen_ == Screen::FilterSettings) return handleFilterSettings(nav);
   if (screen_ == Screen::Keys) return handleKeys(nav);
   if (screen_ == Screen::States) {
     const int count = (int)stateRows_.size();
@@ -329,6 +411,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
         case Item::Players: return MenuAction::Players;
         case Item::Disk: return MenuAction::DiskNext;
         case Item::Filter: return MenuAction::NextFilter;
+        case Item::FilterSettings: return MenuAction::FilterSettings;
         case Item::Aspect: return MenuAction::NextAspect;
         case Item::Fullscreen: return MenuAction::ToggleFullscreen;
         case Item::LeaveNetplay: return MenuAction::LeaveNetplay;
@@ -340,6 +423,10 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
 }
 
 void Menu::render(Canvas& c, const MenuState& state) const {
+  if (screen_ == Screen::FilterSettings) {
+    renderFilterSettings(c);
+    return;
+  }
   c.fill(0, 0, c.width(), c.height(), rgba(8, 9, 14, 200));
   if (screen_ == Screen::Options) {
     renderOptions(c);

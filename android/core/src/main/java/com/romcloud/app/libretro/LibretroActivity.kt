@@ -248,6 +248,10 @@ class LibretroActivity : ComponentActivity() {
     /** Filtre d'image du système (lissage), changé depuis le menu ; [filterPicker] : liste affichée. */
     private var videoFilter by mutableStateOf(VideoFilter.DEFAULT)
     private var filterPicker by mutableStateOf(false)
+    /** Écran « Réglages du filtre » affiché (netteté des lissages). */
+    private var filterSettings by mutableStateOf(false)
+    /** Netteté du filtre choisi (1 = celle du filtre), mémorisée par système et filtre. */
+    private var filterSharpness by mutableStateOf(1f)
     private val aspectRatios by lazy { AspectRatioStore(this) }
     /** Format de l'image du système, changé depuis le menu ; [aspectPicker] : liste affichée. */
     private var aspectRatio by mutableStateOf(AspectRatio.ORIGINAL)
@@ -324,6 +328,7 @@ class LibretroActivity : ComponentActivity() {
                 mappingSession != null -> mappingSession = null
                 playersOrder != null -> playersOrder = null
                 filterPicker -> filterPicker = false
+                filterSettings -> filterSettings = false
                 aspectPicker -> aspectPicker = false
                 statesOpen -> statesOpen = false
                 editing != null -> editing = null
@@ -434,7 +439,8 @@ class LibretroActivity : ComponentActivity() {
                 .map { (key, value) -> Variable(key, value) }.toTypedArray()
             preferLowLatencyAudio = true
             videoFilter = videoFilters.load(systemId)
-            shader = videoFilter.shader()
+            filterSharpness = videoFilters.sharpness(systemId, videoFilter)
+            shader = videoFilter.shader(filterSharpness)
         }
         val view = GLRetroView(this, data).apply { isFocusable = false }
         retroView = view
@@ -543,6 +549,7 @@ class LibretroActivity : ComponentActivity() {
         editing = null
         mappingSession = null
         filterPicker = false
+        filterSettings = false
         aspectPicker = false
         statesOpen = false
         pausedFrame = null
@@ -1124,6 +1131,8 @@ class LibretroActivity : ComponentActivity() {
                         PlayersScreen(order)
                     } else if (menuOpen && filterPicker) {
                         FilterPicker()
+                    } else if (menuOpen && filterSettings) {
+                        FilterSettings()
                     } else if (menuOpen && aspectPicker) {
                         AspectPicker()
                     } else if (menuOpen && statesOpen) {
@@ -1236,6 +1245,7 @@ class LibretroActivity : ComponentActivity() {
                         add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
                     }
                     add(stringResource(R.string.libretro_menu_filter, stringResource(videoFilter.label)) to { filterPicker = true })
+                    if (videoFilter.adjustable) add(stringResource(R.string.libretro_menu_filter_settings) to { filterSettings = true })
                     add(stringResource(R.string.libretro_menu_aspect, stringResource(aspectRatio.label)) to { aspectPicker = true })
                 }
                 if (!isTv) {
@@ -1590,8 +1600,52 @@ class LibretroActivity : ComponentActivity() {
         ) { filter ->
             videoFilter = filter
             videoFilters.save(systemId, filter)
-            retroView?.shader = filter.shader()
+            filterSharpness = videoFilters.sharpness(systemId, filter)
+            retroView?.shader = filter.shader(filterSharpness)
             closeMenu()
+        }
+    }
+
+    /**
+     * Réglages du filtre : netteté du lissage (0 à 200 % de celle du filtre), appliquée aussitôt et
+     * mémorisée pour le système ; panneau en bas pour garder le jeu visible.
+     */
+    @Composable
+    private fun FilterSettings() {
+        fun set(value: Float) {
+            val v = (Math.round(value / VideoFilter.SHARPNESS_STEP) * VideoFilter.SHARPNESS_STEP)
+                .coerceIn(VideoFilter.SHARPNESS_MIN, VideoFilter.SHARPNESS_MAX)
+            filterSharpness = v
+            videoFilters.saveSharpness(systemId, videoFilter, v)
+            retroView?.shader = videoFilter.shader(v)
+        }
+        Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.BottomCenter) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.85f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.padding(16.dp).widthIn(max = 560.dp).fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        stringResource(R.string.libretro_filter_settings_title, stringResource(videoFilter.label)),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.libretro_filter_sharpness), modifier = Modifier.weight(1f))
+                        OutlinedButton(
+                            onClick = { set(filterSharpness - VideoFilter.SHARPNESS_STEP) },
+                            enabled = filterSharpness > VideoFilter.SHARPNESS_MIN,
+                        ) { Text("−") }
+                        Text("${Math.round(filterSharpness * 100)} %", modifier = Modifier.widthIn(min = 56.dp), textAlign = TextAlign.Center)
+                        FocusedButton("+", { set(filterSharpness + VideoFilter.SHARPNESS_STEP) })
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { set(1f) }) { Text(stringResource(R.string.libretro_filter_default)) }
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { filterSettings = false }) { Text(stringResource(R.string.action_close)) }
+                    }
+                }
+            }
         }
     }
 

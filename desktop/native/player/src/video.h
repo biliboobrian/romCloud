@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "libretro.h"
 
@@ -24,6 +25,19 @@ Filter nextFilter(Filter filter);
 /** Identifiant mémorisé dans les réglages (« sharp »…) et inverse (lissage net par défaut). */
 const char* filterId(Filter filter);
 Filter filterFromId(const std::string& id);
+
+/**
+ * Réglage d'un filtre : identifiant mémorisé pour le système (« romcloud_<filtre>_<réglage> »), clé du
+ * libellé, composante du shader (u_params), valeur par défaut, bornes et pas.
+ */
+struct FilterParam {
+  const char* id;
+  const char* label;
+  int slot;
+  float def, min, max, step;
+};
+/** Réglages proposés pour le filtre (aucun : pixels, lissages, EPX, xBR). */
+std::vector<FilterParam> filterParams(Filter filter);
 
 /** Format de l'image : celui du cœur, 4:3, 16:9, ou étiré sur toute la fenêtre (ordre du menu). */
 enum class Aspect { Core, Ratio4_3, Ratio16_9, Stretch };
@@ -61,6 +75,10 @@ class Video {
   void toggleFullscreen();
   bool fullscreen() const { return fullscreen_; }
   void setFilter(Filter filter) { filter_ = filter; }
+  /** Valeur d'un réglage du filtre (composante [slot] de u_params). */
+  void setFilterParam(int slot, float value) {
+    if (slot >= 0 && slot < 4) params_[slot] = value;
+  }
   Filter filter() const { return filter_; }
   void setAspect(Aspect aspect) { aspect_ = aspect; }
   Aspect aspect() const { return aspect_; }
@@ -82,6 +100,8 @@ class Video {
 
   unsigned program_ = 0, vao_ = 0, vbo_ = 0;
   int uniformTexture_ = -1, uniformAlpha_ = -1, uniformMode_ = -1, uniformSize_ = -1, uniformScale_ = -1;
+  int uniformParams_ = -1, uniformRect_ = -1;
+  float params_[4] = {1.0f, 0.0f, 0.0f, 0.0f};
   unsigned frameTexture_ = 0, overlayTexture_ = 0;
   int textureWidth_ = 0, textureHeight_ = 0;
   unsigned fbo_ = 0, fboTexture_ = 0, fboDepth_ = 0;

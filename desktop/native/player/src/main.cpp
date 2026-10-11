@@ -77,6 +77,7 @@ struct Args {
   bool testKeys = false;  // essai : écran des touches du clavier
   bool testPad = false;  // essai : écran de configuration des manettes
   bool testPlayers = false;  // essai : écran des joueurs des manettes
+  bool testFilterSettings = false;  // essai : écran des réglages du filtre
   bool testStates = false;  // essai : historique des états (« Charger l'état »)
   bool testSaveState = false;  // essai : état enregistré après les N images
   bool testAudio = false;  // essai : amplitude maximale du son des N images
@@ -112,6 +113,7 @@ Args parseArgs(int argc, char** argv) {
     else if (arg == "--test-keys") a.testKeys = true;
     else if (arg == "--test-pad") a.testPad = true;
     else if (arg == "--test-players") a.testPlayers = true;
+    else if (arg == "--test-filter-settings") a.testFilterSettings = true;
     else if (arg == "--test-states") a.testStates = true;
     else if (arg == "--test-save-state") a.testSaveState = true;
     else if (arg == "--test-audio") a.testAudio = true;
@@ -164,6 +166,18 @@ class Player {
   void onMenuAction(MenuAction action);
   void startPadConfig() {
     padConfig_ = std::make_unique<PadConfig>(args_.buttons, args_.padStyle, [this](const char* key) { return menu_.tr(key); });
+  }
+  /** Clé mémorisée (options du système) d'un réglage du filtre choisi. */
+  std::string filterParamKey(const FilterParam& p) const {
+    return std::string("romcloud_") + filterId(video_.filter()) + "_" + p.id;
+  }
+  float filterParamValue(const FilterParam& p) const {
+    const std::string v = g.options.setting(filterParamKey(p), "");
+    return v.empty() ? p.def : std::clamp((float)atof(v.c_str()), p.min, p.max);
+  }
+  /** Réglages mémorisés du filtre choisi, donnés au rendu. */
+  void loadFilterParams() {
+    for (const auto& p : filterParams(video_.filter())) video_.setFilterParam(p.slot, filterParamValue(p));
   }
   void startPlayers() {
     players_ = std::make_unique<PlayerOrder>(input_, [this](const char* key) { return menu_.tr(key); });
@@ -311,6 +325,7 @@ void Player::changeDisk(int direction) {
 MenuState Player::menuState() const {
   MenuState s;
   s.filter = (int)video_.filter();
+  s.filterSettings = !filterParams(video_.filter()).empty();
   s.aspect = (int)video_.aspect();
   s.fullscreen = video_.fullscreen();
   if (g.hasDiskControl && g.disk.get_num_images) {
@@ -371,9 +386,32 @@ void Player::onMenuAction(MenuAction action) {
       // Visible aussitôt derrière le menu ; mémorisé pour le système.
       video_.setFilter(nextFilter(video_.filter()));
       g.options.setSetting("romcloud_filter", filterId(video_.filter()));
+      loadFilterParams();
       break;
     case MenuAction::ConfigurePad: startPadConfig(); break;
     case MenuAction::Players: startPlayers(); break;
+    case MenuAction::FilterSettings: {
+      static const char* names[] = {"filter_pixels", "filter_sharp", "filter_soft", "filter_smooth", "filter_epx",
+                                    "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr"};
+      std::vector<FilterRow> rows;
+      for (const auto& p : filterParams(video_.filter())) rows.push_back({menu_.tr(p.label), filterParamValue(p), p.def, p.min, p.max, p.step});
+      menu_.openFilterSettings(menu_.tr(names[(int)video_.filter()]), std::move(rows));
+      break;
+    }
+    case MenuAction::FilterParam:
+    case MenuAction::FilterDefaults: {
+      // Visible aussitôt au-dessus du panneau ; mémorisé pour le système.
+      const auto params = filterParams(video_.filter());
+      const auto& rows = menu_.filterRows();
+      for (size_t i = 0; i < params.size() && i < rows.size(); i++) {
+        if (action == MenuAction::FilterParam && (int)i != menu_.filterRowChanged()) continue;
+        char value[32];
+        snprintf(value, sizeof(value), "%.2f", rows[i].value);
+        g.options.setSetting(filterParamKey(params[i]), value);
+        video_.setFilterParam(params[i].slot, rows[i].value);
+      }
+      break;
+    }
     case MenuAction::NextAspect:
       video_.setAspect(nextAspect(video_.aspect()));
       g.options.setSetting("romcloud_aspect", aspectId(video_.aspect()));
@@ -622,6 +660,7 @@ int Player::run() {
   const bool hasOld = !g.options.setting("romcloud_smooth", "").empty();
   video_.setFilter(filterFromId(g.options.setting("romcloud_filter", hasOld ? oldSmooth : "sharp")));
   video_.setAspect(aspectFromId(g.options.setting("romcloud_aspect", "core")));
+  loadFilterParams();
   const int testFrames = args_.testFrames.empty() ? 0 : std::max(1, atoi(args_.testFrames.c_str()));
   // Essais : fenêtre cachée (sauf --test-window), y compris pour la boucle réelle (--test-seconds).
   const bool hidden = (testFrames > 0 || !args_.testSeconds.empty()) && !args_.testWindow;
@@ -658,11 +697,12 @@ int Player::run() {
     }
     bool saved = true;
     if (args_.testWindow) {
-      if (args_.testMenu || args_.testKeys || args_.testPad || args_.testPlayers || args_.testStates || !args_.testOptions.empty()) menu_.open();
+      if (args_.testMenu || args_.testKeys || args_.testPad || args_.testPlayers || args_.testFilterSettings || args_.testStates || !args_.testOptions.empty()) menu_.open();
       if (args_.testKeys) menu_.openKeys();
       if (args_.testStates) openStates();
       if (args_.testPad) startPadConfig();
       if (args_.testPlayers) startPlayers();
+      if (args_.testFilterSettings) onMenuAction(MenuAction::FilterSettings);
       if (!args_.testOptions.empty()) {
         menu_.openOptions();
         for (int i = atoi(args_.testOptions.c_str()); i > 0; i--) menu_.handle(Nav::TabNext, menuState());
