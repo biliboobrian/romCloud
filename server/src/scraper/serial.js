@@ -69,3 +69,45 @@ export function abbreviates(label, compactTitle) {
   for (const c of compactTitle.slice(head)) if (c === short[i]) i++;
   return i === short.length;
 }
+
+/**
+ * Libellé d'identifiant de contenu nettoyé pour un rapprochement approché (minuscules et chiffres) :
+ * nom de la console retiré (« SPONGEHEROVITA15 » : « spongehero », « FIFAVITA20130001 » : « fifa13 »),
+ * remplissage final, année réduite à ses deux chiffres, zéros en tête des nombres (« REBIRTH02 »).
+ */
+export function looseLabel(label) {
+  let l = String(label || '').toUpperCase();
+  const withoutConsole = l.replace(/(?:PSVITA|VITA)\d{0,2}$/, '').replace(/(?:PSVITA|VITA)/g, '');
+  if (withoutConsole.length >= 4) l = withoutConsole;
+  return l
+    .replace(/(?<=[A-Z0-9])0{2,}[1-9]?$/, '')
+    .replace(/20([0-2]\d)(?!\d)/g, '$1')
+    .replace(/(?<![0-9])0+(?=[1-9])/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/** Longueur de la plus longue sous-suite commune de [a] et [b]. */
+function commonSubsequence(a, b) {
+  let prev = new Array(b.length + 1).fill(0);
+  for (const ca of a) {
+    const row = [0];
+    for (let j = 0; j < b.length; j++) row.push(ca === b[j] ? prev[j] + 1 : Math.max(prev[j + 1], row[j]));
+    prev = row;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Proximité entre un libellé d'identifiant de contenu et un titre compact (voir [abbreviates]) quand
+ * le libellé n'en est pas une simple abréviation (« LEGOFORCEAWAKENS » : « LEGO Star Wars - The Force
+ * Awakens », « NEPTUNEREBIRTH02 » : « Hyperdimension Neptunia Re;Birth2 ») : lettres du libellé
+ * retrouvées dans l'ordre, ses 4 premières à la suite dans le titre ; 2 lettres de trop admises à
+ * partir de 10. 0 si le titre ne convient pas.
+ */
+export function labelScore(label, compactTitle) {
+  const l = looseLabel(label);
+  if (l.length < 5 || !compactTitle || !compactTitle.includes(l.slice(0, 4))) return 0;
+  const score = commonSubsequence(l, compactTitle);
+  return score >= l.length - (l.length >= 10 ? 2 : 0) ? score : 0;
+}
