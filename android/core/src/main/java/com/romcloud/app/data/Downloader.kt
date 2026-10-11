@@ -74,7 +74,15 @@ class Downloader(
                     _states.update { it + (game.id to DownloadState.Running(game.title, done + bytes, total)) }
                 }
                 for (file in bios) {
-                    fetch(api.biosFileUrl(file), library.biosFile(file), file.size, progress)
+                    // BIOS introuvable sur le serveur (404…) : ignoré, le jeu est téléchargé quand même
+                    // (un BIOS facultatif ou absent ne doit pas empêcher de jouer). Annulation : arrêt.
+                    try {
+                        fetch(api.biosFileUrl(file), library.biosFile(file), file.size, progress)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: java.io.IOException) {
+                        android.util.Log.w("RomCloudDownload", "BIOS ${file.path} : ${e.message}")
+                    }
                     done += file.size
                 }
                 // Clés et firmware importés par l'émulateur externe (Eden) : là où son sélecteur les trouve.

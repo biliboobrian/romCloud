@@ -32,6 +32,9 @@ const INFOS = {
     'firmware1_path = "pcsx2/resources/GameIndex.yaml"',
     'firmware1_opt = "true"',
   ].join('\n'),
+  // Super Game Boy : fichier SGB1.sfc (bsnes) et dossier SGB1.sfc/ (higan) incompatibles.
+  bsnes: ['firmware_count = 1', 'firmware0_desc = "SGB1.sfc"', 'firmware0_path = "SGB1.sfc"', 'firmware0_opt = "true"'].join('\n'),
+  higan_sfc: ['firmware_count = 1', 'firmware0_desc = "SGB1.sfc/sgb1.boot.rom"', 'firmware0_path = "SGB1.sfc/sgb1.boot.rom"', 'firmware0_opt = "true"'].join('\n'),
   mednafen_psx_hw: [
     'firmware_count = 1',
     'firmware0_desc = "scph5501.bin (PS1 US BIOS)"',
@@ -342,4 +345,22 @@ test('import groupé : BIOS rangés par empreinte, nom ou dossier, archive ouver
   const again = await bios.importBiosPack(pack());
   assert.equal(again.stored.length, 0);
   assert.equal(again.already.length, 3);
+});
+
+test('BIOS attendus incompatibles (fichier et dossier du même nom) : le fichier gardé, BIOS sans fichier retiré', async () => {
+  createSystem({ id: 'sfc', name: 'Super Nintendo', players: [retroarch('bsnes'), retroarch('higan_sfc')] });
+  const { expected } = await bios.systemBios('sfc');
+  assert.deepEqual(expected.map((e) => e.path), ['SGB1.sfc']);
+  const upload = (name, content) => {
+    const temp = path.join(dataDir, `upload-${crypto.randomUUID()}`);
+    fs.writeFileSync(temp, content);
+    return { tempPath: temp, originalName: name };
+  };
+  // Ancien import : le .boot.rom rangé dans un dossier SGB1.sfc, puis le fichier SGB1.sfc qui le remplace.
+  await bios.addBiosFiles('sfc', [upload('sgb1.boot.rom', 'boot')], 'SGB1.sfc/sgb1.boot.rom');
+  await bios.addBiosFiles('sfc', [upload('SGB1.sfc', 'sgb')]);
+  assert.deepEqual((await bios.systemBios('sfc', { catalog: false })).files.map((f) => f.path), ['SGB1.sfc']);
+  // BIOS listé dont le fichier a disparu du disque (version précédente) : retiré de la liste.
+  db.prepare('INSERT INTO bios (system_id, path, size, md5, sha1) VALUES (?, ?, 1, ?, ?)').run('sfc', 'SGB1.sfc/sgb1.boot.rom', 'x', 'y');
+  assert.deepEqual((await bios.systemBios('sfc', { catalog: false })).files.map((f) => f.path), ['SGB1.sfc']);
 });
