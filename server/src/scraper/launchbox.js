@@ -311,6 +311,19 @@ async function openDb() {
 }
 
 /** Image préférée d'un type : région préférée (SCRAPE_REGIONS), sinon sans région, sinon la première. */
+/** Toutes les images de ce [type], de la région préférée à la moins bonne (adresses). */
+export function pickImages(images, type, regions) {
+  const order = regions.flatMap((r) => IMAGE_REGIONS[r] || []);
+  const rank = (i) => {
+    const k = order.indexOf(i.region);
+    return k >= 0 ? k : i.region ? order.length + 1 : order.length;
+  };
+  return images
+    .filter((i) => i.type === type)
+    .sort((a, b) => rank(a) - rank(b))
+    .map((i) => `${IMAGES}/${encodeURIComponent(i.file)}`);
+}
+
 export function pickImage(images, type, regions) {
   const list = images.filter((i) => i.type === type);
   if (!list.length) return null;
@@ -349,6 +362,9 @@ export function launchboxMeta(id, data, names, images, regions) {
     media: {
       boxart: pickImage(images, 'Box - Front', regions) || pickImage(images, 'Screenshot - Game Title', regions),
       screenshot: pickImage(images, 'Screenshot - Gameplay', regions) || pickImage(images, 'Screenshot - Game Title', regions),
+      screenshots: ['Screenshot - Gameplay', 'Screenshot - Game Title', 'Screenshot - Game Select', 'Screenshot - High Scores']
+        .flatMap((type) => pickImages(images, type, regions))
+        .slice(0, 4),
     },
     details: compactDetails({
       otherTitles: names.filter((n) => n.name !== data.Name).map((n) => ({ region: null, text: n.name })),

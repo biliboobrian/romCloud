@@ -165,6 +165,9 @@
       'settings.biosHint': 'Empty: the “system” folder of RetroArch, or Documents\\RomCloud\\bios. Currently: {dir}',
 
       'detail.release': 'Released: {v}',
+      'detail.screenshot': 'Screenshot {n} of {total}',
+      'detail.previous': 'Previous',
+      'detail.next': 'Next',
       'detail.developer': 'Developer: {v}',
       'detail.publisher': 'Publisher: {v}',
       'detail.players': 'Players: {v}',
@@ -589,6 +592,9 @@
       'settings.biosHint': 'Vide : dossier « system » de RetroArch, sinon Documents\\RomCloud\\bios. Actuellement : {dir}',
 
       'detail.release': 'Sortie : {v}',
+      'detail.screenshot': 'Capture {n} sur {total}',
+      'detail.previous': 'Précédente',
+      'detail.next': 'Suivante',
       'detail.developer': 'Développeur : {v}',
       'detail.publisher': 'Éditeur : {v}',
       'detail.players': 'Joueurs : {v}',

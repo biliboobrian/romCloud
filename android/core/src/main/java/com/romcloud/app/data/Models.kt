@@ -108,6 +108,8 @@ data class Game(
     val details: GameDetails = GameDetails(),
     val hasBoxart: Boolean = false,
     val hasScreenshot: Boolean = false,
+    /** Nombre de captures d'écran (1 à 4) ; absent d'un serveur d'avant les 4 captures. */
+    val screenshotCount: Int? = null,
     val addedAt: String = "",
     val updatedAt: String = "",
     /** Scraping du serveur : ok, none (pas encore scrapé), notfound, error ; absent des anciens caches. */
@@ -211,3 +213,7 @@ data class StorageUsage(val systems: Map<String, Long> = emptyMap(), val free: L
 
 /** Données chargées, avec indication si elles proviennent du cache hors ligne. */
 data class Loaded<T>(val data: T, val offline: Boolean, val error: String? = null)
+
+/** Médias des captures d'écran du jeu, dans l'ordre : « screenshot », « screenshot2 »… */
+val Game.screenshotTypes: List<String>
+    get() = List(screenshotCount ?: if (hasScreenshot) 1 else 0) { if (it == 0) "screenshot" else "screenshot${it + 1}" }

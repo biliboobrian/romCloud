@@ -240,7 +240,17 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .detail .info dt { color: var(--muted); }
 .detail .info dd { margin: 0; white-space: pre-line; word-break: break-word; }
 .detail .info a { color: var(--accent); }
-.detail .shot { max-width: 640px; border-radius: var(--radius); }
+/* Captures d'écran : jusqu'à 4 miniatures, affichées en grand au clic. */
+.detail .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; max-width: 900px; }
+.detail .shot { padding: 0; border: 2px solid transparent; border-radius: var(--radius); background: var(--surface-2); cursor: zoom-in; overflow: hidden; aspect-ratio: 4 / 3; }
+.detail .shot img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.detail .shot:hover, .detail .shot:focus-visible { border-color: var(--accent); outline: none; }
+.shot-viewer { background: rgba(0, 0, 0, 0.88); }
+.shot-viewer img { max-width: calc(100vw - 160px); max-height: calc(100vh - 80px); object-fit: contain; border-radius: var(--radius); cursor: zoom-out; }
+.shot-viewer .prev, .shot-viewer .next { position: fixed; top: 50%; transform: translateY(-50%); color: #fff; }
+.shot-viewer .prev { left: 24px; }
+.shot-viewer .next { right: 24px; transform: translateY(-50%) scaleX(-1); }
+.shot-viewer .count { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 14px; }
 .bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; max-width: 520px; }
 .bar > div { height: 100%; background: var(--accent); }
 

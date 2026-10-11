@@ -133,6 +133,7 @@ function parseGame(jeu) {
     media: {
       boxart: pickMedia(medias, ['box-2D', 'box-3D', 'wheel'], regions),
       screenshot: pickMedia(medias, ['ss', 'sstitle'], regions),
+      screenshots: [pickMedia(medias, ['ss'], regions), pickMedia(medias, ['sstitle'], regions)].filter(Boolean),
     },
     details: parseDetails(jeu, title),
   };

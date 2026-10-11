@@ -92,6 +92,8 @@ export function rowToGame(row, parts = []) {
     details: mergeDetails(parseStoredDetails(row.details), fileNameDetails(row.file_name)),
     hasBoxart: Boolean(row.boxart),
     hasScreenshot: Boolean(row.screenshot),
+    // Captures d'écran (1 à 4) : médias « screenshot », « screenshot2 »… sans trou.
+    screenshotCount: SCREENSHOT_TYPES.filter((type) => row[type]).length,
     scrapeStatus: row.scrape_status,
     scrapeSource: row.scrape_source,
     scrapeError: row.scrape_error,
@@ -212,6 +214,40 @@ export function updateGame(id, input) {
     db.prepare(`UPDATE games SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`).run(...values, Number(id));
   }
   return rowToGame(getGameRow(id));
+}
+
+/** Médias des captures d'écran d'un jeu, dans l'ordre (colonnes et noms de fichier sans extension). */
+export const SCREENSHOT_TYPES = ['screenshot', 'screenshot2', 'screenshot3', 'screenshot4'];
+
+/**
+ * Captures du jeu ramenées aux premières places après une suppression (« screenshot3 » devient
+ * « screenshot2 » si celle-ci manque) : fichiers renommés, colonnes mises à jour.
+ */
+export function compactScreenshots(id) {
+  const row = requireGameRow(id);
+  const dir = gameMediaDir(row.id);
+  const files = SCREENSHOT_TYPES.map((type) => row[type]).filter(Boolean);
+  const values = SCREENSHOT_TYPES.map((type, i) => {
+    const file = files[i];
+    if (!file) return null;
+    const target = `${type}${path.extname(file)}`;
+    if (file !== target) {
+      for (const old of fs.existsSync(dir) ? fs.readdirSync(dir) : []) if (old.startsWith(`${type}.`)) fs.rmSync(path.join(dir, old));
+      fs.renameSync(path.join(dir, file), path.join(dir, target));
+    }
+    return target;
+  });
+  db.prepare(`UPDATE games SET ${SCREENSHOT_TYPES.map((t) => `${t} = ?`).join(', ')} WHERE id = ?`).run(...values, row.id);
+}
+
+/** Supprime une image du jeu (jaquette ou capture d'écran, les suivantes remontant d'une place). */
+export function deleteGameMedia(id, type) {
+  const row = requireGameRow(id);
+  if (type !== 'boxart' && !SCREENSHOT_TYPES.includes(type)) throw new HttpError(404, 'errors.unknownMediaType');
+  if (row[type]) fs.rmSync(path.join(gameMediaDir(row.id), row[type]), { force: true });
+  db.prepare(`UPDATE games SET ${type} = NULL, updated_at = datetime('now') WHERE id = ?`).run(row.id);
+  if (type !== 'boxart') compactScreenshots(row.id);
+  return gameWithParts(row.id);
 }
 
 /** Supprime le jeu (fichier, fiche, médias) et ses parties (disques, mises à jour, DLC). */

@@ -116,6 +116,7 @@
     <string name="delete_from_device">Delete from the device</string>
     <string name="must_download">The game must be downloaded before you can play it.</string>
     <string name="screenshot">Screenshot</string>
+    <string name="screenshot_n">Screenshot %1$d of %2$d</string>
     <string name="delete_device_title">Delete from the device?</string>
     <string name="delete_device_text">The local file will be deleted to free up space. The game remains available on the server.</string>
     <string name="launch_command_show">Show the launch command</string>
