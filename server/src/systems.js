@@ -4,6 +4,7 @@ import { config } from './config.js';
 import { db } from './db.js';
 import { HttpError } from './http-error.js';
 import { SCREENSCRAPER_SYSTEM_IDS } from './screenscraper-systems.js';
+import { DEFAULT_SYSTEM_COLORS, normalizeColor } from './system-colors.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
@@ -44,6 +45,10 @@ function rowToSystem(row, stats) {
     hasImage: Boolean(row.image),
     // Nom du fichier image : change à chaque envoi, sert à invalider les caches.
     imageVersion: row.image,
+    // Couleur de fond dans les applications : choisie dans les réglages, sinon celle de la console.
+    color: row.color || DEFAULT_SYSTEM_COLORS[row.id] || null,
+    customColor: Boolean(row.color),
+    defaultColor: DEFAULT_SYSTEM_COLORS[row.id] || null,
     sourceRevision: row.source_revision,
     createdAt: row.created_at,
     gameCount: stats?.game_count ?? 0,
@@ -98,6 +103,12 @@ function validateRegex(re) {
   }
 }
 
+function validateColor(input) {
+  const color = normalizeColor(input);
+  if (color === undefined) throw new HttpError(400, 'errors.invalidColor');
+  return color;
+}
+
 function validateFolder(folder) {
   if (!folder || !/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/.test(folder)) {
     throw new HttpError(400, 'errors.invalidFolder');
@@ -149,9 +160,11 @@ export function updateSystem(id, input) {
         : current.screenscraperId,
     players: input.players ?? current.players,
     platforms: input.platforms !== undefined ? normalizePlatforms(input.platforms) : current.platforms,
+    // Vide : retour à la couleur par défaut du système.
+    color: input.color !== undefined ? validateColor(input.color) : current.customColor ? current.color : null,
   };
   db.prepare(
-    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?
+    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?, color = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -161,6 +174,7 @@ export function updateSystem(id, input) {
     next.screenscraperId,
     JSON.stringify(next.players),
     JSON.stringify(next.platforms),
+    next.color,
     id,
   );
   return getSystem(id);

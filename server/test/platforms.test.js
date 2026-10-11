@@ -46,3 +46,16 @@ test('modification : plateformes gardées si absentes, remises à « toutes »',
   assert.deepEqual(updateSystem('ps3', { platforms: ['android', 'androidtv', 'windows'] }).platforms, []);
   assert.deepEqual(ids('android'), ['ps3', 'snes']);
 });
+
+test('couleur de fond : celle de la console par défaut, choisie dans les réglages, vide = retour au défaut', () => {
+  const snes = listSystems().find((s) => s.id === 'snes');
+  assert.equal(snes.color, snes.defaultColor);
+  assert.equal(snes.customColor, false);
+  assert.equal(updateSystem('snes', { color: '#12AB34' }).color, '#12ab34');
+  assert.equal(updateSystem('snes', { name: 'Super Nintendo' }).color, '#12ab34');
+  assert.throws(() => updateSystem('snes', { color: 'rouge' }), { status: 400 });
+  const reset = updateSystem('snes', { color: '' });
+  assert.equal(reset.color, snes.defaultColor);
+  assert.equal(reset.customColor, false);
+  assert.equal(createSystem({ id: 'maison', name: 'Console maison' }).color, null);
+});

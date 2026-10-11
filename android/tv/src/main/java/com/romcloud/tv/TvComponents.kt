@@ -44,6 +44,7 @@ import com.romcloud.app.data.StorageUsage
 import com.romcloud.app.ui.DownloadIndicator
 import com.romcloud.app.ui.LocalStatus
 import com.romcloud.app.ui.TogetherBadge
+import com.romcloud.app.ui.backgroundColor
 import com.romcloud.app.ui.formatSize
 import com.romcloud.app.ui.pluralString
 import com.romcloud.core.R
@@ -155,52 +156,56 @@ private fun BoxScope.CoverImage(url: String?, title: String) {
     )
 }
 
-/** Carte d'un système : image 16:9 (configurée sur le serveur) ou nom court en grand. */
+/** Carte d'un système sur sa couleur (réglages du serveur) : image 16:9 ou nom court en grand. */
 @Composable
 fun TvSystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Unit, modifier: Modifier = Modifier, localSize: Long = 0) {
-    Card(
-        onClick = onClick,
-        shape = CardDefaults.shape(CardShape),
-        border = focusBorder(),
-        scale = focusScale(),
-        modifier = modifier,
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
+    val color = system.backgroundColor
+    TvScreenTheme(color) {
+        Card(
+            onClick = onClick,
+            shape = CardDefaults.shape(CardShape),
+            colors = if (color != null) CardDefaults.colors(containerColor = color, focusedContainerColor = color) else CardDefaults.colors(),
+            border = focusBorder(),
+            scale = focusScale(),
+            modifier = modifier,
         ) {
-            if (imageUrl != null) {
-                AsyncImage(
-                    model = imageUrl,
-                    contentDescription = system.name,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize().padding(12.dp),
-                )
-            } else {
-                Text(
-                    system.shortname.uppercase(),
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .background(if (color != null) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (imageUrl != null) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = system.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().padding(12.dp),
+                    )
+                } else {
+                    Text(
+                        system.shortname.uppercase(),
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
-        }
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text(system.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                pluralString(R.plurals.games_count, system.gameCount, system.gameCount) + " · " + formatSize(system.totalSize),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (localSize > 0) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text(system.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    stringResource(R.string.storage_on_device, formatSize(localSize)),
+                    pluralString(R.plurals.games_count, system.gameCount, system.gameCount) + " · " + formatSize(system.totalSize),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (localSize > 0) {
+                    Text(
+                        stringResource(R.string.storage_on_device, formatSize(localSize)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
         }
     }

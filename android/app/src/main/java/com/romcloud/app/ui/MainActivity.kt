@@ -20,10 +20,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -108,16 +110,19 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
     NavHost(navController = nav, startDestination = start) {
         composable("systems") {
             val vm = viewModel { SystemsViewModel(app) }
-            SystemsScreen(
-                viewModel = vm,
-                storageWarning = storageWarning,
-                imageUrl = { app.api.systemImageUrl(it) },
-                mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
-                onOpenSystem = { nav.navigate("games/$it") },
-                onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
-                onOpenSettings = { nav.navigate("settings") },
-                onOpenProfile = { nav.navigate("profile") },
-            )
+            // Écran des systèmes sur fond noir, chaque carte sur la couleur de son système.
+            SystemBackground(Color.Black) {
+                SystemsScreen(
+                    viewModel = vm,
+                    storageWarning = storageWarning,
+                    imageUrl = { app.api.systemImageUrl(it) },
+                    mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                    onOpenSystem = { nav.navigate("games/$it") },
+                    onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
+                    onOpenSettings = { nav.navigate("settings") },
+                    onOpenProfile = { nav.navigate("profile") },
+                )
+            }
         }
         composable("profile") {
             ProfileScreen(viewModel = viewModel { ProfileViewModel(app) }, onBack = { nav.popBackStack() })
@@ -128,14 +133,18 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
         ) { entry ->
             val systemId = entry.arguments?.getString("systemId").orEmpty()
             val vm = viewModel { GamesViewModel(app, systemId) }
-            GamesScreen(
-                viewModel = vm,
-                mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
-                snackbar = snackbar,
-                autoLaunch = app.autoLaunch,
-                onBack = { nav.popBackStack() },
-                onOpenGame = { nav.navigate("game/$systemId/$it") },
-            )
+            val system = vm.state.collectAsStateWithLifecycle().value.system
+            // Liste des jeux sur la couleur du système (réglages du serveur).
+            SystemBackground(system?.backgroundColor) {
+                GamesScreen(
+                    viewModel = vm,
+                    mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                    snackbar = snackbar,
+                    autoLaunch = app.autoLaunch,
+                    onBack = { nav.popBackStack() },
+                    onOpenGame = { nav.navigate("game/$systemId/$it") },
+                )
+            }
         }
         composable(
             "game/{systemId}/{gameId}",
@@ -147,12 +156,15 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
             val systemId = entry.arguments?.getString("systemId").orEmpty()
             val gameId = entry.arguments?.getLong("gameId") ?: 0L
             val vm = viewModel { GameDetailViewModel(app, systemId, gameId) }
-            GameDetailScreen(
-                viewModel = vm,
-                mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
-                snackbar = snackbar,
-                onBack = { nav.popBackStack() },
-            )
+            val system = vm.state.collectAsStateWithLifecycle().value.system
+            SystemBackground(system?.backgroundColor) {
+                GameDetailScreen(
+                    viewModel = vm,
+                    mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                    snackbar = snackbar,
+                    onBack = { nav.popBackStack() },
+                )
+            }
         }
         composable("settings") {
             SettingsScreen(

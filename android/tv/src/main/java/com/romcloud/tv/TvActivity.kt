@@ -18,8 +18,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -38,6 +40,7 @@ import com.romcloud.app.ui.ProfileViewModel
 import com.romcloud.app.ui.GamesViewModel
 import com.romcloud.app.ui.LaunchDialogs
 import com.romcloud.app.ui.SystemsViewModel
+import com.romcloud.app.ui.backgroundColor
 import kotlinx.coroutines.launch
 
 class TvActivity : ComponentActivity() {
@@ -86,16 +89,19 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
             NavHost(navController = nav, startDestination = start) {
                 composable("systems") {
                     val vm = viewModel { SystemsViewModel(app) }
-                    TvSystemsScreen(
-                        viewModel = vm,
-                        storageWarning = storageWarning,
-                        imageUrl = { app.api.systemImageUrl(it) },
-                        mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
-                        onOpenSystem = { nav.navigate("games/$it") },
-                        onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
-                        onOpenSettings = { nav.navigate("settings") },
-                        onOpenProfile = { nav.navigate("profile") },
-                    )
+                    // Écran des systèmes sur fond noir, chaque carte sur la couleur de son système.
+                    TvScreenBackground(Color.Black) {
+                        TvSystemsScreen(
+                            viewModel = vm,
+                            storageWarning = storageWarning,
+                            imageUrl = { app.api.systemImageUrl(it) },
+                            mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                            onOpenSystem = { nav.navigate("games/$it") },
+                            onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
+                            onOpenSettings = { nav.navigate("settings") },
+                            onOpenProfile = { nav.navigate("profile") },
+                        )
+                    }
                 }
                 composable("profile") {
                     TvProfileScreen(viewModel = viewModel { ProfileViewModel(app) }, onMessage = message)
@@ -106,13 +112,17 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                 ) { entry ->
                     val systemId = entry.arguments?.getString("systemId").orEmpty()
                     val vm = viewModel { GamesViewModel(app, systemId) }
-                    TvGamesScreen(
-                        viewModel = vm,
-                        mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
-                        autoLaunch = app.autoLaunch,
-                        onMessage = message,
-                        onOpenGame = { nav.navigate("game/$systemId/$it") },
-                    )
+                    val system = vm.state.collectAsStateWithLifecycle().value.system
+                    // Liste des jeux sur la couleur du système (réglages du serveur).
+                    TvScreenBackground(system?.backgroundColor) {
+                        TvGamesScreen(
+                            viewModel = vm,
+                            mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                            autoLaunch = app.autoLaunch,
+                            onMessage = message,
+                            onOpenGame = { nav.navigate("game/$systemId/$it") },
+                        )
+                    }
                 }
                 composable(
                     "game/{systemId}/{gameId}",
@@ -124,11 +134,14 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                     val systemId = entry.arguments?.getString("systemId").orEmpty()
                     val gameId = entry.arguments?.getLong("gameId") ?: 0L
                     val vm = viewModel { GameDetailViewModel(app, systemId, gameId) }
-                    TvGameDetailScreen(
-                        viewModel = vm,
-                        mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
-                        onMessage = message,
-                    )
+                    val system = vm.state.collectAsStateWithLifecycle().value.system
+                    TvScreenBackground(system?.backgroundColor) {
+                        TvGameDetailScreen(
+                            viewModel = vm,
+                            mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                            onMessage = message,
+                        )
+                    }
                 }
                 composable("settings") {
                     TvSettingsScreen(
