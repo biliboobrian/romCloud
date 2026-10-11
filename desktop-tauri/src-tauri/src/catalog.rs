@@ -137,7 +137,7 @@ pub fn args_line(args: Option<&[&str]>) -> String {
 pub fn system_name(id: &str) -> String {
     let name = match id {
         "psx" => "PlayStation", "ps2" => "PlayStation 2", "ps3" => "PlayStation 3", "psp" => "PSP", "pspminis" => "PSP Minis",
-        "vita" => "PS Vita", "gc" => "GameCube", "wii" => "Wii", "wiiware" => "WiiWare", "triforce" => "Triforce", "wiiu" => "Wii U",
+        "vita" => "PS Vita", "ps4" => "PS4", "gc" => "GameCube", "wii" => "Wii", "wiiware" => "WiiWare", "triforce" => "Triforce", "wiiu" => "Wii U",
         "switch" => "Nintendo Switch",
         "n64" => "Nintendo 64", "nds" => "Nintendo DS", "ndsi" => "Nintendo DSi", "3ds" => "Nintendo 3DS", "gba" => "Game Boy Advance",
         "gb" => "Game Boy", "gbc" => "Game Boy Color", "snes" => "Super Nintendo", "satellaview" => "Satellaview", "nes" => "NES",

@@ -60,6 +60,7 @@ export const SCREENSCRAPER_SYSTEM_IDS = {
   pokemini: 211,
   ps2: 58,
   ps3: 59,
+  ps4: 60,
   psp: 61,
   psx: 57,
   satellaview: 107,

@@ -87,6 +87,7 @@ export const LAUNCHBOX_PLATFORMS = {
   pokemini: ['Nintendo Pokemon Mini'],
   ps2: ['Sony Playstation 2'],
   ps3: ['Sony Playstation 3'],
+  ps4: ['Sony Playstation 4'],
   psp: ['Sony PSP'],
   pspminis: ['Sony PSP Minis'],
   psx: ['Sony Playstation'],
