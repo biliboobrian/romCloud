@@ -3,7 +3,16 @@ import path from 'node:path';
 import { config, screenscraperEnabled } from '../config.js';
 import { I18nError } from '../i18n.js';
 import { db } from '../db.js';
-import { ensureHashes, gameFilePath, gameMediaDir, gameWithParts, requireGameRow, titleFromFileName } from '../library.js';
+import {
+  SCREENSHOT_TYPES,
+  compactScreenshots,
+  ensureHashes,
+  gameFilePath,
+  gameMediaDir,
+  gameWithParts,
+  requireGameRow,
+  titleFromFileName,
+} from '../library.js';
 import { requireSystem } from '../systems.js';
 import { mergeDetails, parseStoredDetails } from './details.js';
 import { combineRatings } from './rating.js';
@@ -31,6 +40,12 @@ async function downloadMedia(url, dir, baseName) {
   const file = `${baseName}${EXT_BY_TYPE[type] || '.png'}`;
   fs.writeFileSync(path.join(dir, file), buffer);
   return file;
+}
+
+/** Ajoute aux captures trouvées [meta.media.screenshots] celles d'une source (adresses, sans doublon). */
+function addScreenshots(meta, ...urls) {
+  const list = (meta.media.screenshots ||= []);
+  for (const url of urls.flat()) if (url && !list.includes(url)) list.push(url);
 }
 
 function markStatus(id, status, source, error) {
@@ -103,6 +118,7 @@ export async function scrapeGame(gameId, source = 'auto') {
         meta.title ||= lr.title;
         meta.media.boxart ||= lr.media.boxart;
         meta.media.screenshot ||= lr.media.screenshot;
+        addScreenshots(meta, lr.media.screenshots);
         usedSources.push('libretro');
       }
     } catch (err) {
@@ -149,6 +165,7 @@ export async function scrapeGame(gameId, source = 'auto') {
     if (lb.rating != null) ratings.set('launchbox', { source: 'launchbox', score: lb.rating, count: lb.ratingVotes });
     meta.media.boxart ||= lb.media.boxart;
     meta.media.screenshot ||= lb.media.screenshot;
+    addScreenshots(meta, lb.media.screenshots);
     meta.details = mergeDetails(meta.details, lb.details);
     if (!usedSources.includes('launchbox')) usedSources.push('launchbox');
   };
@@ -199,6 +216,7 @@ export async function scrapeGame(gameId, source = 'auto') {
             if (lr) {
               meta.media.boxart ||= lr.media.boxart;
               meta.media.screenshot ||= lr.media.screenshot;
+              addScreenshots(meta, lr.media.screenshots);
               if (!usedSources.includes('libretro')) usedSources.push('libretro');
             }
           }
@@ -234,7 +252,21 @@ export async function scrapeGame(gameId, source = 'auto') {
 
   const dir = gameMediaDir(row.id);
   const boxart = meta.media.boxart ? await downloadMedia(meta.media.boxart, dir, 'boxart') : null;
-  const screenshot = meta.media.screenshot ? await downloadMedia(meta.media.screenshot, dir, 'screenshot') : null;
+  // Jusqu'à 4 captures : la principale de la meilleure source, puis les autres trouvées. Rien de
+  // téléchargé : celles du scraping précédent sont gardées.
+  const shotUrls = [meta.media.screenshot, ...(meta.media.screenshots || [])].filter((u, i, all) => u && all.indexOf(u) === i);
+  const shots = [];
+  for (const url of shotUrls) {
+    if (shots.length === SCREENSHOT_TYPES.length) break;
+    const file = await downloadMedia(url, dir, SCREENSHOT_TYPES[shots.length]).catch(() => null);
+    if (file) shots.push(file);
+  }
+  if (shots.length) {
+    for (const type of SCREENSHOT_TYPES.slice(shots.length)) {
+      for (const old of fs.existsSync(dir) ? fs.readdirSync(dir) : []) if (old.startsWith(`${type}.`)) fs.rmSync(path.join(dir, old));
+    }
+  }
+  const screenshotColumns = shots.length ? SCREENSHOT_TYPES.map((type, i) => shots[i] ?? null) : null;
 
   db.prepare(
     `UPDATE games SET
@@ -247,7 +279,6 @@ export async function scrapeGame(gameId, source = 'auto') {
        players = COALESCE(?, players),
        rating = COALESCE(?, rating),
        boxart = COALESCE(?, boxart),
-       screenshot = COALESCE(?, screenshot),
        details = ?,
        updated_at = datetime('now')
      WHERE id = ?`,
@@ -261,11 +292,13 @@ export async function scrapeGame(gameId, source = 'auto') {
     meta.players ?? null,
     meta.rating ?? null,
     boxart,
-    screenshot,
     // Nouvelles informations d'abord, complétées par celles d'un scraping précédent.
     JSON.stringify(mergeDetails(meta.details, parseStoredDetails(row.details))),
     row.id,
   );
+  if (screenshotColumns) {
+    db.prepare(`UPDATE games SET ${SCREENSHOT_TYPES.map((t) => `${t} = ?`).join(', ')} WHERE id = ?`).run(...screenshotColumns, row.id);
+  }
   markStatus(row.id, 'ok', usedSources.join('+'), errors[0] || null);
   return gameWithParts(row.id);
 }
@@ -280,5 +313,7 @@ export function saveCustomMedia(gameId, type, buffer, mimeType) {
   for (const old of fs.readdirSync(dir)) if (old.startsWith(`${type}.`)) fs.rmSync(path.join(dir, old));
   fs.writeFileSync(path.join(dir, `${type}${ext}`), buffer);
   db.prepare(`UPDATE games SET ${type} = ?, updated_at = datetime('now') WHERE id = ?`).run(`${type}${ext}`, row.id);
+  // Capture ajoutée après une place vide (« screenshot4 » sans « screenshot3 ») : remontée.
+  if (SCREENSHOT_TYPES.includes(type)) compactScreenshots(row.id);
   return gameWithParts(row.id);
 }

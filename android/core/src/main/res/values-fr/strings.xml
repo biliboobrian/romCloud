@@ -113,6 +113,7 @@
     <string name="delete_from_device">Supprimer de l’appareil</string>
     <string name="must_download">Le jeu doit être téléchargé avant de pouvoir y jouer.</string>
     <string name="screenshot">Capture d’écran</string>
+    <string name="screenshot_n">Capture %1$d sur %2$d</string>
     <string name="delete_device_title">Supprimer de l’appareil ?</string>
     <string name="delete_device_text">Le fichier local sera supprimé pour libérer de l’espace. Le jeu reste disponible sur le serveur.</string>
     <string name="launch_command_show">Voir la commande de lancement</string>

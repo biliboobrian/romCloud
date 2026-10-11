@@ -303,7 +303,10 @@ const dict = {
 
     'game.title': 'Game',
     'game.boxart': 'Box art',
-    'game.screenshot': 'Screenshot',
+    'game.screenshot': 'Screenshot 1',
+    'game.screenshotN': 'Screenshot {n}',
+    'game.addImage': 'Add',
+    'game.removeImage': 'Delete',
     'game.replace': 'Replace',
     'game.fieldTitle': 'Title',
     'game.releaseDate': 'Release date',
@@ -723,7 +726,10 @@ const dict = {
 
     'game.title': 'Jeu',
     'game.boxart': 'Jaquette',
-    'game.screenshot': 'Capture',
+    'game.screenshot': 'Capture 1',
+    'game.screenshotN': 'Capture {n}',
+    'game.addImage': 'Ajouter',
+    'game.removeImage': 'Supprimer',
     'game.replace': 'Remplacer',
     'game.fieldTitle': 'Titre',
     'game.releaseDate': 'Date de sortie',

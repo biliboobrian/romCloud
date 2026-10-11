@@ -24,6 +24,8 @@ import {
   gameWithParts,
   listGames,
   requireGameRow,
+  SCREENSHOT_TYPES,
+  deleteGameMedia,
   safeFileName,
   scanAll,
   scanSystem,
@@ -425,7 +427,7 @@ api.get('/games/:id/file', (req, res, next) => {
   });
 });
 
-const MEDIA_TYPES = ['boxart', 'screenshot'];
+const MEDIA_TYPES = ['boxart', ...SCREENSHOT_TYPES];
 
 api.get('/games/:id/media/:type', (req, res) => {
   const { type } = req.params;
@@ -447,6 +449,12 @@ api.put(
     res.json(saveCustomMedia(req.params.id, type, req.body, req.get('content-type')));
   },
 );
+
+// Suppression d'une image (jaquette, capture : les suivantes remontent d'une place).
+api.delete('/games/:id/media/:type', (req, res) => {
+  if (!MEDIA_TYPES.includes(req.params.type)) throw new HttpError(404, 'errors.unknownMediaType');
+  res.json(deleteGameMedia(req.params.id, req.params.type));
+});
 
 // ---- Scraping ----
 function sourceParam(req) {

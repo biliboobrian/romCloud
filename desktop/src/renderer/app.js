@@ -105,8 +105,14 @@
 
   const withKey = (url) => (S.settings.apiKey ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(S.settings.apiKey)}` : url);
 
+  /** Nombre de captures d'écran du jeu (serveur d'avant les 4 captures : 0 ou 1). */
+  const screenshotCount = (game) => game.screenshotCount ?? (game.hasScreenshot ? 1 : 0);
+  /** Médias des captures du jeu : « screenshot », « screenshot2 »… */
+  const screenshotTypes = (game) => Array.from({ length: screenshotCount(game) }, (_, i) => (i ? `screenshot${i + 1}` : 'screenshot'));
+
   function mediaUrl(game, type) {
-    const has = type === 'boxart' ? game.hasBoxart : game.hasScreenshot;
+    const shot = /^screenshot(\d?)$/.exec(type);
+    const has = type === 'boxart' ? game.hasBoxart : shot ? Number(shot[1] || 1) <= screenshotCount(game) : false;
     if (!has || !S.settings.serverUrl) return null;
     return withKey(`${S.settings.serverUrl}/api/games/${game.id}/media/${type}?v=${encodeURIComponent(game.updatedAt || '')}`);
   }
@@ -1315,6 +1321,44 @@
     else if (S.route.name === 'settings') renderSettings();
   }
 
+  /** Capture d'écran en grand ; flèches (ou clic sur les côtés) pour passer aux autres, Échap pour fermer. */
+  function showScreenshot(urls, index) {
+    const root = $('#modalRoot');
+    let i = index;
+    const draw = () => {
+      root.innerHTML = `<div class="modal-backdrop shot-viewer">
+        <img src="${esc(urls[i])}" alt="">
+        ${urls.length > 1 ? `<button class="icon-btn prev" aria-label="${esc(t('detail.previous'))}">${icon('back', 28)}</button>
+          <button class="icon-btn next" aria-label="${esc(t('detail.next'))}">${icon('back', 28)}</button>
+          <div class="count">${i + 1} / ${urls.length}</div>` : ''}</div>`;
+      const go = (step) => {
+        i = (i + step + urls.length) % urls.length;
+        draw();
+      };
+      $('.prev', root)?.addEventListener('click', () => go(-1));
+      $('.next', root)?.addEventListener('click', () => go(1));
+      $('.modal-backdrop', root).onclick = (e) => {
+        if (e.target === e.currentTarget || e.target.tagName === 'IMG') close();
+      };
+      goShot = go;
+    };
+    const close = () => {
+      root.innerHTML = '';
+      goShot = null;
+    };
+    draw();
+  }
+  // Capture affichée en grand : passage à la précédente / suivante au clavier.
+  let goShot = null;
+  document.addEventListener('keydown', (e) => {
+    if (!goShot || !$('.shot-viewer')) return;
+    if (e.key === 'ArrowLeft') goShot(-1);
+    else if (e.key === 'ArrowRight') goShot(1);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
   function modal({ title, body, buttons }) {
     const root = $('#modalRoot');
     root.innerHTML = `<div class="modal-backdrop"><div class="modal" role="dialog">
@@ -1623,6 +1667,7 @@
     const st = statusOf(game, downloaded);
     const cover = mediaUrl(game, 'boxart');
     const shot = mediaUrl(game, 'screenshot');
+    const shots = screenshotTypes(game).map((type) => mediaUrl(game, type));
     const selected = emu.options.find((o) => o.id === emu.selected);
     const optionLabel = (o) => {
       if (o.kind === 'builtin' && o.name) return t(o.installed ? 'emu.builtinApp' : 'emu.builtinAppPending', { name: o.name });
@@ -1696,7 +1741,7 @@
           </div>
           ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
           ${gameInfoHtml(game)}
-          ${shot ? `<img class="shot" src="${esc(shot)}" alt="">` : ''}
+          ${shots.length ? `<div class="shots">${shots.map((url, i) => `<button class="shot" data-shot="${i}" title="${esc(t('detail.screenshot', { n: i + 1, total: shots.length }))}"><img src="${esc(url)}" alt=""></button>`).join('')}</div>` : ''}
           <div class="mono muted">${esc(localPath)}</div>
         </div>
       </div>
@@ -1707,6 +1752,7 @@
     $('#playBtn')?.addEventListener('click', () => playChecked(system, game));
     $('#configureBtn')?.addEventListener('click', () => $('#emuBox').scrollIntoView({ behavior: 'smooth', block: 'center' }));
     $('#statesBtn')?.addEventListener('click', () => showStates(system, game));
+    for (const btn of $$('[data-shot]')) btn.addEventListener('click', () => showScreenshot(shots, Number(btn.dataset.shot)));
     $('#netplayHostBtn')?.addEventListener('click', () => play(system, game, { netplay: { host: true } }));
     for (const btn of $$('[data-join-peer]')) {
       btn.addEventListener('click', () => joinNetplay(S.peers.find((p) => p.id === btn.dataset.joinPeer && p.hosting)));

@@ -331,6 +331,7 @@ export async function scrapeLibretro({ system, fileName, crc32 }) {
     media: {
       boxart: box?.url ?? title?.url ?? snap?.url,
       screenshot: snap?.url ?? title?.url,
+      screenshots: [snap?.url, title?.url].filter(Boolean),
     },
   };
 }

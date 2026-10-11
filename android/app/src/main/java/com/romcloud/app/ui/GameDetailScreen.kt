@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -64,7 +63,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -75,12 +73,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import coil.compose.AsyncImage
 import com.romcloud.app.netplay.Together
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
 import com.romcloud.app.data.StreamReceiver
+import com.romcloud.app.data.screenshotTypes
 import com.romcloud.app.data.starsText
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.core.R
@@ -357,12 +355,8 @@ fun GameDetailScreen(
 
             GameInfoSection(gameFacts(game))
 
-            mediaUrl(game, "screenshot")?.let { url ->
-                AsyncImage(
-                    model = url, contentDescription = stringResource(R.string.screenshot), contentScale = ContentScale.FillWidth,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
-                )
-            }
+            // Captures d'écran (jusqu'à 4), en grand au toucher.
+            ScreenshotGallery(game.screenshotTypes.mapNotNull { mediaUrl(game, it) }, Modifier.fillMaxWidth(), height = 140.dp)
 
             Text(
                 // Nom et taille du fichier : dans les informations ; ici, l'emplacement sur l'appareil.

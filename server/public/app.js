@@ -671,11 +671,18 @@ function fillGameDialog(game, bust = '') {
     error: t('game.error', { error: game.scrapeError || '' }),
   }[game.scrapeStatus];
   $('#gameScrapeInfo').textContent = `${statusText}${game.scrapedAt ? ` (${game.scrapedAt})` : ''}`;
+  // Jaquette, captures présentes et une place vide pour en ajouter une (4 au plus).
+  const shots = game.screenshotCount ?? (game.hasScreenshot ? 1 : 0);
   for (const slot of $$('.media-slot')) {
     const type = slot.dataset.type;
-    const has = type === 'boxart' ? game.hasBoxart : game.hasScreenshot;
+    const index = type === 'boxart' ? -1 : type === 'screenshot' ? 0 : Number(type.slice(-1)) - 1;
+    const has = index < 0 ? game.hasBoxart : index < shots;
+    slot.classList.toggle('hidden', index > shots);
     $('img', slot).src = has ? mediaUrl(game, type, bust) : '';
+    $('.btn span', slot).textContent = t(has ? 'game.replace' : 'game.addImage');
+    $('[data-media-delete]', slot).classList.toggle('hidden', !has);
   }
+  for (const label of $$('.media-slot [data-n]')) label.textContent = t('game.screenshotN', { n: label.dataset.n });
   $('#gameDownload').href = withKey(`/api/games/${game.id}/file`);
   renderGameParts(game);
 }
@@ -714,6 +721,15 @@ async function uploadMedia(type, file) {
       body: file,
       headers: { 'Content-Type': file.type },
     });
+    state.editingGame = game;
+    fillGameDialog(game, `-${Date.now()}`);
+    await loadGames();
+  });
+}
+
+async function deleteMedia(type) {
+  await guard(async () => {
+    const game = await api(`/games/${state.editingGame.id}/media/${type}`, { method: 'DELETE' });
     state.editingGame = game;
     fillGameDialog(game, `-${Date.now()}`);
     await loadGames();
@@ -1425,6 +1441,7 @@ function bindEvents() {
       if (file) uploadMedia(slot.dataset.type, file);
       e.target.value = '';
     };
+    $('[data-media-delete]', slot).onclick = () => deleteMedia(slot.dataset.type);
   }
 }
 

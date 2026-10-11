@@ -84,7 +84,7 @@ class ApiClient(private val settings: Settings, val platform: String) {
     }
 
     fun mediaUrl(game: Game, type: String): String? {
-        val has = if (type == "boxart") game.hasBoxart else game.hasScreenshot
+        val has = if (type == "boxart") game.hasBoxart else type in game.screenshotTypes
         if (!has || settings.config.value.serverUrl.isBlank()) return null
         return url("/api/games/${game.id}/media/$type?v=${game.updatedAt}")
     }

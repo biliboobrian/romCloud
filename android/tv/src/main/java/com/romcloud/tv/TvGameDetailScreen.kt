@@ -65,6 +65,7 @@ import com.romcloud.app.netplay.Together
 import com.romcloud.app.ui.togetherIcon
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
+import com.romcloud.app.data.screenshotTypes
 import com.romcloud.app.data.starsText
 import com.romcloud.app.ui.DownloadedGreen
 import com.romcloud.app.ui.GameDetailViewModel
@@ -73,6 +74,7 @@ import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.OnlineSaveLabel
 import com.romcloud.app.ui.PlaytimeLabel
 import com.romcloud.app.ui.RetroArchHelpDialog
+import com.romcloud.app.ui.ScreenshotGallery
 import com.romcloud.app.ui.StateHistoryList
 import com.romcloud.app.ui.formatSize
 import com.romcloud.app.ui.gameFacts
@@ -291,6 +293,8 @@ fun TvGameDetailScreen(
                 game.description?.let {
                     Text(it, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth(0.9f))
                 }
+                // Captures d'écran (jusqu'à 4) : OK pour les voir en plein écran, flèches pour passer aux autres.
+                ScreenshotGallery(game.screenshotTypes.mapNotNull { mediaUrl(game, it) }, Modifier.fillMaxWidth(), height = 160.dp)
                 TvGameInfo(gameFacts(game))
             }
         }
