@@ -1163,6 +1163,10 @@ function renderJobs(jobs) {
 
 function bindEvents() {
   $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('open');
+  // Téléphone : toucher en dehors de la liste des systèmes la referme.
+  document.addEventListener('click', (e) => {
+    if ($('#sidebar').classList.contains('open') && !e.target.closest('#sidebar, #menuBtn')) $('#sidebar').classList.remove('open');
+  });
   $('#keyBtn').onclick = askKey;
   $('#jobsBtn').onclick = () => {
     refreshJobs();

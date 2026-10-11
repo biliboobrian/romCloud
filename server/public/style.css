@@ -292,15 +292,74 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .toast { background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 8px; box-shadow: var(--shadow); max-width: 360px; }
 .toast.error { background: var(--danger); color: #fff; }
 
+/* ---- Tablette et téléphone ---- */
+.pill { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.toolbar { flex-wrap: wrap; }
+.toolbar input[type=search] { flex: 1 1 200px; min-width: 0; }
+#gameCount { white-space: nowrap; }
+.games > p { grid-column: 1 / -1; }
+/* Onglets trop nombreux pour la largeur : défilement horizontal. */
+.tabs { overflow-x: auto; scrollbar-width: none; }
+.tab { white-space: nowrap; flex-shrink: 0; }
+.dup-foot { flex-wrap: wrap; }
+
+@media (max-width: 1100px) {
+  .sidebar { width: 220px; }
+  #scraperState { display: none; }
+  .main { padding: 18px 18px 32px; }
+}
+
 @media (max-width: 760px) {
   .only-mobile { display: inline-block; }
-  .sidebar { position: fixed; top: 49px; bottom: 0; left: 0; z-index: 5; transform: translateX(-100%); transition: transform 0.2s; }
-  .sidebar.open { transform: none; box-shadow: var(--shadow); }
-  .main { padding: 16px; }
+  /* Barre du haut sur deux lignes : titre, puis boutons. */
+  .topbar { flex-wrap: wrap; gap: 6px 10px; padding: 8px 12px; }
+  .topbar-right { margin-left: 0; flex-basis: 100%; flex-wrap: wrap; gap: 6px; }
+  .topbar-right .btn { padding: 5px 10px; font-size: 13px; }
+  /* Liste des systèmes : panneau par-dessus la page, le reste assombri (toucher dehors la ferme). */
+  .sidebar {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 20; width: min(300px, 85vw);
+    transform: translateX(-100%); transition: transform 0.2s;
+  }
+  .sidebar.open { transform: none; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45); }
+  .system-item { padding: 11px 10px; }
+  .main { padding: 14px 12px 32px; }
+  .system-head { gap: 12px; }
+  .system-head .head-image { height: 40px; max-width: 80px; margin-right: 10px; }
+  .system-head h2 { font-size: 20px; }
+  .system-head .actions .btn { padding: 6px 11px; font-size: 13px; }
+  .dropzone { margin-top: 14px; padding: 12px; }
+  .toolbar { gap: 8px; }
+  .toolbar input[type=search] { flex-basis: 100%; }
+  .toolbar select { flex: 1; min-width: 0; }
   .games { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+
+  /* Dialogues : presque tout l'écran. */
+  .dialog, .dialog.wide, #usersDialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  #usersDialog { height: calc(100dvh - 16px); }
+  .dialog-head { padding: 12px 14px; }
+  .form, .tab-panel { padding-left: 14px; padding-right: 14px; }
+  .tabs { padding: 8px 14px 0; }
+  .dup-body, .jobs { padding-left: 14px; padding-right: 14px; }
+  .dup-body { max-height: none; }
+  .dup-foot { padding: 10px 14px; }
+  .dup-foot > .muted { flex-basis: 100%; font-size: 12px; }
+  .sys-image { flex-direction: column; align-items: flex-start; }
   .game-edit { flex-direction: column; }
-  .media-col { flex-direction: row; width: auto; padding: 16px 18px 0; }
-  .media-slot { flex: 1; }
+  .media-col { flex-direction: row; width: auto; padding: 14px 14px 0; }
+  .media-slot { flex: 1; min-width: 0; }
   .row { flex-direction: column; }
-  #scraperState { display: none; }
+  .dialog-foot.split { flex-direction: column; align-items: stretch; }
+  .dialog-foot.split .actions { justify-content: flex-end; }
+  /* Espace disque : nom et taille, barre dessous, détails en dernier. */
+  .disk-row > summary, .disk-row.leaf {
+    grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name size" "bar bar" "meta meta"; gap: 4px 10px;
+  }
+  .disk-name { grid-area: name; }
+  .disk-bar { grid-area: bar; }
+  .disk-size { grid-area: size; }
+  .disk-meta { grid-area: meta; }
+  .disk-children { margin-left: 8px; }
+  .table { font-size: 12px; }
+  .toasts { left: 12px; right: 12px; bottom: 12px; }
+  .toast { max-width: none; }
 }
