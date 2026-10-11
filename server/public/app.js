@@ -966,6 +966,78 @@ function uploadBios(files, target) {
 }
 
 // ---------------------------------------------------------------------------
+// Import groupé de BIOS : fichiers, .zip ou dossier rangés dans les systèmes qui les attendent
+// ---------------------------------------------------------------------------
+
+function importBiosPack(files) {
+  if (!files.length) return;
+  const form = new FormData();
+  for (const f of files) {
+    form.append('files', f, f.name);
+    // Chemin dans le dossier choisi (« BIOS/pcsx2/bios/scph39001.bin ») : sert à reconnaître les dossiers attendus.
+    form.append('paths', f.webkitRelativePath || f.name);
+  }
+  const box = $('#biosImportProgress');
+  const bar = $('progress', box);
+  const text = $('span', box);
+  box.classList.remove('hidden');
+  $('#biosImportReport').innerHTML = '';
+  const total = files.reduce((n, f) => n + f.size, 0);
+  // XMLHttpRequest : progression de l'envoi (fetch ne la donne pas).
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/bios/import');
+  xhr.setRequestHeader('Accept-Language', getLanguage());
+  const key = apiKey();
+  if (key) xhr.setRequestHeader('Authorization', `Bearer ${key}`);
+  xhr.upload.onprogress = (e) => {
+    bar.value = e.lengthComputable ? e.loaded / e.total : 0;
+    text.textContent = t('biosImport.sending', { sent: formatSize(e.loaded), total: formatSize(total) });
+  };
+  xhr.upload.onload = () => {
+    bar.removeAttribute('value');
+    text.textContent = t('biosImport.sorting');
+  };
+  xhr.onloadend = async () => {
+    box.classList.add('hidden');
+    const data = (() => {
+      try {
+        return JSON.parse(xhr.responseText);
+      } catch {
+        return {};
+      }
+    })();
+    if (xhr.status !== 200) return toast(data.error || t('errors.http', { status: xhr.status }), 'error');
+    renderBiosImport(data);
+    toast(t('biosImport.done', { n: data.stored.length }));
+    await loadSystems();
+  };
+  xhr.send(form);
+}
+
+/** Rapport : BIOS rangés, déjà présents, refusés (autre empreinte), inconnus. */
+function renderBiosImport(report) {
+  const box = $('#biosImportReport');
+  box.innerHTML = '';
+  const sections = [
+    ['stored', 'ok', (i) => t('biosImport.item', i)],
+    ['already', 'muted', (i) => t('biosImport.item', i)],
+    ['mismatch', 'mismatch', (i) => t('biosImport.item', i)],
+    ['unknown', 'muted', (i) => i.file],
+  ];
+  for (const [kind, tag, label] of sections) {
+    const list = report[kind] || [];
+    if (!list.length) continue;
+    const details = document.createElement('details');
+    details.className = 'dup-group';
+    details.open = kind === 'stored' || kind === 'mismatch';
+    details.innerHTML = `<summary class="dup-group-head"><span>${escapeHtml(t(`biosImport.${kind}`, { n: list.length }))}</span><span class="tag ${tag}">${list.length}</span></summary>
+      ${list.map((i) => `<div class="dup-row bios-row"><span class="name">${escapeHtml(label(i))}</span></div>`).join('')}`;
+    box.append(details);
+  }
+  if (!box.children.length) box.innerHTML = `<p class="muted">${escapeHtml(t('biosImport.nothing'))}</p>`;
+}
+
+// ---------------------------------------------------------------------------
 // APK des émulateurs Android
 // ---------------------------------------------------------------------------
 
@@ -1174,6 +1246,16 @@ function bindEvents() {
   };
   $('#addSystemBtn').onclick = openAddDialog;
   $('#emptyAddBtn').onclick = openAddDialog;
+  $('#biosImportBtn').onclick = () => {
+    $('#biosImportReport').innerHTML = '';
+    $('#biosImportDialog').showModal();
+  };
+  for (const input of [$('#biosImportFiles'), $('#biosImportFolder')]) {
+    input.onchange = (e) => {
+      importBiosPack([...e.target.files]);
+      e.target.value = '';
+    };
+  }
   $('#scanAllBtn').onclick = () => guard(async () => {
     await api('/scan', { method: 'POST' });
     toast(t('rescan.allDone'));

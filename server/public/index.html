@@ -29,6 +29,7 @@
       <nav id="systemList" class="system-list"></nav>
       <div class="sidebar-foot">
         <button class="btn ghost small" id="scanAllBtn" data-i18n="app.rescanAll"></button>
+        <button class="btn ghost small" id="biosImportBtn" data-i18n="biosImport.open"></button>
       </div>
     </aside>
 
@@ -304,6 +305,23 @@
       <button class="btn danger hidden" id="errorsClearBtn" data-i18n="users.clearErrors"></button>
       <button class="btn danger hidden" id="downloadsClearBtn" data-i18n="downloads.clear"></button>
       <button class="btn hidden" id="diskRefreshBtn" data-i18n="disk.refresh"></button>
+    </div>
+  </dialog>
+
+  <!-- Import groupé de BIOS -->
+  <dialog id="biosImportDialog" class="dialog wide">
+    <form method="dialog" class="dialog-head">
+      <h3 data-i18n="biosImport.title"></h3>
+      <button class="icon-btn" data-i18n-aria-label="app.close">✕</button>
+    </form>
+    <div class="dup-body">
+      <p class="muted" data-i18n="biosImport.intro"></p>
+      <div class="actions">
+        <label class="btn primary"><span data-i18n="biosImport.files"></span><input type="file" id="biosImportFiles" multiple hidden></label>
+        <label class="btn"><span data-i18n="biosImport.folder"></span><input type="file" id="biosImportFolder" webkitdirectory multiple hidden></label>
+      </div>
+      <div id="biosImportProgress" class="hidden"><progress max="1" value="0"></progress> <span class="muted"></span></div>
+      <div id="biosImportReport"></div>
     </div>
   </dialog>
 
