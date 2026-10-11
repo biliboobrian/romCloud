@@ -1,5 +1,6 @@
 #include "input.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <utility>
 #include <vector>
@@ -46,6 +47,10 @@ void Input::resetKeys() {
 void Input::loadKeys(const std::string& file) {
   resetKeys();
   keysFile_ = file;
+  // Joueurs des manettes : players.cfg, dans le dossier des touches du clavier.
+  size_t slash = file.find_last_of("/\\");
+  playersFile_ = file.empty() ? "" : (slash == std::string::npos ? std::string() : file.substr(0, slash + 1)) + "players.cfg";
+  loadPlayers();
   std::vector<uint8_t> data;
   if (file.empty() || !readFile(file, data)) return;
   std::string text(data.begin(), data.end());
@@ -67,6 +72,83 @@ void Input::loadKeys(const std::string& file) {
     }
   }
   logf("Clavier : %s", file.c_str());
+}
+
+// ---- Joueurs des manettes ----
+
+std::string Input::padKey(SDL_Gamepad* pad) {
+  char guid[64] = {};
+  SDL_GUIDToString(SDL_GetJoystickGUID(SDL_GetGamepadJoystick(pad)), guid, sizeof(guid));
+  const char* serial = SDL_GetGamepadSerial(pad);
+  const char* path = SDL_GetGamepadPath(pad);
+  return std::string(guid) + "|" + (serial && *serial ? serial : path ? path : "");
+}
+
+void Input::loadPlayers() {
+  for (auto& s : savedPlayers_) s.clear();
+  std::vector<uint8_t> data;
+  if (playersFile_.empty() || !readFile(playersFile_, data)) return;
+  std::string text(data.begin(), data.end());
+  size_t start = 0;
+  while (start < text.size()) {
+    size_t end = text.find('\n', start);
+    if (end == std::string::npos) end = text.size();
+    std::string line = text.substr(start, end - start);
+    start = end + 1;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    size_t eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    int port = atoi(line.substr(0, eq).c_str()) - 1;
+    if (port >= 0 && port < kPorts) savedPlayers_[port] = line.substr(eq + 1);
+  }
+}
+
+void Input::savePlayers() const {
+  if (playersFile_.empty()) return;
+  std::string text;
+  for (int port = 0; port < kPorts; port++) text += std::to_string(port + 1) + "=" + savedPlayers_[port] + "\n";
+  writeFile(playersFile_, text.data(), text.size());
+}
+
+std::string Input::padName(int port) const {
+  if (port < 0 || port >= kPorts || !pads_[port]) return "";
+  const char* name = SDL_GetGamepadName(pads_[port]);
+  return name ? name : "";
+}
+
+int Input::portOf(SDL_JoystickID id) const {
+  for (int port = 0; port < kPorts; port++) {
+    if (pads_[port] && SDL_GetJoystickID(SDL_GetGamepadJoystick(pads_[port])) == id) return port;
+  }
+  return -1;
+}
+
+void Input::setPlayerOrder(const std::vector<SDL_JoystickID>& order) {
+  std::vector<SDL_Gamepad*> pads;
+  for (SDL_JoystickID id : order) {
+    int port = portOf(id);
+    if (port >= 0 && std::find(pads.begin(), pads.end(), pads_[port]) == pads.end()) pads.push_back(pads_[port]);
+  }
+  for (auto* pad : pads_) {
+    if (pad && std::find(pads.begin(), pads.end(), pad) == pads.end()) pads.push_back(pad);
+  }
+  for (int port = 0; port < kPorts; port++) {
+    pads_[port] = port < (int)pads.size() ? pads[(size_t)port] : nullptr;
+    if (pads_[port]) {
+      SDL_RumbleGamepad(pads_[port], 0, 0, 0);
+      // Joueur sans manette branchée : la sienne reste mémorisée.
+      savedPlayers_[port] = padKey(pads_[port]);
+      logf("Joueur %d : %s", port + 1, SDL_GetGamepadName(pads_[port]));
+    }
+    rumbleStrong_[port] = rumbleWeak_[port] = 0;
+  }
+  // Une manette n'est mémorisée que pour un joueur.
+  for (int port = 0; port < kPorts; port++) {
+    for (int other = 0; other < kPorts; other++) {
+      if (other != port && pads_[other] && !pads_[port] && savedPlayers_[port] == savedPlayers_[other]) savedPlayers_[port].clear();
+    }
+  }
+  savePlayers();
 }
 
 bool Input::saveKeys() const {
@@ -144,13 +226,27 @@ void Input::handleEvent(const SDL_Event& event) {
     for (auto* pad : pads_) {
       if (pad && SDL_GetJoystickID(SDL_GetGamepadJoystick(pad)) == id) return;  // déjà ouverte
     }
-    for (int port = 0; port < kPorts; port++) {
-      if (!pads_[port]) {
-        pads_[port] = SDL_OpenGamepad(id);
-        if (pads_[port]) logf("Manette %d : %s", port + 1, SDL_GetGamepadName(pads_[port]));
-        return;
-      }
+    SDL_Gamepad* pad = SDL_OpenGamepad(id);
+    if (!pad) return;
+    // Joueur mémorisé pour cette manette s'il est libre, sinon première place sans manette mémorisée,
+    // sinon première place libre.
+    const std::string key = padKey(pad);
+    int port = -1;
+    for (int p = 0; p < kPorts && port < 0; p++) {
+      if (!pads_[p] && savedPlayers_[p] == key) port = p;
     }
+    for (int p = 0; p < kPorts && port < 0; p++) {
+      if (!pads_[p] && savedPlayers_[p].empty()) port = p;
+    }
+    for (int p = 0; p < kPorts && port < 0; p++) {
+      if (!pads_[p]) port = p;
+    }
+    if (port < 0) {
+      SDL_CloseGamepad(pad);
+      return;
+    }
+    pads_[port] = pad;
+    logf("Manette %d : %s", port + 1, SDL_GetGamepadName(pad));
   } else if (event.type == SDL_EVENT_GAMEPAD_REMOVED) {
     for (auto& pad : pads_) {
       if (pad && SDL_GetJoystickID(SDL_GetGamepadJoystick(pad)) == event.gdevice.which) {

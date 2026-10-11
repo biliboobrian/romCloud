@@ -370,6 +370,14 @@
     <string name="libretro_crash_text">%1$s (core %2$s) stopped unexpectedly. Share the report to help fix the problem, or try another core or RetroArch for this system.</string>
     <string name="action_share_report">Share the report</string>
     <string name="libretro_menu_gamepad">Set up the controller</string>
+    <string name="players_menu">Controller players</string>
+    <string name="players_title">Controller players</string>
+    <string name="players_press">Press a button on the controller of player %1$d</string>
+    <string name="players_none">No controller connected.</string>
+    <string name="players_row">Player %1$d: %2$s</string>
+    <string name="players_hint">Press the same controller again to finish. Each controller keeps its player, for every game.</string>
+    <string name="players_done">Done</string>
+    <string name="players_saved">Controller players saved</string>
     <string name="libretro_menu_combo_hint">Start + Select: open this menu</string>
     <string name="action_skip">Skip</string>
     <string name="pad_config_title">Controller setup</string>

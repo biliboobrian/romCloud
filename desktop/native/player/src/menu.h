@@ -1,6 +1,6 @@
 // Menu du moteur (Échap, bouton central de la manette ou Start + Select) : reprendre, états de
 // sauvegarde, redémarrage, options du cœur (un onglet par type), touches du clavier,
-// configuration des manettes, disque,
+// configuration des manettes, joueurs des manettes, disque,
 // filtre et format d'image, plein écran, sauvegarder et quitter, quitter.
 #pragma once
 
@@ -14,7 +14,7 @@
 
 enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext };
 
-enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
+enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, Players, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
 
 /** État affiché par le menu (fourni par la boucle principale). */
 struct MenuState {
@@ -66,7 +66,7 @@ class Menu {
 
  private:
   enum class Screen { Main, Options, Keys, States };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Disk, Filter, Aspect, Fullscreen, LeaveNetplay, SaveQuit, Quit };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, Aspect, Fullscreen, LeaveNetplay, SaveQuit, Quit };
 
   std::vector<Item> items(const MenuState& state) const;
   int itemCount(const MenuState& state) const;

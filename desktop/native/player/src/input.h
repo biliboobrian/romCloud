@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "libretro.h"
 
@@ -41,6 +42,15 @@ class Input {
   int16_t state(unsigned port, unsigned device, unsigned index, unsigned id) const;
   bool rumble(unsigned port, retro_rumble_effect effect, uint16_t strength);
 
+  // Joueurs : manette de chaque port, mémorisée par manette dans players.cfg (à côté des touches du
+  // clavier) ; une manette rebranchée retrouve son joueur, les autres prennent la première place libre.
+  /** Nom de la manette du joueur [port] ; vide : aucune. */
+  std::string padName(int port) const;
+  /** Joueur (port) de la manette [id] ; -1 si elle n'est pas ouverte. */
+  int portOf(SDL_JoystickID id) const;
+  /** Manettes [order] aux premières places, dans cet ordre, les autres ensuite ; enregistré. */
+  void setPlayerOrder(const std::vector<SDL_JoystickID>& order);
+
   /** Start + Select maintenus sur une manette (ouverture du menu). */
   bool menuCombo() const;
   int connected() const;
@@ -49,9 +59,15 @@ class Input {
   bool button(unsigned port, unsigned id) const;
   bool key(unsigned id) const;
   int16_t axis(unsigned port, SDL_GamepadAxis axis) const;
+  /** Identité d'une manette : modèle (GUID) et numéro de série, sinon emplacement (port USB). */
+  static std::string padKey(SDL_Gamepad* pad);
+  void loadPlayers();
+  void savePlayers() const;
 
   SDL_Scancode keys_[kButtons] = {};
   std::string keysFile_;
   SDL_Gamepad* pads_[kPorts] = {};
+  std::string playersFile_;
+  std::string savedPlayers_[kPorts];  // manette mémorisée pour chaque joueur
   uint16_t rumbleStrong_[kPorts] = {}, rumbleWeak_[kPorts] = {};
 };

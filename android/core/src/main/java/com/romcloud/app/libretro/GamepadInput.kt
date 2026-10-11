@@ -71,9 +71,6 @@ internal object GamepadInput {
         0x12e to KeyEvent.KEYCODE_BUTTON_A, 0x12f to KeyEvent.KEYCODE_BUTTON_X,
     )
 
-    /** Joueur (port libretro) correspondant à la manette : 0 pour la première ou une télécommande. */
-    fun port(event: KeyEvent): Int = ((event.device?.controllerNumber ?: 0) - 1).coerceAtLeast(0)
-
     /** Manette physique (boutons de manette ou axes de joystick) : pas une télécommande ni un clavier. */
     fun isGamepad(device: InputDevice): Boolean =
         !device.isVirtual && (
