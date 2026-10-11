@@ -26,6 +26,24 @@ class AppUpdaterTest {
     }
 
     @Test
+    fun `modifications regroupees par version`() {
+        val body = """{"commits": [
+            {"commit": {"message": "Couleur des systèmes ; Android : fond ; v1.35.6\r\n\r\nCo-Authored-By: x"}},
+            {"commit": {"message": "Interface web sur mobile ; scraping Vita"}},
+            {"commit": {"message": "Merge branch 'x'"}},
+            {"commit": {"message": "Fond de l'image ; v1.35.7"}}
+        ]}"""
+        assertEquals(
+            listOf(
+                AppUpdater.VersionChanges("1.35.7", listOf("Fond de l'image", "Interface web sur mobile", "scraping Vita")),
+                AppUpdater.VersionChanges("1.35.6", listOf("Couleur des systèmes", "Android : fond")),
+            ),
+            AppUpdater.changesFromCompare(body, "1.35.7"),
+        )
+        assertEquals(emptyList<AppUpdater.VersionChanges>(), AppUpdater.changesFromCompare("{}", "1.35.7"))
+    }
+
+    @Test
     fun `nom de l'APK selon l'application`() {
         assertEquals("RomCloud-1.12.0.apk", AppUpdater.apkName("1.12.0", tv = false))
         assertEquals("RomCloud-TV-1.12.0.apk", AppUpdater.apkName("1.12.0", tv = true))

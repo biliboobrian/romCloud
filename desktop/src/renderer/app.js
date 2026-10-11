@@ -2076,12 +2076,23 @@
     modal({
       title: t('update.title'),
       body: `<p>${esc(t('update.text', { version: update.version, installed: update.installed }))}</p>
-        <p class="muted">${esc(t(update.portable ? 'update.portable' : 'update.installer', { size: update.size ? formatSize(update.size) : t('update.sizeUnknown') }))}</p>`,
+        <p class="muted">${esc(t(update.portable ? 'update.portable' : 'update.installer', { size: update.size ? formatSize(update.size) : t('update.sizeUnknown') }))}</p>
+        ${changesHtml(update)}`,
       buttons: [
         { label: t('update.later'), kind: 'ghost' },
         { label: t('update.install'), kind: 'primary', onClick: () => installUpdate(update) },
       ],
     });
+  }
+
+  /** Modifications depuis la version installée, par version (repliées). */
+  function changesHtml(update) {
+    const groups = update.changes || [];
+    if (!groups.length) return '';
+    return `<details class="update-changes">
+      <summary>${esc(t('update.changes', { installed: update.installed, version: update.version }))}</summary>
+      ${groups.map((g) => `<h4>v${esc(g.version)}</h4><ul>${g.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`).join('')}
+    </details>`;
   }
 
   async function installUpdate(update) {

@@ -261,6 +261,10 @@ body.pad-nav .list-row:focus { outline: none; background: var(--surface); box-sh
 .modal .foot { padding: 14px 22px 18px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .modal .foot .left { margin-right: auto; }
 .modal.wide { width: min(760px, calc(100vw - 40px)); }
+/* Mise à jour : modifications depuis la version installée, repliées. */
+.update-changes summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.update-changes h4 { margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+.update-changes ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; user-select: text; }
 /* Historique des états : miniature, date, appareil et actions. */
 .state-list { display: flex; flex-direction: column; gap: 14px; }
 .emu-update:empty { display: none; }

@@ -7,11 +7,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
@@ -37,6 +43,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.I18n
 import com.romcloud.core.R
+import com.romcloud.app.data.AppUpdater
 import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.EmulatorApk
 import com.romcloud.app.launch.LaunchException
@@ -168,7 +175,12 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         AlertDialog(
             onDismissRequest = app.updater::dismiss,
             title = { Text(stringResource(R.string.update_title)) },
-            text = { Text(stringResource(R.string.update_text, u.version, u.installed, formatSize(u.apk.size))) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.update_text, u.version, u.installed, formatSize(u.apk.size)))
+                    UpdateChanges(u)
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     app.updater.dismiss()
@@ -307,5 +319,23 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                 }) { Text(stringResource(R.string.action_force_stop)) }
             },
         )
+    }
+}
+
+/** Modifications depuis la version installée, par version, repliées sous un bouton. */
+@Composable
+private fun UpdateChanges(update: AppUpdater.Update) {
+    if (update.changes.isEmpty()) return
+    var expanded by remember { mutableStateOf(false) }
+    TextButton(onClick = { expanded = !expanded }) {
+        Text(stringResource(R.string.update_changes, update.installed, update.version))
+        Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
+    }
+    if (!expanded) return
+    for (group in update.changes) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("v${group.version}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            for (item in group.items) Text("• $item", style = MaterialTheme.typography.bodySmall)
+        }
     }
 }

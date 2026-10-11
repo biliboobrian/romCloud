@@ -280,6 +280,7 @@
     <string name="apk_available">Disponible sur votre serveur RomCloud : %1$s %2$s (%3$s).</string>
     <string name="apk_not_on_server">Absent de votre serveur RomCloud : installez-le depuis le Play Store.</string>
     <string name="update_title">Mise à jour de RomCloud</string>
+    <string name="update_changes">Modifications de la %1$s à la %2$s</string>
     <string name="update_text">RomCloud %1$s est disponible (version installée : %2$s, téléchargement : %3$s). La mise à jour conserve vos réglages et vos jeux téléchargés.</string>
     <string name="action_update">Mettre à jour</string>
     <string name="action_later">Plus tard</string>
