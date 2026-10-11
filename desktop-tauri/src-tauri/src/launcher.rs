@@ -9,7 +9,7 @@
 use crate::catalog::{self, Emulator};
 use crate::error::{AppError, Result};
 use crate::library::s;
-use crate::{account, builtin, cores, library, managed, netplay, paths, settings};
+use crate::{account, builtin, cores, library, managed, netplay, paths, settings, vita3k};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -245,6 +245,8 @@ enum Plan {
     /// [emulator] : identifiant du catalogue (fichiers du dossier des BIOS à installer avant le lancement).
     Run { exe: String, args: Vec<String>, emulator: Option<&'static str> },
     Manual { exe: String, emulator: String, file: String },
+    /// Vita3K : jeu démarré, ou installé d'abord (voir vita3k.rs).
+    Vita { exe: String, step: vita3k::Step },
     Open(String),
 }
 
@@ -296,6 +298,12 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
             let emu = catalog::by_id(s(&option, "emuId")).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": option["emuId"] })))?;
             let exe = emulator_path(emu.id).ok_or_else(|| AppError::new("errors.emulatorMissing", json!({ "name": emu.name, "id": emu.id })))?;
             let file = if PLAYLIST_EMULATORS.contains(&emu.id) { playlist() } else { file };
+            // Vita3K sans ligne de commande personnalisée : installation du jeu puis démarrage.
+            if emu.id == "vita3k" && emulator_args(emu).is_none() {
+                return vita3k::plan(&exe, Path::new(&file), &game["id"])
+                    .map(|step| Plan::Vita { exe, step })
+                    .map_err(|key| AppError::new(key, json!({ "file": file })));
+            }
             match emulator_args(emu) {
                 None => Ok(Plan::Manual { exe, emulator: emu.name.into(), file }),
                 Some(args) => Ok(Plan::Run { exe, args: catalog::build_args(&args, &file), emulator: Some(emu.id) }),
@@ -320,6 +328,8 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
 pub fn describe(system: &Value, game: &Value) -> Value {
     match prepare(system, game) {
         Ok(Plan::Builtin { exe, args, .. }) | Ok(Plan::Run { exe, args, .. }) => json!(catalog::command_line(&exe, &args)),
+        Ok(Plan::Vita { exe, step: vita3k::Step::Run(args) | vita3k::Step::InstallAndRun(args) }) => json!(catalog::command_line(&exe, &args)),
+        Ok(Plan::Vita { exe, step: vita3k::Step::InstallPkg { run, .. } }) => json!(catalog::command_line(&exe, &run)),
         _ => Value::Null,
     }
 }
@@ -540,5 +550,29 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             spawn_detached(&exe, &[], None)?;
             Ok(json!({ "manual": true, "emulator": emulator, "file": file }))
         }
+        Plan::Vita { exe, step: vita3k::Step::Run(args) | vita3k::Step::InstallAndRun(args) } => {
+            spawn_detached(&exe, &args, Some(game.clone()))?;
+            Ok(json!({ "manual": false }))
+        }
+        Plan::Vita { exe, step: vita3k::Step::InstallPkg { install, run } } => {
+            // Vita3K installe le .pkg puis quitte : le jeu est ensuite démarré.
+            let mut command = tokio::process::Command::new(&exe);
+            command.args(&install).current_dir(paths::dirname(&exe)).stdin(std::process::Stdio::null());
+            let status = command.status().await.map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e.to_string() })))?;
+            let id = run.last().cloned().unwrap_or_default();
+            if !vita3k::is_installed(&exe, &id) {
+                return Err(AppError::new("errors.vitaInstall", json!({ "code": status.code() })));
+            }
+            spawn_detached(&exe, &run, Some(game.clone()))?;
+            Ok(json!({ "manual": false }))
+        }
     }
+}
+
+/// Vita3K et ce jeu, pour la procédure de la fiche : { titleId, installed, format, license, appDir, exe }.
+pub fn vita_status(system: &Value, game: &Value) -> Value {
+    let exe = emulator_path("vita3k");
+    let mut status = vita3k::status(exe.as_deref(), &library::file_for(system, game), &game["id"]);
+    status["exe"] = json!(exe);
+    status
 }

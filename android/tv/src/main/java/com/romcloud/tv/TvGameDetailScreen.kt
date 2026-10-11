@@ -76,6 +76,7 @@ import com.romcloud.app.ui.formatSize
 import com.romcloud.app.ui.gameFacts
 import com.romcloud.app.ui.gamePlaytime
 import com.romcloud.app.ui.partsSummary
+import com.romcloud.app.ui.VitaProcedure
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
 
@@ -267,6 +268,8 @@ fun TvGameDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // Vita3K : installation du jeu dans l'émulateur, puis démarrage direct.
+                state.vita?.let { VitaProcedure(it, state.localPath, viewModel::setVitaLicense) }
 
                 game.description?.let {
                     Text(it, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth(0.9f))

@@ -322,6 +322,9 @@ fun GameDetailScreen(
                 )
             }
 
+            // Vita3K : installation du jeu dans l'émulateur, puis démarrage direct.
+            state.vita?.let { VitaProcedure(it, state.localPath, viewModel::setVitaLicense) }
+
             state.launchCommand?.let { LaunchCommand(it) }
 
             game.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }

@@ -585,4 +585,17 @@
     <string name="report_sent">Rapport envoyé au serveur</string>
     <string name="report_queued">Rapport enregistré : il sera envoyé dès que le serveur sera joignable</string>
     <string name="states_core">Cœur de l’émulateur : %1$s</string>
+    <string name="vita_title">Lancement avec Vita3K</string>
+    <string name="vita_step_firmware">Vita3K a besoin de son firmware et de ses polices : à son premier démarrage, suivez son assistant (PSVUPDAT.PUP et PSP2UPDAT.PUP du site de Sony).</string>
+    <string name="vita_step_install_pkg">Installez le jeu dans Vita3K : menu « File › Install .pkg », choisissez le fichier ci-dessous puis collez sa licence (zRIF). L’installation n’a lieu qu’une fois.</string>
+    <string name="vita_step_install_archive">Installez le jeu dans Vita3K : menu « File › Install .zip, .vpk », puis choisissez le fichier ci-dessous. L’installation n’a lieu qu’une fois.</string>
+    <string name="vita_step_format">Vita3K ne sait pas installer les fichiers .%1$s : utilisez le .vpk, le .zip ou le .pkg du jeu.</string>
+    <string name="vita_step_play">Ensuite, « Jouer » démarre directement le jeu dans Vita3K (identifiant %1$s).</string>
+    <string name="vita_step_no_title_id">Identifiant du jeu introuvable : une fois installé, démarrez le jeu depuis la liste de Vita3K.</string>
+    <string name="vita_file">Fichier : %1$s</string>
+    <string name="vita_license">Licence du jeu (zRIF)</string>
+    <string name="vita_license_save">Enregistrer</string>
+    <string name="vita_license_copy">Copier</string>
+    <string name="vita_license_copied">Licence copiée</string>
+    <string name="vita_license_hint">Les .pkg sont chiffrés : leur licence (texte qui commence souvent par « KO5i ») se tire de votre propre console (NoNpDrm, PKGj).</string>
 </resources>

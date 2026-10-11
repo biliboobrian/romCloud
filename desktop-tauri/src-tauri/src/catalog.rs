@@ -38,7 +38,7 @@ pub static EMULATORS: &[Emulator] = &[
     emu!("rpcs3", "RPCS3", ["ps3"], "https://rpcs3.net/download", ["rpcs3.exe"], ["RPCS3"], ["--no-gui", "{file}"]),
     emu!("ppsspp", "PPSSPP", ["pspminis"], "https://www.ppsspp.org/download/", ["PPSSPPWindows64.exe", "PPSSPPWindows.exe"],
         ["PPSSPP"], ["--fullscreen", "{file}"]),
-    // Les jeux doivent d'abord être installés dans Vita3K (fichiers .vpk / .pkg) : pas de lancement direct.
+    // Jeux installés dans Vita3K puis démarrés par leur identifiant (vita3k.rs) : pas de ligne de commande fixe.
     emu!("vita3k", "Vita3K", ["vita"], "https://vita3k.org/", ["Vita3K.exe"], ["Vita3K"], None),
     emu!("dolphin", "Dolphin", ["wiiware", "triforce"], "https://dolphin-emu.org/download/", ["Dolphin.exe"],
         ["Dolphin", "Dolphin-x64", "Dolphin Emulator"], ["-b", "-e", "{file}"]),
