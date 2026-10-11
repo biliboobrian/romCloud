@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import android.hardware.input.InputManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -82,6 +83,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -221,6 +223,15 @@ class LibretroActivity : ComponentActivity() {
     private fun localPort(port: Int) = if (netplayLaunch != null && link == null) 0 else port
 
     private val gamepadMappings by lazy { GamepadMappings(this, systemId) }
+    /** Joueur de chaque manette (ordre choisi depuis le menu, mémorisé par manette). */
+    private val players by lazy { GamepadPlayers(this) }
+    /** Écran « Joueurs des manettes » ouvert : manettes déjà choisies (joueur 1, 2…) ; null = fermé. */
+    private var playersOrder by mutableStateOf<List<InputDevice>?>(null)
+    private val inputDevices = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) = players.invalidate()
+        override fun onInputDeviceRemoved(deviceId: Int) = players.invalidate()
+        override fun onInputDeviceChanged(deviceId: Int) = players.invalidate()
+    }
     /** Boutons RetroPad enfoncés par joueur, et ceux enfoncés par une gâchette analogique. */
     private val heldButtons = HashMap<Int, MutableSet<Int>>()
     private val axisButtons = HashMap<Int, MutableSet<Int>>()
@@ -292,6 +303,7 @@ class LibretroActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
+        getSystemService(InputManager::class.java)?.registerInputDeviceListener(inputDevices, null)
         container = FrameLayout(this).apply { setBackgroundColor(AndroidColor.BLACK) }
         container.addView(
             ComposeView(this).apply {
@@ -310,6 +322,7 @@ class LibretroActivity : ComponentActivity() {
             when {
                 phase != Phase.Running -> finish()
                 mappingSession != null -> mappingSession = null
+                playersOrder != null -> playersOrder = null
                 filterPicker -> filterPicker = false
                 aspectPicker -> aspectPicker = false
                 statesOpen -> statesOpen = false
@@ -567,6 +580,7 @@ class LibretroActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        getSystemService(InputManager::class.java)?.unregisterInputDeviceListener(inputDevices)
         super.onDestroy()
         // Libère le cœur : un autre jeu pourra en charger un nouveau dans un processus neuf.
         if (isFinishing) {
@@ -941,6 +955,34 @@ class LibretroActivity : ComponentActivity() {
         if (KeyEvent.KEYCODE_BUTTON_START in keys && KeyEvent.KEYCODE_BUTTON_SELECT in keys) openMenu()
     }
 
+    /**
+     * Écran des joueurs : un bouton d'une manette la place au joueur suivant ; la même manette de
+     * nouveau (ou la dernière manette branchée) termine. Bouton central : annule.
+     */
+    private fun onPlayersKey(event: KeyEvent, order: List<InputDevice>): Boolean {
+        val device = event.device?.takeIf(GamepadInput::isGamepad) ?: return false
+        if (event.keyCode in GamepadInput.MENU_KEYS) {
+            if (event.action == KeyEvent.ACTION_UP) playersOrder = null
+            return true
+        }
+        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) return true
+        if (order.any { it.id == device.id }) {
+            finishPlayers(order)
+            return true
+        }
+        val next = order + device
+        if (next.size >= GamepadPlayers.connected().size.coerceAtMost(GamepadPlayers.MAX_PLAYERS)) finishPlayers(next) else playersOrder = next
+        return true
+    }
+
+    private fun finishPlayers(order: List<InputDevice>) {
+        if (order.isNotEmpty()) {
+            players.setOrder(order)
+            toast = getString(R.string.players_saved)
+        }
+        playersOrder = null
+    }
+
     /** Relâche tous les boutons enfoncés (ouverture du menu : pas de touche bloquée au retour). */
     private fun releaseButtons() {
         val view = retroView
@@ -953,6 +995,9 @@ class LibretroActivity : ComponentActivity() {
         val event = gamepadButtonEvent(original)
         mappingSession?.let { session ->
             return session.onKey(event) || super.dispatchKeyEvent(event)
+        }
+        playersOrder?.let { order ->
+            return onPlayersKey(event, order) || super.dispatchKeyEvent(event)
         }
         val view = retroView
         if (view == null || phase != Phase.Running) return super.dispatchKeyEvent(event)
@@ -968,7 +1013,7 @@ class LibretroActivity : ComponentActivity() {
             if (event.action == KeyEvent.ACTION_UP) openMenu()
             return true
         }
-        sendButton(event.action, key, localPort(GamepadInput.port(event)))
+        sendButton(event.action, key, localPort(players.port(event.device)))
         if (showTouchPad && event.isFromSource(InputDevice.SOURCE_GAMEPAD)) showTouchPad = false
         return true
     }
@@ -1008,13 +1053,14 @@ class LibretroActivity : ComponentActivity() {
         mappingSession?.let { session ->
             return session.onMotion(event) || super.dispatchGenericMotionEvent(event)
         }
+        if (playersOrder != null && event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return true
         val view = retroView
         if (view == null || phase != Phase.Running || menuOpen ||
             !event.isFromSource(InputDevice.SOURCE_JOYSTICK) || event.action != MotionEvent.ACTION_MOVE
         ) {
             return super.dispatchGenericMotionEvent(event)
         }
-        val port = localPort(((event.device?.controllerNumber ?: 0) - 1).coerceAtLeast(0))
+        val port = localPort(players.port(event.device))
         val mapping = event.device?.let(gamepadMappings::get)
         fun axis(axis: Int?, invert: Boolean, default: Int) =
             event.getAxisValue(axis ?: default) * if (axis != null && invert) -1f else 1f
@@ -1071,8 +1117,11 @@ class LibretroActivity : ComponentActivity() {
                     val opts = options
                     val edited = editing
                     val session = mappingSession
+                    val order = playersOrder
                     if (menuOpen && session != null) {
                         MappingScreen(session)
+                    } else if (menuOpen && order != null) {
+                        PlayersScreen(order)
                     } else if (menuOpen && filterPicker) {
                         FilterPicker()
                     } else if (menuOpen && aspectPicker) {
@@ -1205,6 +1254,7 @@ class LibretroActivity : ComponentActivity() {
                         }
                     },
                 )
+                add(stringResource(R.string.players_menu) to { playersOrder = emptyList() })
                 if (!isTv) add(stringResource(R.string.cast_button) to { showCast = true })
                 val target = streamTarget
                 if (streamSender != null) {
@@ -1248,6 +1298,38 @@ class LibretroActivity : ComponentActivity() {
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+    }
+
+    /** Joueurs des manettes : chaque joueur, dans l'ordre, appuie sur un bouton de sa manette. */
+    @Composable
+    private fun PlayersScreen(order: List<InputDevice>) {
+        val connected = remember(order) { GamepadPlayers.connected() }
+        Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
+            Centered {
+                Text(stringResource(R.string.players_title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (connected.isEmpty()) stringResource(R.string.players_none) else stringResource(R.string.players_press, order.size + 1),
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (port in 0 until GamepadPlayers.MAX_PLAYERS) {
+                        // Manette choisie, sinon (rien de choisi) celle du joueur jusqu'ici.
+                        val name = order.getOrNull(port)?.name ?: if (order.isEmpty()) players.deviceOf(port)?.name else null
+                        Text(
+                            stringResource(R.string.players_row, port + 1, name ?: "—"),
+                            color = if (port < order.size) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = if (port == order.size && port < connected.size) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    }
+                }
+                Text(stringResource(R.string.players_hint), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { finishPlayers(order) }, enabled = order.isNotEmpty()) { Text(stringResource(R.string.players_done)) }
+                    FocusedButton(stringResource(R.string.action_cancel), { playersOrder = null })
+                }
             }
         }
     }

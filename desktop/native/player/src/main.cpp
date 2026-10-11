@@ -44,6 +44,7 @@
 #include "menu.h"
 #include "netplay.h"
 #include "padconfig.h"
+#include "players.h"
 #include "util.h"
 #include "video.h"
 
@@ -75,6 +76,7 @@ struct Args {
   bool testMenu = false;
   bool testKeys = false;  // essai : écran des touches du clavier
   bool testPad = false;  // essai : écran de configuration des manettes
+  bool testPlayers = false;  // essai : écran des joueurs des manettes
   bool testStates = false;  // essai : historique des états (« Charger l'état »)
   bool testSaveState = false;  // essai : état enregistré après les N images
   bool testAudio = false;  // essai : amplitude maximale du son des N images
@@ -109,6 +111,7 @@ Args parseArgs(int argc, char** argv) {
     else if (arg == "--test-menu") a.testMenu = true;
     else if (arg == "--test-keys") a.testKeys = true;
     else if (arg == "--test-pad") a.testPad = true;
+    else if (arg == "--test-players") a.testPlayers = true;
     else if (arg == "--test-states") a.testStates = true;
     else if (arg == "--test-save-state") a.testSaveState = true;
     else if (arg == "--test-audio") a.testAudio = true;
@@ -162,6 +165,9 @@ class Player {
   void startPadConfig() {
     padConfig_ = std::make_unique<PadConfig>(args_.buttons, args_.padStyle, [this](const char* key) { return menu_.tr(key); });
   }
+  void startPlayers() {
+    players_ = std::make_unique<PlayerOrder>(input_, [this](const char* key) { return menu_.tr(key); });
+  }
   void runFrame();
   void present();
   void shutdown();
@@ -183,6 +189,7 @@ class Player {
   Input input_;
   Netplay netplay_;
   std::unique_ptr<PadConfig> padConfig_;  // configuration d'une manette en cours (depuis le menu)
+  std::unique_ptr<PlayerOrder> players_;  // choix des joueurs des manettes en cours (depuis le menu)
   Canvas overlay_{640, 360};
   std::vector<uint8_t> romData_;
   std::string romPath_;
@@ -357,6 +364,7 @@ void Player::onMenuAction(MenuAction action) {
       g.options.setSetting("romcloud_filter", filterId(video_.filter()));
       break;
     case MenuAction::ConfigurePad: startPadConfig(); break;
+    case MenuAction::Players: startPlayers(); break;
     case MenuAction::NextAspect:
       video_.setAspect(nextAspect(video_.aspect()));
       g.options.setSetting("romcloud_aspect", aspectId(video_.aspect()));
@@ -385,6 +393,14 @@ bool Player::handleEvents() {
       continue;
     }
     if (padConfig_ && padConfig_->finished()) padConfig_.reset();
+    // Joueurs des manettes : boutons des manettes et clavier lui reviennent.
+    if (players_ && players_->handleEvent(e)) {
+      if (players_->finished()) {
+        if (!players_->result().empty()) toast(players_->result());
+        players_.reset();
+      }
+      continue;
+    }
     std::string requester;
     if (netplay_.requestPending(requester)) {
       if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
@@ -547,6 +563,7 @@ void Player::present() {
   if (menu_.isOpen()) {
     overlay_.clear();
     if (padConfig_) padConfig_->render(overlay_);
+    else if (players_) players_->render(overlay_);
     else menu_.render(overlay_, menuState());
     if (showToast && !toast_.empty()) drawToast();  // fin de la configuration d'une manette
     if (request) drawNetplay();
@@ -630,10 +647,11 @@ int Player::run() {
     }
     bool saved = true;
     if (args_.testWindow) {
-      if (args_.testMenu || args_.testKeys || args_.testPad || args_.testStates || !args_.testOptions.empty()) menu_.open();
+      if (args_.testMenu || args_.testKeys || args_.testPad || args_.testPlayers || args_.testStates || !args_.testOptions.empty()) menu_.open();
       if (args_.testKeys) menu_.openKeys();
       if (args_.testStates) openStates();
       if (args_.testPad) startPadConfig();
+      if (args_.testPlayers) startPlayers();
       if (!args_.testOptions.empty()) {
         menu_.openOptions();
         for (int i = atoi(args_.testOptions.c_str()); i > 0; i--) menu_.handle(Nav::TabNext, menuState());
@@ -642,6 +660,7 @@ int Player::run() {
       if (!args_.screenshot.empty()) {
         overlay_.clear();
         if (padConfig_) padConfig_->render(overlay_);
+        else if (players_) players_->render(overlay_);
         else if (menu_.isOpen()) menu_.render(overlay_, menuState());
         video_.present(menu_.isOpen() ? overlay_.data() : nullptr, overlay_.width(), overlay_.height(), false);
         saved = video_.saveWindow(args_.screenshot);

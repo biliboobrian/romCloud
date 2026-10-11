@@ -70,6 +70,14 @@ static const struct {
     {"video_failed", "L'affichage OpenGL n'a pas pu être initialisé :", "OpenGL display could not be initialized:"},
     {"keys", "Touches du clavier", "Keyboard keys"},
     {"pad_config", "Configurer la manette", "Set up controller"},
+    {"players", "Joueurs des manettes", "Controller players"},
+    {"players_title", "Joueurs des manettes", "Controller players"},
+    {"players_press", "Appuyez sur un bouton de la manette du joueur", "Press a button on the controller of player"},
+    {"players_none", "Aucune manette branchée.", "No controller connected."},
+    {"players_player", "Joueur", "Player"},
+    {"players_keyboard", "Le clavier commande toujours le joueur 1.", "The keyboard always controls player 1."},
+    {"players_keys", "Même manette ou Entrée : terminer   Échap : annuler", "Same controller or Enter: done   Esc: cancel"},
+    {"players_saved", "Joueurs des manettes enregistrés", "Controller players saved"},
     {"pad_title", "Configuration de la manette", "Controller setup"},
     {"pad_press_any", "Appuyez sur un bouton de la manette à configurer.", "Press any button on the controller to set up."},
     {"pad_step", "Étape", "Step"},
@@ -197,7 +205,7 @@ void Menu::openKeys() {
 std::vector<Menu::Item> Menu::items(const MenuState& state) const {
   std::vector<Item> list = {Item::Resume, Item::SaveState};
   if (!state.together) list.insert(list.end(), {Item::LoadState, Item::Reset, Item::Options});
-  list.insert(list.end(), {Item::Keys, Item::Pad});
+  list.insert(list.end(), {Item::Keys, Item::Pad, Item::Players});
   if (state.diskCount > 1 && !state.together) list.push_back(Item::Disk);
   list.insert(list.end(), {Item::Filter, Item::Aspect, Item::Fullscreen});
   if (state.netplay) list.push_back(Item::LeaveNetplay);
@@ -218,6 +226,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::Options: return tr("options");
     case Item::Keys: return tr("keys");
     case Item::Pad: return tr("pad_config");
+    case Item::Players: return tr("players");
     case Item::Disk:
       return tr("disk") + " : " + std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
     case Item::Filter: {
@@ -317,6 +326,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
           openKeys();
           return MenuAction::None;
         case Item::Pad: return MenuAction::ConfigurePad;
+        case Item::Players: return MenuAction::Players;
         case Item::Disk: return MenuAction::DiskNext;
         case Item::Filter: return MenuAction::NextFilter;
         case Item::Aspect: return MenuAction::NextAspect;
