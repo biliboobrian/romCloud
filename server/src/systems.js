@@ -314,6 +314,8 @@ export function platformToSystem(json, source = 'daijishou') {
     })),
     source,
     sourceRevision: json.revisionNumber ?? null,
+    // Plateformes RomCloud où le système est proposé (ex. PS4 : Windows seulement, shadPS4).
+    platforms: json.romcloud?.platforms,
   };
 }
 

@@ -1,9 +1,10 @@
 // Émulateurs gérés par RomCloud dans le moteur intégré, pour les consoles sans cœur libretro :
-// PlayStation 3 (RPCS3) et Wii U (Cemu). Dernière version Windows téléchargée depuis GitHub au
+// PlayStation 3 (RPCS3), PlayStation 4 (shadPS4) et Wii U (Cemu). Dernière version Windows téléchargée depuis GitHub au
 // premier lancement dans %APPDATA%\RomCloud\<émulateur> (l'émulateur y garde aussi sa configuration
 // et les sauvegardes), fichiers système pris dans le dossier des BIOS, jeu lancé en plein écran.
 //  - RPCS3 : firmware installé depuis PS3UPDAT.PUP, mises à jour et DLC du jeu (.pkg) installés une
 //    fois, jeu = ISO, EBOOT.BIN ou dossier du disque ;
+//  - shadPS4 : jeu = dossier décrypté du jeu (CUSAxxxxx) en .zip, lancé par son eboot.bin ;
 //  - Cemu : mode portable (dossier « portable »), keys.txt copié pour les jeux chiffrés (.wud, .wux),
 //    jeu = .wua, .wud, .wux, .rpx ou dossier code/content/meta.
 use crate::error::{AppError, Result};
@@ -18,7 +19,8 @@ pub struct App {
     pub name: &'static str,
     systems: &'static [&'static str],
     releases: &'static str,
-    /// Fins possibles du nom de l'archive Windows publiée (minuscules), par ordre de préférence.
+    /// Fins possibles du nom de l'archive Windows publiée (minuscules), par ordre de préférence ; ou
+    /// partie du nom d'une archive .zip / .7z dont la fin change à chaque version (« win64-sdl »).
     assets: &'static [&'static str],
     exe: &'static str,
     /// Arguments du lancement ({file} : jeu).
@@ -49,7 +51,19 @@ const CEMU: App = App {
     logs: &["portable/log.txt"],
 };
 
-pub static APPS: &[App] = &[RPCS3, CEMU];
+const SHADPS4: App = App {
+    core: "shadps4",
+    name: "shadPS4",
+    systems: &["ps4"],
+    releases: "https://api.github.com/repos/shadps4-emu/shadPS4/releases/latest",
+    // « shadps4-win64-sdl-0.19.0.zip » : la version suit le nom.
+    assets: &["win64-sdl"],
+    exe: "shadPS4.exe",
+    args: &["-f", "true", "-g", "{file}"],
+    logs: &["user/log/shad_log.txt"],
+};
+
+pub static APPS: &[App] = &[RPCS3, SHADPS4, CEMU];
 
 const FIRMWARE: &str = "PS3UPDAT.PUP";
 /// Code de sortie de Windows quand une DLL manque (Visual C++ Redistributable absent).
@@ -98,9 +112,10 @@ impl App {
     fn release_asset(&self, release: &Value) -> Option<String> {
         let assets = release.get("assets")?.as_array()?;
         let name = |a: &Value| a.get("name").and_then(Value::as_str).unwrap_or("").to_lowercase();
+        let archive = |n: &str| n.ends_with(".zip") || n.ends_with(".7z");
         self.assets
             .iter()
-            .find_map(|end| assets.iter().find(|a| name(a).ends_with(end)))
+            .find_map(|end| assets.iter().find(|a| name(a).ends_with(end) || (archive(&name(a)) && name(a).contains(end))))
             .and_then(|a| a.get("browser_download_url").and_then(Value::as_str).map(String::from))
     }
 
@@ -171,6 +186,8 @@ impl App {
         }
         let game = match self.core {
             "rpcs3" => disc_folder(&dir, 3).or_else(|| find_file(&dir, 2, &[".iso"])),
+            // Dossier du jeu PS4 (CUSAxxxxx) : son eboot.bin.
+            "shadps4" => find_named(&dir, "eboot.bin", 3),
             _ => rpx_file(&dir, 3).or_else(|| find_file(&dir, 2, WIIU_FILES)),
         };
         let game = game.ok_or_else(|| AppError::new("errors.zipNoGame", json!({ "name": self.name, "file": file })))?;
@@ -403,9 +420,28 @@ mod tests {
         assert_eq!(for_system(&json!({ "id": "ps3" })).map(|a| a.core), Some("rpcs3"));
         assert_eq!(for_system(&json!({ "id": "sony-ps3", "shortname": "PS3" })).map(|a| a.core), Some("rpcs3"));
         assert_eq!(for_system(&json!({ "id": "wiiu" })).map(|a| a.core), Some("cemu"));
+        assert_eq!(for_system(&json!({ "id": "ps4" })).map(|a| a.core), Some("shadps4"));
         assert!(for_system(&json!({ "id": "ps2" })).is_none());
         assert_eq!(by_core("cemu").map(|a| a.name), Some("Cemu"));
         assert!(by_core("mgba").is_none());
+    }
+
+    #[test]
+    fn shadps4_archive_et_eboot_du_jeu() {
+        // Version dans le nom de l'archive ; les autres systèmes et les sommes de contrôle ignorés.
+        let release = json!({ "assets": [
+            { "name": "shadps4-linux-sdl-0.19.0.zip", "browser_download_url": "https://x/linux" },
+            { "name": "shadps4-win64-sdl-0.19.0.zip.sha256", "browser_download_url": "https://x/sha" },
+            { "name": "shadps4-win64-sdl-0.19.0.zip", "browser_download_url": "https://x/win" },
+        ]});
+        assert_eq!(SHADPS4.release_asset(&release).as_deref(), Some("https://x/win"));
+        // Dossier du jeu décompressé : eboot.bin trouvé quelle que soit sa casse.
+        let dir = temp_dir("shadps4");
+        let game = dir.join("Bloodborne").join("CUSA00900");
+        std::fs::create_dir_all(game.join("sce_sys")).unwrap();
+        std::fs::write(game.join("EBOOT.BIN"), "elf").unwrap();
+        assert_eq!(find_named(&dir, "eboot.bin", 3), Some(game.join("EBOOT.BIN")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

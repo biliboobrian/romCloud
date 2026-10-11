@@ -71,3 +71,14 @@ test('licence zRIF d’un jeu PS Vita : enregistrée sans espaces, vide = effac�
   assert.throws(() => updateGame(id, { zrif: 'pas une licence !' }), { status: 400 });
   assert.equal(updateGame(id, { zrif: '' }).zrif, null);
 });
+
+test('catalogue RomCloud : PS4 importée, proposée sous Windows seulement', async () => {
+  const { importDaijishouPlatform } = await import('../src/systems.js');
+  const ps4 = await importDaijishouPlatform({ filename: 'SonyPlayStation4.json' });
+  assert.equal(ps4.id, 'ps4');
+  assert.equal(ps4.source, 'romcloud');
+  assert.deepEqual(ps4.platforms, ['windows']);
+  assert.equal(ps4.screenscraperId, 60);
+  assert.ok(!ids('android').includes('ps4'));
+  assert.ok(ids('windows').includes('ps4'));
+});

@@ -7,6 +7,13 @@
       "platformShortname": "gx4000",
       "platformUniqueId": "gx4000",
       "revisionNumber": 1
+    },
+    {
+      "filename": "SonyPlayStation4.json",
+      "platformName": "Sony PlayStation 4",
+      "platformShortname": "ps4",
+      "platformUniqueId": "ps4",
+      "revisionNumber": 1
     }
   ]
 }

@@ -61,6 +61,7 @@ export const DEFAULT_SYSTEM_COLORS = {
   pokemini: '#4a3a0e',
   ps2: '#0e1a4a',
   ps3: '#1a1a1e',
+  ps4: '#0a1f3d',
   psp: '#1e1e2a',
   psx: '#2a2a33',
   satellaview: '#2e2a5c',

@@ -1,0 +1,24 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Sony PlayStation 4",
+    "uniqueId": "ps4",
+    "shortname": "ps4",
+    "description": "Console de salon Sony (2013). Jeux en .zip du dossier du jeu décrypté (CUSAxxxxx, avec eboot.bin), lancés par shadPS4 sous Windows.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "romcloud": {
+    "platforms": ["windows"]
+  },
+  "playerList": []
+}
