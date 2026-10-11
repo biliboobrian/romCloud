@@ -8,7 +8,7 @@ use crate::{account, events, launcher, managed, relay, settings};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -69,6 +69,8 @@ static PEERS: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::
 
 /// Annonce de ce PC par son moteur (même identifiant) : partie proposée, « en partie », heure.
 static OWN: Mutex<Option<(Value, bool, Instant)>> = Mutex::new(None);
+/// Port d'envoi des annonces de l'application : reçues aussi par ce PC, elles ne viennent pas du moteur.
+static APP_BEACON_PORT: AtomicU16 = AtomicU16::new(0);
 /// Appareils vus par Internet (profils connectés au même serveur).
 static INTERNET: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 /// Dernier aller-retour mesuré jusqu'au serveur (ms).
@@ -171,8 +173,11 @@ pub fn peers() -> Value {
     let peers = PEERS.lock().unwrap();
     let mut list: Vec<Value> = peers.values().map(|e| e.peer.clone()).collect();
     for p in INTERNET.lock().unwrap().iter() {
-        if !peers.contains_key(s(p, "id")) {
-            list.push(p.clone());
+        match list.iter_mut().find(|l| l["id"] == p["id"]) {
+            None => list.push(p.clone()),
+            // Vu en local sans partie (annonces du moteur pas reçues ici), proposée par Internet : relais.
+            Some(local) if local["hosting"].is_null() && p["hosting"].is_object() => *local = p.clone(),
+            Some(_) => {}
         }
     }
     list.sort_by_key(|p| s(p, "name").to_lowercase());
@@ -203,6 +208,9 @@ fn broadcast_addresses() -> Vec<Ipv4Addr> {
 fn announce() {
     let Ok(socket) = UdpSocket::bind("0.0.0.0:0") else { return };
     let _ = socket.set_broadcast(true);
+    if let Ok(address) = socket.local_addr() {
+        APP_BEACON_PORT.store(address.port(), Ordering::Relaxed);
+    }
     loop {
         let beacon = json!({ "app": "romcloud", "v": VERSION, "id": device_id(), "name": device_name(), "platform": "windows", "port": 0 });
         let bytes = beacon.to_string();
@@ -235,6 +243,10 @@ fn listen() {
         }
         // Annonce du moteur de ce PC : partie proposée et « en partie », reprises par l'annonce au serveur.
         if s(&beacon, "id") == me {
+            // Annonce de l'application elle-même (sans partie) : elle effacerait celle du moteur.
+            if from.port() == APP_BEACON_PORT.load(Ordering::Relaxed) {
+                continue;
+            }
             let state = (beacon.get("hosting").filter(|h| h.is_object()).cloned().unwrap_or(Value::Null), beacon["busy"] == true);
             let mut own = OWN.lock().unwrap();
             let changed = own.as_ref().map(|(h, b, _)| (h, *b)) != Some((&state.0, state.1));

@@ -315,7 +315,11 @@ class PlayPresence(context: Context, account: Account, name: String, platform: S
         lan.start(scope)
         internet.start(scope)
         job = scope.launch {
-            combine(lan.peers, internet.peers) { local, remote -> local + remote.filter { r -> local.none { it.id == r.id } } }
+            // Appareil vu des deux façons : gardé en local, sauf partie proposée vue seulement par Internet (relais).
+            combine(lan.peers, internet.peers) { local, remote ->
+                local.map { l -> remote.find { it.id == l.id && l.hosting == null && it.hosting != null } ?: l } +
+                    remote.filter { r -> local.none { it.id == r.id } }
+            }
                 .collect { _peers.value = it }
         }
     }

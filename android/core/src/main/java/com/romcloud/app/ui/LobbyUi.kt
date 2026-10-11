@@ -68,7 +68,9 @@ import com.romcloud.core.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 // ---------------------------------------------------------------------------
 // Multijoueurs : joueurs connectés (pastille présent / absent) et lobbies (téléphone et TV).
@@ -123,13 +125,17 @@ suspend fun RomCloudApp.playLobby(context: Context, lobby: Lobby, system: GameSy
         hostNetplay(activity, system, game)
     } else {
         // Partie de l'hôte (son appareil annonce le jeu proposé) : rejointe, jeu téléchargé d'abord s'il manque.
-        val peer = presence.peers.value.find { it.id == lobby.host && it.hosting != null } ?: return I18n.get(R.string.lobby_host_not_ready)
+        // Jeu de l'hôte qui s'ouvre encore : sa partie est attendue quelques secondes.
+        val peer = withTimeoutOrNull(HOST_WAIT_MS) { presence.peers.first { list -> list.any { it.id == lobby.host && it.hosting != null } } }
+            ?.find { it.id == lobby.host && it.hosting != null } ?: return I18n.get(R.string.lobby_host_not_ready)
         // Jeu absent : téléchargé d'abord (message), la partie est rejointe à la fin du téléchargement.
         joinNetplay(context, peer)
     }
     if (message == null) runCatching { lobbies.markPlaying() }
     return message
 }
+
+private const val HOST_WAIT_MS = 10_000L
 
 /** Fond du lobby : couleur du système du jeu choisi, sinon noir. */
 @Composable
