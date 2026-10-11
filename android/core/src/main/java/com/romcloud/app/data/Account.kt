@@ -295,6 +295,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
         hosting: com.romcloud.app.netplay.NetplayProtocol.HostedGame?,
         busy: Boolean,
         rtt: Int,
+        activeAt: Long = 0,
     ): com.romcloud.app.netplay.PlayPresenceResponse? {
         if (token == null) return null
         val body = buildJsonObject {
@@ -303,9 +304,63 @@ class Account(private val context: Context, private val api: ApiClient, private 
             put("platform", JsonPrimitive(platform))
             put("busy", JsonPrimitive(busy))
             put("rtt", JsonPrimitive(rtt))
+            if (activeAt > 0) put("activeAt", JsonPrimitive(activeAt))
             if (hosting != null) put("hosting", json.encodeToJsonElement(com.romcloud.app.netplay.NetplayProtocol.HostedGame.serializer(), hosting))
         }.toString().toRequestBody(JSON)
         return json.decodeFromString(com.romcloud.app.netplay.PlayPresenceResponse.serializer(), execute(request("/api/account/play/presence").put(body), 8))
+    }
+
+    // ---- Lobbies du multijoueur (server/src/lobbies.js) ----
+
+    /** Joueurs connectés et lobbies ouverts (null sans profil). */
+    suspend fun lobbies(): com.romcloud.app.netplay.LobbyList? {
+        if (token == null) return null
+        return json.decodeFromString(com.romcloud.app.netplay.LobbyList.serializer(), execute(request("/api/account/play/lobbies"), 8))
+    }
+
+    private fun lobbyBody(deviceId: String, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {}): RequestBody =
+        buildJsonObject {
+            put("deviceId", JsonPrimitive(deviceId))
+            build()
+        }.toString().toRequestBody(JSON)
+
+    private fun lobbyGameJson(game: com.romcloud.app.netplay.LobbyGame?, modes: List<String>?): kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {
+        put("game", if (game == null) kotlinx.serialization.json.JsonNull else json.encodeToJsonElement(com.romcloud.app.netplay.LobbyGame.serializer(), game))
+        put("modes", JsonArray(modes.orEmpty().map { JsonPrimitive(it) }))
+    }
+
+    private fun lobbyPath(id: String, suffix: String = ""): String {
+        require(id.isNotEmpty() && id.length <= 32 && id.all { it.isLetterOrDigit() }) { "lobby invalide : $id" }
+        return "/api/account/play/lobbies/$id$suffix"
+    }
+
+    suspend fun createLobby(deviceId: String, game: com.romcloud.app.netplay.LobbyGame?, modes: List<String>) {
+        execute(request("/api/account/play/lobbies").post(lobbyBody(deviceId) { if (game != null) lobbyGameJson(game, modes)() }), 8)
+    }
+
+    suspend fun joinLobby(id: String, deviceId: String) {
+        execute(request(lobbyPath(id, "/join")).post(lobbyBody(deviceId)), 8)
+    }
+
+    suspend fun leaveLobby(id: String, deviceId: String) {
+        execute(request(lobbyPath(id, "/leave")).post(lobbyBody(deviceId)), 8)
+    }
+
+    /** Hôte : jeu ([game], [modes]) ou façon de jouer ([mode]) du lobby. */
+    suspend fun updateLobby(id: String, deviceId: String, game: com.romcloud.app.netplay.LobbyGame?, modes: List<String>?, mode: String?) {
+        val body = lobbyBody(deviceId) {
+            if (game != null) lobbyGameJson(game, modes)()
+            if (mode != null) put("mode", JsonPrimitive(mode))
+        }
+        execute(request(lobbyPath(id)).put(body), 8)
+    }
+
+    suspend fun lobbyStatus(id: String, deviceId: String, status: String) {
+        execute(request(lobbyPath(id, "/status")).put(lobbyBody(deviceId) { put("status", JsonPrimitive(status)) }), 8)
+    }
+
+    suspend fun dissolveLobby(id: String, deviceId: String) {
+        execute(request(lobbyPath(id, "?deviceId=${URLEncoder.encode(deviceId, "UTF-8")}")).delete(), 8)
     }
 
     suspend fun withdrawPlayPresence(deviceId: String) {

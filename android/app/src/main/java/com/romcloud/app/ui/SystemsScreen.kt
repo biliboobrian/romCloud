@@ -86,6 +86,7 @@ fun SystemsScreen(
     onOpenGame: (systemId: String, gameId: Long) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenLobby: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
@@ -100,9 +101,16 @@ fun SystemsScreen(
     // Retour : ferme d'abord la recherche, puis demande confirmation avant de quitter l'application.
     val activity = LocalContext.current as Activity
     var askQuit by remember { mutableStateOf(false) }
+    val app = activity.application as RomCloudApp
+    val account by app.account.state.collectAsStateWithLifecycle()
+    val lobbyState by app.lobbies.state.collectAsStateWithLifecycle()
     if (showNetplay) {
-        val app = activity.application as RomCloudApp
-        NetplayDialog(app, peers, onMessage = { Toast.makeText(activity, it, Toast.LENGTH_LONG).show() }, onDismiss = { showNetplay = false })
+        MultiplayerDialog(
+            app,
+            onOpenLobby = onOpenLobby,
+            onMessage = { Toast.makeText(activity, it, Toast.LENGTH_LONG).show() },
+            onDismiss = { showNetplay = false },
+        )
     }
     BackHandler {
         if (searching) {
@@ -156,10 +164,10 @@ fun SystemsScreen(
                 },
                 actions = {
                     OfflineBadge(Modifier.padding(horizontal = 4.dp))
-                    if (peers.isNotEmpty() && !searching) {
+                    if (account.signedIn && !searching) {
                         IconButton(onClick = { showNetplay = true }) {
-                            val hosted = peers.count { it.hosting != null }
-                            BadgedBox(badge = { if (hosted > 0) Badge { Text("$hosted") } }) {
+                            val open = lobbyState.lobbies.size
+                            BadgedBox(badge = { if (open > 0) Badge { Text("$open") } }) {
                                 Icon(Icons.Filled.Groups, stringResource(R.string.netplay_title), tint = MaterialTheme.colorScheme.primary)
                             }
                         }

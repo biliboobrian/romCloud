@@ -1,5 +1,6 @@
 package com.romcloud.app.ui
 
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.foundation.border
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,6 +82,9 @@ fun GamesCarousel(
     compact: Boolean = false,
     /** Jeu jouable à plusieurs avec un appareil du réseau local : icône à côté du titre. */
     together: (Game) -> Together? = { null },
+    /** Hôte d'un lobby : seulement « Définir comme jeu du lobby » et « Infos » sur la bannière. */
+    onSetLobbyGame: ((Game) -> Unit)? = null,
+    canSetLobbyGame: (Game) -> Boolean = { false },
 ) {
     val labels = RowLabels(
         downloaded = stringResource(R.string.row_downloaded),
@@ -110,6 +114,8 @@ fun GamesCarousel(
                 topInset = topInset,
                 compact = compact,
                 together = together(game),
+                onSetLobbyGame = onSetLobbyGame?.takeIf { canSetLobbyGame(game) }?.let { { it(game) } },
+                lobbyHost = onSetLobbyGame != null,
             )
         }
         // Rangée ajoutée en tête (premier jeu téléchargé du système) : la liste, gardée par Compose
@@ -167,6 +173,8 @@ private fun HeroBanner(
     topInset: Dp,
     compact: Boolean,
     together: Together? = null,
+    onSetLobbyGame: (() -> Unit)? = null,
+    lobbyHost: Boolean = false,
 ) {
     val background = MaterialTheme.colorScheme.background
     // Hauteur de la bannière = celle de son contenu : la jaquette suit directement les filtres,
@@ -230,7 +238,21 @@ private fun HeroBanner(
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 PlaytimeLabel(gamePlaytime(game.id))
                 if (!compact) game.description?.let { HeroDescription(it, maxLines = 3) }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (lobbyHost) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Hôte d'un lobby : définir le jeu du lobby, ou voir sa fiche.
+                    onSetLobbyGame?.let {
+                        Button(onClick = it) {
+                            Icon(Icons.Filled.Groups, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.lobby_set_game))
+                        }
+                    }
+                    OutlinedButton(onClick = onDetails) {
+                        Icon(Icons.Filled.Info, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.action_info))
+                    }
+                } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Partie sauvegardée : « Reprendre » d'abord, puis « Jouer » (comme la fiche du jeu).
                     val resumable = canResume && status == LocalStatus.Downloaded
                     if (resumable) {

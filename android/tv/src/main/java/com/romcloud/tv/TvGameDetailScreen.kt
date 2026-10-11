@@ -91,12 +91,22 @@ fun TvGameDetailScreen(
     viewModel: GameDetailViewModel,
     mediaUrl: (Game, String) -> String?,
     onMessage: (String) -> Unit,
+    onOpenLobby: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val peers by viewModel.peers.collectAsStateWithLifecycle()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val activity = LocalContext.current as Activity
+    // Multijoueurs : lobbies (créer, rejoindre ; hôte : « Définir comme jeu du lobby »).
+    val lobbyState by viewModel.lobbies.collectAsStateWithLifecycle()
+    val account by (activity.application as com.romcloud.app.RomCloudApp).account.state.collectAsStateWithLifecycle()
+    var chooseLobby by remember { mutableStateOf(false) }
+    fun lobbyAction(block: suspend () -> Unit) {
+        scope.launch {
+            runCatching { block() }.onSuccess { onOpenLobby() }.onFailure { e -> onMessage(e.message ?: "") }
+        }
+    }
     var pickEmulator by remember { mutableStateOf(false) }
     var showRetroArchHelp by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -204,6 +214,12 @@ fun TvGameDetailScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
                     val primary = Modifier.focusRequester(primaryFocus)
                     when {
+                        // Hôte d'un lobby : seulement « Définir comme jeu du lobby ».
+                        lobbyState.isHost -> if (viewModel.lobbyModes().isNotEmpty()) {
+                            ActionButton(stringResource(R.string.lobby_set_game), Icons.Filled.Groups, primary) { lobbyAction { viewModel.setLobbyGame() } }
+                        } else {
+                            Text(stringResource(R.string.lobby_not_network), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         download is DownloadState.Running ->
                             ActionButton(stringResource(R.string.tv_cancel_percent, (download.progress * 100).toInt()), Icons.Filled.Close, primary) { viewModel.cancel() }
                         state.downloaded -> {
@@ -226,11 +242,24 @@ fun TvGameDetailScreen(
                             if (state.savedStates > 0) {
                                 SecondaryButton("${stringResource(R.string.states_button)} (${state.savedStates})", Icons.Filled.History) { showStates = true }
                             }
-                            viewModel.together(peers)?.let { kind ->
-                                SecondaryButton(
-                                    stringResource(if (kind == Together.LINK) R.string.link_host else R.string.netplay_play_together),
-                                    togetherIcon(kind),
-                                ) { viewModel.hostNetplay(activity)?.let(onMessage) }
+                            // Multijoueurs (profil connecté, hors d'un lobby) : créer un lobby avec ce jeu, ou en rejoindre un.
+                            if (account.signedIn && lobbyState.mine == null) {
+                                val modes = viewModel.lobbyModes()
+                                if (modes.isNotEmpty()) {
+                                    SecondaryButton(
+                                        stringResource(R.string.lobby_create),
+                                        togetherIcon(if (modes.first() == "link") Together.LINK else Together.NETPLAY),
+                                    ) { lobbyAction { viewModel.createLobby() } }
+                                }
+                                val open = remember(lobbyState) { viewModel.lobbiesOfGame() }
+                                if (open.isNotEmpty()) {
+                                    SecondaryButton(stringResource(R.string.lobby_join), Icons.Filled.Groups) {
+                                        if (open.size == 1) lobbyAction { viewModel.joinLobby(open.single().id) } else chooseLobby = true
+                                    }
+                                    if (chooseLobby) {
+                                        com.romcloud.app.ui.LobbyChoiceDialog(open, onChoose = { chooseLobby = false; lobbyAction { viewModel.joinLobby(it.id) } }, onDismiss = { chooseLobby = false })
+                                    }
+                                }
                             }
                             if (state.missingBios.isNotEmpty()) {
                                 SecondaryButton(stringResource(R.string.action_download_bios), Icons.Filled.CloudDownload) { viewModel.downloadBios() }

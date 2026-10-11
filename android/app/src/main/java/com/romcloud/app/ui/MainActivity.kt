@@ -1,5 +1,11 @@
 package com.romcloud.app.ui
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.ui.res.stringResource
+import androidx.navigation.compose.currentBackStackEntryAsState
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -50,6 +56,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private val app get() = application as RomCloudApp
+
+    /** Toucher ou touche (manette, clavier) : « présent » pour les autres joueurs (multijoueurs). */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        app.touchActivity()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        app.touchActivity()
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,7 +127,25 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
         }
     }
 
+    // Multijoueurs : invité gardé sur la page du lobby ; lobby fermé : retour à l'accueil.
+    val lobbyState by app.lobbies.state.collectAsStateWithLifecycle()
+    val route = nav.currentBackStackEntryAsState().value?.destination?.route
+    LaunchedEffect(lobbyState.locked, route) {
+        if (lobbyState.locked && route != null && route != "lobby") nav.navigate("lobby") { launchSingleTop = true }
+    }
+    val dissolvedText = stringResource(com.romcloud.core.R.string.lobby_dissolved)
+    LaunchedEffect(Unit) {
+        app.lobbies.closed.collect { dissolved ->
+            nav.navigate("systems") { popUpTo(nav.graph.id) { inclusive = true } }
+            if (dissolved) snackbar.showSnackbar(dissolvedText)
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
     NavHost(navController = nav, startDestination = start) {
+        composable("lobby") {
+            LobbyScreen(app, snackbar, onBack = { nav.popBackStack() }, onChooseGame = { nav.navigate("systems") })
+        }
         composable("systems") {
             val vm = viewModel { SystemsViewModel(app) }
             // Écran des systèmes sur fond noir, chaque carte sur la couleur de son système.
@@ -124,6 +159,7 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
                     onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
                     onOpenSettings = { nav.navigate("settings") },
                     onOpenProfile = { nav.navigate("profile") },
+                    onOpenLobby = { nav.navigate("lobby") { launchSingleTop = true } },
                 )
             }
         }
@@ -146,6 +182,7 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
                     autoLaunch = app.autoLaunch,
                     onBack = { nav.popBackStack() },
                     onOpenGame = { nav.navigate("game/$systemId/$it") },
+                    onOpenLobby = { nav.navigate("lobby") { popUpTo("lobby") { inclusive = true } } },
                 )
             }
         }
@@ -166,6 +203,7 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
                     mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
                     snackbar = snackbar,
                     onBack = { nav.popBackStack() },
+                    onOpenLobby = { nav.navigate("lobby") { popUpTo("lobby") { inclusive = true } } },
                 )
             }
         }
@@ -181,5 +219,15 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
                 },
             )
         }
+    }
+    // Hôte parti choisir le jeu : retour au lobby.
+    if (lobbyState.isHost && route != "lobby") {
+        androidx.compose.material3.ExtendedFloatingActionButton(
+            onClick = { nav.navigate("lobby") { popUpTo("lobby") { inclusive = true }; launchSingleTop = true } },
+            icon = { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Groups, null) },
+            text = { androidx.compose.material3.Text(stringResource(com.romcloud.core.R.string.lobby_back)) },
+            modifier = Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(20.dp),
+        )
+    }
     }
 }

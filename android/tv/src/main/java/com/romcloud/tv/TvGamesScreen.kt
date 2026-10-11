@@ -84,6 +84,7 @@ fun TvGamesScreen(
     autoLaunch: MutableSet<Long>,
     onMessage: (String) -> Unit,
     onOpenGame: (Long) -> Unit,
+    onOpenLobby: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
@@ -112,7 +113,12 @@ fun TvGamesScreen(
         null -> if (game.id in state.downloaded) LocalStatus.Downloaded else LocalStatus.Remote
     }
 
+    // Multijoueurs : jeux à assez de joueurs pour le lobby ; hôte : fiche du jeu (« Définir comme jeu du lobby »).
+    val lobbyState by viewModel.lobbies.collectAsStateWithLifecycle()
+    val lobbyHost = lobbyState.isHost
+
     fun onClick(game: Game) {
+        if (lobbyHost) return onOpenGame(game.id)
         when (statusOf(game)) {
             // Émulateur externe à configurer : la fiche du jeu explique quoi corriger.
             LocalStatus.Downloaded ->
@@ -123,7 +129,7 @@ fun TvGamesScreen(
         }
     }
 
-    val games = state.visibleGames
+    val games = state.visibleGames.filter { com.romcloud.app.ui.fitsLobby(it, lobbyState.minPlayers) }
     val labels = RowLabels(
         downloaded = stringResource(R.string.row_downloaded),
         recent = stringResource(R.string.row_recent),
@@ -195,7 +201,7 @@ fun TvGamesScreen(
                 game = featured,
                 coverUrl = featured?.let { mediaUrl(it, "boxart") },
                 status = featured?.let(::statusOf),
-                resumable = featured?.let { it.id in state.resumable } == true,
+                resumable = !lobbyHost && featured?.let { it.id in state.resumable } == true,
                 together = featured?.let { viewModel.together(it, peers) },
                 modifier = Modifier.padding(start = 48.dp, end = 48.dp).height(150.dp),
             )
@@ -220,7 +226,7 @@ fun TvGamesScreen(
                     together = { viewModel.together(it, peers) },
                     // Appui long sur un jeu avec une partie sauvegardée : reprise directe.
                     onResume = { game ->
-                        if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
+                        if (!lobbyHost && game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
                             viewModel.play(activity, game, resume = true)?.let(onMessage)
                             true
                         } else {

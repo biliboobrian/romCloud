@@ -1,5 +1,9 @@
 package com.romcloud.tv
 
+import com.romcloud.core.R
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.ui.res.stringResource
+import androidx.navigation.compose.currentBackStackEntryAsState
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -49,6 +53,12 @@ class TvActivity : ComponentActivity() {
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLanguage.wrap(newBase))
     }
+    /** Touche de la télécommande ou de la manette : « présent » pour les autres joueurs. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        (application as RomCloudApp).touchActivity()
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as RomCloudApp
@@ -85,8 +95,27 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
         modifier = Modifier.fillMaxSize(),
         colors = SurfaceDefaults.colors(containerColor = TvBackground),
     ) {
+        // Multijoueurs : invité gardé sur la page du lobby ; lobby fermé : retour à l'accueil.
+        val lobbyState by app.lobbies.state.collectAsStateWithLifecycle()
+        val route = nav.currentBackStackEntryAsState().value?.destination?.route
+        LaunchedEffect(lobbyState.locked, route) {
+            if (lobbyState.locked && route != null && route != "lobby") nav.navigate("lobby") { launchSingleTop = true }
+        }
+        val dissolvedText = stringResource(R.string.lobby_dissolved)
+        LaunchedEffect(Unit) {
+            app.lobbies.closed.collect { dissolved ->
+                nav.navigate("systems") { popUpTo(nav.graph.id) { inclusive = true } }
+                if (dissolved) message(dissolvedText)
+            }
+        }
+        val openLobby = { nav.navigate("lobby") { popUpTo("lobby") { inclusive = true }; launchSingleTop = true } }
         Box(Modifier.fillMaxSize()) {
             NavHost(navController = nav, startDestination = start) {
+                composable("lobby") {
+                    TvScreenBackground(Color.Black) {
+                        TvLobbyScreen(app, onMessage = message, onChooseGame = { nav.navigate("systems") })
+                    }
+                }
                 composable("systems") {
                     val vm = viewModel { SystemsViewModel(app) }
                     // Écran des systèmes sur fond noir, chaque carte sur la couleur de son système.
@@ -100,6 +129,7 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                             onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
                             onOpenSettings = { nav.navigate("settings") },
                             onOpenProfile = { nav.navigate("profile") },
+                            onOpenLobby = openLobby,
                         )
                     }
                 }
@@ -121,6 +151,7 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                             autoLaunch = app.autoLaunch,
                             onMessage = message,
                             onOpenGame = { nav.navigate("game/$systemId/$it") },
+                            onOpenLobby = openLobby,
                         )
                     }
                 }
@@ -140,6 +171,7 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                             viewModel = vm,
                             mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
                             onMessage = message,
+                            onOpenLobby = openLobby,
                         )
                     }
                 }
@@ -150,6 +182,14 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                             nav.navigate("systems") { popUpTo(nav.graph.id) { inclusive = true } }
                         },
                     )
+                }
+            }
+            // Hôte parti choisir le jeu : retour au lobby.
+            if (lobbyState.isHost && route != "lobby") {
+                androidx.tv.material3.Button(onClick = openLobby, modifier = Modifier.align(Alignment.BottomEnd).padding(32.dp)) {
+                    androidx.tv.material3.Icon(androidx.compose.material.icons.Icons.Filled.Groups, null)
+                    androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 8.dp))
+                    androidx.tv.material3.Text(stringResource(R.string.lobby_back))
                 }
             }
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp))

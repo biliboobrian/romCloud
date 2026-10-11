@@ -91,12 +91,24 @@ fun GameDetailScreen(
     mediaUrl: (Game, String) -> String?,
     snackbar: SnackbarHostState,
     onBack: () -> Unit,
+    onOpenLobby: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val peers by viewModel.peers.collectAsStateWithLifecycle()
     val activity = LocalContext.current as Activity
     val scope = rememberCoroutineScope()
+    // Multijoueurs : lobbies (créer, rejoindre ; hôte : « Définir comme jeu du lobby »).
+    val lobbyState by viewModel.lobbies.collectAsStateWithLifecycle()
+    val account by (activity.application as com.romcloud.app.RomCloudApp).account.state.collectAsStateWithLifecycle()
+    var chooseLobby by remember { mutableStateOf(false) }
+    fun joinLobby(id: String) {
+        scope.launch {
+            runCatching { viewModel.joinLobby(id) }
+                .onSuccess { onOpenLobby() }
+                .onFailure { e -> snackbar.showSnackbar(e.message ?: "") }
+        }
+    }
     // « Configurer » : fait défiler jusqu'aux problèmes à corriger.
     val issuesInView = remember { BringIntoViewRequester() }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -169,7 +181,27 @@ fun GameDetailScreen(
                         TextButton(onClick = viewModel::cancel) { Text(stringResource(R.string.action_cancel)) }
                     }
                 }
-                else -> {
+                // Hôte d'un lobby : seulement « Définir comme jeu du lobby ».
+                else -> if (lobbyState.isHost) {
+                    if (viewModel.lobbyModes().isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    runCatching { viewModel.setLobbyGame() }
+                                        .onSuccess { onOpenLobby() }
+                                        .onFailure { e -> snackbar.showSnackbar(e.message ?: "") }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                        ) {
+                            Icon(Icons.Filled.Groups, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.lobby_set_game))
+                        }
+                    } else {
+                        Text(stringResource(R.string.lobby_not_network), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
                     if (d is DownloadState.Failed) {
                         Text(stringResource(R.string.download_failed, d.message), color = MaterialTheme.colorScheme.error)
                     }
@@ -234,14 +266,38 @@ fun GameDetailScreen(
                         }
                         // Appareil RomCloud sur le réseau local : partie proposée, chacun avec sa manette ;
                         // console portable : liaison proposée (câble, ad hoc), chacun avec son jeu.
-                        viewModel.together(peers)?.let { kind ->
-                            OutlinedButton(
-                                onClick = { viewModel.hostNetplay(activity)?.let { scope.launch { snackbar.showSnackbar(it) } } },
-                                modifier = Modifier.fillMaxWidth().height(52.dp),
-                            ) {
-                                Icon(togetherIcon(kind), null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(if (kind == Together.LINK) R.string.link_host else R.string.netplay_play_together))
+                        // Multijoueurs (profil connecté, hors d'un lobby) : créer un lobby avec ce jeu, ou en rejoindre un.
+                        if (account.signedIn && lobbyState.mine == null) {
+                            val modes = viewModel.lobbyModes()
+                            if (modes.isNotEmpty()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            runCatching { viewModel.createLobby() }
+                                                .onSuccess { onOpenLobby() }
+                                                .onFailure { e -> snackbar.showSnackbar(e.message ?: "") }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                                ) {
+                                    Icon(togetherIcon(if (modes.first() == "link") Together.LINK else Together.NETPLAY), null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.lobby_create))
+                                }
+                            }
+                            val open = remember(lobbyState) { viewModel.lobbiesOfGame() }
+                            if (open.isNotEmpty()) {
+                                OutlinedButton(
+                                    onClick = { if (open.size == 1) joinLobby(open.single().id) else chooseLobby = true },
+                                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                                ) {
+                                    Icon(Icons.Filled.Groups, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.lobby_join))
+                                }
+                                if (chooseLobby) {
+                                    LobbyChoiceDialog(open, onChoose = { chooseLobby = false; joinLobby(it.id) }, onDismiss = { chooseLobby = false })
+                                }
                             }
                         }
                         // TV du profil allumée avec RomCloud ouvert : jeu diffusé, le téléphone sert de manette.
