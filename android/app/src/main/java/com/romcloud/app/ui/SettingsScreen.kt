@@ -102,6 +102,7 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
     Scaffold(
         topBar = {
             TopAppBar(
+                windowInsets = topBarInsets,
                 title = { Text(stringResource(R.string.action_settings)) },
                 navigationIcon = {
                     if (canGoBack) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) }
