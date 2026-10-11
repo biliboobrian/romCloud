@@ -26,11 +26,15 @@ class Audio {
   bool isOpen() const { return stream_ != nullptr; }
   /** Le cœur a produit du son récemment (sinon le rythme suit l'horloge). */
   bool producing() const { return SDL_GetTicks() - lastPush_ < 500; }
+  /** Amplitude maximale du son reçu du cœur depuis [resetPeak] (mode d'essai). */
+  int peak() const { return peak_; }
+  void resetPeak() { peak_ = 0; }
 
  private:
   SDL_AudioStream* stream_ = nullptr;
   double rate_ = 0, coreRate_ = 0;
   Uint64 lastPush_ = 0;
+  int peak_ = 0;
   // Moyenne de [decimate_] trames (fréquences très élevées) avant l'envoi à SDL.
   int decimate_ = 1;
   int32_t sumLeft_ = 0, sumRight_ = 0;
