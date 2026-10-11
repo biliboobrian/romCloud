@@ -200,6 +200,15 @@ class Player {
   double nextFrame_ = 0;
 };
 
+/**
+ * Images exécutées avant de reprendre une partie (état chargé au lancement). Une seule en général ;
+ * Yabause (Saturn) n'a plus de son si l'état est chargé avant le démarrage de son processeur de son
+ * (environ 1,4 s après le lancement) : 3 s d'émulation, plus rapides que le temps réel.
+ */
+static int resumeWarmupFrames(const std::string& core) {
+  return core == "yabause" ? 180 : 1;
+}
+
 int Player::fail(const std::string& message) {
   logf("Erreur : %s", message.c_str());
   if (!args_.testFrames.empty()) return 1;
@@ -628,11 +637,13 @@ int Player::run() {
   loadSram();  // avant l'état de sauvegarde, qui la contient aussi
   // Invité d'une partie à plusieurs : l'état de l'hôte remplace la partie reprise.
   if ((args_.resume || !args_.stateFile.empty()) && args_.netplayJoin.empty()) {
-    // Une image d'abord : certains cœurs n'acceptent un état qu'une fois le jeu démarré.
-    runFrame();
-    for (int i = atoi(args_.testLoadAt.c_str()); i > 1; i--) runFrame();
+    // Quelques images d'abord : certains cœurs n'acceptent un état qu'une fois le jeu démarré
+    // (resumeWarmupFrames) ; leur son est écarté.
+    const int warmup = args_.testLoadAt.empty() ? resumeWarmupFrames(coreName()) : std::max(1, atoi(args_.testLoadAt.c_str()));
+    for (int i = 0; i < warmup; i++) runFrame();
     const std::string path = args_.stateFile.empty() ? statePath() : args_.stateFile;
     const char* result = !fileExists(path) ? "no_state" : loadStateFile(path) ? "state_loaded" : "state_error";
+    audio_.clear();
     logf("Reprise de la partie (%s) : %s", path.c_str(), result);
     toast(menu_.tr(result));
   }
