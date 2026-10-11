@@ -79,6 +79,7 @@
 
   window.romcloud = {
     settings: { get: call('settings:get'), save: call('settings:save') },
+    window: { titleColor: call('window:titleColor') },
     api: { test: call('api:test'), systems: call('api:systems'), games: call('api:games'), search: call('api:search') },
     library: {
       downloaded: call('library:downloaded'),

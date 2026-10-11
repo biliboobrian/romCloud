@@ -26,6 +26,7 @@ mod relay;
 mod screencast;
 mod settings;
 mod states;
+mod title_bar;
 mod updater;
 mod vita3k;
 
@@ -76,6 +77,10 @@ fn main() {
                     NewWindowResponse::Deny
                 })
                 .build()?;
+            // Barre de titre du fond de l'écran des systèmes (puis celui de l'écran affiché).
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = title_bar::set_color(&main, "#000000");
+            }
             // Travail laissé en attente à la dernière fermeture.
             tauri::async_runtime::spawn(async {
                 account::flush().await;
