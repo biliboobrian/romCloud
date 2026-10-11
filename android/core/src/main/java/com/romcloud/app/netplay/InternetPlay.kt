@@ -213,6 +213,15 @@ class InternetPresence(private val account: Account, private val deviceId: Strin
     var rtt: Int = 0
         private set
 
+    /** Dernière activité de l'utilisateur (ms) : joueur « présent » pour les autres (multijoueurs). */
+    @Volatile
+    var activeAt: Long = 0
+
+    /** Annonce au serveur tout de suite (avant de créer ou rejoindre un lobby). */
+    fun announceNow() {
+        wake.trySend(Unit)
+    }
+
     /**
      * Problème de la partie par Internet (affiché en jeu), null si tout va bien : annonce refusée
      * ou impossible, profil déconnecté, relais refusé (code HTTP, proxy inverse mal réglé…).
@@ -229,7 +238,7 @@ class InternetPresence(private val account: Account, private val deviceId: Strin
             while (isActive) {
                 val started = System.nanoTime()
                 val result = runCatching {
-                    account.playPresence(deviceId, name, platform, hosting, busy, rtt)
+                    account.playPresence(deviceId, name, platform, hosting, busy, rtt, activeAt)
                 }
                 val response = result.getOrNull()
                 // Problème de l'annonce (relais : gardé, il vient d'ailleurs ; effacé seulement en cas de succès de l'annonce).

@@ -361,6 +361,21 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
     /** Appareils RomCloud du réseau local (jeu à plusieurs). */
     val peers = app.presence.peers
 
+    /** Multijoueurs : lobby de cet appareil (jeux à assez de joueurs ; hôte : « Définir comme jeu du lobby »). */
+    val lobbies = app.lobbies.state
+
+    /** Jeu possible pour le lobby : jouable en réseau (netplay ou connexion entre consoles). */
+    fun canSetLobbyGame(game: Game): Boolean {
+        val system = _state.value.system ?: return false
+        return app.lobbyModes(system, game).isNotEmpty()
+    }
+
+    /** Hôte : ce jeu devient celui du lobby. */
+    suspend fun setLobbyGame(game: Game) {
+        val system = _state.value.system ?: return
+        app.lobbies.setGame(lobbyGameOf(system, game), app.lobbyModes(system, game))
+    }
+
     /** Jeu jouable à plusieurs en réseau (moteur intégré, jeu à plusieurs joueurs) ou consoles reliées ; null sinon. */
     /**
      * Icône du jeu : jouable à plusieurs (ou consoles reliées) et soit un appareil libre sur le réseau
@@ -762,6 +777,39 @@ class GameDetailViewModel(
 
     /** Appareils RomCloud du réseau local (jeu à plusieurs). */
     val peers = app.presence.peers
+
+    /** Multijoueurs : lobbies (créer, rejoindre ; hôte : « Définir comme jeu du lobby »). */
+    val lobbies = app.lobbies.state
+
+    /** Façons de jouer ce jeu en réseau (vide : pas de lobby possible). */
+    fun lobbyModes(): List<String> {
+        val s = _state.value
+        return app.lobbyModes(s.system ?: return emptyList(), s.game ?: return emptyList())
+    }
+
+    /** Lobbies ouverts pour ce jeu. */
+    fun lobbiesOfGame(): List<com.romcloud.app.netplay.Lobby> {
+        val s = _state.value
+        return app.lobbies.state.value.lobbiesOf(s.game ?: return emptyList(), s.system?.id ?: return emptyList())
+    }
+
+    /** Nouveau lobby avec ce jeu (cet appareil en est l'hôte). */
+    suspend fun createLobby() {
+        val s = _state.value
+        val system = s.system ?: return
+        val game = s.game ?: return
+        app.lobbies.create(lobbyGameOf(system, game), app.lobbyModes(system, game))
+    }
+
+    suspend fun joinLobby(id: String) = app.lobbies.join(id)
+
+    /** Hôte : ce jeu devient celui du lobby. */
+    suspend fun setLobbyGame() {
+        val s = _state.value
+        val system = s.system ?: return
+        val game = s.game ?: return
+        app.lobbies.setGame(lobbyGameOf(system, game), app.lobbyModes(system, game))
+    }
 
     /** « Jouer à plusieurs » / « Relier les consoles » : jeu présent, appareil sur le réseau local, jeu et émulateur compatibles. */
     /**

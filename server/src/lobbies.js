@@ -11,6 +11,11 @@ const MODES = ['netplay', 'link'];
 const STATUSES = ['waiting', 'playing'];
 /** Lobbies ouverts au plus (protection). */
 const MAX_LOBBIES = 100;
+/**
+ * Membre dont l'appareil ne s'annonce plus : gardé ce délai avant d'être retiré (passage de
+ * l'application au jeu sous Android, coupure du Wi-Fi…).
+ */
+export const LOBBY_GRACE_MS = 90_000;
 
 const lobbies = new Map(); // identifiant -> lobby
 
@@ -40,10 +45,16 @@ function gameOf(g) {
 
 const modesOf = (list) => [...new Set((Array.isArray(list) ? list : []).filter((m) => MODES.includes(m)))];
 
-/** Membres dont l'appareil ne s'annonce plus : retirés ; lobby sans son hôte : dissous. */
-function prune() {
+/**
+ * Membres dont l'appareil ne s'annonce plus depuis [LOBBY_GRACE_MS] : retirés ; lobby sans son hôte :
+ * dissous.
+ */
+function prune(now = Date.now()) {
   for (const [id, lobby] of lobbies) {
-    lobby.members = lobby.members.filter((m) => presenceOf(m.id));
+    lobby.members = lobby.members.filter((m) => {
+      if (presenceOf(m.id)) m.seenAt = now;
+      return now - m.seenAt <= LOBBY_GRACE_MS;
+    });
     if (!lobby.members.some((m) => m.id === lobby.host)) lobbies.delete(id);
   }
 }
@@ -80,11 +91,11 @@ function leaveAll(deviceId) {
   }
 }
 
-const member = (dev) => ({ id: dev.id, name: dev.name, user: dev.user, platform: dev.platform, status: 'waiting' });
+const member = (dev) => ({ id: dev.id, name: dev.name, user: dev.user, platform: dev.platform, status: 'waiting', seenAt: Date.now() });
 
-/** Joueurs connectés (pastilles) et lobbies ouverts. */
-export function list() {
-  prune();
+/** Joueurs connectés (pastilles) et lobbies ouverts ; [now] : essais. */
+export function list(now = Date.now()) {
+  prune(now);
   return { players: players(), lobbies: [...lobbies.values()].sort((a, b) => a.createdAt - b.createdAt).map(view) };
 }
 

@@ -72,11 +72,12 @@ test('quitter, dissoudre, hôte parti : le lobby disparaît', () => {
   lobbies.dissolve(a, lobby.id, 'alice-phone-1');
   assert.equal(lobbies.list().lobbies.length, 0);
   assert.throws(() => lobbies.join(b, lobby.id, { deviceId: 'bob-pc-0001' }), { status: 404 });
-  // Hôte qui ne s'annonce plus : lobby dissous.
+  // Hôte qui ne s'annonce plus (passage au jeu sous Android) : gardé un moment, puis lobby dissous.
   const again = lobbies.create(a, { deviceId: 'alice-phone-1' });
   lobbies.join(b, again.id, { deviceId: 'bob-pc-0001' });
   play.withdraw(a, 'alice-phone-1');
-  assert.equal(lobbies.list().lobbies.length, 0);
+  assert.equal(lobbies.list().lobbies.length, 1);
+  assert.equal(lobbies.list(Date.now() + lobbies.LOBBY_GRACE_MS + 1000).lobbies.length, 0);
   // Un appareil n'est que dans un lobby : en créer un autre quitte le premier.
   play.announce(a, { deviceId: 'alice-phone-1', name: 'Pixel' }, phone);
   const first = lobbies.create(a, { deviceId: 'alice-phone-1' });

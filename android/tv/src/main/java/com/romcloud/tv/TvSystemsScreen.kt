@@ -56,7 +56,6 @@ import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.ui.LocalStatus
-import com.romcloud.app.ui.NetplayDialog
 import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.SystemBadge
 import com.romcloud.app.ui.SystemsViewModel
@@ -75,6 +74,7 @@ fun TvSystemsScreen(
     onOpenGame: (systemId: String, gameId: Long) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenLobby: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
@@ -115,8 +115,16 @@ fun TvSystemsScreen(
         )
     }
 
+    val app = activity.application as RomCloudApp
+    val account by app.account.state.collectAsStateWithLifecycle()
+    val lobbyState by app.lobbies.state.collectAsStateWithLifecycle()
     if (showNetplay) {
-        NetplayDialog(activity.application as RomCloudApp, peers, onMessage = { Toast.makeText(activity, it, Toast.LENGTH_LONG).show() }, onDismiss = { showNetplay = false })
+        com.romcloud.app.ui.MultiplayerDialog(
+            app,
+            onOpenLobby = onOpenLobby,
+            onMessage = { Toast.makeText(activity, it, Toast.LENGTH_LONG).show() },
+            onDismiss = { showNetplay = false },
+        )
     }
 
     if (searchDialog) {
@@ -156,13 +164,13 @@ fun TvSystemsScreen(
                 }
             }
             Spacer(Modifier.width(SmallGap))
-            // Appareils RomCloud du réseau local : parties proposées.
-            if (peers.isNotEmpty()) {
+            // Multijoueurs (profil connecté) : joueurs et lobbies.
+            if (account.signedIn) {
                 Button(onClick = { showNetplay = true }) {
                     Icon(Icons.Filled.Groups, null, modifier = IconSize)
                     Spacer(Modifier.width(8.dp))
-                    val hosted = peers.count { it.hosting != null }
-                    Text(if (hosted > 0) stringResource(R.string.netplay_button_games, hosted) else stringResource(R.string.netplay_title))
+                    val open = lobbyState.lobbies.size
+                    Text(if (open > 0) "${stringResource(R.string.netplay_title)} ($open)" else stringResource(R.string.netplay_title))
                 }
                 Spacer(Modifier.width(SmallGap))
             }

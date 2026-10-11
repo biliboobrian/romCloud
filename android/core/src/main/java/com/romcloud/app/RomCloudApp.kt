@@ -86,6 +86,14 @@ class RomCloudApp : Application(), ImageLoaderFactory {
     /** Appareils joignables pour jouer à plusieurs : réseau local, et Internet avec un profil connecté. */
     val presence: PlayPresence by lazy { PlayPresence(this, account, account.deviceName, api.platform) }
 
+    /** Multijoueurs : joueurs connectés et lobbies (relus tant qu'un écran est affiché). */
+    val lobbies: com.romcloud.app.netplay.Lobbies by lazy { com.romcloud.app.netplay.Lobbies(account, presence) }
+
+    /** Activité de l'utilisateur (touche, toucher, manette) : « présent » pour les autres joueurs. */
+    fun touchActivity() {
+        presence.internet.activeAt = System.currentTimeMillis()
+    }
+
     /** Partie à rejoindre dès la fin du téléchargement de son jeu. */
     @Volatile
     var pendingJoin: Peer? = null
@@ -132,10 +140,17 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             private var started = 0
             override fun onActivityStarted(activity: Activity) {
-                if (started++ == 0) presence.start(appScope)
+                if (started++ == 0) {
+                    presence.start(appScope)
+                    lobbies.start(appScope)
+                    touchActivity()
+                }
             }
             override fun onActivityStopped(activity: Activity) {
-                if (--started == 0) presence.stop()
+                if (--started == 0) {
+                    presence.stop()
+                    lobbies.stop()
+                }
             }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
             override fun onActivityResumed(activity: Activity) = Unit

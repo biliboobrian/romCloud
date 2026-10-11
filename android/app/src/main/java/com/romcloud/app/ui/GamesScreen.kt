@@ -93,6 +93,7 @@ fun GamesScreen(
     autoLaunch: MutableSet<Long>,
     onBack: () -> Unit,
     onOpenGame: (Long) -> Unit,
+    onOpenLobby: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
@@ -150,7 +151,20 @@ fun GamesScreen(
         null -> if (game.id in state.downloaded) LocalStatus.Downloaded else LocalStatus.Remote
     }
 
+    // Multijoueurs : jeux à assez de joueurs pour le lobby ; hôte : définir le jeu du lobby.
+    val lobbyState by viewModel.lobbies.collectAsStateWithLifecycle()
+    val lobbyHost = lobbyState.isHost
+    fun setLobbyGame(game: Game) {
+        scope.launch {
+            runCatching { viewModel.setLobbyGame(game) }
+                .onSuccess { onOpenLobby() }
+                .onFailure { e -> snackbar.showSnackbar(e.message ?: "") }
+        }
+    }
+
     fun onClick(game: Game) {
+        // Hôte d'un lobby : la fiche du jeu (« Définir comme jeu du lobby »), pas de lancement.
+        if (lobbyHost) return onOpenGame(game.id)
         when (statusOf(game)) {
             // Émulateur externe à configurer : la fiche du jeu explique quoi corriger.
             LocalStatus.Downloaded ->
@@ -259,7 +273,7 @@ fun GamesScreen(
                     )
                 },
             ) {
-                val games = state.visibleGames
+                val games = state.visibleGames.filter { fitsLobby(it, lobbyState.minPlayers) }
                 when {
                     state.games.isEmpty() && state.loading -> Centered(stringResource(R.string.loading))
                     state.games.isEmpty() && state.error != null ->
@@ -275,8 +289,10 @@ fun GamesScreen(
                         statusOf = ::statusOf,
                         onClick = ::onClick,
                         onDetails = { onOpenGame(it.id) },
-                        canResume = { it.id in state.resumable },
+                        canResume = { !lobbyHost && it.id in state.resumable },
                         needsSetup = viewModel::needsSetup,
+                        onSetLobbyGame = if (lobbyHost) ({ game -> setLobbyGame(game) }) else null,
+                        canSetLobbyGame = viewModel::canSetLobbyGame,
                         onResume = { game ->
                             viewModel.play(activity, game, resume = true)?.let { scope.launch { snackbar.showSnackbar(it) } }
                         },
@@ -310,7 +326,7 @@ fun GamesScreen(
                                 status = statusOf(game),
                                 onClick = { onOpenGame(game.id) },
                                 onDetails = { onOpenGame(game.id) },
-                                onResume = if (game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
+                                onResume = if (!lobbyHost && game.id in state.resumable && statusOf(game) == LocalStatus.Downloaded) {
                                     { viewModel.play(activity, game, resume = true)?.let { scope.launch { snackbar.showSnackbar(it) } } }
                                 } else null,
                                 together = viewModel.together(game, peers),
