@@ -253,12 +253,38 @@ enum Plan {
 /// Émulateurs du catalogue qui lisent une liste de disques (.m3u).
 const PLAYLIST_EMULATORS: &[&str] = &["mednafen"];
 
-/// Vérifications avant lancement (émulateur installé, cœur présent…).
+/// Vérifications avant lancement (jeu téléchargé, émulateur installé, cœur présent…).
 fn prepare(system: &Value, game: &Value) -> Result<Plan> {
-    let file = library::file_for(system, game).to_string_lossy().into_owned();
     if !library::is_downloaded(system, game) {
+        let file = library::file_for(system, game).to_string_lossy().into_owned();
         return Err(AppError::new("errors.notDownloaded", json!({ "file": file })));
     }
+    plan(system, game)
+}
+
+/**
+ * Problèmes qui empêchent de jouer avec l'émulateur externe choisi, jeu téléchargé ou non :
+ * [{ key, vars }] (clés d'erreur traduites par l'interface) ; vide pour le moteur intégré, qui
+ * télécharge lui-même ce qui lui manque.
+ */
+pub fn issues(system: &Value, game: &Value) -> Value {
+    let downloaded = library::is_downloaded(system, game);
+    let found = match plan(system, game) {
+        // Identifiant d'un .pkg lu dans son en-tête : seulement une fois le jeu téléchargé.
+        Err(e) if e.is("errors.vitaTitleId") && !downloaded => vec![],
+        Err(e) => vec![json!({ "key": e.key, "vars": e.vars })],
+        Ok(Plan::Run { exe, emulator: Some(id), .. }) => crate::emulator_files::missing_required(id, &exe)
+            .into_iter()
+            .map(|file| json!({ "key": "errors.emulatorKeysMissing", "vars": { "file": file, "name": catalog::by_id(id).map(|e| e.name).unwrap_or(id) } }))
+            .collect(),
+        Ok(_) => vec![],
+    };
+    json!(found)
+}
+
+/// Commande de lancement selon l'émulateur choisi (le jeu n'a pas besoin d'être téléchargé).
+fn plan(system: &Value, game: &Value) -> Result<Plan> {
+    let file = library::file_for(system, game).to_string_lossy().into_owned();
     // Jeu en plusieurs disques : liste des disques (.m3u) pour les émulateurs qui la lisent
     // (changement de disque en jeu), sinon le premier disque.
     let main = file.clone();

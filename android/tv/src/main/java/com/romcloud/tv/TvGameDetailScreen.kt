@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
@@ -77,6 +78,8 @@ import com.romcloud.app.ui.gameFacts
 import com.romcloud.app.ui.gamePlaytime
 import com.romcloud.app.ui.partsSummary
 import com.romcloud.app.ui.VitaProcedure
+import com.romcloud.app.ui.GameIssuesCard
+import com.romcloud.app.launch.GameIssue
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
 
@@ -207,6 +210,12 @@ fun TvGameDetailScreen(
                                     viewModel.play(activity, resume = true)?.let(onMessage)
                                 }
                                 SecondaryButton(stringResource(R.string.action_play), Icons.Filled.Replay) { viewModel.play(activity)?.let(onMessage) }
+                            } else if (state.issues.isNotEmpty()) {
+                                // Émulateur externe à configurer : installation de l'émulateur, ou choix d'un autre.
+                                ActionButton(stringResource(R.string.action_configure), Icons.Filled.Settings, primary) {
+                                    val missing = state.issues.any { it.kind == GameIssue.Kind.EMULATOR_MISSING }
+                                    if (missing) viewModel.configure()?.let(onMessage) else pickEmulator = true
+                                }
                             } else {
                                 ActionButton(stringResource(R.string.action_play), Icons.Filled.PlayArrow, primary) { viewModel.play(activity)?.let(onMessage) }
                             }
@@ -268,6 +277,7 @@ fun TvGameDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                GameIssuesCard(state.issues)
                 // Vita3K : installation du jeu dans l'émulateur, puis démarrage direct.
                 state.vita?.let { VitaProcedure(it, state.localPath, viewModel::setVitaLicense) }
 

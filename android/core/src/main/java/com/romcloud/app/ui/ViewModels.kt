@@ -34,6 +34,8 @@ import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulator
 import com.romcloud.app.launch.MissingEmulatorException
 import com.romcloud.app.libretro.LibretroActivity
+import com.romcloud.app.launch.GameIssue
+import com.romcloud.app.launch.GameIssues
 import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.launch.VitaGames
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +49,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+
+/** Problèmes qui empêchent de jouer à [game] avec l'émulateur externe choisi (voir GameIssues). */
+fun RomCloudApp.gameIssues(system: GameSystem, game: Game): List<GameIssue> {
+    val player = launcher.selectedPlayer(system, game.fileName)
+    val file = library.launchFile(system, game, player)
+    return GameIssues.of(launcher, system, game.fileName, file, library.isDownloaded(system, game))
+}
 
 /**
  * Lance un jeu déjà téléchargé ; renvoie un message d'erreur ou null.
@@ -68,6 +77,10 @@ fun RomCloudApp.play(
 ): String? {
     val player = launcher.selectedPlayer(system, game.fileName)
     val file = library.launchFile(system, game, player)
+    // Émulateur externe à configurer (sauf émulateur absent : proposition d'installation ci-dessous).
+    if (core == null && netplay == null) {
+        gameIssues(system, game).firstOrNull { it.kind != GameIssue.Kind.EMULATOR_MISSING }?.let { return it.message }
+    }
     if (!emulatorClosed) {
         launcher.closeWarningPackage(player)?.let { pkg ->
             closeEmulatorPrompt.value = CloseEmulatorPrompt(system, game, pkg, player?.name ?: pkg)
@@ -447,6 +460,9 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
     fun setRetroArchHelpDismissed(packageName: String, dismissed: Boolean) =
         app.settings.setRetroArchHelpDismissed(packageName, dismissed)
 
+    /** Émulateur externe à configurer pour ce jeu : la liste mène alors à sa fiche (« Configurer »). */
+    fun needsSetup(game: Game): Boolean = _state.value.system?.let { app.gameIssues(it, game).isNotEmpty() } ?: false
+
     /** [resume] : reprend la partie sauvegardée dans l'émulateur intégré. */
     fun play(activity: Activity, game: Game, resume: Boolean = false): String? {
         val system = _state.value.system ?: return I18n.get(R.string.err_system_not_found)
@@ -489,6 +505,8 @@ class GameDetailViewModel(
         val emulatorFilesFolder: String? = null,
         /** Vita3K choisi : procédure d'installation du jeu (identifiant, format, licence d'un .pkg). */
         val vita: VitaInfo? = null,
+        /** Problèmes qui empêchent de jouer avec l'émulateur externe choisi : « Configurer » au lieu de « Jouer ». */
+        val issues: List<GameIssue> = emptyList(),
     ) {
         val canStream: Boolean get() = downloaded && selectedPlayer?.libretroCore != null && tvs.isNotEmpty()
     }
@@ -543,6 +561,7 @@ class GameDetailViewModel(
             val resumeCore = online?.core?.takeIf { c -> !localResume && selected?.libretroCore?.let { sameSaveCore(it, c) } != true }
                 ?.let { c -> cores.firstOrNull { sameSaveCore(it, c) } }
             val canResume = localResume || (downloaded && online != null)
+            val issues = withContext(Dispatchers.IO) { GameIssues.of(app.launcher, system, game.fileName, file, downloaded) }
             val vita = selected?.takeIf { VitaGames.isVita3k(app.launcher.packageOf(it)) }?.let {
                 val titleId = withContext(Dispatchers.IO) { if (downloaded) VitaGames.titleId(file) else VitaGames.titleIdFromName(file.name) }
                 vitaInfo(titleId, file.extension.lowercase(), game)
@@ -573,6 +592,7 @@ class GameDetailViewModel(
                     emulatorFiles = emulatorFiles.map { it.name },
                     emulatorFilesFolder = ExternalEmulatorFiles.folderName(system),
                     vita = vita,
+                    issues = issues,
                 )
             }
         }
@@ -600,6 +620,16 @@ class GameDetailViewModel(
         val local = app.settings.vitaLicense(game.id)
         val server = game.zrif.orEmpty()
         return VitaInfo(titleId, format, local.ifEmpty { server }, fromServer = local.isEmpty() && server.isNotEmpty())
+    }
+
+    /**
+     * « Configurer » (jeu à configurer avant de jouer) : propose d'installer l'émulateur s'il manque ;
+     * renvoie un message d'erreur, ou null.
+     */
+    fun configure(): String? {
+        val s = _state.value
+        if (s.issues.none { it.kind == GameIssue.Kind.EMULATOR_MISSING }) return null
+        return s.selectedPlayer?.let(::installPlayer)
     }
 
     fun selectPlayer(player: Player) {

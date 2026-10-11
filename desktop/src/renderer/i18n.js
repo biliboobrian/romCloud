@@ -135,6 +135,9 @@
       'info.world': 'World',
       'action.download': 'Download',
       'action.info': 'Info',
+      'action.configure': 'Configure',
+      'issues.title': 'To configure before playing',
+      'errors.emulatorKeysMissing': '{name} needs {file}: download the system’s BIOS from the server, or import the file from your console.',
       'action.details': 'Details',
 
       'download.title': 'Download the game?',
@@ -556,6 +559,9 @@
       'info.world': 'Monde',
       'action.download': 'Télécharger',
       'action.info': 'Infos',
+      'action.configure': 'Configurer',
+      'issues.title': 'À configurer avant de jouer',
+      'errors.emulatorKeysMissing': '{name} a besoin de {file} : téléchargez les BIOS du système depuis le serveur, ou importez le fichier de votre console.',
       'action.details': 'Détails',
 
       'download.title': 'Télécharger le jeu ?',

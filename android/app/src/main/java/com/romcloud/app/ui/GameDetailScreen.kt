@@ -23,6 +23,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Groups
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.AlertDialog
@@ -95,6 +98,8 @@ fun GameDetailScreen(
     val peers by viewModel.peers.collectAsStateWithLifecycle()
     val activity = LocalContext.current as Activity
     val scope = rememberCoroutineScope()
+    // « Configurer » : fait défiler jusqu'aux problèmes à corriger.
+    val issuesInView = remember { BringIntoViewRequester() }
     var confirmDelete by remember { mutableStateOf(false) }
     /** Historique des états affiché (« États sauvegardés »). */
     var showStates by remember { mutableStateOf(false) }
@@ -197,6 +202,16 @@ fun GameDetailScreen(
                                     Icon(Icons.Filled.Replay, null)
                                     Spacer(Modifier.width(8.dp))
                                     Text(stringResource(R.string.action_play))
+                                }
+                            } else if (state.issues.isNotEmpty()) {
+                                // Émulateur externe à configurer : « Configurer » mène aux problèmes à corriger.
+                                Button(onClick = {
+                                    viewModel.configure()?.let { scope.launch { snackbar.showSnackbar(it) } }
+                                    scope.launch { issuesInView.bringIntoView() }
+                                }, modifier = Modifier.weight(1f).height(52.dp)) {
+                                    Icon(Icons.Filled.Settings, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.action_configure))
                                 }
                             } else {
                                 Button(onClick = { play(false) }, modifier = Modifier.weight(1f).height(52.dp)) {
@@ -304,6 +319,8 @@ fun GameDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            GameIssuesCard(state.issues, Modifier.bringIntoViewRequester(issuesInView))
 
             var showRetroArchHelp by remember { mutableStateOf(false) }
             PlayerSelector(

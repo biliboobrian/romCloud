@@ -1029,6 +1029,15 @@
         </div>
       </div>`;
     $('#heroMain').onclick = () => onGameClick(systemById(game.systemId), game);
+    // Jeu téléchargé, émulateur externe à configurer : « Configurer » au lieu de « Jouer ».
+    if (st.kind === 'downloaded' && !resume) {
+      gameIssues(systemById(game.systemId), game).then((issues) => {
+        const button = $('#heroMain');
+        if (!issues.length || !button || featured(visibleGames())?.id !== game.id) return;
+        button.innerHTML = `${icon('gear', 18)} ${esc(t('action.configure'))}`;
+        button.title = issues.map(issueText).join('\n');
+      });
+    }
     $('#heroResume')?.addEventListener('click', () => playChecked(systemById(game.systemId), game, { resume: true }));
     $('#heroInfo').onclick = () => openGameDetail(game.systemId, game.id);
   }
@@ -1037,15 +1046,30 @@
   // Clic sur un jeu : jouer, ou proposer le téléchargement
   // ---------------------------------------------------------------------------
 
-  function onGameClick(system, game) {
+  async function onGameClick(system, game) {
     const downloaded = S.route.name === 'systems' ? S.search.downloaded : S.games.downloaded;
     const st = statusOf(game, downloaded);
-    if (st.kind === 'downloaded') return playChecked(system, game);
+    if (st.kind === 'downloaded') {
+      // Émulateur externe à configurer : la fiche du jeu explique quoi corriger.
+      if ((await gameIssues(system, game)).length) return openGameDetail(system.id, game.id);
+      return playChecked(system, game);
+    }
     if (st.kind === 'running') return askCancel(game);
     return askDownload(system, game, st.kind === 'failed' ? st.error : null);
   }
 
   const biosSize = (list) => formatSize(list.reduce((n, b) => n + b.size, 0));
+
+  /** Problèmes qui empêchent de jouer avec l'émulateur externe choisi ([] : prêt, ou moteur intégré). */
+  const gameIssues = (system, game) => (system && rc.launcher.issues ? call(rc.launcher.issues, system, game).catch(() => []) : Promise.resolve([]));
+  const issueText = (issue) => t(issue.key, issue.vars || {});
+
+  /** Encadré des problèmes en tête de la section de l'émulateur, dans la fiche du jeu. */
+  function issuesHtml(issues) {
+    if (!issues.length) return '';
+    return `<div class="emu-issues"><strong>${icon('info', 18)} ${esc(t('issues.title'))}</strong>
+      <ul>${issues.map((i) => `<li>${esc(issueText(i))}</li>`).join('')}</ul></div>`;
+  }
 
   /** Joue, en proposant d'abord de télécharger les BIOS du système absents du PC. */
   async function playChecked(system, game, options) {
@@ -1578,7 +1602,7 @@
       return;
     }
     const downloaded = new Set(await call(rc.library.downloaded, [system], [game]));
-    const [emu, localPath, missingBios, emulators, command, localResume, online, history] = await Promise.all([
+    const [emu, localPath, missingBios, emulators, command, localResume, online, history, issues] = await Promise.all([
       call(rc.launcher.options, system),
       call(rc.library.path, system, game),
       system.biosCount ? call(rc.bios.missing, system).catch(() => []) : [],
@@ -1588,6 +1612,7 @@
       S.account.signedIn ? call(rc.launcher.resumableOnline, system, game).catch(() => null) : null,
       // Historique des états (moteur intégré) : null pour un autre émulateur.
       rc.states && downloaded.size ? call(rc.states.list, system, game).catch(() => null) : null,
+      gameIssues(system, game),
     ]);
     const savedStates = history?.states?.length || 0;
     // Jeu à plusieurs : compatibilité de l'émulateur choisi (relue : il a pu changer).
@@ -1628,7 +1653,10 @@
     } else if (st.kind === 'downloaded') {
       // Partie sauvegardée dans le moteur intégré : « Reprendre » d'abord, puis « Jouer » (nouvelle partie).
       actions = `${joinBtns}${resumable ? `<button class="btn primary big" id="resumeBtn">${icon('play')} ${esc(t('action.resume'))}</button>` : ''}
-        <button class="btn ${resumable ? '' : 'primary '}big" id="playBtn">${icon(resumable ? 'refresh' : 'play')} ${esc(t('action.play'))}</button>
+        ${issues.length
+          // Émulateur externe à configurer : « Configurer » mène à l'encadré de l'émulateur au lieu de lancer le jeu.
+          ? `<button class="btn primary big" id="configureBtn">${icon('gear')} ${esc(t('action.configure'))}</button>`
+          : `<button class="btn ${resumable ? '' : 'primary '}big" id="playBtn">${icon(resumable ? 'refresh' : 'play')} ${esc(t('action.play'))}</button>`}
         ${savedStates ? `<button class="btn big" id="statesBtn">${icon('timer')} ${esc(t('states.button', { n: savedStates }))}</button>` : ''}
         ${canHost(game) ? `<button class="btn big" id="netplayHostBtn">${icon(canHost(game) === 'link' ? 'link' : 'group')} ${esc(t(canHost(game) === 'link' ? 'link.host' : 'netplay.playTogether'))}</button>` : ''}
         <button class="btn" id="folderBtn">${icon('folder', 18)} ${esc(t('detail.showInFolder'))}</button>
@@ -1654,7 +1682,8 @@
           ${system.biosCount && st.kind !== 'running' ? (missingBios.length
             ? `<div class="line"><span class="muted">${esc(t('bios.missing', { n: missingBios.length, size: biosSize(missingBios) }))}</span>${st.kind === 'downloaded' ? `<button class="btn ghost" id="biosBtn">${icon('cloud', 18)} ${esc(t('bios.download'))}</button>` : ''}</div>`
             : `<div class="ok">${esc(t('bios.present', { n: system.biosCount }))}</div>`) : ''}
-          <div class="emu">
+          <div class="emu${issues.length ? ' blocked' : ''}" id="emuBox">
+            ${issuesHtml(issues)}
             <label class="muted">${esc(t('detail.emulator'))}</label>
             <select id="emuSelect">${emu.options.map((o) => `<option value="${esc(o.id)}"${o.id === emu.selected ? ' selected' : ''}>${esc(optionLabel(o))}</option>`).join('')}</select>
             ${selected.kind === 'custom' ? `<label class="muted">${esc(t('detail.command'))}</label>
@@ -1676,6 +1705,7 @@
     // Partie en ligne d'un autre cœur intégré : reprise avec lui.
     $('#resumeBtn')?.addEventListener('click', () => playChecked(system, game, { resume: true, resumeCore: !localResume && online?.core ? online.core : undefined }));
     $('#playBtn')?.addEventListener('click', () => playChecked(system, game));
+    $('#configureBtn')?.addEventListener('click', () => $('#emuBox').scrollIntoView({ behavior: 'smooth', block: 'center' }));
     $('#statesBtn')?.addEventListener('click', () => showStates(system, game));
     $('#netplayHostBtn')?.addEventListener('click', () => play(system, game, { netplay: { host: true } }));
     for (const btn of $$('[data-join-peer]')) {
@@ -1985,7 +2015,7 @@
       } else if (event.romIncluded === false) {
         toast(t('bios.done', { system: system?.name || '' }));
       } else {
-        toast(t('download.done', { title: event.title }), { action: t('action.play'), onAction: () => play(system, game) });
+        toast(t('download.done', { title: event.title }), { action: t('action.play'), onAction: () => onGameClick(system, game) });
       }
       if (S.route.name === 'games') renderGamesBody();
       else if (S.route.name === 'systems' && S.search.query) renderSystemsBody();

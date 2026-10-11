@@ -114,8 +114,10 @@ fun TvGamesScreen(
 
     fun onClick(game: Game) {
         when (statusOf(game)) {
+            // Émulateur externe à configurer : la fiche du jeu explique quoi corriger.
             LocalStatus.Downloaded ->
-                if (state.missingBios.isNotEmpty()) askBios = game else viewModel.play(activity, game)?.let(onMessage)
+                if (viewModel.needsSetup(game)) onOpenGame(game.id)
+                else if (state.missingBios.isNotEmpty()) askBios = game else viewModel.play(activity, game)?.let(onMessage)
             is LocalStatus.Downloading -> askCancel = game
             else -> askDownload = game
         }

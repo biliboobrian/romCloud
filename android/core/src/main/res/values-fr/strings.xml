@@ -585,6 +585,10 @@
     <string name="report_sent">Rapport envoyé au serveur</string>
     <string name="report_queued">Rapport enregistré : il sera envoyé dès que le serveur sera joignable</string>
     <string name="states_core">Cœur de l’émulateur : %1$s</string>
+    <string name="action_configure">Configurer</string>
+    <string name="issues_title">À configurer avant de jouer</string>
+    <string name="issue_emulator_missing">%1$s n’est pas installé sur cet appareil : installez-le, ou choisissez un autre émulateur.</string>
+    <string name="issue_vita_title_id">Identifiant du jeu PS Vita introuvable dans ce fichier : Vita3K ne peut pas le démarrer directement (lancez-le depuis la liste de Vita3K).</string>
     <string name="vita_title">Lancement avec Vita3K</string>
     <string name="vita_step_firmware">Vita3K a besoin de son firmware et de ses polices : à son premier démarrage, suivez son assistant (PSVUPDAT.PUP et PSP2UPDAT.PUP du site de Sony).</string>
     <string name="vita_step_install_pkg">Installez le jeu dans Vita3K : menu « File › Install .pkg », choisissez le fichier ci-dessous puis collez sa licence (zRIF). L’installation n’a lieu qu’une fois.</string>
