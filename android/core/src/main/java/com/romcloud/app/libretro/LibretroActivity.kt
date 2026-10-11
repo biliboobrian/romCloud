@@ -380,8 +380,15 @@ class LibretroActivity : ComponentActivity() {
             // Profil connecté : sauvegardes en ligne plus récentes (partie continuée sur un autre appareil).
             if (gameId > 0 && account.state.value.signedIn) {
                 phase = Phase.Loading(getString(R.string.libretro_syncing_saves))
-                runCatching { account.downloadNewer(gameId, core, saveFiles) }.onFailure { if (it is CancellationException) throw it }
+                val downloaded = runCatching { account.downloadNewer(gameId, core, saveFiles) }
+                    .onFailure { if (it is CancellationException) throw it }.getOrDefault(emptyList())
+                // État de reprise d'un autre appareil : ajouté à l'historique (toute sauvegarde y figure).
+                downloaded.firstOrNull { it.kind == "state" }?.let { save ->
+                    withContext(Dispatchers.IO) { history.record(stateFile, save.device, save.platform) }
+                }
             }
+            // État de reprise d'une version précédente, ou absent de l'historique : ajouté.
+            withContext(Dispatchers.IO) { history.record(stateFile, account.deviceName, platform) }
             val game = if (RomArchives.needsExtraction(core, rom)) {
                 phase = Phase.Loading(getString(R.string.libretro_preparing))
                 withContext(Dispatchers.IO) { RomArchives.extract(rom, File(cacheDir, "libretro-rom")) }
@@ -847,7 +854,7 @@ class LibretroActivity : ComponentActivity() {
     /** « Charger l'état » : historique des états (de l'appareil et du profil en ligne). */
     private fun openStates() {
         // Ancien état unique (version précédente) : repris dans l'historique.
-        history.adopt(stateFile, account.deviceName, platform)
+        history.record(stateFile, account.deviceName, platform)
         statesOpen = true
     }
 

@@ -49,6 +49,74 @@ fn read_dir(dir: &Path) -> Vec<Value> {
     list
 }
 
+/**
+ * Toute sauvegarde de la partie est dans l'historique : l'état de reprise [quick] (écrit en quittant,
+ * ou téléchargé depuis le profil : sauvegarde d'un autre appareil, ou d'une version précédente) y est
+ * ajouté s'il n'y est pas déjà (même taille, date à 2 s près), daté de son fichier, avec l'appareil
+ * [device] qui l'a fait. Renvoie vrai s'il a été ajouté.
+ */
+pub fn record_quick(dir: &Path, quick: &Path, core: &str, device: &str, platform: &str) -> bool {
+    let (Some(size), Some(date)) = (crate::paths::size(quick), crate::paths::mtime_ms(quick)) else { return false };
+    if size == 0 {
+        return false;
+    }
+    let known = [dir.to_path_buf(), online_dir(dir)].iter().any(|d| {
+        read_dir(d).iter().any(|m| {
+            let file = d.join(format!("{}.state", m["id"].as_str().unwrap_or("")));
+            (m["createdAt"].as_f64().unwrap_or(0.0) - date).abs() <= 2000.0 && crate::paths::size(&file) == Some(size)
+        })
+    });
+    if known {
+        return false;
+    }
+    let b: [u8; 16] = rand::random();
+    let h = hex::encode(b);
+    let id = format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32]);
+    let ok = std::fs::create_dir_all(dir).is_ok()
+        && std::fs::copy(quick, dir.join(format!("{id}.state"))).is_ok()
+        && write_json(
+            &dir.join(format!("{id}.json")),
+            &json!({ "id": id, "core": core, "createdAt": date, "device": device, "platform": platform, "pinned": false, "uploaded": false }),
+        )
+        .is_ok();
+    if !ok {
+        for ext in ["state", "json"] {
+            let _ = std::fs::remove_file(dir.join(format!("{id}.{ext}")));
+        }
+    }
+    ok
+}
+
+/**
+ * État le plus récent de l'historique du jeu sur ce PC ([dir] et états des autres appareils déjà
+ * téléchargés) : fichier et date (ms) ; None sans état.
+ */
+pub fn latest(dir: &Path) -> Option<(PathBuf, f64)> {
+    [dir.to_path_buf(), online_dir(dir)]
+        .into_iter()
+        .flat_map(|d| {
+            read_dir(&d).into_iter().filter_map(move |m| {
+                let id = m["id"].as_str()?;
+                Some((d.join(format!("{id}.state")), m["createdAt"].as_f64().unwrap_or(0.0)))
+            })
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+}
+
+/**
+ * État à charger pour reprendre la partie : l'état de reprise ([quick], écrit en quittant) ou
+ * l'état de l'historique s'il est plus récent ou que l'état de reprise manque ; None sans aucun état.
+ */
+pub fn resume_file(quick: &Path, history: &Path) -> Option<PathBuf> {
+    let quick_date = quick.is_file().then(|| crate::paths::mtime_ms(quick).unwrap_or(0.0));
+    match (quick_date, latest(history)) {
+        (Some(q), Some((file, date))) if date > q => Some(file),
+        (Some(_), _) => Some(quick.to_path_buf()),
+        (None, Some((file, _))) => Some(file),
+        (None, None) => None,
+    }
+}
+
 fn valid_id(id: &str) -> Result<&str> {
     if (8..=64).contains(&id.len()) && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         Ok(id)
@@ -307,6 +375,50 @@ pub async fn delete(dir: &Path, id: &str, online: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn etat_de_reprise_ajoute_a_l_historique() {
+        let dir = std::env::temp_dir().join(format!("romcloud-quick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let history = dir.join("Jeu.history");
+        let quick = dir.join("Jeu.state");
+        assert!(!record_quick(&history, &quick, "snes9x", "PC", "windows"));
+        // État de reprise téléchargé du profil (fait sur un autre appareil) : ajouté une seule fois.
+        std::fs::write(&quick, b"etat du telephone").unwrap();
+        assert!(record_quick(&history, &quick, "snes9x", "Pixel 8", "android"));
+        assert!(!record_quick(&history, &quick, "snes9x", "Pixel 8", "android"));
+        let list = read_dir(&history);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["device"], "Pixel 8");
+        assert_eq!(std::fs::read(history.join(format!("{}.state", list[0]["id"].as_str().unwrap()))).unwrap(), b"etat du telephone");
+        assert!(valid_id(list[0]["id"].as_str().unwrap()).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reprise_depuis_l_etat_le_plus_recent() {
+        let dir = std::env::temp_dir().join(format!("romcloud-resume-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let history = dir.join("Jeu.history");
+        let quick = dir.join("Jeu.state");
+        assert_eq!(resume_file(&quick, &history), None);
+        // Historique seul (états faits depuis le menu, ou d'un autre appareil) : le plus récent.
+        let add = |d: &Path, id: &str, at: f64| {
+            write_json(&d.join(format!("{id}.json")), &json!({ "id": id, "createdAt": at })).unwrap();
+            std::fs::write(d.join(format!("{id}.state")), b"s").unwrap();
+        };
+        add(&history, "aaaaaaaa", 1000.0);
+        add(&online_dir(&history), "bbbbbbbb", 2000.0);
+        assert_eq!(resume_file(&quick, &history), Some(online_dir(&history).join("bbbbbbbb.state")));
+        // État de reprise plus récent (écrit maintenant) : choisi.
+        std::fs::write(&quick, b"q").unwrap();
+        assert_eq!(resume_file(&quick, &history), Some(quick.clone()));
+        // État de l'historique plus récent que l'état de reprise : choisi.
+        add(&history, "cccccccc", crate::paths::mtime_ms(&quick).unwrap() + 60_000.0);
+        assert_eq!(resume_file(&quick, &history), Some(history.join("cccccccc.state")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn etats_du_pc_et_en_ligne_reunis() {

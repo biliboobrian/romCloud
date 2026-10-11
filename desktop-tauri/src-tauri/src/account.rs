@@ -321,8 +321,9 @@ pub(crate) fn parse_date_ms(s: &str) -> f64 {
 /// Fichiers de sauvegarde d'une partie : (type, chemin).
 pub type SaveFiles = Vec<(&'static str, std::path::PathBuf)>;
 
-/// Avant de jouer : les sauvegardes en ligne plus récentes que celles du PC remplacent les fichiers locaux.
-pub async fn download_newer(game_id: &Value, core: &str, files: &SaveFiles) -> Vec<String> {
+/// Avant de jouer : les sauvegardes en ligne plus récentes que celles du PC remplacent les fichiers
+/// locaux ; renvoie celles téléchargées (fiches du serveur : type, appareil, date).
+pub async fn download_newer(game_id: &Value, core: &str, files: &SaveFiles) -> Vec<Value> {
     if session().is_none() {
         return vec![];
     }
@@ -355,7 +356,7 @@ pub async fn download_newer(game_id: &Value, core: &str, files: &SaveFiles) -> V
             Ok(())
         })();
         if ok.is_ok() {
-            updated.push(kind.to_string());
+            updated.push(save.clone());
         }
     }
     updated

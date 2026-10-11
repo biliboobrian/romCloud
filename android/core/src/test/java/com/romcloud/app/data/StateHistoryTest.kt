@@ -32,16 +32,30 @@ class StateHistoryTest {
     }
 
     @Test
-    fun `ancien etat unique repris une seule fois`() {
+    fun `etat de reprise ajoute une seule fois a l'historique`() {
         val legacy = tmp.newFile("Zelda.state").apply { writeBytes(byteArrayOf(9)) }
         val history = StateHistory(File(tmp.root, "Zelda.history"), "snes9x")
-        history.adopt(legacy, "Pixel 8", "android")
-        history.adopt(legacy, "Pixel 8", "android")
+        assertTrue(history.record(legacy, "Pixel 8", "android"))
+        assertFalse(history.record(legacy, "Pixel 8", "android"))
         val list = history.list()
         assertEquals(1, list.size)
         assertEquals(legacy.lastModified(), list.single().createdAt)
         history.markUploaded(list.single().id)
         assertTrue(history.get(list.single().id)!!.uploaded)
+    }
+
+    @Test
+    fun `etat de reprise d'un autre appareil ajoute meme avec un historique`() {
+        val history = StateHistory(File(tmp.root, "Mario.history"), "snes9x")
+        history.add(byteArrayOf(1, 2), null, "Shield", "androidtv", createdAt = 1_000L)
+        val quick = tmp.newFile("Mario.state").apply {
+            writeBytes(byteArrayOf(3, 4, 5))
+            setLastModified(5_000_000L)
+        }
+        assertTrue(history.record(quick, "PC du salon", "windows"))
+        val latest = history.list().first()
+        assertEquals("PC du salon", latest.device)
+        assertEquals(2, history.list().size)
     }
 
     @Test

@@ -378,10 +378,12 @@ pub fn check(system: &Value) -> Value {
     })
 }
 
-/// Partie à reprendre : moteur intégré choisi et état sauvegardé pour ce jeu et ce cœur.
+/// Partie à reprendre : moteur intégré choisi et état de reprise ou de l'historique pour ce jeu et ce cœur.
 pub fn resumable(system: &Value, game: &Value) -> bool {
     match prepare(system, game) {
-        Ok(Plan::Builtin { core, file, .. }) => builtin::state_path(&core, &file).exists(),
+        Ok(Plan::Builtin { core, file, .. }) if managed::by_core(&core).is_none() => {
+            crate::states::resume_file(&builtin::state_path(&core, &file), &builtin::history_dir(&core, &file)).is_some()
+        }
         _ => false,
     }
 }
@@ -554,6 +556,12 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             if let Some(id) = options.get("state").and_then(Value::as_str) {
                 let path = crate::states::file_for(&game["id"], &builtin::history_dir(&core, &file), id).await?;
                 extra = vec!["--state-file".to_string(), path.to_string_lossy().into_owned()];
+            } else if resume {
+                // Reprise : état de l'historique s'il est plus récent que l'état de reprise (ou seul).
+                let quick = builtin::state_path(&core, &file);
+                if let Some(path) = crate::states::resume_file(&quick, &builtin::history_dir(&core, &file)).filter(|p| *p != quick) {
+                    extra = vec!["--state-file".to_string(), path.to_string_lossy().into_owned()];
+                }
             }
             builtin::launch(system, game, &file, &core, resume, extra, None).await?;
             Ok(json!({ "manual": false }))
