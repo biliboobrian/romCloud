@@ -1,6 +1,6 @@
 import { I18nError } from '../i18n.js';
 import { compactDetails } from './details.js';
-import { abbreviates, acronymOf, contentIdLabel, contentIdRegion, initials, serialFromFileName, serialKey } from './serial.js';
+import { abbreviates, acronymOf, contentIdLabel, contentIdRegion, initials, labelScore, serialFromFileName, serialKey } from './serial.js';
 
 // Scraper basé sur les miniatures Libretro (https://thumbnails.libretro.com) :
 // gratuit et sans compte, fournit jaquette, capture et écran-titre (pas de texte).
@@ -58,7 +58,8 @@ function regionScore(name) {
  * Jeu de la DAT désigné par le libellé abrégé d'un identifiant de contenu PS Vita / PSP
  * (« EP0001-PCSB00061_00-LUMINESELECTROSY » : « Lumines - Electronic Symphony »), quand son numéro
  * de série n'y figure pas (autre région) : de préférence de la même région, sinon le titre le
- * plus proche du libellé ; à défaut, le seul titre dont les initiales forment le libellé (sigle).
+ * plus proche du libellé ; à défaut, le titre qui en approche le mieux, ou le seul dont les initiales
+ * forment le libellé (sigle).
  */
 function entryByContentLabel(meta, fileName) {
   const label = contentIdLabel(fileName);
@@ -68,6 +69,16 @@ function entryByContentLabel(meta, fileName) {
   const sameRegion = (c) => (region && c.entry.fields.region?.includes(region) ? 0 : 1);
   candidates.sort((a, b) => sameRegion(a) - sameRegion(b) || a.title.length - b.title.length);
   if (candidates.length) return candidates[0].entry;
+  // Libellé approché (mots manquants, nom de la console, numéro) : titre le plus proche, s'il est seul
+  // à ce niveau.
+  const scored = new Map();
+  for (const [title, entry] of meta.byTitle) {
+    const score = labelScore(label, title);
+    const name = titleFromLibretroName(entry.name);
+    if (score && !(scored.get(name)?.score >= score)) scored.set(name, { score, entry });
+  }
+  const best = [...scored.values()].sort((a, b) => b.score - a.score);
+  if (best.length && !(best[1]?.score === best[0].score)) return best[0].entry;
   // Libellé en sigle suivi de la console (« ACCVITA » : « Assassin's Creed Chronicles ») : retenu
   // seulement si un seul titre a ces initiales.
   const acronym = acronymOf(label);

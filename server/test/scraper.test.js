@@ -359,7 +359,7 @@ test('jeu d\'arcade renommé : retrouvé par les CRC des fichiers de l\'archive'
   assert.equal(isArcadeSystem({ libretroName: 'Nintendo - Game Boy', shortname: 'gb' }), false);
 });
 
-const { abbreviates, acronymOf, contentIdLabel, contentIdRegion, initials, serialFromFileName, serialKey } = await import('../src/scraper/serial.js');
+const { abbreviates, acronymOf, contentIdLabel, contentIdRegion, initials, labelScore, looseLabel, serialFromFileName, serialKey } = await import('../src/scraper/serial.js');
 
 test('numéro de série PlayStation lu dans le nom de fichier', () => {
   // Identifiant de contenu PS Vita (nom d'un dump NoNpDrm / VPK).
@@ -441,4 +441,32 @@ test('identifiant de contenu en sigle (« ACCVITA000000001 ») : jeu retrouvé p
   serve([["Assassin's Creed Chronicles (USA)", 'PCSE-00700'], ['Ace Combat Collection (USA)', 'PCSE-00999']]);
   const ambiguous = await libretroMetadata({ system: { libretroName: 'Sony - PlayStation Vita (sigles)' }, fileName: 'EP0001-PCSB00792_00-ACCVITA000000001.pkg' });
   assert.equal(ambiguous?.title ?? null, null);
+});
+
+test('identifiant de contenu approché : nom de la console, mots manquants, année et numéro', async () => {
+  assert.equal(looseLabel('SPONGEHEROVITA15'), 'spongehero');
+  assert.equal(looseLabel('FIFAVITA20130001'), 'fifa13');
+  assert.equal(looseLabel('NEPTUNEREBIRTH02'), 'neptunerebirth2');
+  assert.equal(looseLabel('WIPEOUT2048GAME0'), 'wipeout2048game0');
+  assert.ok(labelScore('LEGOFORCEAWAKENS', normalize('LEGO Star Wars - The Force Awakens (USA)')));
+  assert.equal(labelScore('PERSONA4THEGOLDE', normalize('Persona 5 (USA)')), 0);
+  const titles = [
+    'Amazing Spider-Man, The (USA)', 'SpongeBob HeroPants (USA)', 'FIFA 14 (Europe)', 'FIFA Soccer 13 (USA)',
+    'Hyperdimension Neptunia Re;Birth1 (USA)', 'Hyperdimension Neptunia Re;Birth2 - Sisters Generation (USA)',
+    'LEGO Star Wars - The Force Awakens (USA)',
+  ];
+  const dat = titles.map((name, i) => `game (\n\tname "${name}"\n\tregion "USA"\n\tserial "PCSE-0${i}000"\n\trom ( name "${name}.vpk" size 1 crc 00000000 )\n)\n`).join('\n');
+  globalThis.fetch = async (url) => {
+    const ok = String(url).includes('/metadat/no-intro/');
+    return { ok, status: ok ? 200 : 404, text: async () => (ok ? dat : '') };
+  };
+  const system = { libretroName: 'Sony - PlayStation Vita (approché)' };
+  const found = async (fileName) => (await libretroMetadata({ system, fileName }))?.title ?? null;
+  assert.equal(await found('EP0002-PCSB00428_00-AMAZINGSPIDERMDL.pkg'), 'The Amazing Spider-Man');
+  assert.equal(await found('EP0002-PCSB00716_00-SPONGEHEROVITA15.pkg'), 'SpongeBob HeroPants');
+  assert.equal(await found('EP0006-PCSB00171_00-FIFAVITA20130001.pkg'), 'FIFA Soccer 13');
+  assert.equal(await found('EP0031-PCSB00626_00-NEPTUNEREBIRTH02.pkg'), 'Hyperdimension Neptunia Re;Birth2 - Sisters Generation');
+  assert.equal(await found('EP1018-PCSB00877_00-LEGOFORCEAWAKENS.pkg'), 'LEGO Star Wars - The Force Awakens');
+  assert.equal(await found('EP2678-PCSB01321_00-CATNECRO01XXXXUT.pkg'), null);
+  assert.equal(await found('EP0546-PCSB01173_00-G000000000001086.pkg'), null);
 });
