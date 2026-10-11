@@ -8,8 +8,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -60,12 +62,13 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             RomCloudTheme {
-                // Barres masquées : seul l'encoche de la caméra reste à éviter.
+                // Encoche de la caméra évitée sur les côtés et en bas (paysage, portrait inversé) ; en haut,
+                // l'écran est utilisé jusqu'au bord et les barres d'écran se placent elles-mêmes (topBarInsets).
                 Box(
                     Modifier
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
-                        .windowInsetsPadding(WindowInsets.displayCutout),
+                        .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                 ) {
                     RomCloudNavHost(app, this@MainActivity)
                 }

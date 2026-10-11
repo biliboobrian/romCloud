@@ -135,6 +135,7 @@ fun SystemsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                windowInsets = topBarInsets,
                 title = {
                     if (searching) {
                         TextField(

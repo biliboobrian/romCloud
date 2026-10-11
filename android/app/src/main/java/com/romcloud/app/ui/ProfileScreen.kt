@@ -79,6 +79,7 @@ fun ProfileScreen(viewModel: ProfileViewModel, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
+                windowInsets = topBarInsets,
                 title = { Text(stringResource(R.string.profile_title)) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) } },
             )

@@ -171,6 +171,7 @@ fun GamesScreen(
         modifier = Modifier,
         topBar = {
             TopAppBar(
+                windowInsets = topBarInsets,
                 colors = if (immersive) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 else TopAppBarDefaults.topAppBarColors(),
                 navigationIcon = {
