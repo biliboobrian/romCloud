@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 #include "util.h"
 
@@ -38,6 +39,7 @@ void Audio::close() {
 }
 
 void Audio::push(const int16_t* frames, size_t count) {
+  for (size_t i = 0; i < count * 2; i++) peak_ = std::max(peak_, std::abs((int)frames[i]));
   if (!stream_ || !count) return;
   lastPush_ = SDL_GetTicks();
   if (decimate_ == 1) {

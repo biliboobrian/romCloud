@@ -70,12 +70,15 @@ struct Args {
   std::vector<std::string> optionsForced;  // options imposées (liaison entre consoles)
   // Mode d'essai : fenêtre cachée, N images au plus vite, dernière image enregistrée en BMP.
   std::string testFrames, screenshot, testSeconds, testOptions;
+  std::string testLoadAt;  // essai : état chargé après N images (au lieu de la première)
   bool testWindow = false;  // essai dans une fenêtre visible : affichage et menu capturés
   bool testMenu = false;
   bool testKeys = false;  // essai : écran des touches du clavier
   bool testPad = false;  // essai : écran de configuration des manettes
   bool testStates = false;  // essai : historique des états (« Charger l'état »)
   bool testSaveState = false;  // essai : état enregistré après les N images
+  bool testAudio = false;  // essai : amplitude maximale du son des N images
+  bool testReload = false;  // essai : état rechargé en cours de partie, depuis le menu (« Charger l'état »)
 };
 
 Args parseArgs(int argc, char** argv) {
@@ -87,6 +90,7 @@ Args parseArgs(int argc, char** argv) {
       {"--keys-file", &a.keysFile}, {"--buttons", &a.buttons}, {"--pad-style", &a.padStyle},
       {"--test-frames", &a.testFrames}, {"--screenshot", &a.screenshot}, {"--test-seconds", &a.testSeconds},
       {"--test-options", &a.testOptions},  // essai : écran des options du cœur, onglet N
+      {"--test-load-at", &a.testLoadAt},
       {"--netplay-join", &a.netplayJoin}, {"--netplay-peer", &a.netplayPeer}, {"--netplay-game", &a.netplayGame},
       {"--device-id", &a.deviceId},     {"--device-name", &a.deviceName},
       {"--netplay-link", &a.netplayLink}, {"--linked", &a.linked},
@@ -107,6 +111,8 @@ Args parseArgs(int argc, char** argv) {
     else if (arg == "--test-pad") a.testPad = true;
     else if (arg == "--test-states") a.testStates = true;
     else if (arg == "--test-save-state") a.testSaveState = true;
+    else if (arg == "--test-audio") a.testAudio = true;
+    else if (arg == "--test-reload") a.testReload = true;
     else if (arg == "--option-default" && i + 1 < argc) a.optionDefaults.push_back(argv[++i]);
     else if (values.count(arg) && i + 1 < argc) *values[arg] = argv[++i];
   }
@@ -607,12 +613,14 @@ int Player::run() {
   if ((args_.resume || !args_.stateFile.empty()) && args_.netplayJoin.empty()) {
     // Une image d'abord : certains cœurs n'acceptent un état qu'une fois le jeu démarré.
     runFrame();
+    for (int i = atoi(args_.testLoadAt.c_str()); i > 1; i--) runFrame();
     const std::string path = args_.stateFile.empty() ? statePath() : args_.stateFile;
     const char* result = !fileExists(path) ? "no_state" : loadStateFile(path) ? "state_loaded" : "state_error";
     logf("Reprise de la partie (%s) : %s", path.c_str(), result);
     toast(menu_.tr(result));
   }
   if (testFrames) {
+    audio_.resetPeak();
     for (int i = 0; i < testFrames; i++) {
       runFrame();
       if (args_.testWindow) {
@@ -642,6 +650,16 @@ int Player::run() {
       saved = video_.saveFrame(args_.screenshot);
     }
     if (args_.testSaveState) logf("Essai : état %s", saveState() ? "enregistré" : "impossible");
+    // Comme « Charger l'état » du menu : premier état de l'historique, puis la partie continue.
+    if (args_.testReload) {
+      openMenu();
+      openStates();
+      onMenuAction(menu_.isOpen() ? MenuAction::LoadHistoryState : MenuAction::None);
+      logf("Essai : état rechargé en cours de partie (%s)", toast_.c_str());
+      for (int i = 0; i < testFrames; i++) runFrame();
+      if (!args_.screenshot.empty()) video_.saveFrame(args_.screenshot + ".reload.bmp");
+    }
+    if (args_.testAudio) logf("Essai : son, amplitude maximale %d", audio_.peak());
     logf("Essai : %d images exécutées, capture %s", testFrames, saved ? "enregistrée" : "impossible");
     shutdown();
     return saved ? 0 : 1;
