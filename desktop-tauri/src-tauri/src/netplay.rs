@@ -73,6 +73,8 @@ static OWN: Mutex<Option<(Value, bool, Instant)>> = Mutex::new(None);
 static INTERNET: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 /// Dernier aller-retour mesuré jusqu'au serveur (ms).
 static RTT: AtomicU64 = AtomicU64::new(0);
+/// Dernière activité de l'utilisateur dans l'application (ms depuis 1970) : pastille du multijoueur.
+static LAST_ACTIVITY: AtomicU64 = AtomicU64::new(0);
 /// Annonce au serveur à refaire tout de suite (partie proposée ou état changé).
 static WAKE: LazyLock<tokio::sync::Notify> = LazyLock::new(tokio::sync::Notify::new);
 /// Relais de la partie en cours (moteur ouvert) : arrêtés quand il se ferme.
@@ -107,6 +109,25 @@ pub fn start() {
     });
 }
 
+/// Activité de l'utilisateur (touche, souris, manette) : joueur « présent » pour les autres.
+pub fn touch_activity() {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    LAST_ACTIVITY.store(now, Ordering::Relaxed);
+}
+
+/// Moteur de ce PC ouvert (il s'annonce) : partie proposée et « en partie ».
+pub fn own_state() -> Value {
+    match OWN.lock().unwrap().clone() {
+        Some((hosting, busy, at)) if at.elapsed() < TTL => json!({ "running": true, "hosting": !hosting.is_null(), "busy": busy }),
+        _ => json!({ "running": false, "hosting": false, "busy": false }),
+    }
+}
+
+/// Annonce au serveur tout de suite (avant de créer ou rejoindre un lobby).
+pub async fn announce_now() {
+    announce_internet().await;
+}
+
 /// Annonce de ce PC au serveur (partie proposée par son moteur, si elle passe par le relais) ;
 /// appareils connectés en retour.
 async fn announce_internet() {
@@ -124,6 +145,7 @@ async fn announce_internet() {
     let body = json!({
         "deviceId": device_id(), "name": device_name(), "platform": "windows", "busy": busy,
         "rtt": RTT.load(Ordering::Relaxed), "hosting": hosting,
+        "activeAt": match LAST_ACTIVITY.load(Ordering::Relaxed) { 0 => Value::Null, at => json!(at) },
     });
     let started = Instant::now();
     let peers: Vec<Value> = match account::play_presence(body).await {

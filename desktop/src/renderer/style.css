@@ -326,3 +326,31 @@ body.pad-nav .list-row:focus { outline: none; background: var(--surface); box-sh
 .multi-badge.link { color: var(--ok); }
 .netplay-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .netplay-list .line { display: flex; align-items: center; gap: 12px; }
+
+/* ---- Multijoueurs : joueurs (pastilles) et lobbies ---- */
+.multiplayer { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; min-height: 260px; }
+.multiplayer.single { grid-template-columns: 1fr; min-height: 0; }
+.multiplayer section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.multiplayer h4 { margin: 0 0 4px; font-size: 14px; color: var(--accent); }
+.mp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mp-head h4 { margin: 0; }
+.mp-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); }
+.mp-row .grow { flex: 1; min-width: 0; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.dot.present { background: #34c759; box-shadow: 0 0 6px #34c75988; }
+.dot.away { background: #ff9f0a; }
+.mp-lobby { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; text-align: left; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; font: inherit; }
+.mp-lobby:hover, .mp-lobby:focus-visible { border-color: var(--accent); outline: none; }
+.mp-lobby.mine { border-color: var(--accent); }
+.mp-lobby .muted { grid-column: 1; }
+.mp-lobby .tag { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.lobby .lobby-game { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 24px; }
+.lobby .lobby-game .cover-lg { width: 180px; flex-shrink: 0; }
+.lobby .lobby-game h2 { margin: 0 0 6px; }
+.lobby .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.lobby .lobby-mode select { margin-left: 6px; }
+.lobby-members { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+.lobby-members .crown { width: 20px; color: #ffcc00; display: flex; }
+.lobby-members .tag.playing { background: var(--accent); color: #fff; }
+.multiplayer .tag, .lobby .tag { font-size: 12px; padding: 2px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); white-space: nowrap; }

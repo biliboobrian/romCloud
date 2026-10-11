@@ -6,6 +6,7 @@ import express from 'express';
 import multer from 'multer';
 import * as accounts from './accounts.js';
 import * as play from './play.js';
+import * as lobbies from './lobbies.js';
 import { addApk, apkFilePath, deleteApk, emulatorPackages, listApks, requireApk, updateApk } from './apks.js';
 import { addBiosFiles, biosFilePath, deleteBios, fetchBiosFromSource, importBiosPack, requireBios, systemBios } from './bios.js';
 import { config, screenscraperEnabled } from './config.js';
@@ -550,6 +551,21 @@ api.post('/account/pair/:code/approve', signedIn, (req, res) => {
 api.put('/account/play/presence', signedIn, (req, res) => res.json(play.announce(req.auth, req.body || {}, accounts.clientInfo(req))));
 api.delete('/account/play/presence/:deviceId', signedIn, (req, res) => {
   play.withdraw(req.auth, req.params.deviceId);
+  res.status(204).end();
+});
+
+// Lobbies du multijoueur (lobbies.js) : appareil désigné par « deviceId » (corps ou paramètre).
+api.get('/account/play/lobbies', signedIn, (req, res) => res.json(lobbies.list()));
+api.post('/account/play/lobbies', signedIn, (req, res) => res.status(201).json(lobbies.create(req.auth, req.body || {})));
+api.post('/account/play/lobbies/:id/join', signedIn, (req, res) => res.json(lobbies.join(req.auth, req.params.id, req.body || {})));
+api.post('/account/play/lobbies/:id/leave', signedIn, (req, res) => {
+  lobbies.leave(req.auth, req.params.id, req.body || {});
+  res.status(204).end();
+});
+api.put('/account/play/lobbies/:id', signedIn, (req, res) => res.json(lobbies.update(req.auth, req.params.id, req.body || {})));
+api.put('/account/play/lobbies/:id/status', signedIn, (req, res) => res.json(lobbies.setStatus(req.auth, req.params.id, req.body || {})));
+api.delete('/account/play/lobbies/:id', signedIn, (req, res) => {
+  lobbies.dissolve(req.auth, req.params.id, req.query.deviceId);
   res.status(204).end();
 });
 

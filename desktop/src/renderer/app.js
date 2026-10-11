@@ -16,6 +16,9 @@
     // Jeu à plusieurs : appareils RomCloud du réseau local, systèmes compatibles (émulateur choisi),
     // partie à rejoindre dès la fin du téléchargement de son jeu.
     peers: [],
+    // Multijoueurs (serveur) : joueurs connectés, lobbies, ce PC ; lobby dont il est membre.
+    lobbies: { players: [], lobbies: [], me: null },
+    lobby: null,
     netplayAllowed: {},
     pendingJoin: null,
     systems: [],
@@ -44,6 +47,7 @@
 
   const ICONS = {
     link: 'M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z',
+    crown: 'M5 16 3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z',
     group: 'M12 12.75c1.63 0 3.07.39 4.24.9 1.08.48 1.76 1.56 1.76 2.73V18H6v-1.61c0-1.18.68-2.26 1.76-2.73 1.17-.52 2.61-.91 4.24-.91zM4 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm1.13 1.1c-.37-.06-.74-.1-1.13-.1-.99 0-1.93.21-2.78.58A2.01 2.01 0 0 0 0 16.43V18h4.5v-1.61c0-.83.23-1.61.63-2.29zM20 13c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm4 3.43c0-.81-.48-1.53-1.22-1.85A6.95 6.95 0 0 0 20 14c-.39 0-.76.04-1.13.1.4.68.63 1.46.63 2.29V18H24v-1.57zM12 6c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3z',
     back: 'M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z',
     gear: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z',
@@ -179,18 +183,21 @@
   }
 
   function back() {
+    // Invité d'un lobby : il ne quitte la page du lobby qu'en quittant le lobby.
+    if (lobbyLocked() && S.route.name === 'lobby') return;
     S.route = S.history.pop() || { name: 'systems' };
     render();
   }
 
   function render() {
+    if (lobbyLocked() && S.route.name !== 'lobby') S.route = { name: 'lobby' };
     $('#modalRoot').innerHTML = '';
     $('#banners').innerHTML = '';
     $('#backBtn').classList.toggle('hidden', S.route.name === 'systems');
     document.body.classList.remove('immersive');
     applySystemColor();
     $('#main').scrollTop = 0;
-    ({ systems: renderSystems, games: renderGames, game: renderGame, settings: renderSettings })[S.route.name]();
+    ({ systems: renderSystems, games: renderGames, game: renderGame, settings: renderSettings, lobby: renderLobby })[S.route.name]();
   }
 
   /** Couleur donnée à la barre de titre de la fenêtre (envoyée seulement quand elle change). */
@@ -224,6 +231,7 @@
     $('#subtitle').textContent = subtitle;
     $('#topbarCenter').innerHTML = center;
     $('#topbarRight').innerHTML = right;
+    lobbyTopbarButton();
   }
 
   // Barre d'espace de la partition des ROMs : place occupée, espace libre (rouge sous 10 %).
@@ -595,9 +603,9 @@
       disk: true,
       subtitle: S.systems.length ? t('app.games', { n: S.systems.reduce((n, s) => n + s.gameCount, 0) }) : '',
       center: `<input type="search" class="search-box" id="globalSearch" placeholder="${esc(t('app.searchAll'))}" value="${esc(S.search.query)}">`,
-      right: `${netplayBtn()}<button class="icon-btn" id="refreshBtn" title="${esc(t('app.refresh'))}">${icon('refresh')}</button>${settingsBtn()}`,
+      right: `${multiplayerBtn()}<button class="icon-btn" id="refreshBtn" title="${esc(t('app.refresh'))}">${icon('refresh')}</button>${settingsBtn()}`,
     });
-    $('#netplayBtn')?.addEventListener('click', showNetplay);
+    $('#netplayBtn')?.addEventListener('click', showMultiplayer);
     $('#globalSearch').oninput = (e) => setSearch(e.target.value);
     $('#refreshBtn').onclick = () => {
       loadSystems();
@@ -639,7 +647,7 @@
     const s = S.search;
     if (s.offline) banner(t('app.searchOffline'));
     // Hors ligne : seuls les jeux présents sur le PC peuvent être lancés.
-    const results = s.offline ? s.results.filter((g) => s.downloaded.has(g.id)) : s.results;
+    const results = (s.offline ? s.results.filter((g) => s.downloaded.has(g.id)) : s.results).filter(fitsLobby);
     if (!results.length) {
       const text = s.loading ? t('app.loading') : s.error ? s.error : t('app.searchNone', { q: s.query });
       main.innerHTML = `<div class="centered"><p>${esc(text)}</p></div>`;
@@ -746,6 +754,7 @@
   function visibleGames() {
     const q = S.games.query.trim().toLowerCase();
     return S.games.list.filter((g) => {
+      if (!fitsLobby(g)) return false; // lobby : jeux à assez de joueurs pour ses membres
       if (q && !g.title.toLowerCase().includes(q) && !g.fileName.toLowerCase().includes(q)) return false;
       if (!Criteria.matches(g, S.games.criteria)) return false;
       if (S.games.offline) return S.games.downloaded.has(g.id); // hors ligne : jeux du PC seulement
@@ -1184,9 +1193,6 @@
   const hostsOf = (game) => S.peers.filter((p) => p.hosting && p.hosting.systemId === game.systemId
     && (p.hosting.gameId === game.id || (p.hosting.fileName === game.fileName && p.hosting.size === game.size)));
 
-  /** Partie à proposer (appareil libre sur le réseau), même si ce jeu est déjà proposé ailleurs. */
-  const canHost = (game) => (anyAvailable() ? playKind(game) : null);
-
   /** Icône du jeu : partie à proposer, ou ce jeu proposé par un appareil (à rejoindre). */
   const together = (game) => ((anyAvailable() || hostsOf(game).length) ? playKind(game) : null);
 
@@ -1212,13 +1218,6 @@
   /** Liaison de chaque console (même règle que netplay.rs). */
   const LINK_OF = { gb: 'gb', gbc: 'gb', gbcolor: 'gb', gba: 'gba', psp: 'psp' };
 
-  /** Bouton de l'écran principal : appareils du réseau et parties proposées (nombre en pastille). */
-  const netplayBtn = () => {
-    if (!S.peers.length) return '';
-    const hosted = S.peers.filter((p) => p.hosting).length;
-    return `<button class="icon-btn netplay-btn" id="netplayBtn" title="${esc(t('netplay.title'))}">${icon('group')}${hosted ? `<span class="pill">${hosted}</span>` : ''}</button>`;
-  };
-
   /** Le système se joue-t-il à plusieurs (avec l'émulateur choisi) ou se relie-t-il ? (mémorisé ; [force] : relu). */
   async function refreshNetplaySystem(system, force = false) {
     if (!system || (!force && S.netplayAllowed[system.id] !== undefined)) return;
@@ -1229,27 +1228,6 @@
   const peerName = (p) => (p.internet && p.user ? `${p.user} · ${p.name}` : p.name);
 
   const platformLabel = (p) => t(p === 'androidtv' ? 'netplay.platform.tv' : p === 'windows' ? 'netplay.platform.pc' : 'netplay.platform.phone');
-
-  /** Appareils du réseau et parties qu'ils proposent : « Rejoindre ». */
-  function showNetplay() {
-    const root = modal({
-      title: t('netplay.title'),
-      body: `<p class="muted">${esc(t('netplay.intro'))}</p>
-        ${S.peers.length ? '' : `<p>${esc(t('netplay.nobody'))}</p>`}
-        <div class="netplay-list">${S.peers.map((p) => `<div class="line">
-          <div style="flex:1"><strong>${esc(peerName(p))}</strong> <span class="muted">· ${esc(platformLabel(p.platform))}${p.internet ? ` · ${esc(t('netplay.viaInternet'))}` : ''}</span>
-            <div class="muted small">${esc(p.hosting?.link ? t('link.hosting', { title: p.hosting.title }) : p.hosting ? t('netplay.hosting', { title: p.hosting.title }) : p.busy ? t('netplay.busyPeer') : t('netplay.available'))}</div></div>
-          ${p.hosting ? `<button class="btn primary" data-join="${esc(p.id)}">${esc(t(p.hosting.link ? 'link.joinShort' : 'netplay.join'))}</button>` : ''}
-        </div>`).join('')}</div>`,
-      buttons: [{ label: t('app.close'), kind: 'ghost' }],
-    });
-    for (const btn of $$('[data-join]', root)) {
-      btn.onclick = () => {
-        root.innerHTML = '';
-        joinNetplay(S.peers.find((p) => p.id === btn.dataset.join));
-      };
-    }
-  }
 
   /**
    * Rejoint la partie proposée par [peer] : même jeu du serveur (même fichier), avec le cœur de
@@ -1289,16 +1267,335 @@
     S.peers = peers || [];
     // Icônes et boutons mis à jour quand un appareil se libère, propose une partie ou disparaît.
     if (S.route.name === 'systems') {
-      $('#netplayBtn')?.remove();
-      if (S.peers.length) {
-        $('#topbarRight').insertAdjacentHTML('afterbegin', netplayBtn());
-        $('#netplayBtn')?.addEventListener('click', showNetplay);
-      }
+      // Bouton « Multijoueurs » : profil connecté (relu avec les lobbies).
     } else if (before !== peersSignature()) {
       if (S.route.name === 'games') renderGamesBody();
       if (S.route.name === 'game') renderGame();
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Multijoueurs : joueurs connectés à un profil (pastille présent / absent) et lobbies du serveur.
+  // Un lobby a un hôte (qui choisit le jeu et le lance) et des invités (qui rejoignent sa partie) ;
+  // la partie elle-même passe par le mécanisme habituel (réseau local ou relais du serveur).
+  // ---------------------------------------------------------------------------
+
+  /** Lobby dont ce PC est membre (null sinon). */
+  const myLobby = () => S.lobbies.lobbies.find((l) => l.members.some((m) => m.id === S.lobbies.me)) || null;
+  const isLobbyHost = (lobby = S.lobby) => Boolean(lobby) && lobby.host === S.lobbies.me;
+  /** Invité d'un lobby : il reste sur la page du lobby tant qu'il ne l'a pas quitté. */
+  const lobbyLocked = () => Boolean(S.lobby) && !isLobbyHost();
+  /** Joueurs minimum des jeux affichés dans un lobby (2 au moins). */
+  const lobbyPlayers = () => (S.lobby ? Math.max(2, S.lobby.members.length) : 0);
+  /** Jeu jouable par les membres du lobby (nombre de joueurs du jeu suffisant). */
+  const fitsLobby = (game) => !S.lobby || maxPlayers(game.players) >= lobbyPlayers();
+  /** Façons de jouer en réseau possibles pour ce jeu (netplay, liaison entre consoles). */
+  const lobbyModes = (game) => [playKind(game)].filter(Boolean);
+  const lobbyTitle = (lobby) => lobby.game?.title || t('lobby.new');
+  const memberName = (m) => (m.user ? `${m.user} · ${m.name}` : m.name);
+
+  /** Bouton « Multijoueurs » de l'écran principal (nombre de lobbies ouverts en pastille). */
+  const multiplayerBtn = () => {
+    if (!S.account.signedIn) return '';
+    const n = S.lobbies.lobbies.length;
+    return `<button class="icon-btn netplay-btn" id="netplayBtn" title="${esc(t('netplay.title'))}">${icon('group')}${n ? `<span class="pill">${n}</span>` : ''}</button>`;
+  };
+
+  /** Bouton de retour au lobby (hôte parti choisir un jeu), dans la barre du haut. */
+  function lobbyTopbarButton() {
+    $('#lobbyBackBtn')?.remove();
+    if (!S.lobby || S.route.name === 'lobby') return;
+    $('#topbarRight').insertAdjacentHTML('afterbegin', `<button class="btn primary small" id="lobbyBackBtn">${icon('group', 18)} ${esc(t('lobby.back'))}</button>`);
+    $('#lobbyBackBtn').onclick = () => go({ name: 'lobby' });
+  }
+
+  /** Lobbies et joueurs relus sur le serveur ; lobby dissous ou quitté : retour à l'écran d'accueil. */
+  async function refreshLobbies() {
+    if (!S.account.signedIn) {
+      S.lobbies = { players: [], lobbies: [], me: null };
+      S.lobby = null;
+      return;
+    }
+    const data = await call(rc.lobby.list).catch(() => null);
+    if (!data) return;
+    const before = S.lobby;
+    S.lobbies = { players: data.players || [], lobbies: data.lobbies || [], me: data.me };
+    S.lobby = myLobby();
+    if (before && !S.lobby) {
+      if (!S.lobbyLeaving) toast(t('lobby.dissolved'));
+      S.lobbyLeaving = false;
+      S.history = [];
+      S.route = { name: 'systems' };
+      render();
+      return;
+    }
+    await syncLobbyStatus();
+    if (S.route.name === 'lobby') renderLobby();
+    else if (S.route.name === 'systems') $('#netplayBtn')?.replaceWith(...htmlNodes(multiplayerBtn(), showMultiplayer));
+    if (S.multiplayerOpen) renderMultiplayer();
+    // Joueurs du lobby changés : jeux affichés (nombre de joueurs) à revoir.
+    const size = lobbyPlayers();
+    if (size !== S.lobbySize) {
+      S.lobbySize = size;
+      if (S.route.name === 'games') renderGamesBody();
+    }
+  }
+
+  /** Éléments d'un fragment HTML, le premier relié à [onClick]. */
+  function htmlNodes(html, onClick) {
+    const box = document.createElement('div');
+    box.innerHTML = html;
+    if (box.firstElementChild && onClick) box.firstElementChild.addEventListener('click', onClick);
+    return box.childNodes.length ? [...box.childNodes] : [document.createTextNode('')];
+  }
+
+  /** « En jeu » tant que le moteur est ouvert : de retour en attente quand il se ferme. */
+  async function syncLobbyStatus() {
+    const self = S.lobby?.members.find((m) => m.id === S.lobbies.me);
+    if (!self || self.status !== 'playing') return;
+    // Le moteur met quelques secondes à s'annoncer après le lancement.
+    if (Date.now() - (S.lobbyPlayingSince || 0) < 20000) return;
+    const own = await call(rc.netplay.own).catch(() => null);
+    if (own && !own.running) {
+      await call(rc.lobby.status, S.lobby.id, 'waiting').catch(() => {});
+      self.status = 'waiting';
+    }
+  }
+
+  // Lobbies et pastilles : relus toutes les 3 s (profil connecté).
+  setInterval(() => refreshLobbies(), 3000);
+
+  // Activité de l'utilisateur : joueur « présent » pour les autres (signalée au plus toutes les 30 s).
+  let lastActivity = 0;
+  const onActivity = () => {
+    const now = Date.now();
+    if (now - lastActivity < 30000) return;
+    lastActivity = now;
+    rc.presence?.activity().catch(() => {});
+  };
+  for (const type of ['keydown', 'mousedown', 'mousemove', 'wheel']) window.addEventListener(type, onActivity, { passive: true, capture: true });
+
+  /** Fenêtre « Multijoueurs » : joueurs connectés à gauche, lobbies à droite. */
+  function showMultiplayer() {
+    if (!S.account.signedIn) {
+      modal({ title: t('netplay.title'), body: `<p>${esc(t('lobby.signIn'))}</p>`, buttons: [{ label: t('app.close'), kind: 'primary' }] });
+      return;
+    }
+    S.multiplayerOpen = true;
+    const root = modal({ title: t('netplay.title'), body: '<div class="multiplayer" id="multiplayerBody"></div>', buttons: [{ label: t('app.close'), kind: 'ghost' }] });
+    $('.modal', root).classList.add('wide');
+    renderMultiplayer();
+    const watch = new MutationObserver(() => {
+      if (!root.innerHTML) {
+        S.multiplayerOpen = false;
+        watch.disconnect();
+      }
+    });
+    watch.observe(root, { childList: true });
+    refreshLobbies();
+  }
+
+  function renderMultiplayer() {
+    const box = $('#multiplayerBody');
+    if (!box) return;
+    const players = [...S.lobbies.players].sort((a, b) => (b.id === S.lobbies.me) - (a.id === S.lobbies.me) || Number(b.active) - Number(a.active));
+    box.innerHTML = `<section>
+        <h4>${esc(t('lobby.players'))}</h4>
+        ${players.length ? players.map((p) => `<div class="mp-row">
+          <span class="dot ${p.active ? 'present' : 'away'}" title="${esc(t(p.active ? 'lobby.present' : 'lobby.away'))}"></span>
+          <div class="grow"><strong>${esc(memberName(p))}</strong>${p.id === S.lobbies.me ? ` <span class="muted">${esc(t('lobby.you'))}</span>` : ''}
+            <div class="muted small">${esc(platformLabel(p.platform))}${p.busy ? ` · ${esc(t('lobby.inGame'))}` : ''}</div></div>
+        </div>`).join('') : `<p class="muted">${esc(t('netplay.nobody'))}</p>`}
+      </section>
+      <section>
+        <div class="mp-head"><h4>${esc(t('lobby.lobbies'))}</h4>
+          <button class="btn primary small" id="lobbyCreateBtn">${icon('group', 18)} ${esc(t('lobby.create'))}</button></div>
+        ${S.lobbies.lobbies.length ? S.lobbies.lobbies.map((l) => `<button class="mp-lobby${l.members.some((m) => m.id === S.lobbies.me) ? ' mine' : ''}" data-lobby="${esc(l.id)}">
+          <strong>${esc(lobbyTitle(l))}</strong>
+          <span class="muted small">${esc(l.members.map(memberName).join(', '))}</span>
+          <span class="tag">${l.members.length}</span>
+        </button>`).join('') : `<p class="muted">${esc(t('lobby.none'))}</p>`}
+      </section>`;
+    $('#lobbyCreateBtn').onclick = () => createLobby();
+    for (const el of $$('[data-lobby]', box)) el.onclick = () => openLobby(el.dataset.lobby);
+  }
+
+  /** Nouveau lobby (vierge, ou avec ce jeu) : ce PC en est l'hôte. */
+  async function createLobby(game = null) {
+    if (game) await refreshNetplaySystem(systemById(game.systemId));
+    const options = game ? { game: lobbyGameOf(game), modes: lobbyModes(game) } : {};
+    try {
+      S.lobby = await call(rc.lobby.create, options);
+      await refreshLobbies();
+      $('#modalRoot').innerHTML = '';
+      go({ name: 'lobby' });
+    } catch (err) {
+      toast(err.message, { type: 'error' });
+    }
+  }
+
+  /** Jeu tel que le lobby le garde (identifiant, fichier, nombre de joueurs). */
+  const lobbyGameOf = (game) => ({ gameId: game.id, systemId: game.systemId, title: game.title, fileName: game.fileName, size: game.size, players: maxPlayers(game.players) });
+
+  /** Ouvre un lobby : le rejoint d'abord si ce PC n'en est pas membre. */
+  async function openLobby(id) {
+    const lobby = S.lobbies.lobbies.find((l) => l.id === id);
+    try {
+      if (lobby && !lobby.members.some((m) => m.id === S.lobbies.me)) await call(rc.lobby.join, id);
+      await refreshLobbies();
+      $('#modalRoot').innerHTML = '';
+      if (S.lobby) go({ name: 'lobby' });
+    } catch (err) {
+      toast(err.message, { type: 'error' });
+    }
+  }
+
+  /** Jeu du lobby (fiche du serveur), mémorisé ; null sans jeu ou hors de la bibliothèque. */
+  async function lobbyGame(lobby) {
+    const g = lobby?.game;
+    if (!g) return null;
+    if (S.lobbyGame && S.lobbyGame.id === g.gameId && S.lobbyGame.fileName === g.fileName) return S.lobbyGame;
+    const system = systemById(g.systemId);
+    const r = system ? await call(rc.api.games, system.id).catch(() => null) : null;
+    S.lobbyGame = r?.data.find((x) => x.id === g.gameId) || r?.data.find((x) => x.fileName === g.fileName && x.size === g.size) || null;
+    return S.lobbyGame;
+  }
+
+  /** Page du lobby : jeu, façon de jouer, membres (couronne de l'hôte, statut), boutons. */
+  async function renderLobby() {
+    const lobby = S.lobby;
+    if (!lobby) return;
+    const host = isLobbyHost(lobby);
+    const hostMember = lobby.members.find((m) => m.host);
+    setTopbar({ title: lobbyTitle(lobby), subtitle: t('lobby.hostedBy', { name: hostMember ? memberName(hostMember) : '?' }) });
+    $('#backBtn').classList.toggle('hidden', !host);
+    const game = await lobbyGame(lobby);
+    if (S.route.name !== 'lobby' || S.lobby !== lobby) return;
+    const system = game && systemById(game.systemId);
+    const cover = game && mediaUrl(game, 'boxart');
+    const self = lobby.members.find((m) => m.id === S.lobbies.me);
+    const canPlay = Boolean(lobby.game) && (host || lobby.started);
+    const modeText = (m) => t(m === 'link' ? 'lobby.mode.link' : 'lobby.mode.netplay');
+    const mode = lobby.modes.length > 1 && host
+      ? `<label class="lobby-mode">${esc(t('lobby.modeLabel'))} <select id="lobbyMode">${lobby.modes.map((m) => `<option value="${m}"${m === lobby.mode ? ' selected' : ''}>${esc(modeText(m))}</option>`).join('')}</select></label>`
+      : lobby.mode ? `<p class="muted">${esc(t('lobby.modeUsed', { mode: modeText(lobby.mode) }))}</p>` : '';
+    $('#main').innerHTML = `<div class="page lobby">
+      <div class="lobby-game">
+        <div class="cover-lg">${cover ? `<img src="${esc(cover)}" alt="">` : icon('pad', 64)}</div>
+        <div class="col">
+          <h2>${esc(lobbyTitle(lobby))}</h2>
+          ${system ? `<p class="muted">${esc(system.name)}${game.players ? ` · ${esc(t('detail.players', { v: game.players }))}` : ''}</p>` : ''}
+          ${lobby.game ? mode : `<p class="muted">${esc(t(host ? 'lobby.chooseHint' : 'lobby.waitGame'))}</p>`}
+          <div class="actions">
+            ${self?.status === 'playing'
+              ? `<button class="btn primary big" disabled>${icon('play')} ${esc(t('lobby.playing'))}</button>`
+              : canPlay
+                ? `<button class="btn primary big" id="lobbyPlayBtn">${icon('play')} ${esc(t('action.play'))}</button>`
+                : host ? '' : `<button class="btn big" disabled>${esc(t(lobby.game ? 'lobby.waitHost' : 'lobby.waitGame'))}</button>`}
+            ${host ? `<button class="btn big" id="lobbyChooseBtn">${icon('search', 18)} ${esc(t(lobby.game ? 'lobby.changeGame' : 'lobby.chooseGame'))}</button>` : ''}
+            ${host
+              ? `<button class="btn danger" id="lobbyDissolveBtn">${icon('close', 18)} ${esc(t('lobby.dissolve'))}</button>`
+              : `<button class="btn" id="lobbyLeaveBtn">${icon('back', 18)} ${esc(t('lobby.leave'))}</button>`}
+          </div>
+        </div>
+      </div>
+      <h3>${esc(t('lobby.members', { n: lobby.members.length }))}</h3>
+      <div class="lobby-members">${lobby.members.map((m) => `<div class="mp-row">
+        <span class="crown">${m.host ? icon('crown', 18) : ''}</span>
+        <div class="grow"><strong>${esc(memberName(m))}</strong>${m.id === S.lobbies.me ? ` <span class="muted">${esc(t('lobby.you'))}</span>` : ''}</div>
+        <span class="tag${m.status === 'playing' ? ' playing' : ''}">${esc(t(m.status === 'playing' ? 'lobby.statusPlaying' : 'lobby.statusWaiting'))}</span>
+      </div>`).join('')}</div>
+    </div>`;
+    $('#lobbyMode')?.addEventListener('change', (e) => call(rc.lobby.update, lobby.id, { mode: e.target.value }).then(refreshLobbies).catch((err) => toast(err.message, { type: 'error' })));
+    $('#lobbyChooseBtn')?.addEventListener('click', () => go({ name: 'systems' }));
+    $('#lobbyPlayBtn')?.addEventListener('click', () => playLobby(lobby, system, game));
+    $('#lobbyLeaveBtn')?.addEventListener('click', async () => {
+      S.lobbyLeaving = true;
+      await call(rc.lobby.leave, lobby.id).catch(() => {});
+      await refreshLobbies();
+    });
+    $('#lobbyDissolveBtn')?.addEventListener('click', () => modal({
+      title: t('lobby.dissolve'),
+      body: `<p>${esc(t('lobby.dissolveText'))}</p>`,
+      buttons: [
+        { label: t('app.cancel'), kind: 'ghost', left: true },
+        {
+          label: t('lobby.dissolve'),
+          kind: 'danger',
+          onClick: async () => {
+            S.lobbyLeaving = true;
+            await call(rc.lobby.dissolve, lobby.id).catch(() => {});
+            await refreshLobbies();
+          },
+        },
+      ],
+    }));
+  }
+
+  /**
+   * « Jouer » dans le lobby : l'hôte lance la partie (le moteur la propose), les invités la
+   * rejoignent ; chacun passe « en jeu » pour les autres.
+   */
+  async function playLobby(lobby, system, game) {
+    if (!system || !game) {
+      toast(t('netplay.unknownGame', { title: lobbyTitle(lobby) }), { type: 'error' });
+      return;
+    }
+    if (isLobbyHost(lobby)) {
+      const downloaded = new Set(await call(rc.library.downloaded, [system], [game]));
+      if (!downloaded.has(game.id)) {
+        const bios = system.biosCount ? await call(rc.bios.missing, system).catch(() => []) : [];
+        await call(rc.downloads.start, system, game, { bios, includeRom: true });
+        toast(t('lobby.downloading', { title: game.title }));
+        return;
+      }
+      await play(system, game, { netplay: { host: true } });
+    } else {
+      // Partie de l'hôte (son appareil annonce le jeu proposé) : rejointe, jeu téléchargé d'abord s'il manque.
+      const peer = S.peers.find((p) => p.id === lobby.host && p.hosting);
+      if (!peer) {
+        toast(t('lobby.hostNotReady'), { type: 'error' });
+        return;
+      }
+      await joinNetplay(peer);
+    }
+    S.lobbyPlayingSince = Date.now();
+    await call(rc.lobby.status, lobby.id, 'playing').catch((err) => toast(err.message, { type: 'error' }));
+    await refreshLobbies();
+  }
+
+  /** Hôte : ce jeu devient celui du lobby, retour à la page du lobby. */
+  async function setLobbyGame(game) {
+    await refreshNetplaySystem(systemById(game.systemId));
+    try {
+      await call(rc.lobby.update, S.lobby.id, { game: lobbyGameOf(game), modes: lobbyModes(game) });
+      S.lobbyGame = null;
+      await refreshLobbies();
+      S.history = [];
+      go({ name: 'lobby' }, { replace: true });
+    } catch (err) {
+      toast(err.message, { type: 'error' });
+    }
+  }
+
+  /** Lobbies ouverts pour ce jeu (même jeu du serveur, ou même fichier). */
+  const lobbiesOf = (game) => S.lobbies.lobbies.filter((l) => l.game && l.game.systemId === game.systemId
+    && (l.game.gameId === game.id || (l.game.fileName === game.fileName && l.game.size === game.size)));
+
+  /** « Rejoindre un lobby » de la fiche du jeu : directement, ou choix entre les lobbies de ce jeu. */
+  function joinLobbyOf(game) {
+    const list = lobbiesOf(game);
+    if (list.length === 1) return openLobby(list[0].id);
+    const root = modal({
+      title: t('lobby.joinTitle'),
+      body: `<div class="multiplayer single">${list.map((l) => `<button class="mp-lobby" data-lobby="${esc(l.id)}">
+        <strong>${esc(memberName(l.members.find((m) => m.host) || l.members[0]))}</strong>
+        <span class="muted small">${esc(l.members.map(memberName).join(', '))}</span>
+        <span class="tag">${l.members.length}</span></button>`).join('')}</div>`,
+      buttons: [{ label: t('app.cancel'), kind: 'ghost' }],
+    });
+    for (const el of $$('[data-lobby]', root)) el.onclick = () => openLobby(el.dataset.lobby);
+  }
 
   /** Lance le jeu ; `options.resume` : reprend la partie sauvegardée (moteur intégré). */
   async function play(system, game, options) {
@@ -1753,6 +2050,11 @@
       actions = `<div style="flex:1"><div class="bar"><div style="width:${Math.round(st.progress * 100)}%"></div></div>
         <p class="muted">${esc(t('download.progress', { bytes: formatSize(st.d.bytes), total: formatSize(st.d.total) }))}</p></div>
         <button class="btn" id="cancelBtn">${icon('close', 18)} ${esc(t('download.cancelPercent', { p: Math.round(st.progress * 100) }))}</button>`;
+    } else if (isLobbyHost()) {
+      // Hôte d'un lobby : ce jeu devient celui du lobby (téléchargé au lancement de la partie).
+      actions = playKind(game)
+        ? `<button class="btn primary big" id="lobbySetGameBtn">${icon('group')} ${esc(t('lobby.setGame'))}</button>`
+        : `<p class="muted">${esc(t('lobby.notNetwork'))}</p>`;
     } else if (st.kind === 'downloaded') {
       // Partie sauvegardée dans le moteur intégré : « Reprendre » d'abord, puis « Jouer » (nouvelle partie).
       actions = `${joinBtns}${resumable ? `<button class="btn primary big" id="resumeBtn">${icon('play')} ${esc(t('action.resume'))}</button>` : ''}
@@ -1761,7 +2063,8 @@
           ? `<button class="btn primary big" id="configureBtn">${icon('gear')} ${esc(t('action.configure'))}</button>`
           : `<button class="btn ${resumable ? '' : 'primary '}big" id="playBtn">${icon(resumable ? 'refresh' : 'play')} ${esc(t('action.play'))}</button>`}
         ${savedStates ? `<button class="btn big" id="statesBtn">${icon('timer')} ${esc(t('states.button', { n: savedStates }))}</button>` : ''}
-        ${canHost(game) ? `<button class="btn big" id="netplayHostBtn">${icon(canHost(game) === 'link' ? 'link' : 'group')} ${esc(t(canHost(game) === 'link' ? 'link.host' : 'netplay.playTogether'))}</button>` : ''}
+        ${S.account.signedIn && playKind(game) ? `<button class="btn big" id="lobbyCreateGameBtn">${icon(playKind(game) === 'link' ? 'link' : 'group')} ${esc(t('lobby.create'))}</button>` : ''}
+        ${S.account.signedIn && lobbiesOf(game).length ? `<button class="btn big" id="lobbyJoinGameBtn">${icon('group')} ${esc(t('lobby.join'))}</button>` : ''}
         <button class="btn" id="folderBtn">${icon('folder', 18)} ${esc(t('detail.showInFolder'))}</button>
         <button class="btn danger" id="deleteBtn">${icon('trash', 18)} ${esc(t('detail.delete'))}</button>`;
     } else {
@@ -1811,7 +2114,9 @@
     $('#configureBtn')?.addEventListener('click', () => $('#emuBox').scrollIntoView({ behavior: 'smooth', block: 'center' }));
     $('#statesBtn')?.addEventListener('click', () => showStates(system, game));
     for (const btn of $$('[data-shot]')) btn.addEventListener('click', () => showScreenshot(shots, Number(btn.dataset.shot)));
-    $('#netplayHostBtn')?.addEventListener('click', () => play(system, game, { netplay: { host: true } }));
+    $('#lobbyCreateGameBtn')?.addEventListener('click', () => createLobby(game));
+    $('#lobbyJoinGameBtn')?.addEventListener('click', () => joinLobbyOf(game));
+    $('#lobbySetGameBtn')?.addEventListener('click', () => setLobbyGame(game));
     for (const btn of $$('[data-join-peer]')) {
       btn.addEventListener('click', () => joinNetplay(S.peers.find((p) => p.id === btn.dataset.joinPeer && p.hosting)));
     }

@@ -19,6 +19,7 @@ mod ipc;
 mod keyboard;
 mod launcher;
 mod library;
+mod lobby;
 mod managed;
 mod netplay;
 mod paths;

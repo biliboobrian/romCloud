@@ -11,6 +11,8 @@ import crypto from 'node:crypto';
 import { HttpError } from './http-error.js';
 
 export const PRESENCE_TTL_MS = 30_000;
+/** Joueur « présent » (pastille verte) : activité dans l'application ou en partie depuis moins de 5 min. */
+export const ACTIVE_MS = 5 * 60_000;
 /** Connexions d'hôte en attente d'un invité, au plus, par partie et canal. */
 const MAX_WAITING = 4;
 
@@ -49,6 +51,9 @@ export function announce(auth, body, client) {
   const id = text(body?.deviceId, 64);
   if (!/^[\w-]{8,64}$/.test(id)) throw new HttpError(400, 'errors.playDevice');
   prune();
+  const now = Date.now();
+  // Dernière activité de l'utilisateur (touche, souris, manette) : jamais dans le futur.
+  const activeAt = Math.min(now, Number(body.activeAt) || presence.get(id)?.activeAt || now);
   presence.set(id, {
     userId: auth.user.id,
     user: auth.user.username,
@@ -57,7 +62,8 @@ export function announce(auth, body, client) {
     hosting: hostedGame(body.hosting),
     busy: body.busy === true,
     rtt: Math.max(0, Math.min(5000, Number(body.rtt) || 0)),
-    seenAt: Date.now(),
+    activeAt,
+    seenAt: now,
   });
   return { ttlSeconds: PRESENCE_TTL_MS / 1000, peers: peers(id) };
 }
@@ -74,6 +80,24 @@ export function peers(exceptId) {
   return [...presence]
     .filter(([id]) => id !== exceptId)
     .map(([id, p]) => ({ id, name: p.name, platform: p.platform, user: p.user, hosting: p.hosting, busy: p.busy, rtt: p.rtt }));
+}
+
+/** Appareil connecté (annonce encore valable), ou null. */
+export function presenceOf(deviceId) {
+  prune();
+  return presence.get(String(deviceId)) ?? null;
+}
+
+/**
+ * Tous les appareils connectés, celui qui demande compris : { id, name, user, platform, busy,
+ * active } ; active : présent (activité récente ou en partie), sinon absent.
+ */
+export function players(now = Date.now()) {
+  prune(now);
+  return [...presence].map(([id, p]) => ({
+    id, name: p.name, user: p.user, platform: p.platform, busy: p.busy,
+    active: p.busy || now - (p.activeAt ?? p.seenAt) < ACTIVE_MS,
+  }));
 }
 
 /** Profil qui propose cette session (hôte), ou null. */
