@@ -10,7 +10,7 @@ process.env.SCREENSCRAPER_DEV_PASSWORD = 'pw';
 
 const { scrapeScreenScraper, screenscraperMaxThreads, QuotaError } = await import('../src/scraper/screenscraper.js');
 const { scrapeConcurrency } = await import('../src/jobs.js');
-const { libretroMetadata, libretroName, normalize, parseDat, scrapeLibretro, titleFromLibretroName } = await import('../src/scraper/libretro.js');
+const { libretroMetadata, libretroName, normalize, parseDat, scrapeLibretro, titleFromLibretroName, wordsMatch } = await import('../src/scraper/libretro.js');
 const { titleFromFileName } = await import('../src/library.js');
 
 const sample = {
@@ -469,4 +469,28 @@ test('identifiant de contenu approché : nom de la console, mots manquants, ann�
   assert.equal(await found('EP1018-PCSB00877_00-LEGOFORCEAWAKENS.pkg'), 'LEGO Star Wars - The Force Awakens');
   assert.equal(await found('EP2678-PCSB01321_00-CATNECRO01XXXXUT.pkg'), null);
   assert.equal(await found('EP0546-PCSB01173_00-G000000000001086.pkg'), null);
+});
+
+test('nom de fichier qui ne suit pas la DAT : sigle, mots de patch, nombres en lettres, mot proche', async () => {
+  assert.equal(wordsMatch(['gta', 'chinatown', 'wars'], ['grand', 'theft', 'auto', 'chinatown', 'wars']), true);
+  assert.equal(wordsMatch(['pokemon', 'version', 'blanche'], ['pokemon', 'version', 'blanche', '2']), false);
+  const titles = [
+    'Grand Theft Auto - Chinatown Wars (Europe) (En,Fr,De,Es,It)', 'Grand Theft Auto - Chinatown Wars (USA) (En,Fr,De,Es,It)',
+    'Chrono Trigger (USA) (En,Fr)', 'Pokemon - Version Noire 2 (France) (NDSi Enhanced)', 'Pokemon - Version Blanche (France) (NDSi Enhanced)',
+    'Pokemon - Version Blanche 2 (France) (NDSi Enhanced)', 'Nine Hours, Nine Persons, Nine Doors (USA)',
+  ];
+  const dat = titles.map((name, i) => `game (\n\tname "${name}"\n\trom ( name "${name}.nds" size 1 crc 0000000${i} )\n)\n`).join('\n');
+  globalThis.fetch = async (url) => {
+    const ok = String(url).includes('/metadat/no-intro/');
+    return { ok, status: ok ? 200 : 404, text: async () => (ok ? dat : '') };
+  };
+  const system = { libretroName: 'Nintendo - Nintendo DS (mots)' };
+  const found = async (fileName) => (await libretroMetadata({ system, fileName }))?.title ?? null;
+  assert.equal(await found('GTA chinatown wars.nds'), 'Grand Theft Auto - Chinatown Wars');
+  assert.equal(await found('Chrono_Trigger_FIX.nds'), 'Chrono Trigger');
+  assert.equal(await found('Pokemon Version Noir 2 Patché.nds'), 'Pokemon - Version Noire 2');
+  assert.equal(await found('Pokémon Version Blanche 2 Patchée.nds'), 'Pokemon - Version Blanche 2');
+  assert.equal(await found('5356 - 9 Hours 9 Persons 9 Doors.nds'), 'Nine Hours, Nine Persons, Nine Doors');
+  assert.equal(await found('Pokemon Patch.nds'), null);
+  assert.equal(await found('Chrono.nds'), null);
 });

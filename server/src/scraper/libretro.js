@@ -90,6 +90,73 @@ function entryByContentLabel(meta, fileName) {
   return byInitials[0];
 }
 
+// Nombres écrits en lettres (« Nine Hours, Nine Persons, Nine Doors ») comparés aux chiffres.
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+// Mots ajoutés au nom d'un fichier patché, traduit ou réparé : ignorés.
+const NOISE_WORDS = new Set([
+  'patch', 'patche', 'patchee', 'patched', 'fix', 'fixed', 'trad', 'traduit', 'traduction', 'translated', 'translation',
+  'hack', 'fr', 'vf', 'french', 'eng', 'english', 'rom', 'clean', 'trimmed', 'decrypted',
+]);
+
+/** Mots d'un titre : minuscules sans accents, « the » retiré, nombres en lettres en chiffres. */
+function titleWords(title) {
+  return String(title || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w && w !== 'the')
+    .map((w) => (NUMBER_WORDS.includes(w) ? String(NUMBER_WORDS.indexOf(w)) : w));
+}
+
+/** Mots du titre d'un nom de fichier : numéro de release (« 5356 - »), tags et mots de patch retirés. */
+function fileWords(fileName) {
+  const base = String(fileName || '').replace(/\.[a-z0-9]+$/i, '').replace(/^\d+\s+-\s+/, '').replace(/\s*[([][^)\]]*[)\]]/g, '');
+  return titleWords(base.replace(/_/g, ' ')).filter((w) => !NOISE_WORDS.has(w) && !/^v\d+$/.test(w) && !/^rev\d*$/.test(w));
+}
+
+/**
+ * Les mots du fichier [file] désignent-ils exactement le titre [title] (tous les mots des deux) ? Mot
+ * identique, de même début à une ou deux lettres près (« noir » / « noire »), ou sigle des mots
+ * suivants du titre (« gta » : « grand theft auto »).
+ */
+export function wordsMatch(file, title, i = 0, j = 0) {
+  if (i === file.length || j === title.length) return i === file.length && j === title.length;
+  const f = file[i];
+  const t = title[j];
+  if (f === t) return wordsMatch(file, title, i + 1, j + 1);
+  const close = Math.min(f.length, t.length) >= 4 && Math.abs(f.length - t.length) <= 2 && (t.startsWith(f) || f.startsWith(t));
+  if (close && wordsMatch(file, title, i + 1, j + 1)) return true;
+  if (/^[a-z]{2,}$/.test(f) && j + f.length <= title.length) {
+    const initials = title.slice(j, j + f.length).map((w) => w[0]).join('');
+    if (initials === f && wordsMatch(file, title, i + 1, j + f.length)) return true;
+  }
+  return false;
+}
+
+// Mots des titres de chaque index de DAT, calculés une fois.
+const wordsCache = new WeakMap();
+
+/**
+ * Jeu de la DAT dont le titre correspond mot à mot au nom de fichier (voir [wordsMatch]), quand le nom
+ * ne suit pas la DAT (« GTA chinatown wars », « Chrono_Trigger_FIX », « Pokemon Version Noir 2
+ * Patché ») : retenu seulement si un seul titre convient, dans la région préférée.
+ */
+function entryByWords(meta, fileName) {
+  const words = fileWords(fileName);
+  if (!words.length) return null;
+  let titles = wordsCache.get(meta);
+  if (!titles) {
+    titles = [...meta.byName.values()].filter((e) => e.name).map((entry) => ({ entry, title: titleFromLibretroName(entry.name) }));
+    for (const t of titles) t.words = titleWords(t.title);
+    wordsCache.set(meta, titles);
+  }
+  const matches = titles.filter((t) => t.words.length && wordsMatch(words, t.words));
+  if (new Set(matches.map((m) => m.title.toLowerCase())).size !== 1) return null;
+  matches.sort((a, b) => regionScore(a.entry.name) - regionScore(b.entry.name));
+  return matches[0].entry;
+}
+
 /** Titre lisible depuis un nom Libretro : "Legend of Zelda, The - A Link to the Past (USA)". */
 export function titleFromLibretroName(name) {
   const title = name
@@ -253,6 +320,9 @@ export async function scrapeLibretro({ system, fileName, crc32 }) {
     // Numéro de série d'une autre région : libellé abrégé de l'identifiant de contenu.
     const byLabel = !found && !bySerial && entryByContentLabel(meta, fileName)?.name;
     if (byLabel) found = await findImages(system.libretroName, byLabel);
+    // Nom qui ne suit pas la DAT (sigle, mot de patch, nombre en lettres) : titre retrouvé mot à mot.
+    const byWords = !found && !gameName && !bySerial && !byLabel && entryByWords(meta, fileName)?.name;
+    if (byWords) found = await findImages(system.libretroName, byWords);
   }
   if (!found) return null;
   const { box, snap, title } = found;
@@ -295,7 +365,7 @@ export async function libretroMetadata({ system, fileName, crc32 }) {
     || (fileSerial && main.bySerial.get(serialKey(fileSerial))) || null;
   // Jeu d'une autre région retrouvé par le libellé de l'identifiant de contenu : le numéro de
   // série reste celui du fichier.
-  const game = known || entryByContentLabel(main, fileName);
+  const game = known || entryByContentLabel(main, fileName) || entryByWords(main, fileName);
   const names = [...new Set([game?.name?.toLowerCase(), base].filter(Boolean))];
   const serial = (known && (known.serial || known.fields.serial)) || fileSerial || game?.serial || game?.fields.serial;
   const files = await metaFiles(system.libretroName);
