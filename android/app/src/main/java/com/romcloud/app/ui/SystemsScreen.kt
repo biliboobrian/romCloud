@@ -3,7 +3,6 @@ package com.romcloud.app.ui
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +30,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -230,39 +230,44 @@ fun SystemsScreen(
 
 @Composable
 private fun SystemCard(system: GameSystem, imageUrl: String?, localSize: Long, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        imageUrl?.let { url ->
-            AsyncImage(
-                model = url,
-                contentDescription = system.name,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(8.dp),
-            )
-        }
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                system.shortname.uppercase(), style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                system.name, style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold, minLines = 2, maxLines = 2,
-            )
-            Text(
-                pluralString(R.plurals.games_count, system.gameCount, system.gameCount) + " · " + formatSize(system.totalSize),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (localSize > 0) {
+    // Carte sur la couleur du système (réglages du serveur), textes adaptés à cette couleur.
+    SystemBackground(system.backgroundColor) {
+        Card(
+            Modifier.fillMaxWidth().clickable(onClick = onClick),
+            colors = CardDefaults.cardColors(containerColor = system.backgroundColor ?: MaterialTheme.colorScheme.surfaceContainerHigh),
+        ) {
+            imageUrl?.let { url ->
+                AsyncImage(
+                    model = url,
+                    contentDescription = system.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .padding(8.dp),
+                )
+            }
+            Column(Modifier.padding(16.dp)) {
                 Text(
-                    stringResource(R.string.storage_on_device, formatSize(localSize)),
-                    style = MaterialTheme.typography.bodySmall,
+                    system.shortname.uppercase(), style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
+                Text(
+                    system.name, style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold, minLines = 2, maxLines = 2,
+                )
+                Text(
+                    pluralString(R.plurals.games_count, system.gameCount, system.gameCount) + " · " + formatSize(system.totalSize),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (localSize > 0) {
+                    Text(
+                        stringResource(R.string.storage_on_device, formatSize(localSize)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
         }
     }

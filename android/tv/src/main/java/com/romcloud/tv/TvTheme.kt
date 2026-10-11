@@ -1,9 +1,16 @@
 package com.romcloud.tv
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Surface
+import androidx.tv.material3.SurfaceDefaults
+import com.romcloud.app.ui.SystemBackground
+import com.romcloud.app.ui.contentColorOn
 import androidx.compose.material3.MaterialTheme as M3Theme
 import androidx.compose.material3.darkColorScheme as m3DarkColorScheme
 import androidx.tv.material3.MaterialTheme as TvMaterialTheme
@@ -46,5 +53,38 @@ fun TvTheme(content: @Composable () -> Unit) {
             ),
             content = content,
         )
+    }
+}
+
+/**
+ * Thème des écrans et cartes sur le fond [background] (écran des systèmes en noir, liste des jeux
+ * et fiche d'un jeu sur la couleur du système) : couleurs tv-material et Material 3 dérivées de
+ * cette couleur. Sans couleur, le thème reste inchangé.
+ */
+@Composable
+fun TvScreenTheme(background: Color?, content: @Composable () -> Unit) {
+    if (background == null) return content()
+    val on = contentColorOn(background)
+    SystemBackground(background) {
+        TvMaterialTheme(
+            colorScheme = TvMaterialTheme.colorScheme.copy(
+                background = background,
+                onBackground = on,
+                surface = lerp(background, on, 0.06f),
+                onSurface = on,
+                surfaceVariant = lerp(background, on, 0.12f),
+                onSurfaceVariant = on.copy(alpha = 0.72f),
+            ),
+            content = content,
+        )
+    }
+}
+
+/** Écran entier peint sur [background] (voir [TvScreenTheme]). */
+@Composable
+fun TvScreenBackground(background: Color?, content: @Composable () -> Unit) {
+    if (background == null) return content()
+    TvScreenTheme(background) {
+        Surface(Modifier.fillMaxSize(), colors = SurfaceDefaults.colors(containerColor = background)) { content() }
     }
 }

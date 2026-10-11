@@ -41,6 +41,8 @@ data class GameSystem(
     val hasImage: Boolean = false,
     val imageVersion: String? = null,
     val biosCount: Int = 0,
+    /** Couleur de fond « #rrggbb » (réglages du système sur le serveur) : carte, liste des jeux, fiche. */
+    val color: String? = null,
 ) {
     /**
      * Certains modèles Daijishou contiennent deux émulateurs de même uniqueId (ex. deux variantes

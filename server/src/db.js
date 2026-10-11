@@ -188,6 +188,8 @@ db.exec(`
 const systemColumns = db.prepare('PRAGMA table_info(systems)').all().map((c) => c.name);
 if (!systemColumns.includes('image')) db.exec('ALTER TABLE systems ADD COLUMN image TEXT');
 if (!systemColumns.includes('platforms')) db.exec("ALTER TABLE systems ADD COLUMN platforms TEXT NOT NULL DEFAULT '[]'");
+// Couleur de fond choisie dans les réglages du système (NULL : couleur par défaut, system-colors.js).
+if (!systemColumns.includes('color')) db.exec('ALTER TABLE systems ADD COLUMN color TEXT');
 const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
 if (!gameColumns.includes('parent_id')) {

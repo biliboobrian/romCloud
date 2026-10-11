@@ -382,6 +382,7 @@ function openSystemSettings() {
   }
   // Aucune plateforme enregistrée : proposé partout, toutes cochées.
   for (const box of form.querySelectorAll('input[name="platforms"]')) box.checked = !s.platforms.length || s.platforms.includes(box.value);
+  setSystemColor(s.color || '#000000', !s.customColor);
   renderSystemImage(s);
   $('#sysFolder').textContent = t('sys.folderInfo', { id: s.id, folder: s.folder });
   renderPlayers(s);
@@ -495,10 +496,20 @@ async function deleteSystemImage() {
   });
 }
 
+// Couleur de fond du système ; [isDefault] : celle de la console, envoyée vide pour la suivre.
+function setSystemColor(color, isDefault) {
+  $('#sysColor').value = color;
+  $('#sysColor').dataset.default = isDefault ? '1' : '';
+  $('#sysColorDefault').disabled = isDefault;
+  // Aperçu : l'image du système sur son fond, comme sur la carte des applications.
+  $('#sysImagePreview').style.background = color;
+}
+
 async function saveSystemSettings(e) {
   e.preventDefault();
   const form = new FormData(e.target);
   const data = Object.fromEntries(form);
+  if ($('#sysColor').dataset.default) data.color = '';
   data.platforms = form.getAll('platforms');
   if (!data.platforms.length) return toast(t('sys.platformsNone'), 'error');
   await guard(async () => {
@@ -1185,6 +1196,8 @@ function bindEvents() {
     e.target.value = '';
   };
   $('#sysImageDelete').onclick = deleteSystemImage;
+  $('#sysColor').oninput = (e) => setSystemColor(e.target.value, false);
+  $('#sysColorDefault').onclick = () => setSystemColor(state.current.defaultColor || '#000000', true);
   $('#copyPlayersBtn').onclick = copyPlayers;
   $('#scanSysBtn').onclick = () => guard(async () => {
     const r = await api(`/systems/${encodeURIComponent(state.current.id)}/scan`, { method: 'POST' });

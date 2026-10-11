@@ -182,8 +182,24 @@
     $('#banners').innerHTML = '';
     $('#backBtn').classList.toggle('hidden', S.route.name === 'systems');
     document.body.classList.remove('immersive');
+    applySystemColor();
     $('#main').scrollTop = 0;
     ({ systems: renderSystems, games: renderGames, game: renderGame, settings: renderSettings })[S.route.name]();
+  }
+
+  /**
+   * Écran des systèmes sur fond noir ; liste des jeux et fiche d'un jeu sur la couleur du système
+   * (réglages du serveur), surfaces et bordures éclaircies à partir d'elle.
+   */
+  function applySystemColor() {
+    const { name, systemId } = S.route;
+    const color = (name === 'games' || name === 'game') && systemById(systemId)?.color;
+    document.body.classList.toggle('systems-screen', name === 'systems');
+    const style = document.body.style;
+    for (const [prop, light] of [['--bg', 0], ['--surface', 6], ['--surface-2', 12], ['--border', 20]]) {
+      if (color && /^#[0-9a-f]{6}$/i.test(color)) style.setProperty(prop, light ? `color-mix(in srgb, ${color}, #fff ${light}%)` : color);
+      else style.removeProperty(prop);
+    }
   }
 
   function setTopbar({ title, subtitle = '', center = '', right = '', disk = false }) {
@@ -591,7 +607,8 @@
     }
     main.innerHTML = `<div class="page"><div class="systems-grid">${systems.map((s) => {
       const img = systemImageUrl(s);
-      return `<div class="system-card" data-system="${esc(s.id)}">
+      const color = /^#[0-9a-f]{6}$/i.test(s.color || '') ? ` style="--card:${s.color}"` : '';
+      return `<div class="system-card" data-system="${esc(s.id)}"${color}>
         <div class="img">${img ? `<img src="${esc(img)}" alt="">` : `<span class="short">${esc(s.shortname.toUpperCase())}</span>`}</div>
         <div class="info"><div class="name">${esc(s.name)}</div>
         <div class="muted">${esc(t('app.games', { n: s.gameCount }))} · ${esc(formatSize(s.totalSize))}</div>
