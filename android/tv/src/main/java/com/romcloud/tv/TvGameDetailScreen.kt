@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Close
@@ -262,6 +263,12 @@ fun TvGameDetailScreen(
                     if (selected != null && !installed) {
                         SecondaryButton(stringResource(R.string.tv_install_emulator), Icons.Filled.Shop) {
                             viewModel.installPlayer(selected)?.let(onMessage)
+                        }
+                    }
+                    // Émulateur externe installé : ouvert seul (réglages, installation d'un jeu dans Vita3K…).
+                    if (selected != null && installed && selected.libretroCore == null) {
+                        SecondaryButton(stringResource(R.string.action_open_emulator, selected.name), Icons.AutoMirrored.Filled.OpenInNew) {
+                            viewModel.openEmulator(activity)?.let(onMessage)
                         }
                     }
                     if (state.retroArchInfo != null) {

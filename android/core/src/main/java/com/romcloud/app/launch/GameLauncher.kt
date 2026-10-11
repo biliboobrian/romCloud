@@ -90,6 +90,20 @@ class GameLauncher(private val context: Context, private val settings: Settings)
     private fun isPackageInstalled(pkg: String): Boolean =
         runCatching { context.packageManager.getPackageInfo(pkg, 0) }.isSuccess
 
+    /**
+     * Ouvre l'émulateur externe seul, sans jeu (réglages, installation d'un jeu dans Vita3K…) :
+     * son écran d'accueil, ou celui pour TV.
+     */
+    fun openEmulator(activityContext: Context, player: Player) {
+        val pkg = packageOf(player) ?: throw LaunchException(I18n.get(R.string.err_unknown_package))
+        if (!isPackageInstalled(pkg)) throw MissingEmulatorException(MissingEmulator(pkg, player.name))
+        val pm = context.packageManager
+        val intent = pm.getLaunchIntentForPackage(pkg) ?: pm.getLeanbackLaunchIntentForPackage(pkg)
+            ?: throw LaunchException(I18n.get(R.string.err_open_emulator, player.name))
+        if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        activityContext.startActivity(intent)
+    }
+
     /** Ouvre la fiche Google Play de l'application (app Play Store, sinon navigateur). */
     fun openStore(activityContext: Context, packageName: String) {
         val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName"))

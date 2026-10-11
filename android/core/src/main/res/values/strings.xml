@@ -255,6 +255,8 @@
     <string name="err_unknown_package">Unknown emulator package</string>
     <string name="err_emulator_not_installed">Emulator not installed: %1$s</string>
     <string name="err_open_play_store">Unable to open the Play Store</string>
+    <string name="err_open_emulator">Unable to open %1$s</string>
+    <string name="action_open_emulator">Open %1$s</string>
     <string name="err_file_not_found">File not found: %1$s</string>
     <string name="err_cannot_open">Unable to open %1$s</string>
     <string name="err_cannot_open_settings">Unable to open the settings of %1$s</string>

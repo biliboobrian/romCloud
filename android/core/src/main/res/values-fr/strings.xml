@@ -249,6 +249,8 @@
     <string name="err_unknown_package">Paquet de l’émulateur inconnu</string>
     <string name="err_emulator_not_installed">Émulateur non installé : %1$s</string>
     <string name="err_open_play_store">Impossible d’ouvrir le Play Store</string>
+    <string name="err_open_emulator">Impossible d’ouvrir %1$s</string>
+    <string name="action_open_emulator">Ouvrir %1$s</string>
     <string name="err_file_not_found">Fichier introuvable : %1$s</string>
     <string name="err_cannot_open">Impossible d’ouvrir %1$s</string>
     <string name="err_cannot_open_settings">Impossible d’ouvrir les paramètres de %1$s</string>

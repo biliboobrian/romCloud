@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -331,6 +332,14 @@ fun GameDetailScreen(
                 },
                 onInfo = if (state.retroArchInfo != null) ({ showRetroArchHelp = true }) else null,
             )
+            // Émulateur externe installé : ouvert seul (réglages, installation d'un jeu dans Vita3K…).
+            state.selectedPlayer?.takeIf { p -> p.libretroCore == null && state.players.any { it.first.uniqueId == p.uniqueId && it.second } }?.let { player ->
+                OutlinedButton(onClick = { viewModel.openEmulator(activity)?.let { scope.launch { snackbar.showSnackbar(it) } } }) {
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.action_open_emulator, player.name))
+                }
+            }
             state.retroArchInfo?.takeIf { showRetroArchHelp }?.let { info ->
                 RetroArchHelpDialog(
                     info = info,
