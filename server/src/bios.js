@@ -193,6 +193,13 @@ export async function expectedBios(system, language = 'en') {
     }
     byPath.set(key, { ...f, md5: null, md5s: [], cores: [] });
   }
+  // Chemins incompatibles dans le même dossier des BIOS : « SGB1.sfc » (fichier, bsnes, Mesen-S) et
+  // « SGB1.sfc/sgb1.boot.rom » (dossier, higan) ne peuvent pas coexister ; le fichier est gardé.
+  const plainFiles = new Set([...byPath.values()].filter((e) => !e.folder).map((e) => e.path.toLowerCase()));
+  for (const [key, entry] of byPath) {
+    const parts = entry.path.toLowerCase().split('/');
+    if (parts.slice(1).some((_, i) => plainFiles.has(parts.slice(0, i + 1).join('/')))) byPath.delete(key);
+  }
   const extra = extraHashes();
   const list = [...byPath.values()]
     .map((e) => ({ ...e, ...acceptedHashes(e.path, e.md5s, extra) }))
@@ -279,7 +286,11 @@ function storeBios(system, relative, { tempPath, data }, hashes, origin = {}) {
     }
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  if (fs.existsSync(dest) && fs.statSync(dest).isDirectory()) fs.rmSync(dest, { recursive: true, force: true });
+  if (fs.existsSync(dest) && fs.statSync(dest).isDirectory()) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    // Fichiers du dossier remplacé : retirés de la liste aussi (sinon listés sans fichier : erreur 404).
+    db.prepare('DELETE FROM bios WHERE system_id = ? AND path LIKE ?').run(system.id, `${relative}/%`);
+  }
   fs.rmSync(dest, { force: true });
   if (data) fs.writeFileSync(dest, data);
   else fs.renameSync(tempPath, dest);
@@ -289,6 +300,19 @@ function storeBios(system, relative, { tempPath, data }, hashes, origin = {}) {
      ON CONFLICT(system_id, path) DO UPDATE SET size = excluded.size, md5 = excluded.md5, sha1 = excluded.sha1,
        source = excluded.source, version = excluded.version, added_at = datetime('now')`,
   ).run(system.id, relative, size, hashes.md5, hashes.sha1, origin.source ?? null, origin.version ?? null);
+}
+
+/**
+ * BIOS listés dont le fichier a disparu du disque (remplacé par un BIOS du même nom, supprimé à la
+ * main) : retirés de la liste, que les applications ne téléchargent pas un fichier absent (404).
+ * Dossier des BIOS absent (disque non monté) : rien n'est retiré.
+ */
+function dropMissingBios(system, files) {
+  const dir = biosDir(system);
+  if (!fs.existsSync(dir)) return files;
+  const missing = files.filter((f) => !fs.statSync(path.join(dir, ...f.path.split('/')), { throwIfNoEntry: false })?.isFile());
+  for (const f of missing) db.prepare('DELETE FROM bios WHERE id = ?').run(f.id);
+  return missing.length ? files.filter((f) => !missing.includes(f)) : files;
 }
 
 /**
@@ -324,6 +348,7 @@ export async function systemBios(systemId, { catalog: withCatalog = true, langua
   const folders = new Set(catalog.expected.filter((e) => e.folder).map((e) => e.path.toLowerCase()));
   let files = listBiosRows(system.id);
   if (expandFolderZips(system, files, folders)) files = listBiosRows(system.id);
+  files = dropMissingBios(system, files);
   // Fichiers envoyés avant l'enregistrement du SHA1 : calculé une fois.
   for (const f of files.filter((row) => !row.sha1)) {
     const file = path.join(biosDir(system), ...f.path.split('/'));
