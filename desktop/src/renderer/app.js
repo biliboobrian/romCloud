@@ -1746,7 +1746,7 @@
       steps.push(`<li>${esc(t('vita.stepLicense'))}
         <div class="line"><input type="text" id="vitaLicense" class="mono" value="${esc(vita.license || '')}" placeholder="KO5ifR1dQ+eHBl…">
         <button class="btn" id="vitaLicenseSave">${esc(t('vita.licenseSave'))}</button></div>
-        ${vita.license ? `<div class="ok">${esc(t('vita.licenseKnown'))}</div>` : ''}</li>`);
+        ${vita.license ? `<div class="${vita.licenseFromServer ? 'muted' : 'ok'}">${esc(t(vita.licenseFromServer ? 'vita.licenseServer' : 'vita.licenseKnown'))}</div>` : ''}</li>`);
       steps.push(step('vita.stepPkgInstall', { id: vita.titleId }));
     } else steps.push(step('vita.stepFormat', { format: vita.format }));
     return `<div class="vita-steps">

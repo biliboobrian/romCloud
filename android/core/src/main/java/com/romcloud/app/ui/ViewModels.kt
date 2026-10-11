@@ -545,7 +545,7 @@ class GameDetailViewModel(
             val canResume = localResume || (downloaded && online != null)
             val vita = selected?.takeIf { VitaGames.isVita3k(app.launcher.packageOf(it)) }?.let {
                 val titleId = withContext(Dispatchers.IO) { if (downloaded) VitaGames.titleId(file) else VitaGames.titleIdFromName(file.name) }
-                VitaInfo(titleId, file.extension.lowercase(), app.settings.vitaLicense(game.id))
+                vitaInfo(titleId, file.extension.lowercase(), game)
             }
             val savedStates = if (!downloaded || cores.isEmpty()) 0 else {
                 val local = withContext(Dispatchers.IO) {
@@ -592,7 +592,14 @@ class GameDetailViewModel(
     fun setVitaLicense(zrif: String) {
         val game = _state.value.game ?: return
         app.settings.setVitaLicense(game.id, zrif)
-        _state.update { s -> s.copy(vita = s.vita?.copy(license = app.settings.vitaLicense(game.id))) }
+        _state.update { s -> s.copy(vita = s.vita?.let { vitaInfo(it.titleId, it.format, game) }) }
+    }
+
+    /** Licence saisie sur l'appareil, sinon celle proposée par le serveur. */
+    private fun vitaInfo(titleId: String?, format: String, game: Game): VitaInfo {
+        val local = app.settings.vitaLicense(game.id)
+        val server = game.zrif.orEmpty()
+        return VitaInfo(titleId, format, local.ifEmpty { server }, fromServer = local.isEmpty() && server.isNotEmpty())
     }
 
     fun selectPlayer(player: Player) {

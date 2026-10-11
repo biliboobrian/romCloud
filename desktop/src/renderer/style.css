@@ -214,21 +214,22 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .detail-body { position: relative; display: flex; align-items: flex-start; gap: 36px; padding: 0 36px 32px; }
 .detail .cover-lg { width: 280px; aspect-ratio: 3 / 4; border-radius: 12px; overflow: hidden; background: var(--surface-2); flex-shrink: 0; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; }
 .detail .cover-lg img { width: 100%; height: 100%; object-fit: cover; }
-.detail .col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; max-width: 900px; }
+/* Colonne sur toute la largeur (encadré de l'émulateur) ; la description garde une longueur de ligne lisible. */
+.detail .col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .detail h2 { font-size: 34px; }
 .detail .system-name { color: var(--accent); font-weight: 700; letter-spacing: 0.5px; font-size: 13px; }
 .detail .actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .detail .ok { color: var(--ok); font-weight: 600; }
 .detail .line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .detail .error { color: var(--danger); }
-.detail .emu { background: color-mix(in srgb, var(--surface) 80%, transparent); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+.detail .emu { background: color-mix(in srgb, var(--surface) 80%, transparent); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 /* Procédure Vita3K de la fiche du jeu. */
 .detail .vita-steps { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; }
 .detail .vita-steps h4 { font-size: 14px; }
 .detail .vita-steps ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; user-select: text; }
 .detail .vita-steps .line { margin-top: 6px; }
 .detail .vita-steps input { flex: 1; min-width: 220px; }
-.detail .desc { line-height: 1.6; user-select: text; }
+.detail .desc { line-height: 1.6; user-select: text; max-width: 900px; }
 .detail .info h3 { margin: 8px 0; font-size: 16px; }
 .detail .info dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 0; user-select: text; }
 .detail .info dt { color: var(--muted); }

@@ -27,8 +27,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.romcloud.core.R
 
-/** Jeu PS Vita lancé avec Vita3K : identifiant (« PCSB00061 »), format du fichier, licence zRIF saisie (.pkg). */
-data class VitaInfo(val titleId: String?, val format: String, val license: String)
+/**
+ * Jeu PS Vita lancé avec Vita3K : identifiant (« PCSB00061 »), format du fichier, licence zRIF (.pkg) :
+ * saisie sur l'appareil, sinon proposée par le serveur ([fromServer]).
+ */
+data class VitaInfo(val titleId: String?, val format: String, val license: String, val fromServer: Boolean = false)
 
 /**
  * Procédure Vita3K selon le jeu : le jeu s'installe d'abord dans Vita3K (son menu, avec la licence
@@ -72,6 +75,13 @@ fun VitaProcedure(info: VitaInfo, filePath: String?, onSaveLicense: (String) -> 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { onSaveLicense(zrif) }, enabled = zrif != info.license) { Text(stringResource(R.string.vita_license_save)) }
                     TextButton(onClick = { copy(context, zrif) }, enabled = zrif.isNotBlank()) { Text(stringResource(R.string.vita_license_copy)) }
+                }
+                if (info.license.isNotEmpty()) {
+                    Text(
+                        stringResource(if (info.fromServer) R.string.vita_license_server else R.string.vita_license_local),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (info.fromServer) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+                    )
                 }
                 Text(stringResource(R.string.vita_license_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

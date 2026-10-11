@@ -597,5 +597,7 @@
     <string name="vita_license_save">Enregistrer</string>
     <string name="vita_license_copy">Copier</string>
     <string name="vita_license_copied">Licence copiée</string>
+    <string name="vita_license_server">Licence proposée par le serveur : modifiez-la pour cet appareil si besoin.</string>
+    <string name="vita_license_local">Licence enregistrée sur cet appareil (videz le champ et enregistrez pour revenir à celle du serveur).</string>
     <string name="vita_license_hint">Les .pkg sont chiffrés : leur licence (texte qui commence souvent par « KO5i ») se tire de votre propre console (NoNpDrm, PKGj).</string>
 </resources>

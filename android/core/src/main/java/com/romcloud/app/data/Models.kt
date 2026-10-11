@@ -101,6 +101,8 @@ data class Game(
     val genre: String? = null,
     val players: String? = null,
     val rating: Double? = null,
+    /** Licence zRIF d'un .pkg PS Vita saisie sur le serveur, proposée pour l'installer dans Vita3K. */
+    val zrif: String? = null,
     val crc32: String? = null,
     val md5: String? = null,
     val details: GameDetails = GameDetails(),
