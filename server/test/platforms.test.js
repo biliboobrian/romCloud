@@ -59,3 +59,15 @@ test('couleur de fond : celle de la console par défaut, choisie dans les régla
   assert.equal(reset.customColor, false);
   assert.equal(createSystem({ id: 'maison', name: 'Console maison' }).color, null);
 });
+
+test('licence zRIF d’un jeu PS Vita : enregistrée sans espaces, vide = effacée, texte invalide refusé', async () => {
+  const { updateGame } = await import('../src/library.js');
+  createSystem({ id: 'vita', name: 'Sony PS Vita' });
+  const { lastInsertRowid } = db.prepare('INSERT INTO games (system_id, file_name, size, mtime, title) VALUES (?, ?, 1, 0, ?)')
+    .run('vita', 'EP0001-PCSB00079_00-RAYMANORIGINS000.pkg', 'Rayman Origins');
+  const id = Number(lastInsertRowid);
+  assert.equal(updateGame(id, { zrif: ' KO5ifR1dQ+eHBl3lI\n0VyBbYTnFA== ' }).zrif, 'KO5ifR1dQ+eHBl3lI0VyBbYTnFA==');
+  assert.equal(updateGame(id, { title: 'Rayman Origins' }).zrif, 'KO5ifR1dQ+eHBl3lI0VyBbYTnFA==');
+  assert.throws(() => updateGame(id, { zrif: 'pas une licence !' }), { status: 400 });
+  assert.equal(updateGame(id, { zrif: '' }).zrif, null);
+});

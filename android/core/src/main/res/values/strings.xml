@@ -606,5 +606,7 @@
     <string name="vita_license_save">Save</string>
     <string name="vita_license_copy">Copy</string>
     <string name="vita_license_copied">License copied</string>
+    <string name="vita_license_server">License offered by the server: change it for this device if needed.</string>
+    <string name="vita_license_local">License saved on this device (empty the field and save to go back to the server’s one).</string>
     <string name="vita_license_hint">.pkg files are encrypted: their license (text often starting with “KO5i”) is taken from your own console (NoNpDrm, PKGj).</string>
 </resources>

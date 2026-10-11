@@ -86,6 +86,7 @@ export function rowToGame(row, parts = []) {
     genre: row.genre,
     players: row.players,
     rating: row.rating,
+    zrif: row.zrif ?? null,
     // Informations détaillées : nom de fichier (régions, langues, révision), puis scraping.
     details: mergeDetails(parseStoredDetails(row.details), fileNameDetails(row.file_name)),
     hasBoxart: Boolean(row.boxart),
@@ -172,7 +173,16 @@ const EDITABLE = {
   genre: 'genre',
   players: 'players',
   rating: 'rating',
+  zrif: 'zrif',
 };
+
+/** Licence zRIF (base64, « KO5ifR1dQ+eHBl… ») sans espaces ni retours à la ligne ; null si vide. */
+export function normalizeZrif(input) {
+  const zrif = String(input ?? '').replace(/\s+/g, '');
+  if (!zrif) return null;
+  if (!/^[A-Za-z0-9+/]+=*$/.test(zrif) || zrif.length < 16) throw new HttpError(400, 'errors.invalidZrif');
+  return zrif;
+}
 
 export function updateGame(id, input) {
   requireGameRow(id);
@@ -182,6 +192,7 @@ export function updateGame(id, input) {
     if (input[key] === undefined) continue;
     let value = input[key] === '' ? null : input[key];
     if (key === 'rating' && value !== null) value = stars(value);
+    if (key === 'zrif') value = normalizeZrif(value);
     if (key === 'title' && !value) throw new HttpError(400, 'errors.titleRequired');
     sets.push(`${column} = ?`);
     values.push(value);

@@ -111,10 +111,15 @@ pub fn is_installed(exe: &str, id: &str) -> bool {
     vita_fs(exe).join("ux0").join("app").join(id).join("eboot.bin").is_file()
 }
 
-/// Licence (zRIF) d'un jeu, saisie dans sa fiche.
-pub fn license(game_id: &Value) -> Option<String> {
+/// Licence (zRIF) saisie sur ce PC dans la fiche du jeu.
+fn local_license(game_id: &Value) -> Option<String> {
     let licenses = settings::load().get("vitaLicenses").cloned().unwrap_or(Value::Null);
     licenses.get(game_id.to_string().trim_matches('"')).and_then(Value::as_str).map(String::from).filter(|z| !z.is_empty())
+}
+
+/// Licence (zRIF) du jeu : celle saisie sur ce PC, sinon celle proposée par le serveur.
+pub fn license(game: &Value) -> Option<String> {
+    local_license(&game["id"]).or_else(|| game["zrif"].as_str().map(String::from).filter(|z| !z.is_empty()))
 }
 
 /// Enregistre (ou efface, vide) la licence d'un jeu ; zRIF : texte base64 (« KO5ifR1dQ+eHBl… »).
@@ -142,7 +147,7 @@ pub enum Step {
 }
 
 /// Commande(s) pour lancer [file] ; erreur (clé d'i18n) si le jeu ne peut pas être lancé seul.
-pub fn plan(exe: &str, file: &Path, game_id: &Value) -> Result<Step, &'static str> {
+pub fn plan(exe: &str, file: &Path, game: &Value) -> Result<Step, &'static str> {
     let path = file.to_string_lossy().into_owned();
     let id = title_id(file);
     let run = |id: &str| vec!["-F".to_string(), "-r".into(), id.into()];
@@ -153,22 +158,24 @@ pub fn plan(exe: &str, file: &Path, game_id: &Value) -> Result<Step, &'static st
         ".vpk" | ".zip" => Ok(Step::InstallAndRun(vec!["-F".into(), path])),
         ".pkg" => {
             let id = id.ok_or("errors.vitaTitleId")?;
-            let zrif = license(game_id).ok_or("errors.vitaLicense")?;
+            let zrif = license(game).ok_or("errors.vitaLicense")?;
             Ok(Step::InstallPkg { install: vec!["--pkg".into(), path, "--zrif".into(), zrif], run: run(&id) })
         }
         _ => Err("errors.vitaFormat"),
     }
 }
 
-/// État pour la fiche du jeu : { titleId, installed, format, license, appDir }.
-pub fn status(exe: Option<&str>, file: &Path, game_id: &Value) -> Value {
+/// État pour la fiche du jeu : { titleId, installed, format, license, licenseFromServer, appDir }.
+pub fn status(exe: Option<&str>, file: &Path, game: &Value) -> Value {
     let id = file.is_file().then(|| title_id(file)).flatten().or_else(|| title_id_from_name(&paths::file_name(file)));
     let format = paths::extension(&file.to_string_lossy()).trim_start_matches('.').to_string();
     json!({
         "titleId": id,
         "installed": matches!((exe, &id), (Some(exe), Some(id)) if is_installed(exe, id)),
         "format": format,
-        "license": license(game_id),
+        "license": license(game),
+        // Licence proposée par le serveur, pas encore changée sur ce PC.
+        "licenseFromServer": local_license(&game["id"]).is_none() && license(game).is_some(),
         "appDir": exe.map(|e| vita_fs(e).join("ux0").join("app").to_string_lossy().into_owned()),
     })
 }

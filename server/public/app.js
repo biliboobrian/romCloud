@@ -633,6 +633,8 @@ function renderGameParts(game) {
   $('#autoGroupBtn', box)?.addEventListener('click', () => regroup(game.id, { auto: true }, t('parts.autoDone')));
 }
 
+const isVitaSystem = (s) => Boolean(s) && (s.id === 'vita' || String(s.shortname).toLowerCase() === 'vita');
+
 function openGame(game) {
   state.editingGame = game;
   fillGameDialog(game);
@@ -646,6 +648,11 @@ function fillGameDialog(game, bust = '') {
   for (const k of ['title', 'releaseDate', 'players', 'rating', 'developer', 'publisher', 'genre', 'description']) {
     form.elements[k].value = game[k] ?? '';
   }
+  // PS Vita : licence zRIF du .pkg, proposée aux applications pour l'installer dans Vita3K.
+  const vita = isVitaSystem(state.current);
+  $('#gameZrifField').classList.toggle('hidden', !vita);
+  form.elements.zrif.disabled = !vita;
+  form.elements.zrif.value = game.zrif ?? '';
   const statusText = {
     none: t('game.never'),
     ok: t('game.scrapedVia', { source: game.scrapeSource }),

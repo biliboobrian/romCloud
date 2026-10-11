@@ -359,7 +359,7 @@ test('jeu d\'arcade renommé : retrouvé par les CRC des fichiers de l\'archive'
   assert.equal(isArcadeSystem({ libretroName: 'Nintendo - Game Boy', shortname: 'gb' }), false);
 });
 
-const { abbreviates, contentIdRegion, serialFromFileName, serialKey } = await import('../src/scraper/serial.js');
+const { abbreviates, contentIdLabel, contentIdRegion, serialFromFileName, serialKey } = await import('../src/scraper/serial.js');
 
 test('numéro de série PlayStation lu dans le nom de fichier', () => {
   // Identifiant de contenu PS Vita (nom d'un dump NoNpDrm / VPK).
@@ -410,6 +410,9 @@ test('identifiant de contenu : libellé abrégé reconnu dans le titre, région 
   assert.equal(abbreviates('ASPHALTINJECTION', normalize('Asphalt - Injection (Europe)')), true);
   assert.equal(abbreviates('LUMINESELECTROSY', normalize('Lumo (Europe)')), false);
   assert.equal(abbreviates('LUMINESELECTROSY', normalize('Lumines (Europe)')), false);
+  assert.equal(contentIdLabel('EP0001-PCSB00079_00-RAYMANORIGINS000.pkg'), 'RAYMANORIGINS');
+  assert.equal(abbreviates(contentIdLabel('EP0001-PCSB00079_00-RAYMANORIGINS000.pkg'), normalize('Rayman Origins (USA)')), true);
+  assert.equal(contentIdLabel('EP4350-PCSB00560_00-WIPEOUT2048GAME0'), 'WIPEOUT2048GAME0');
   assert.equal(contentIdRegion('EP0001-PCSB00061_00-LUMINESELECTROSY.pkg'), 'Europe');
   assert.equal(contentIdRegion('UP0001-PCSE00009_00-LUMINESELECTROSY.pkg'), 'USA');
   assert.equal(contentIdRegion('Lumines.vpk'), null);

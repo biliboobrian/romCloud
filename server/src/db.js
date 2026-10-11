@@ -192,6 +192,8 @@ if (!systemColumns.includes('platforms')) db.exec("ALTER TABLE systems ADD COLUM
 if (!systemColumns.includes('color')) db.exec('ALTER TABLE systems ADD COLUMN color TEXT');
 const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
+// Licence zRIF d'un jeu PS Vita en .pkg (proposée aux applications pour l'installer dans Vita3K).
+if (!gameColumns.includes('zrif')) db.exec('ALTER TABLE games ADD COLUMN zrif TEXT');
 if (!gameColumns.includes('parent_id')) {
   db.exec(`
     ALTER TABLE games ADD COLUMN parent_id INTEGER REFERENCES games(id) ON DELETE SET NULL;

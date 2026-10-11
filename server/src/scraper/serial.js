@@ -26,7 +26,8 @@ export function contentIdLabel(fileName) {
   const name = String(fileName || '').replace(/\.[a-z0-9]+$/i, '');
   if (!CONTENT_ID.test(name)) return null;
   const label = name.replace(/^[^-]+-[^-]+-/, '').replace(/_/g, ' ').trim();
-  return label || null;
+  // Libellé complété par des zéros jusqu'à 16 caractères (« RAYMANORIGINS000 ») : remplissage retiré.
+  return (label.length === 16 ? label.replace(/(?<=[A-Z])0{2,}$/i, '') : label) || null;
 }
 
 // Région de la boutique d'un identifiant de contenu (« EP0001-… » : Europe).

@@ -300,7 +300,7 @@ fn prepare(system: &Value, game: &Value) -> Result<Plan> {
             let file = if PLAYLIST_EMULATORS.contains(&emu.id) { playlist() } else { file };
             // Vita3K sans ligne de commande personnalisée : installation du jeu puis démarrage.
             if emu.id == "vita3k" && emulator_args(emu).is_none() {
-                return vita3k::plan(&exe, Path::new(&file), &game["id"])
+                return vita3k::plan(&exe, Path::new(&file), game)
                     .map(|step| Plan::Vita { exe, step })
                     .map_err(|key| AppError::new(key, json!({ "file": file })));
             }
@@ -572,7 +572,7 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
 /// Vita3K et ce jeu, pour la procédure de la fiche : { titleId, installed, format, license, appDir, exe }.
 pub fn vita_status(system: &Value, game: &Value) -> Value {
     let exe = emulator_path("vita3k");
-    let mut status = vita3k::status(exe.as_deref(), &library::file_for(system, game), &game["id"]);
+    let mut status = vita3k::status(exe.as_deref(), &library::file_for(system, game), game);
     status["exe"] = json!(exe);
     status
 }
