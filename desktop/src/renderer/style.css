@@ -223,6 +223,11 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .detail .line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .detail .error { color: var(--danger); }
 .detail .emu { background: color-mix(in srgb, var(--surface) 80%, transparent); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+/* Émulateur externe à configurer avant de jouer : problèmes en tête de l'encadré. */
+.detail .emu.blocked { border-color: var(--danger); }
+.detail .emu-issues { color: var(--danger); display: flex; flex-direction: column; gap: 6px; }
+.detail .emu-issues strong { display: flex; align-items: center; gap: 8px; }
+.detail .emu-issues ul { margin: 0; padding-left: 22px; color: var(--text); user-select: text; }
 /* Procédure Vita3K de la fiche du jeu. */
 .detail .vita-steps { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; }
 .detail .vita-steps h4 { font-size: 14px; }

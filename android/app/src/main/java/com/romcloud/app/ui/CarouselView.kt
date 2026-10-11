@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -72,6 +73,8 @@ fun GamesCarousel(
     /** Partie sauvegardée dans l'émulateur intégré : « Reprendre » sur la bannière. */
     canResume: (Game) -> Boolean = { false },
     onResume: (Game) -> Unit = {},
+    /** Émulateur externe à configurer : « Configurer » (fiche du jeu) au lieu de « Jouer ». */
+    needsSetup: (Game) -> Boolean = { false },
     /** Hauteur de la barre du haut dessinée par-dessus : l'image de la bannière passe dessous. */
     topInset: Dp = 0.dp,
     /** Paysage : bannière réduite pour remonter les rangées. */
@@ -100,6 +103,7 @@ fun GamesCarousel(
                 coverUrl = mediaUrl(game, "boxart"),
                 status = statusOf(game),
                 canResume = canResume(game),
+                needsSetup = remember(game.id, statusOf(game)) { statusOf(game) == LocalStatus.Downloaded && needsSetup(game) },
                 onPrimary = { onClick(game) },
                 onResume = { onResume(game) },
                 onDetails = { onDetails(game) },
@@ -156,6 +160,7 @@ private fun HeroBanner(
     coverUrl: String?,
     status: LocalStatus,
     canResume: Boolean,
+    needsSetup: Boolean,
     onPrimary: () -> Unit,
     onResume: () -> Unit,
     onDetails: () -> Unit,
@@ -236,7 +241,13 @@ private fun HeroBanner(
                         }
                     }
                     when (status) {
-                        LocalStatus.Downloaded -> if (resumable) {
+                        LocalStatus.Downloaded -> if (needsSetup && !resumable) {
+                            Button(onClick = onPrimary) {
+                                Icon(Icons.Filled.Settings, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.action_configure))
+                            }
+                        } else if (resumable) {
                             OutlinedButton(onClick = onPrimary) {
                                 Icon(Icons.Filled.Refresh, null)
                                 Spacer(Modifier.width(6.dp))

@@ -152,8 +152,10 @@ fun GamesScreen(
 
     fun onClick(game: Game) {
         when (statusOf(game)) {
+            // Émulateur externe à configurer : la fiche du jeu explique quoi corriger.
             LocalStatus.Downloaded ->
-                if (state.missingBios.isNotEmpty()) askBios = game
+                if (viewModel.needsSetup(game)) onOpenGame(game.id)
+                else if (state.missingBios.isNotEmpty()) askBios = game
                 else viewModel.play(activity, game)?.let { scope.launch { snackbar.showSnackbar(it) } }
             is LocalStatus.Downloading -> askCancel = game
             else -> askDownload = game
@@ -273,6 +275,7 @@ fun GamesScreen(
                         onClick = ::onClick,
                         onDetails = { onOpenGame(it.id) },
                         canResume = { it.id in state.resumable },
+                        needsSetup = viewModel::needsSetup,
                         onResume = { game ->
                             viewModel.play(activity, game, resume = true)?.let { scope.launch { snackbar.showSnackbar(it) } }
                         },

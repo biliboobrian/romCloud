@@ -114,6 +114,17 @@ pub fn prepare(emulator: &str, exe: &str, args: Vec<String>) -> Vec<String> {
     args
 }
 
+/// Clés indispensables (prod.keys de la Switch) absentes à la fois du dossier des BIOS et de
+/// celui de l'émulateur : le jeu ne peut pas démarrer.
+pub fn missing_required(emulator: &str, exe: &str) -> Vec<String> {
+    let appdata = PathBuf::from(std::env::var("APPDATA").unwrap_or_default());
+    files_for(emulator, Path::new(exe), &settings::bios_dir(), &appdata)
+        .into_iter()
+        .filter(|(from, to)| paths::file_name(from) == "prod.keys" && !from.is_file() && !to.is_file())
+        .map(|(from, _)| paths::file_name(&from))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

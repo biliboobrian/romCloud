@@ -106,6 +106,7 @@
       check: call('launcher:check'),
       resumableOnline: call('launcher:resumableOnline'),
       describe: call('launcher:describe'),
+      issues: call('launcher:issues'),
       vitaStatus: call('launcher:vitaStatus'),
       setVitaLicense: call('launcher:setVitaLicense'),
     },
