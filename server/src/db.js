@@ -194,6 +194,8 @@ const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.na
 if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
 // Licence zRIF d'un jeu PS Vita en .pkg (proposée aux applications pour l'installer dans Vita3K).
 if (!gameColumns.includes('zrif')) db.exec('ALTER TABLE games ADD COLUMN zrif TEXT');
+// Licence RAP d'un jeu ou DLC PS3 en .pkg (16 octets en hexadécimal, écrite dans RPCS3 avant le lancement).
+if (!gameColumns.includes('rap')) db.exec('ALTER TABLE games ADD COLUMN rap TEXT');
 if (!gameColumns.includes('parent_id')) {
   db.exec(`
     ALTER TABLE games ADD COLUMN parent_id INTEGER REFERENCES games(id) ON DELETE SET NULL;

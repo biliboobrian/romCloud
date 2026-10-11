@@ -3,7 +3,7 @@
 // premier lancement dans %APPDATA%\RomCloud\<émulateur> (l'émulateur y garde aussi sa configuration
 // et les sauvegardes), fichiers système pris dans le dossier des BIOS, jeu lancé en plein écran.
 //  - RPCS3 : firmware installé depuis PS3UPDAT.PUP, mises à jour et DLC du jeu (.pkg) installés une
-//    fois, jeu = ISO, EBOOT.BIN ou dossier du disque ;
+//    fois, licences RAP du serveur écrites dans dev_hdd0 (jeux et DLC PSN), jeu = ISO, EBOOT.BIN ou dossier du disque ;
 //  - shadPS4 : jeu = dossier décrypté du jeu (CUSAxxxxx) en .zip, lancé par son eboot.bin ;
 //  - Cemu : mode portable (dossier « portable »), keys.txt copié pour les jeux chiffrés (.wud, .wux),
 //    jeu = .wua, .wud, .wux, .rpx ou dossier code/content/meta.
@@ -366,6 +366,60 @@ async fn install_pkgs(root: &Path, exe: &Path, extras: &[PathBuf]) -> Result<()>
     Ok(())
 }
 
+/// Identifiant de contenu (« EP0002-NPEB00113_00-CALLOFDUTYCLSCFR ») : 2 lettres, 4 chiffres, « - »,
+/// 4 lettres, 5 chiffres, « _ », 2 chiffres, « - », 16 lettres ou chiffres.
+fn is_content_id(id: &[u8]) -> bool {
+    const SHAPE: &[u8] = b"AA9999-AAAA99999_99-XXXXXXXXXXXXXXXX";
+    id.len() == SHAPE.len()
+        && id.iter().zip(SHAPE).all(|(c, s)| match s {
+            b'A' => c.is_ascii_uppercase(),
+            b'9' => c.is_ascii_digit(),
+            b'X' => c.is_ascii_uppercase() || c.is_ascii_digit(),
+            _ => c == s,
+        })
+}
+
+/// Identifiant de contenu d'un .pkg PS3 : lu dans son en-tête (magie « \x7FPKG », identifiant à 0x30),
+/// sinon dans le nom du fichier.
+fn content_id(file: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut head = [0u8; 0x54];
+    let from_header = std::fs::File::open(file).ok().and_then(|mut f| f.read_exact(&mut head).ok()).and_then(|_| {
+        let id = &head[0x30..0x54];
+        (head.starts_with(b"\x7FPKG") && is_content_id(id)).then(|| String::from_utf8_lossy(id).into_owned())
+    });
+    from_header.or_else(|| {
+        let name = paths::file_name(file).to_ascii_uppercase();
+        name.as_bytes().windows(36).find(|w| is_content_id(w)).map(|w| String::from_utf8_lossy(w).into_owned())
+    })
+}
+
+/// Licences RAP du serveur (jeu et parties : « rap », 32 caractères hexadécimaux) écrites dans
+/// dev_hdd0/home/00000001/exdata/<identifiant de contenu>.rap, où RPCS3 les cherche au lancement.
+fn write_raps(root: &Path, game: &Value, file: &Path, extras: &[PathBuf]) -> Result<()> {
+    let rap_of = |v: &Value| v.get("rap").and_then(Value::as_str).map(str::to_string).filter(|r| !r.is_empty());
+    let mut licenses: Vec<(PathBuf, String)> = rap_of(game).map(|r| (file.to_path_buf(), r)).into_iter().collect();
+    for part in game.get("parts").and_then(Value::as_array).into_iter().flatten() {
+        let (Some(rap), Some(name)) = (rap_of(part), part.get("fileName").and_then(Value::as_str)) else { continue };
+        if let Some(path) = extras.iter().find(|p| paths::file_name(p) == name) {
+            licenses.push((path.clone(), rap));
+        }
+    }
+    let dir = root.join("dev_hdd0").join("home").join("00000001").join("exdata");
+    for (path, rap) in licenses {
+        let (Some(id), Ok(bytes)) = (content_id(&path), hex::decode(&rap)) else { continue };
+        if bytes.len() != 16 {
+            continue;
+        }
+        let target = dir.join(format!("{id}.rap"));
+        if std::fs::read(&target).ok().as_deref() != Some(bytes.as_slice()) {
+            std::fs::create_dir_all(&dir)?;
+            std::fs::write(&target, &bytes)?;
+        }
+    }
+    Ok(())
+}
+
 /// Lance le jeu dans l'émulateur (téléchargé et fichiers système installés avant si besoin) ;
 /// [extras] : mises à jour et DLC du jeu (RPCS3 : paquets installés avant le lancement). Le temps de
 /// jeu est compté jusqu'à la fermeture de l'émulateur.
@@ -376,6 +430,7 @@ pub async fn launch(app: &'static App, game: &Value, file: &str, extras: &[PathB
         app.ensure_system(&exe).await?;
         if app.core == RPCS3.core {
             install_pkgs(&app.root(), &exe, extras).await?;
+            write_raps(&app.root(), game, Path::new(file), extras)?;
         }
         exe
     };
@@ -424,6 +479,36 @@ mod tests {
         assert!(for_system(&json!({ "id": "ps2" })).is_none());
         assert_eq!(by_core("cemu").map(|a| a.name), Some("Cemu"));
         assert!(by_core("mgba").is_none());
+    }
+
+    #[test]
+    fn licences_rap_ecrites_pour_rpcs3() {
+        let dir = temp_dir("rap");
+        let root = dir.join("rpcs3");
+        // Jeu : identifiant lu dans l'en-tête du .pkg (nom quelconque) ; DLC : dans son nom de fichier.
+        let game_file = dir.join("Call of Duty Classic.pkg");
+        let mut head = b"\x7FPKG".to_vec();
+        head.resize(0x30, 0);
+        head.extend_from_slice(b"EP0002-NPEB00113_00-CALLOFDUTYCLSCFR");
+        head.resize(0x80, 0);
+        std::fs::write(&game_file, &head).unwrap();
+        let dlc = dir.join("JP0035-NPJJ00137_00-0000000000000001.pkg");
+        std::fs::write(&dlc, b"dlc").unwrap();
+        let update = dir.join("NPEB00113 v1.01.pkg");
+        std::fs::write(&update, b"maj").unwrap();
+        let game = json!({ "rap": "1763B2473C1553028847437992400021", "parts": [
+            { "fileName": "JP0035-NPJJ00137_00-0000000000000001.pkg", "kind": "dlc", "rap": "D0AC94316D545425DBF709216C69D5DE" },
+            { "fileName": "NPEB00113 v1.01.pkg", "kind": "update" },
+        ]});
+        write_raps(&root, &game, &game_file, &[dlc, update]).unwrap();
+        let exdata = root.join("dev_hdd0").join("home").join("00000001").join("exdata");
+        let rap = std::fs::read(exdata.join("EP0002-NPEB00113_00-CALLOFDUTYCLSCFR.rap")).unwrap();
+        assert_eq!(hex::encode_upper(rap), "1763B2473C1553028847437992400021");
+        assert!(exdata.join("JP0035-NPJJ00137_00-0000000000000001.rap").is_file());
+        assert_eq!(std::fs::read_dir(&exdata).unwrap().count(), 2);
+        // Jeu sans identifiant de contenu (ISO d'un disque) : rien d'écrit.
+        assert_eq!(content_id(&dir.join("Demon's Souls.iso")), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

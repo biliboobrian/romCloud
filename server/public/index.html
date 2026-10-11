@@ -58,6 +58,7 @@
             <button class="btn" id="scanSysBtn" data-i18n="system.rescan"></button>
             <button class="btn" id="dupSysBtn" data-i18n="system.duplicates"></button>
             <button class="btn" id="biosSysBtn" data-i18n="system.bios"></button>
+            <button class="btn hidden" id="licenseSysBtn"></button>
             <button class="btn ghost" id="editSysBtn" data-i18n="system.settings"></button>
           </div>
         </div>
@@ -215,6 +216,9 @@
         <label id="gameZrifField" class="hidden"><span data-i18n="game.zrif"></span>
           <input name="zrif" class="mono" placeholder="KO5ifR1dQ+eHBl…" autocomplete="off" spellcheck="false">
           <span class="muted" data-i18n="game.zrifHint"></span></label>
+        <label id="gameRapField" class="hidden"><span data-i18n="game.rap"></span>
+          <input name="rap" class="mono" placeholder="1763B2473C1553028847437992400021" maxlength="40" autocomplete="off" spellcheck="false">
+          <span class="muted" data-i18n="game.rapHint"></span></label>
         <label><span data-i18n="game.description"></span> <textarea name="description" rows="6"></textarea></label>
         <p class="muted" id="gameScrapeInfo"></p>
         <div class="dialog-foot split">
@@ -325,6 +329,22 @@
       </div>
       <div id="biosImportProgress" class="hidden"><progress max="1" value="0"></progress> <span class="muted"></span></div>
       <div id="biosImportReport"></div>
+    </div>
+  </dialog>
+
+  <!-- Licences des jeux en bloc (liste TSV) : zRIF (PS Vita), RAP (PS3) -->
+  <dialog id="licenseImportDialog" class="dialog wide">
+    <form method="dialog" class="dialog-head">
+      <h3 id="licenseImportTitle"></h3>
+      <button class="icon-btn" data-i18n-aria-label="app.close">✕</button>
+    </form>
+    <div class="dup-body">
+      <p class="muted" id="licenseImportIntro"></p>
+      <label class="inline"><input type="checkbox" id="licenseImportReplace"> <span data-i18n="licenseImport.replace"></span></label>
+      <div class="actions">
+        <label class="btn primary"><span data-i18n="licenseImport.file"></span><input type="file" id="licenseImportFile" accept=".tsv,.txt,.csv,text/tab-separated-values,text/plain" hidden></label>
+      </div>
+      <div id="licenseImportReport"></div>
     </div>
   </dialog>
 
