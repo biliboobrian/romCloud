@@ -1587,7 +1587,13 @@
       await play(system, game, { netplay: { host: true } });
     } else {
       // Partie de l'hôte (son appareil annonce le jeu proposé) : rejointe, jeu téléchargé d'abord s'il manque.
-      const peer = S.peers.find((p) => p.id === lobby.host && p.hosting);
+      // Moteur de l'hôte qui s'ouvre encore : sa partie est attendue quelques secondes.
+      const hostPeer = () => S.peers.find((p) => p.id === lobby.host && p.hosting);
+      let peer = hostPeer();
+      for (let i = 0; !peer && i < 20; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        peer = hostPeer();
+      }
       if (!peer) {
         toast(t('lobby.hostNotReady'), { type: 'error' });
         return;
