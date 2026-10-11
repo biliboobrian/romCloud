@@ -7,7 +7,7 @@ import multer from 'multer';
 import * as accounts from './accounts.js';
 import * as play from './play.js';
 import { addApk, apkFilePath, deleteApk, emulatorPackages, listApks, requireApk, updateApk } from './apks.js';
-import { addBiosFiles, biosFilePath, deleteBios, fetchBiosFromSource, requireBios, systemBios } from './bios.js';
+import { addBiosFiles, biosFilePath, deleteBios, fetchBiosFromSource, importBiosPack, requireBios, systemBios } from './bios.js';
 import { config, screenscraperEnabled } from './config.js';
 import { diskUsage } from './disk-usage.js';
 import { clearDownloads, downloadStats, listDownloads, trackDownload } from './download-logs.js';
@@ -210,6 +210,28 @@ api.post(
       }));
       const saved = await addBiosFiles(req.params.id, uploads, req.body && req.body.path);
       res.status(201).json({ saved, ...(await systemBios(req.params.id, { language: requestLanguage(req) })) });
+    } finally {
+      for (const f of files) fs.rmSync(f.path, { force: true });
+    }
+  }),
+);
+
+// Import groupé (champ « files », et « paths » : chemin de chaque fichier dans le dossier choisi) :
+// chaque BIOS rangé dans les systèmes qui l'attendent ; rapport { stored, already, mismatch, unknown }.
+api.post(
+  '/bios/import',
+  biosUpload.array('files'),
+  h(async (req, res) => {
+    const files = req.files || [];
+    try {
+      if (!files.length) throw new HttpError(400, 'errors.noFiles');
+      const paths = [req.body?.paths ?? []].flat();
+      const uploads = files.map((f, i) => ({
+        tempPath: f.path,
+        originalName: Buffer.from(f.originalname, 'latin1').toString('utf8'),
+        relativePath: paths[i] || null,
+      }));
+      res.json(await importBiosPack(uploads));
     } finally {
       for (const f of files) fs.rmSync(f.path, { force: true });
     }

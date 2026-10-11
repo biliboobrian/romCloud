@@ -296,3 +296,50 @@ test('firmware récupéré sur sa source : dernière version, mise à jour signa
   // Fichier sans source : refusé.
   await assert.rejects(bios.fetchBiosFromSource('switch', 'switch/prod.keys'), (err) => err.status === 404);
 });
+
+test('import groupé : BIOS rangés par empreinte, nom ou dossier, archive ouverte, rapport', async () => {
+  // Même BIOS attendu par deux systèmes (Game Boy et Game Boy Color).
+  const gbBios = 'GB-BIOS';
+  const md5 = crypto.createHash('md5').update(gbBios).digest('hex');
+  INFOS.gambatte_pack = [
+    'firmware_count = 1',
+    'firmware0_desc = "gb_bios.bin (Game Boy BIOS)"',
+    'firmware0_path = "gb_bios.bin"',
+    'firmware0_opt = "true"',
+    `notes = "(!) gb_bios.bin (md5): ${md5}"`,
+  ].join('\n');
+  createSystem({ id: 'gbpack', name: 'Game Boy', players: [retroarch('gambatte_pack')] });
+  createSystem({ id: 'gbcpack', name: 'Game Boy Color', players: [retroarch('gambatte_pack')] });
+  if (!getSystem('ps2')) createSystem({ id: 'ps2', name: 'PlayStation 2', players: [retroarch('pcsx2')] });
+  const upload = (name, content, relativePath) => {
+    const temp = path.join(dataDir, `upload-${crypto.randomUUID()}`);
+    fs.writeFileSync(temp, content);
+    return { tempPath: temp, originalName: name, relativePath };
+  };
+  const pack = () => [
+    // BIOS renommé, reconnu par son empreinte.
+    upload('boot_gb.rom', gbBios, 'BIOS/boot_gb.rom'),
+    upload('lisez-moi.txt', 'notes', 'BIOS/lisez-moi.txt'),
+    // Archive : BIOS dans le dossier attendu par PCSX2, BIOS à la mauvaise empreinte, fichier inconnu.
+    upload('pack.zip', makeZip([
+      ['pack/pcsx2/bios/scph77777.bin', 'PS2'],
+      ['pack/dc_boot.bin', 'pas le bon'],
+      ['pack/autre.bin', '?'],
+    ])),
+  ];
+  const report = await bios.importBiosPack(pack());
+  const items = (list) => list.map((i) => [i.file, i.system, i.path].filter(Boolean).join(' > ')).sort();
+  assert.deepEqual(items(report.stored), [
+    'BIOS/boot_gb.rom > Game Boy > gb_bios.bin',
+    'BIOS/boot_gb.rom > Game Boy Color > gb_bios.bin',
+    'pack.zip/pack/pcsx2/bios/scph77777.bin > PlayStation 2 > pcsx2/bios/scph77777.bin',
+  ]);
+  assert.deepEqual(items(report.mismatch), ['pack.zip/pack/dc_boot.bin > Dreamcast > dc/dc_boot.bin']);
+  assert.deepEqual(items(report.unknown), ['pack.zip/pack/autre.bin']);
+  assert.equal(fs.readFileSync(path.join(dataDir, 'bios', 'gbcpack', 'gb_bios.bin'), 'utf8'), gbBios);
+
+  // Nouvel import : déjà présents, rien de réécrit.
+  const again = await bios.importBiosPack(pack());
+  assert.equal(again.stored.length, 0);
+  assert.equal(again.already.length, 3);
+});

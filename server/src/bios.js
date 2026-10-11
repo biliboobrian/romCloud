@@ -13,7 +13,7 @@ import { config } from './config.js';
 import { db } from './db.js';
 import { HttpError } from './http-error.js';
 import { SOURCES, coreFileSource, latestVersion, systemFiles } from './system-files.js';
-import { requireSystem } from './systems.js';
+import { listSystems, requireSystem } from './systems.js';
 import { readZipEntries, readZipEntry } from './zip.js';
 
 const CORE_INFO_URL = process.env.LIBRETRO_CORE_INFO_URL
@@ -413,6 +413,118 @@ export async function addBiosFiles(systemId, uploads, targetPath) {
     saved.push(relative);
   }
   return saved;
+}
+
+// ---------------------------------------------------------------------------
+// Import groupé : BIOS de plusieurs systèmes envoyés en une fois (fichiers, .zip ou dossier)
+// ---------------------------------------------------------------------------
+
+// Fichiers sans intérêt dans un dossier ou une archive de BIOS.
+const PACK_JUNK_RE = /(^|\/)(\.|__macosx\/)|\.(txt|md|nfo|url|htm|html|pdf|jpg|jpeg|png|db|ini)$/i;
+// Archive démesurée : refusée plutôt que d'en extraire chaque fichier.
+const PACK_MAX_ENTRIES = 20000;
+
+/** Cibles de l'import : BIOS attendus par chaque système, par empreinte, par nom et par dossier. */
+async function packTargets() {
+  const byHash = new Map();
+  const byName = new Map();
+  const folders = [];
+  const add = (map, key, target) => map.set(key, [...(map.get(key) || []), target]);
+  for (const system of listSystems()) {
+    const { expected } = await expectedBios(system);
+    for (const entry of expected) {
+      const target = { system, entry };
+      if (entry.folder) {
+        folders.push(target);
+        continue;
+      }
+      for (const hash of [...entry.md5s, ...entry.sha1s]) add(byHash, hash, target);
+      add(byName, path.posix.basename(entry.path).toLowerCase(), target);
+    }
+  }
+  return { byHash, byName, folders };
+}
+
+/**
+ * Range des BIOS envoyés en une fois dans les systèmes qui les attendent : par empreinte (un même
+ * BIOS peut servir à plusieurs systèmes), sinon par nom quand le BIOS attendu n'a pas d'empreinte
+ * connue, sinon par dossier attendu présent dans son chemin (« …/pcsx2/bios/scph39001.bin »).
+ * Un .zip qui n'est pas lui-même un BIOS attendu est ouvert et son contenu trié de la même façon.
+ * [uploads] : { tempPath, originalName, relativePath } ; renvoie le rapport
+ * { stored, already, mismatch, unknown } (fichier, système, chemin).
+ */
+export async function importBiosPack(uploads) {
+  const { byHash, byName, folders } = await packTargets();
+  const present = new Map();
+  const presentRow = (system, relative) => {
+    if (!present.has(system.id)) present.set(system.id, new Map(listBiosRows(system.id).map((r) => [r.path.toLowerCase(), r])));
+    return present.get(system.id).get(relative.toLowerCase());
+  };
+  const report = { stored: [], already: [], mismatch: [], unknown: [] };
+
+  // Systèmes et chemins où ranger ce fichier ; [] s'il n'est attendu nulle part.
+  const destinations = (name, packPath, hashes) => {
+    const found = new Map();
+    const keep = (target, relative) => found.set(`${target.system.id}/${relative.toLowerCase()}`, { system: target.system, relative });
+    for (const target of [...(byHash.get(hashes.md5) || []), ...(byHash.get(hashes.sha1) || [])]) keep(target, target.entry.path);
+    if (!found.size) {
+      for (const target of byName.get(name.toLowerCase()) || []) {
+        if (hashStatus(hashes, target.entry) === 'unknown') keep(target, target.entry.path);
+        else report.mismatch.push({ file: packPath, system: target.system.name, path: target.entry.path });
+      }
+    }
+    if (!found.size) {
+      const lower = `/${packPath.toLowerCase()}`;
+      for (const target of folders) {
+        if (lower.includes(`/${target.entry.path.toLowerCase()}/`)) keep(target, safeBiosPath(`${target.entry.path}/${name}`));
+      }
+    }
+    return [...found.values()];
+  };
+
+  // Enregistre le fichier à chaque destination ; [source] : { data } ou { tempPath } (copié par destination).
+  const place = (packPath, hashes, source) => {
+    const name = path.posix.basename(packPath);
+    const targets = destinations(name, packPath, hashes);
+    for (const { system, relative } of targets) {
+      const item = { file: packPath, system: system.name, path: relative };
+      if (presentRow(system, relative)?.md5 === hashes.md5) {
+        report.already.push(item);
+        continue;
+      }
+      let copy = null;
+      if (source.tempPath) {
+        copy = `${source.tempPath}-${crypto.randomUUID()}`;
+        fs.copyFileSync(source.tempPath, copy);
+      }
+      storeBios(system, relative, copy ? { tempPath: copy } : source, hashes);
+      present.get(system.id)?.delete(relative.toLowerCase());
+      report.stored.push(item);
+    }
+    return targets.length > 0;
+  };
+
+  for (const upload of uploads) {
+    const packPath = String(upload.relativePath || upload.originalName).replace(/\\/g, '/').replace(/^\/+/, '');
+    if (PACK_JUNK_RE.test(packPath)) continue;
+    if (place(packPath, await hashBios(upload.tempPath), { tempPath: upload.tempPath })) continue;
+    // BIOS attendu sous ce nom, mais pas cette version : signalé, pas ouvert.
+    if (report.mismatch.some((m) => m.file === packPath)) continue;
+    // Archive de plusieurs BIOS : chaque fichier trié à son tour.
+    const entries = /\.zip$/i.test(packPath) && isZipFile(upload.tempPath) ? readZipEntries(upload.tempPath) : [];
+    if (entries.length > PACK_MAX_ENTRIES) throw new HttpError(422, 'errors.biosZipTooLarge', { path: packPath });
+    if (!entries.length) {
+      report.unknown.push({ file: packPath });
+      continue;
+    }
+    for (const entry of entries) {
+      const inner = `${packPath}/${entry.name}`;
+      if (PACK_JUNK_RE.test(entry.name)) continue;
+      const data = readZipEntry(upload.tempPath, entry);
+      if (!place(inner, hashBuffer(data), { data }) && !report.mismatch.some((m) => m.file === inner)) report.unknown.push({ file: inner });
+    }
+  }
+  return report;
 }
 
 /**

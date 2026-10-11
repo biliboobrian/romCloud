@@ -257,6 +257,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .disk-meta { font-size: 12px; white-space: nowrap; }
 .tag.ok { color: var(--ok); border-color: var(--ok); }
 .tag.mismatch { color: var(--danger); border-color: var(--danger); }
+#biosImportProgress { display: flex; align-items: center; gap: 10px; }
+#biosImportProgress progress { flex: 1; }
+#biosImportReport { display: flex; flex-direction: column; gap: 10px; }
+#biosImportReport summary { cursor: pointer; list-style: none; }
+.sidebar-foot { flex-wrap: wrap; gap: 6px; }
 .dup-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--border); }
 .jobs { padding: 12px 18px 18px; display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; }
 .job { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
