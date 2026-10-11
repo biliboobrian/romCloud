@@ -899,7 +899,9 @@
           <div class="main"><div class="t">${esc(g.title)}${multiBadge(g)}</div>
             <div class="muted">${esc([year(g), g.genre, partsSummary(g), formatSize(gameSize(g))].filter(Boolean).join(' · '))}</div></div>
           <div class="status" data-status="${g.id}">${statusHtml(statusOf(g, S.games.downloaded))}</div>
-          ${canResume(g) ? `<button class="btn primary" data-resume="${g.id}">${icon('play', 18)} ${esc(t('action.resume'))}</button>` : ''}
+          ${isLobbyHost()
+            ? (playKind(g) ? `<button class="btn primary" data-lobby-set="${g.id}">${icon('group', 18)} ${esc(t('lobby.setGame'))}</button>` : '')
+            : canResume(g) ? `<button class="btn primary" data-resume="${g.id}">${icon('play', 18)} ${esc(t('action.resume'))}</button>` : ''}
           <button class="icon-btn" data-info="${g.id}" title="${esc(t('action.details'))}">${icon('info')}</button>
         </div>`;
       }).join('')}</div></div>`;
@@ -934,6 +936,13 @@
       el.onclick = (e) => {
         e.stopPropagation(); // pas la fiche du jeu (clic sur la ligne)
         playChecked(systemById(game.systemId), game, { resume: true });
+      };
+    }
+    for (const el of $$('[data-lobby-set]', main)) {
+      const game = games.find((g) => g.id === Number(el.dataset.lobbySet));
+      el.onclick = (e) => {
+        e.stopPropagation();
+        setLobbyGame(game);
       };
     }
   }
@@ -1048,14 +1057,15 @@
         ${playtimeHtml(game)}
         ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
         <div class="actions">
-          ${resume ? `<button class="btn primary" id="heroResume">${icon('play', 18)} ${esc(t('action.resume'))}</button>` : ''}
-          <button class="btn${resume ? '' : ' primary'}" id="heroMain">${icon(resume ? 'refresh' : st.kind === 'downloaded' ? 'play' : 'cloud', 18)} ${esc(st.kind === 'downloaded' ? t('action.play') : st.kind === 'running' ? `${Math.round(st.progress * 100)} %` : t('action.download'))}</button>
+          ${isLobbyHost() ? (playKind(game) ? `<button class="btn primary" id="heroLobbySet">${icon('group', 18)} ${esc(t('lobby.setGame'))}</button>` : '') : `${resume ? `<button class="btn primary" id="heroResume">${icon('play', 18)} ${esc(t('action.resume'))}</button>` : ''}
+          <button class="btn${resume ? '' : ' primary'}" id="heroMain">${icon(resume ? 'refresh' : st.kind === 'downloaded' ? 'play' : 'cloud', 18)} ${esc(st.kind === 'downloaded' ? t('action.play') : st.kind === 'running' ? `${Math.round(st.progress * 100)} %` : t('action.download'))}</button>`}
           <button class="btn" id="heroInfo">${icon('info', 18)} ${esc(t('action.info'))}</button>
         </div>
       </div>`;
-    $('#heroMain').onclick = () => onGameClick(systemById(game.systemId), game);
+    $('#heroLobbySet')?.addEventListener('click', () => setLobbyGame(game));
+    $('#heroMain')?.addEventListener('click', () => onGameClick(systemById(game.systemId), game));
     // Jeu téléchargé, émulateur externe à configurer : « Configurer » au lieu de « Jouer ».
-    if (st.kind === 'downloaded' && !resume) {
+    if (st.kind === 'downloaded' && !resume && !isLobbyHost()) {
       gameIssues(systemById(game.systemId), game).then((issues) => {
         const button = $('#heroMain');
         if (!issues.length || !button || featured(visibleGames())?.id !== game.id) return;
@@ -1072,6 +1082,7 @@
   // ---------------------------------------------------------------------------
 
   async function onGameClick(system, game) {
+    if (isLobbyHost()) return openGameDetail(game.systemId, game.id);
     const downloaded = S.route.name === 'systems' ? S.search.downloaded : S.games.downloaded;
     const st = statusOf(game, downloaded);
     if (st.kind === 'downloaded') {
@@ -1384,6 +1395,11 @@
     S.multiplayerOpen = true;
     const root = modal({ title: t('netplay.title'), body: '<div class="multiplayer" id="multiplayerBody"></div>', buttons: [{ label: t('app.close'), kind: 'ghost' }] });
     $('.modal', root).classList.add('wide');
+    // « Créer un lobby » dans la barre du titre (masqué tant que ce PC est dans un lobby).
+    const title = $('.modal h3', root);
+    title.classList.add('with-action');
+    title.insertAdjacentHTML('beforeend', `<button class="btn primary small" id="lobbyCreateBtn">${icon('group', 18)} ${esc(t('lobby.create'))}</button>`);
+    $('#lobbyCreateBtn').onclick = () => createLobby();
     renderMultiplayer();
     const watch = new MutationObserver(() => {
       if (!root.innerHTML) {
@@ -1408,15 +1424,14 @@
         </div>`).join('') : `<p class="muted">${esc(t('netplay.nobody'))}</p>`}
       </section>
       <section>
-        <div class="mp-head"><h4>${esc(t('lobby.lobbies'))}</h4>
-          <button class="btn primary small" id="lobbyCreateBtn">${icon('group', 18)} ${esc(t('lobby.create'))}</button></div>
+        <h4>${esc(t('lobby.lobbies'))}</h4>
         ${S.lobbies.lobbies.length ? S.lobbies.lobbies.map((l) => `<button class="mp-lobby${l.members.some((m) => m.id === S.lobbies.me) ? ' mine' : ''}" data-lobby="${esc(l.id)}">
           <strong>${esc(lobbyTitle(l))}</strong>
           <span class="muted small">${esc(l.members.map(memberName).join(', '))}</span>
           <span class="tag">${l.members.length}</span>
         </button>`).join('') : `<p class="muted">${esc(t('lobby.none'))}</p>`}
       </section>`;
-    $('#lobbyCreateBtn').onclick = () => createLobby();
+    $('#lobbyCreateBtn')?.classList.toggle('hidden', Boolean(S.lobby));
     for (const el of $$('[data-lobby]', box)) el.onclick = () => openLobby(el.dataset.lobby);
   }
 
@@ -2063,8 +2078,8 @@
           ? `<button class="btn primary big" id="configureBtn">${icon('gear')} ${esc(t('action.configure'))}</button>`
           : `<button class="btn ${resumable ? '' : 'primary '}big" id="playBtn">${icon(resumable ? 'refresh' : 'play')} ${esc(t('action.play'))}</button>`}
         ${savedStates ? `<button class="btn big" id="statesBtn">${icon('timer')} ${esc(t('states.button', { n: savedStates }))}</button>` : ''}
-        ${S.account.signedIn && playKind(game) ? `<button class="btn big" id="lobbyCreateGameBtn">${icon(playKind(game) === 'link' ? 'link' : 'group')} ${esc(t('lobby.create'))}</button>` : ''}
-        ${S.account.signedIn && lobbiesOf(game).length ? `<button class="btn big" id="lobbyJoinGameBtn">${icon('group')} ${esc(t('lobby.join'))}</button>` : ''}
+        ${S.account.signedIn && !S.lobby && playKind(game) ? `<button class="btn big" id="lobbyCreateGameBtn">${icon(playKind(game) === 'link' ? 'link' : 'group')} ${esc(t('lobby.create'))}</button>` : ''}
+        ${S.account.signedIn && !S.lobby && lobbiesOf(game).length ? `<button class="btn big" id="lobbyJoinGameBtn">${icon('group')} ${esc(t('lobby.join'))}</button>` : ''}
         <button class="btn" id="folderBtn">${icon('folder', 18)} ${esc(t('detail.showInFolder'))}</button>
         <button class="btn danger" id="deleteBtn">${icon('trash', 18)} ${esc(t('detail.delete'))}</button>`;
     } else {
