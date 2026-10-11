@@ -21,8 +21,14 @@ import okhttp3.Request
  */
 class AppUpdater(private val context: Context, private val api: ApiClient) {
 
-    /** Nouvelle version : [apk] pointe vers l'APK de la Release. */
-    data class Update(val version: String, val installed: String, val apk: EmulatorApk)
+    /**
+     * Nouvelle version : [apk] pointe vers l'APK de la Release ; [changes] : modifications depuis
+     * la version installée, de la plus récente à la plus ancienne (vide si GitHub ne les donne pas).
+     */
+    data class Update(val version: String, val installed: String, val apk: EmulatorApk, val changes: List<VersionChanges> = emptyList())
+
+    /** Modifications apportées par une version. */
+    data class VersionChanges(val version: String, val items: List<String>)
 
     private val _available = MutableStateFlow<Update?>(null)
 
@@ -76,12 +82,50 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
             size = size,
             url = url,
         )
-        return Update(version, installed, apk)
+        return Update(version, installed, apk, changes(installed, version))
     }
+
+    /** Commits entre les tags des deux versions (comparaison GitHub) ; vide en cas d'échec. */
+    private fun changes(installed: String, latest: String): List<VersionChanges> = runCatching {
+        val request = Request.Builder().url("$COMPARE/v$installed...v$latest")
+            .header("Accept", "application/vnd.github+json")
+            .build()
+        api.http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return emptyList()
+            changesFromCompare(response.body?.string() ?: return emptyList(), latest)
+        }
+    }.getOrDefault(emptyList())
 
     companion object {
         private const val TAG = "AppUpdater"
         private const val LATEST_RELEASE = "https://api.github.com/repos/biliboobrian/romCloud/releases/latest"
+        private const val COMPARE = "https://api.github.com/repos/biliboobrian/romCloud/compare"
+        private val VERSION_SUFFIX = Regex(";\\s*v(\\d+(?:\\.\\d+)*)$")
+
+        /**
+         * Commits d'une comparaison GitHub (du plus ancien au plus récent) regroupés par version : un
+         * commit se termine par sa version (« … ; v1.35.6 ») ; un commit sans version appartient à
+         * la version publiée après lui. Chaque message (premier paragraphe) est découpé à ses « ; ».
+         */
+        internal fun changesFromCompare(body: String, latest: String): List<VersionChanges> {
+            val commits = Json.parseToJsonElement(body).jsonObject["commits"]?.jsonArray ?: return emptyList()
+            val groups = mutableListOf<VersionChanges>()
+            var version = latest
+            for (commit in commits.reversed()) {
+                val message = commit.jsonObject["commit"]?.jsonObject?.get("message")?.jsonPrimitive?.content ?: continue
+                var text = message.replace("\r\n", "\n").substringBefore("\n\n").trim()
+                if (text.isEmpty() || text.startsWith("Merge ")) continue
+                VERSION_SUFFIX.find(text)?.let {
+                    version = it.groupValues[1]
+                    text = text.removeRange(it.range).trimEnd()
+                }
+                val items = text.split(" ; ").map { it.trim() }.filter { it.isNotEmpty() }
+                val last = groups.lastOrNull()
+                if (last?.version == version) groups[groups.lastIndex] = last.copy(items = last.items + items)
+                else groups += VersionChanges(version, items)
+            }
+            return groups
+        }
 
         /** « 1.12.0 » -> [1, 12, 0] ; null pour une version de développement ou mal formée. */
         internal fun parseVersion(version: String): List<Int>? {
