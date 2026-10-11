@@ -103,6 +103,7 @@
       choose: call('launcher:choose'),
       play: call('launcher:play'),
       resumable: call('launcher:resumable'),
+      resumeCore: call('launcher:resumeCore'),
       resumableIds: call('launcher:resumableIds'),
       check: call('launcher:check'),
       resumableOnline: call('launcher:resumableOnline'),

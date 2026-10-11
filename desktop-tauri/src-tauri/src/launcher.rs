@@ -378,14 +378,36 @@ pub fn check(system: &Value) -> Value {
     })
 }
 
-/// Partie à reprendre : moteur intégré choisi et état de reprise ou de l'historique pour ce jeu et ce cœur.
+/// Partie à reprendre : moteur intégré choisi et état de reprise ou de l'historique pour ce jeu, fait
+/// avec l'un des cœurs intégrés du système (pas forcément celui choisi).
 pub fn resumable(system: &Value, game: &Value) -> bool {
-    match prepare(system, game) {
-        Ok(Plan::Builtin { core, file, .. }) if managed::by_core(&core).is_none() => {
-            crate::states::resume_file(&builtin::state_path(&core, &file), &builtin::history_dir(&core, &file)).is_some()
-        }
-        _ => false,
-    }
+    latest_resume(system, game).is_some()
+}
+
+/// Cœur de la partie que « Reprendre » relance (null : aucune) ; un autre que celui choisi : l'interface
+/// propose d'abord d'en faire l'émulateur du système.
+pub fn resume_core(system: &Value, game: &Value) -> Option<String> {
+    latest_resume(system, game).map(|(core, _)| core)
+}
+
+/**
+ * Partie à reprendre la plus récente parmi les cœurs intégrés du système (état de reprise ou de
+ * l'historique de chacun) : cœur et fichier de l'état. Un état fait avec Yabause se reprend avec
+ * lui même si Beetle Saturn est choisi.
+ */
+fn latest_resume(system: &Value, game: &Value) -> Option<(String, PathBuf)> {
+    let (list, file) = system_cores(system, game)?;
+    list.into_iter()
+        .filter_map(|core| {
+            let (path, date) = crate::states::resume_point(&builtin::state_path(&core, &file), &builtin::history_dir(&core, &file))?;
+            Some((core, path, date))
+        })
+        // Égalité : le cœur choisi (premier de la liste).
+        .fold(None::<(String, PathBuf, f64)>, |best, next| match best {
+            Some(b) if b.2 >= next.2 => Some(b),
+            _ => Some(next),
+        })
+        .map(|(core, path, _)| (core, path))
 }
 
 /// Jeux de [games] (même système) avec une partie à reprendre : identifiants.
@@ -552,14 +574,23 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             let mut extra = Vec::new();
             // Cœur de l'état choisi, ou de la partie en ligne reprise (autre cœur intégré du système).
             let wanted = options.get("stateCore").or_else(|| options.get("resumeCore")).and_then(Value::as_str);
-            let core = chosen_core(system, game, wanted).unwrap_or(core);
+            // Reprise sans cœur demandé : celui de la partie la plus récente (autre cœur intégré possible).
+            let latest = if resume && wanted.is_none() && options.get("state").is_none() { latest_resume(system, game) } else { None };
+            let core = match &latest {
+                Some((latest_core, _)) => latest_core.clone(),
+                None => chosen_core(system, game, wanted).unwrap_or(core),
+            };
             if let Some(id) = options.get("state").and_then(Value::as_str) {
                 let path = crate::states::file_for(&game["id"], &builtin::history_dir(&core, &file), id).await?;
                 extra = vec!["--state-file".to_string(), path.to_string_lossy().into_owned()];
             } else if resume {
                 // Reprise : état de l'historique s'il est plus récent que l'état de reprise (ou seul).
                 let quick = builtin::state_path(&core, &file);
-                if let Some(path) = crate::states::resume_file(&quick, &builtin::history_dir(&core, &file)).filter(|p| *p != quick) {
+                let path = match latest {
+                    Some((_, path)) => Some(path),
+                    None => crate::states::resume_file(&quick, &builtin::history_dir(&core, &file)),
+                };
+                if let Some(path) = path.filter(|p| *p != quick) {
                     extra = vec!["--state-file".to_string(), path.to_string_lossy().into_owned()];
                 }
             }

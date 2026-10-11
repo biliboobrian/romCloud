@@ -280,6 +280,31 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         )
     }
 
+    // Reprise ou état fait avec un autre cœur que l'émulateur du système : il le remplace, après confirmation.
+    val switchPrompt by app.coreSwitchPrompt.collectAsStateWithLifecycle()
+    switchPrompt?.let { prompt ->
+        val scope = rememberCoroutineScope()
+        val core = prompt.target.libretroCore.orEmpty()
+        AlertDialog(
+            onDismissRequest = { app.coreSwitchPrompt.value = null },
+            title = { Text(stringResource(R.string.core_switch_title)) },
+            text = { Text(stringResource(R.string.core_switch_text, core, prompt.currentName ?: "—", prompt.target.name)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    app.coreSwitchPrompt.value = null
+                    app.settings.setPreferredPlayer(prompt.system.id, prompt.target.uniqueId)
+                    app.play(
+                        activity, prompt.system, prompt.game, resume = prompt.resume, stream = prompt.stream,
+                        streamMode = prompt.streamMode, state = prompt.state, core = prompt.core, coreSwitchConfirmed = true,
+                    )?.let { scope.launch { snackbar.showSnackbar(it) } }
+                }) { Text(stringResource(R.string.core_switch_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { app.coreSwitchPrompt.value = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
     // Android 14+ : l'émulateur (RetroArch…) doit être fermé à la main avant le lancement.
     val closePrompt by app.closeEmulatorPrompt.collectAsStateWithLifecycle()
     closePrompt?.let { prompt ->

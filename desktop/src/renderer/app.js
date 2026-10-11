@@ -1088,7 +1088,55 @@
   }
 
   /** Joue, en proposant d'abord de télécharger les BIOS du système absents du PC. */
-  async function playChecked(system, game, options) {
+  /** Même cœur, aux variantes près (« mupen64plus_next » / « mupen64plus_next_gles3 »). */
+  const sameCore = (a, b) => Boolean(a && b) && (a === b || a.startsWith(`${b}_`) || b.startsWith(`${a}_`));
+
+  /**
+   * Reprise ou état de l'historique faits avec un autre cœur que l'émulateur choisi pour le système :
+   * l'émulateur du système devient ce cœur (les états ne passent pas d'un cœur à l'autre), après
+   * confirmation. Renvoie faux si l'utilisateur annule.
+   */
+  async function confirmCoreSwitch(system, game, options) {
+    const target = options.stateCore || options.resumeCore
+      || (options.resume ? await call(rc.launcher.resumeCore, system, game).catch(() => null) : null);
+    if (!target) return true;
+    const opts = await call(rc.launcher.options, system).catch(() => null);
+    const current = opts?.options?.find((o) => o.id === opts.selected);
+    if (!opts || (current?.kind === 'builtin' && sameCore(current.core, target))) return true;
+    const next = opts.options.find((o) => o.kind === 'builtin' && sameCore(o.core, target));
+    if (!next) return true;
+    const label = (o) => (!o ? '?' : o.kind === 'builtin' ? (o.name ? t('emu.builtinApp', { name: o.name }) : t('emu.builtin', { core: o.core }))
+      : o.name || t(`emu.${o.kind}`));
+    return new Promise((resolve) => {
+      let confirmed = false;
+      modal({
+        title: t('coreSwitch.title'),
+        body: `<p>${esc(t('coreSwitch.text', { core: next.core, from: label(current), to: label(next) }))}</p>`,
+        buttons: [
+          { label: t('app.cancel'), kind: 'ghost', left: true },
+          {
+            label: t('coreSwitch.confirm'),
+            kind: 'primary',
+            onClick: () => {
+              confirmed = true;
+              call(rc.launcher.choose, system.id, next.id).catch(() => {}).then(() => resolve(true));
+            },
+          },
+        ],
+      });
+      // Fermeture sans confirmation (Annuler, clic à côté, Échap) : annulé.
+      const root = $('#modalRoot');
+      const watch = new MutationObserver(() => {
+        if (root.innerHTML) return;
+        watch.disconnect();
+        if (!confirmed) resolve(false);
+      });
+      watch.observe(root, { childList: true });
+    });
+  }
+
+  async function playChecked(system, game, options = {}) {
+    if ((options.resume || options.state) && !(await confirmCoreSwitch(system, game, options))) return;
     const missing = await call(rc.bios.missing, system).catch(() => []);
     if (!missing.length) return play(system, game, options);
     modal({

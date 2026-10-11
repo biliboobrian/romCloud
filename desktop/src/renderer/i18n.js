@@ -165,6 +165,9 @@
       'settings.biosHint': 'Empty: the “system” folder of RetroArch, or Documents\\RomCloud\\bios. Currently: {dir}',
 
       'detail.release': 'Released: {v}',
+      'coreSwitch.title': 'Change the emulator?',
+      'coreSwitch.text': 'This save was made with the {core} core. It can only be loaded with it: the emulator of the system will change from « {from} » to « {to} ».',
+      'coreSwitch.confirm': 'Change and resume',
       'detail.screenshot': 'Screenshot {n} of {total}',
       'detail.previous': 'Previous',
       'detail.next': 'Next',
@@ -592,6 +595,9 @@
       'settings.biosHint': 'Vide : dossier « system » de RetroArch, sinon Documents\\RomCloud\\bios. Actuellement : {dir}',
 
       'detail.release': 'Sortie : {v}',
+      'coreSwitch.title': 'Changer d’émulateur ?',
+      'coreSwitch.text': 'Cette sauvegarde a été faite avec le cœur {core}. Elle ne peut être chargée qu’avec lui : l’émulateur du système va passer de « {from} » à « {to} ».',
+      'coreSwitch.confirm': 'Changer et reprendre',
       'detail.screenshot': 'Capture {n} sur {total}',
       'detail.previous': 'Précédente',
       'detail.next': 'Suivante',

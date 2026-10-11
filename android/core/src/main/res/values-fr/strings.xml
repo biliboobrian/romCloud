@@ -361,6 +361,9 @@
     <string name="libretro_crash_text">%1$s (cœur %2$s) s’est arrêté brutalement. Partagez le rapport pour aider à corriger le problème, ou essayez un autre cœur ou RetroArch pour ce système.</string>
     <string name="action_share_report">Partager le rapport</string>
     <string name="libretro_menu_gamepad">Configurer la manette</string>
+    <string name="core_switch_title">Changer d’émulateur ?</string>
+    <string name="core_switch_text">Cette sauvegarde a été faite avec le cœur %1$s. Elle ne peut être chargée qu’avec lui : l’émulateur du système va passer de « %2$s » à « %3$s ».</string>
+    <string name="core_switch_confirm">Changer et reprendre</string>
     <string name="libretro_menu_filter_settings">Réglages du filtre</string>
     <string name="libretro_filter_settings_title">Réglages du filtre : %1$s</string>
     <string name="libretro_filter_sharpness">Netteté</string>
