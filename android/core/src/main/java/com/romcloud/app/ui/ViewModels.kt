@@ -602,6 +602,20 @@ class GameDetailViewModel(
      * Propose d'installer l'émulateur (dernière version de l'émulateur, APK du serveur RomCloud, ou Play Store) ;
      * renvoie un message d'erreur ou null.
      */
+    /** Ouvre l'émulateur externe choisi, sans jeu ; renvoie un message d'erreur ou null. */
+    fun openEmulator(activity: Activity): String? {
+        val player = _state.value.selectedPlayer ?: return null
+        return try {
+            app.launcher.openEmulator(activity, player)
+            null
+        } catch (e: MissingEmulatorException) {
+            app.missingEmulator.value = e.emulator
+            null
+        } catch (e: LaunchException) {
+            e.message
+        }
+    }
+
     fun installPlayer(player: Player): String? {
         val pkg = app.launcher.packageOf(player) ?: return I18n.get(R.string.err_unknown_package)
         app.missingEmulator.value = MissingEmulator(pkg, player.name)
