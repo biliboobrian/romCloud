@@ -680,7 +680,7 @@ function fillGameDialog(game, bust = '') {
     slot.classList.toggle('hidden', index > shots);
     $('img', slot).src = has ? mediaUrl(game, type, bust) : '';
     $('.btn span', slot).textContent = t(has ? 'game.replace' : 'game.addImage');
-    $('[data-media-delete]', slot).classList.toggle('hidden', !has);
+    $('[data-media-delete]', slot)?.classList.toggle('hidden', !has);
   }
   for (const label of $$('.media-slot [data-n]')) label.textContent = t('game.screenshotN', { n: label.dataset.n });
   $('#gameDownload').href = withKey(`/api/games/${game.id}/file`);
@@ -1441,7 +1441,8 @@ function bindEvents() {
       if (file) uploadMedia(slot.dataset.type, file);
       e.target.value = '';
     };
-    $('[data-media-delete]', slot).onclick = () => deleteMedia(slot.dataset.type);
+    const remove = $('[data-media-delete]', slot);
+    if (remove) remove.onclick = () => deleteMedia(slot.dataset.type);
   }
 }
 
