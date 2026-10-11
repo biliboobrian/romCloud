@@ -89,6 +89,14 @@ class Settings(context: Context) {
         prefs.edit().putBoolean("retroArchHelp.$packageName", dismissed).apply()
 
     /** Avertissement « fermez l'émulateur avant de jouer » masqué pour ce paquet. */
+    /** Licence (zRIF) d'un jeu PS Vita en .pkg, saisie dans sa fiche pour l'installer dans Vita3K. */
+    fun vitaLicense(gameId: Long): String = prefs.getString("vitaLicense.$gameId", "") ?: ""
+
+    fun setVitaLicense(gameId: Long, zrif: String) {
+        val value = zrif.filterNot { it.isWhitespace() }
+        prefs.edit().apply { if (value.isEmpty()) remove("vitaLicense.$gameId") else putString("vitaLicense.$gameId", value) }.apply()
+    }
+
     fun isCloseWarningDismissed(packageName: String) = prefs.getBoolean("closeWarning.$packageName", false)
 
     fun setCloseWarningDismissed(packageName: String, dismissed: Boolean) =

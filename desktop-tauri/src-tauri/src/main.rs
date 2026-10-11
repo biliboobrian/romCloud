@@ -27,6 +27,7 @@ mod screencast;
 mod settings;
 mod states;
 mod updater;
+mod vita3k;
 
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};

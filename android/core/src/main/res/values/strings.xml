@@ -594,4 +594,17 @@
     <string name="report_sent">Report sent to the server</string>
     <string name="report_queued">Report saved: it will be sent when the server is reachable</string>
     <string name="states_core">Emulator core: %1$s</string>
+    <string name="vita_title">Playing with Vita3K</string>
+    <string name="vita_step_firmware">Vita3K needs its firmware and fonts: on its first start, follow its setup wizard (PSVUPDAT.PUP and PSP2UPDAT.PUP from Sony’s website).</string>
+    <string name="vita_step_install_pkg">Install the game in Vita3K: menu “File › Install .pkg”, pick the file below, then paste its license (zRIF). The installation happens only once.</string>
+    <string name="vita_step_install_archive">Install the game in Vita3K: menu “File › Install .zip, .vpk”, then pick the file below. The installation happens only once.</string>
+    <string name="vita_step_format">Vita3K cannot install .%1$s files: use the .vpk, .zip or .pkg of the game.</string>
+    <string name="vita_step_play">Then “Play” starts the game directly in Vita3K (ID %1$s).</string>
+    <string name="vita_step_no_title_id">Game ID not found: once installed, start the game from Vita3K’s list.</string>
+    <string name="vita_file">File: %1$s</string>
+    <string name="vita_license">Game license (zRIF)</string>
+    <string name="vita_license_save">Save</string>
+    <string name="vita_license_copy">Copy</string>
+    <string name="vita_license_copied">License copied</string>
+    <string name="vita_license_hint">.pkg files are encrypted: their license (text often starting with “KO5i”) is taken from your own console (NoNpDrm, PKGj).</string>
 </resources>

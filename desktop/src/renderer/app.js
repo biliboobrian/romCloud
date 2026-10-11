@@ -1607,6 +1607,8 @@
       return t(`emu.${o.kind}`);
     };
     const catalogEmu = selected.kind === 'emulator' ? emulators.find((e) => e.id === selected.emuId) : null;
+    // Vita3K (sans ligne de commande personnalisée) : procédure d'installation du jeu.
+    const vita = catalogEmu?.id === 'vita3k' && !catalogEmu.customArgs ? await call(rc.launcher.vitaStatus, system, game).catch(() => null) : null;
     const meta = [
       game.releaseDate && t('detail.release', { v: game.releaseDate }),
       game.genre,
@@ -1660,6 +1662,7 @@
             ${selected.kind === 'retroarch' ? `<div><button class="btn ghost" id="raHelpBtn">${icon('info', 18)} ${esc(t('detail.configureRetroArch'))}</button></div>` : ''}
             ${selected.kind === 'builtin' && selected.installed ? `<div><button class="btn ghost" id="resetCoreBtn">${icon('refresh', 18)} ${esc(t('crash.reset'))}</button></div>` : ''}
             ${catalogEmu ? emulatorBlock(catalogEmu) : ''}
+            ${vita ? vitaProcedureHtml(vita) : ''}
             ${command ? `<div class="muted small">${esc(t('emulator.command'))}</div><div class="mono">${esc(command)}</div>` : ''}
           </div>
           ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
@@ -1688,6 +1691,11 @@
     $('#raHelpBtn')?.addEventListener('click', () => showRetroArchHelp(system));
     $('#resetCoreBtn')?.addEventListener('click', () => confirmResetCore(system.id, selected.core));
     if (catalogEmu) bindEmulatorBlock($('#main'), catalogEmu, () => renderGame());
+    $('#vitaLicenseSave')?.addEventListener('click', async () => {
+      await call(rc.launcher.setVitaLicense, game.id, $('#vitaLicense').value);
+      toast(t('vita.licenseSaved'));
+      renderGame();
+    });
     $('#deleteBtn')?.addEventListener('click', () => modal({
       title: t('detail.deleteTitle'),
       body: `<p>${esc(t('detail.deleteText'))}</p>`,
@@ -1710,7 +1718,7 @@
       : `<div class="bad">${esc(t('emulator.notFound'))}</div><div class="muted">${esc(t('emulator.defaultLocation', { path: emu.defaultLocation }))}</div>`;
     const args = emu.direct || emu.customArgs
       ? `<label class="muted">${esc(t(compact ? 'emulator.argsShort' : 'emulator.args'))}<input type="text" data-emu-args="${esc(emu.id)}" value="${esc(emu.customArgs)}" placeholder="${esc(emu.defaultArgs)}"></label>`
-      : `<div class="muted">${esc(t('emulator.manual', { name: emu.name }))}</div>`;
+      : emu.id === 'vita3k' ? '' : `<div class="muted">${esc(t('emulator.manual', { name: emu.name }))}</div>`;
     return `<div class="emu-block" data-emu="${esc(emu.id)}">
       ${compact ? '' : status}
       <div class="emu-actions">
@@ -1721,6 +1729,30 @@
       </div>
       ${emu.updatable ? '<div class="emu-update" data-emu-update></div>' : ''}
       ${args}
+    </div>`;
+  }
+
+  /**
+   * Procédure Vita3K selon le jeu : .vpk / .zip installés puis démarrés au premier lancement, .pkg
+   * installés avec leur licence (zRIF), jeu déjà installé démarré directement.
+   */
+  function vitaProcedureHtml(vita) {
+    const step = (key, vars) => `<li>${esc(t(key, vars))}</li>`;
+    const steps = [step('vita.stepFirmware')];
+    if (vita.installed) steps.push(step('vita.stepInstalled', { id: vita.titleId }));
+    else if (vita.format === 'vpk' || vita.format === 'zip') steps.push(step('vita.stepArchive'));
+    else if (vita.format === 'pkg' && !vita.titleId) steps.push(step('vita.stepNoTitleId'));
+    else if (vita.format === 'pkg') {
+      steps.push(`<li>${esc(t('vita.stepLicense'))}
+        <div class="line"><input type="text" id="vitaLicense" class="mono" value="${esc(vita.license || '')}" placeholder="KO5ifR1dQ+eHBl…">
+        <button class="btn" id="vitaLicenseSave">${esc(t('vita.licenseSave'))}</button></div>
+        ${vita.license ? `<div class="ok">${esc(t('vita.licenseKnown'))}</div>` : ''}</li>`);
+      steps.push(step('vita.stepPkgInstall', { id: vita.titleId }));
+    } else steps.push(step('vita.stepFormat', { format: vita.format }));
+    return `<div class="vita-steps">
+      <h4>${esc(t('vita.title'))}</h4>
+      <ol>${steps.join('')}</ol>
+      ${vita.appDir ? `<div class="muted small">${esc(t('vita.appDir', { dir: vita.appDir }))}</div>` : ''}
     </div>`;
   }
 

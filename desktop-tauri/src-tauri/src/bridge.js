@@ -106,6 +106,8 @@
       check: call('launcher:check'),
       resumableOnline: call('launcher:resumableOnline'),
       describe: call('launcher:describe'),
+      vitaStatus: call('launcher:vitaStatus'),
+      setVitaLicense: call('launcher:setVitaLicense'),
     },
     states: { list: call('states:list'), action: call('states:action') },
     emulators: {

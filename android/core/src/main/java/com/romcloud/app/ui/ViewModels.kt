@@ -35,6 +35,7 @@ import com.romcloud.app.launch.MissingEmulator
 import com.romcloud.app.launch.MissingEmulatorException
 import com.romcloud.app.libretro.LibretroActivity
 import com.romcloud.app.launch.RetroArchInfo
+import com.romcloud.app.launch.VitaGames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -486,6 +487,8 @@ class GameDetailViewModel(
         /** Fichiers à importer dans l'émulateur externe (clés, firmware) et leur dossier (Téléchargements/…). */
         val emulatorFiles: List<String> = emptyList(),
         val emulatorFilesFolder: String? = null,
+        /** Vita3K choisi : procédure d'installation du jeu (identifiant, format, licence d'un .pkg). */
+        val vita: VitaInfo? = null,
     ) {
         val canStream: Boolean get() = downloaded && selectedPlayer?.libretroCore != null && tvs.isNotEmpty()
     }
@@ -540,6 +543,10 @@ class GameDetailViewModel(
             val resumeCore = online?.core?.takeIf { c -> !localResume && selected?.libretroCore?.let { sameSaveCore(it, c) } != true }
                 ?.let { c -> cores.firstOrNull { sameSaveCore(it, c) } }
             val canResume = localResume || (downloaded && online != null)
+            val vita = selected?.takeIf { VitaGames.isVita3k(app.launcher.packageOf(it)) }?.let {
+                val titleId = withContext(Dispatchers.IO) { if (downloaded) VitaGames.titleId(file) else VitaGames.titleIdFromName(file.name) }
+                VitaInfo(titleId, file.extension.lowercase(), app.settings.vitaLicense(game.id))
+            }
             val savedStates = if (!downloaded || cores.isEmpty()) 0 else {
                 val local = withContext(Dispatchers.IO) {
                     cores.flatMap { core ->
@@ -565,6 +572,7 @@ class GameDetailViewModel(
                     savedStates = savedStates,
                     emulatorFiles = emulatorFiles.map { it.name },
                     emulatorFilesFolder = ExternalEmulatorFiles.folderName(system),
+                    vita = vita,
                 )
             }
         }
@@ -578,6 +586,13 @@ class GameDetailViewModel(
         val pkg = app.launcher.packageOf(player) ?: return I18n.get(R.string.err_unknown_package)
         app.missingEmulator.value = MissingEmulator(pkg, player.name)
         return null
+    }
+
+    /** Enregistre (vide : efface) la licence zRIF du jeu, à saisir dans Vita3K pour installer le .pkg. */
+    fun setVitaLicense(zrif: String) {
+        val game = _state.value.game ?: return
+        app.settings.setVitaLicense(game.id, zrif)
+        _state.update { s -> s.copy(vita = s.vita?.copy(license = app.settings.vitaLicense(game.id))) }
     }
 
     fun selectPlayer(player: Player) {

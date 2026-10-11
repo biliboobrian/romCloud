@@ -157,7 +157,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
             return
         }
 
-        val intent = AmStartParser.parse(player.amStartArguments, placeholders(file, packageOf(player)))
+        val intent = AmStartParser.parse(player.amStartArguments, placeholders(file, packageOf(player), player))
         if (quitOnExit(intent.component?.packageName)) intent.putExtra(RETROARCH_QUIT_EXTRA, "1")
         if (player.amStartArguments.contains("{file.uri}")) {
             // Autorise l'émulateur à lire le fichier via le FileProvider.
@@ -182,7 +182,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
     private fun mimeOf(file: File) =
         MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
 
-    private fun placeholders(file: File, packageName: String?) = mapOf(
+    private fun placeholders(file: File, packageName: String?, player: Player) = mapOf(
         "file.path" to (retroArchSafPath(file, packageName) ?: file.absolutePath),
         "file.uri" to fileUri(file).toString(),
         "file.mime" to mimeOf(file),
@@ -190,6 +190,8 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         "file.nameWithoutExtension" to file.nameWithoutExtension,
         "file.extension" to file.extension,
         "file.dir" to (file.parent ?: ""),
+        // Vita3K (modèles Daijishou « -r,{tags.vita_game_id} ») : jeu installé démarré par son identifiant.
+        "tags.vita_game_id" to (if ("{tags.vita_game_id}" in player.amStartArguments) VitaGames.titleId(file) ?: "" else ""),
     )
 
     /** Commande de lancement avec les valeurs réelles, pour vérifier cœur et chemin de la ROM. */
@@ -198,7 +200,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
             val status = if (LibretroCores(context).installed(core) != null) R.string.libretro_core_installed else R.string.libretro_core_on_demand
             return I18n.get(R.string.libretro_describe, core, I18n.get(status), file.absolutePath)
         }
-        val values = runCatching { placeholders(file, packageOf(player)) }
+        val values = runCatching { placeholders(file, packageOf(player), player) }
             .getOrElse { mapOf("file.path" to file.absolutePath) }
         val lines = player.amStartArguments.lines()
             .map { it.trim() }
