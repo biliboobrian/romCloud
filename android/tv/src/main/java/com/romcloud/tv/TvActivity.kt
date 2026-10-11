@@ -112,7 +112,8 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
         Box(Modifier.fillMaxSize()) {
             NavHost(navController = nav, startDestination = start) {
                 composable("lobby") {
-                    TvScreenBackground(Color.Black) {
+                    // Fond : couleur du système du jeu choisi, sinon noir.
+                    TvScreenBackground(com.romcloud.app.ui.lobbyBackground(app)) {
                         TvLobbyScreen(app, onMessage = message, onChooseGame = { nav.navigate("systems") })
                     }
                 }

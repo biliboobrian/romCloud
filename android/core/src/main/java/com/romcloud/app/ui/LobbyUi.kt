@@ -74,16 +74,35 @@ import kotlinx.coroutines.withContext
 // Multijoueurs : joueurs connectés (pastille présent / absent) et lobbies (téléphone et TV).
 // ---------------------------------------------------------------------------
 
-/** Façons de jouer en réseau possibles pour ce jeu (« netplay », « link »). */
+/**
+ * Émulateur LibretroDroid pour jouer ce jeu en réseau : celui choisi s'il convient, sinon le premier
+ * émulateur intégré compatible du système (émulateur externe choisi) ; null s'il n'y en a pas.
+ */
+fun RomCloudApp.netplayPlayer(system: GameSystem, fileName: String): com.romcloud.app.data.Player? {
+    val selected = launcher.selectedPlayer(system, fileName)
+    if (NetplayRules.coreAllows(selected?.libretroCore)) return selected
+    return system.players.firstOrNull { NetplayRules.coreAllows(it.libretroCore) }
+}
+
+/** Système jouable en réseau sur cet appareil : émulateur intégré compatible disponible, ou consoles reliées. */
+fun canPlayInLobby(app: RomCloudApp, system: GameSystem): Boolean =
+    (NetplayRules.systemAllows(system) && system.players.any { NetplayRules.coreAllows(it.libretroCore) }) ||
+        com.romcloud.app.netplay.LinkRules.kind(system) != null
+
+/** Façons de jouer en réseau possibles pour ce jeu (« netplay », « link »), avec l'émulateur intégré disponible. */
 fun RomCloudApp.lobbyModes(system: GameSystem, game: Game): List<String> =
-    listOfNotNull(NetplayRules.together(system, game, launcher.selectedPlayer(system, game.fileName))?.let { if (it == Together.LINK) "link" else "netplay" })
+    listOfNotNull(NetplayRules.together(system, game, netplayPlayer(system, game.fileName))?.let { if (it == Together.LINK) "link" else "netplay" })
 
 /** Jeu tel que le lobby le garde (identifiant, fichier, nombre de joueurs). */
 fun lobbyGameOf(system: GameSystem, game: Game) =
     LobbyGame(game.id, system.id, game.title, game.fileName, game.size, NetplayRules.maxPlayers(game.players))
 
-/** Jeu affiché dans un lobby : assez de joueurs pour ses membres (pas de filtre hors d'un lobby). */
-fun fitsLobby(game: Game, minPlayers: Int): Boolean = minPlayers == 0 || NetplayRules.maxPlayers(game.players) >= minPlayers
+/**
+ * Jeu affiché dans un lobby : système jouable en réseau par tous ses membres et assez de joueurs (pas
+ * de filtre hors d'un lobby).
+ */
+fun fitsLobby(game: Game, lobby: com.romcloud.app.netplay.LobbyState): Boolean =
+    lobby.mine == null || (lobby.allowsSystem(game.systemId) && NetplayRules.maxPlayers(game.players) >= lobby.minPlayers)
 
 /** Message d'erreur d'une action sur les lobbies. */
 private fun Throwable.lobbyMessage(): String = message ?: I18n.get(R.string.lobby_error)
@@ -110,6 +129,17 @@ suspend fun RomCloudApp.playLobby(context: Context, lobby: Lobby, system: GameSy
     }
     if (message == null) runCatching { lobbies.markPlaying() }
     return message
+}
+
+/** Fond du lobby : couleur du système du jeu choisi, sinon noir. */
+@Composable
+fun lobbyBackground(app: RomCloudApp): Color {
+    val state by app.lobbies.state.collectAsStateWithLifecycle()
+    val systemId = state.mine?.game?.systemId
+    val system by produceState<GameSystem?>(null, systemId) {
+        value = systemId?.let { id -> withContext(Dispatchers.IO) { runCatching { app.repository.system(id) }.getOrNull() } }
+    }
+    return system?.backgroundColor ?: Color.Black
 }
 
 @Composable

@@ -99,7 +99,7 @@
       usage: call('library:usage'),
     },
     connectivity: { state: call('connectivity:state'), check: call('connectivity:check'), onUpdate: on('connectivity:update') },
-    netplay: { peers: call('netplay:peers'), own: call('netplay:own'), systemAllows: call('netplay:systemAllows'), systemTogether: call('netplay:systemTogether'), onPeers: on('netplay:peers') },
+    netplay: { peers: call('netplay:peers'), own: call('netplay:own'), capabilities: call('netplay:capabilities'), systemAllows: call('netplay:systemAllows'), systemTogether: call('netplay:systemTogether'), onPeers: on('netplay:peers') },
     bios: { missing: call('bios:missing') },
     downloads: {
       start: call('downloads:start'),
@@ -114,6 +114,8 @@
       play: call('launcher:play'),
       resumable: call('launcher:resumable'),
       resumeCore: call('launcher:resumeCore'),
+      running: call('launcher:running'),
+      onExited: on('game:exited'),
       resumableIds: call('launcher:resumableIds'),
       check: call('launcher:check'),
       resumableOnline: call('launcher:resumableOnline'),

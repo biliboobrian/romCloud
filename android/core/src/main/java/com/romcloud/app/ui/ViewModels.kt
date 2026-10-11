@@ -127,9 +127,10 @@ fun RomCloudApp.hostNetplay(activity: Activity, system: GameSystem, game: Game):
         val hosted = NetplayProtocol.HostedGame(game.id, system.id, game.title, game.fileName, game.size, link.core, link.id)
         return play(activity, system, game, netplay = NetplayLaunch(host = true, game = hosted, saveCore = player?.libretroCore))
     }
-    val core = player?.libretroCore ?: return I18n.get(R.string.netplay_needs_builtin)
+    // Émulateur externe choisi : la partie à plusieurs se joue avec l'émulateur intégré disponible.
+    val core = netplayPlayer(system, game.fileName)?.libretroCore ?: return I18n.get(R.string.netplay_needs_builtin)
     val hosted = NetplayProtocol.HostedGame(game.id, system.id, game.title, game.fileName, game.size, core)
-    return play(activity, system, game, netplay = NetplayLaunch(host = true, game = hosted))
+    return play(activity, system, game, netplay = NetplayLaunch(host = true, game = hosted), core = core)
 }
 
 /**

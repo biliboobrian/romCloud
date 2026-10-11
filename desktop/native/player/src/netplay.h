@@ -85,6 +85,8 @@ class Netplay {
   std::vector<std::pair<std::string, std::string>> takeMessages();
   /** Fin de la partie depuis le menu : chacun continue seul (hôte : de nouveau proposée). */
   void leave();
+  /** Invité : l'hôte a quitté la partie (le jeu se ferme aussi chez les invités). */
+  bool hostLeft() const { return hostLeft_; }
   bool isLink() const { return !config_.link.empty(); }
   /** Consoles reliées par le cœur lui-même (noms des autres appareils), vide sinon. */
   std::string linked() const;
@@ -149,6 +151,8 @@ class Netplay {
   State state_ = State::Off;
   SOCKET socket_ = INVALID_SOCKET;
   bool host_ = false;
+  bool leaving_ = false;   // fin demandée ici (menu « Quitter la partie à plusieurs »)
+  bool hostLeft_ = false;  // invité : partie terminée par l'hôte
   unsigned localPort_ = 0, remotePort_ = 1, delay_ = 3;
   std::string partner_;
   uint32_t frame_ = 0, sent_ = 0;

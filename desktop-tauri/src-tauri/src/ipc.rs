@@ -124,13 +124,15 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "emulators:list" => launcher::list_emulators(),
         "netplay:peers" => netplay::peers(),
         "netplay:own" => netplay::own_state(),
+        "netplay:capabilities" => json!(netplay::capable_systems(&list(a, 0))),
+        "launcher:running" => json!(launcher::games_running()),
         "presence:activity" => {
             netplay::touch_activity();
             Value::Null
         }
         "lobby:list" => crate::lobby::list().await?,
         "lobby:create" => crate::lobby::create(&arg(a, 0)).await?,
-        "lobby:join" => crate::lobby::join(&str_arg(a, 0)).await?,
+        "lobby:join" => crate::lobby::join(&str_arg(a, 0), &arg(a, 1)).await?,
         "lobby:leave" => crate::lobby::leave(&str_arg(a, 0)).await?,
         "lobby:update" => crate::lobby::update(&str_arg(a, 0), &arg(a, 1)).await?,
         "lobby:status" => crate::lobby::status(&str_arg(a, 0), &str_arg(a, 1)).await?,

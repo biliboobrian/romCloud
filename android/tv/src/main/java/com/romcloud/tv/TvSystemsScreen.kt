@@ -219,7 +219,8 @@ fun TvSystemsScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                itemsIndexed(state.systems, key = { _, s -> s.id }) { index, system ->
+                // Lobby : seulement les systèmes que tous ses membres savent jouer en réseau.
+                itemsIndexed(state.systems.filter { lobbyState.allowsSystem(it.id) }, key = { _, s -> s.id }) { index, system ->
                     TvSystemCard(
                         system = system,
                         imageUrl = imageUrl(system),

@@ -228,7 +228,8 @@ fun SystemsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        items(state.systems, key = { it.id }) { system ->
+                        // Lobby : seulement les systèmes que tous ses membres savent jouer en réseau.
+                        items(state.systems.filter { lobbyState.allowsSystem(it.id) }, key = { it.id }) { system ->
                             SystemCard(system, imageUrl(system), usage.systems[system.id] ?: 0) { onOpenSystem(system.id) }
                         }
                     }

@@ -74,6 +74,8 @@ data class Lobby(
     val modes: List<String> = emptyList(),
     val started: Boolean = false,
     val members: List<LobbyMember> = emptyList(),
+    /** Systèmes jouables en réseau par tous les membres (émulateur intégré) ; null : aucune restriction. */
+    val systems: List<String>? = null,
 )
 
 @Serializable
@@ -88,13 +90,20 @@ data class LobbyState(val players: List<LobbyPlayer> = emptyList(), val lobbies:
     /** Joueurs minimum des jeux affichés dans un lobby (2 au moins) ; 0 hors d'un lobby. */
     val minPlayers: Int get() = mine?.let { maxOf(2, it.members.size) } ?: 0
     fun lobbiesOf(game: Game, systemId: String): List<Lobby> = lobbies.filter { it.game?.matches(game, systemId) == true }
+    /** Système jouable en réseau par tous les membres du lobby (toujours vrai hors d'un lobby). */
+    fun allowsSystem(systemId: String): Boolean = mine?.systems?.contains(systemId) ?: true
 }
 
 /**
  * Lobbies relus sur le serveur toutes les 3 s tant qu'un écran de l'application est affiché (profil
  * connecté) ; actions de cet appareil ; [closed] : lobby dissous ou quitté (retour à l'accueil).
  */
-class Lobbies(private val account: Account, private val presence: PlayPresence) {
+class Lobbies(
+    private val account: Account,
+    private val presence: PlayPresence,
+    /** Systèmes que cet appareil sait jouer en réseau avec LibretroDroid (envoyés au lobby). */
+    private val capableSystems: suspend () -> List<String>?,
+) {
     private val _state = MutableStateFlow(LobbyState(me = presence.lan.deviceId))
     val state: StateFlow<LobbyState> = _state.asStateFlow()
     private val _closed = MutableSharedFlow<Boolean>(extraBufferCapacity = 4)
@@ -161,12 +170,16 @@ class Lobbies(private val account: Account, private val presence: PlayPresence) 
     }
 
     suspend fun create(game: LobbyGame? = null, modes: List<String> = emptyList()) {
-        send { account.createLobby(me, game, modes) }
+        val systems = capableSystems()
+        send { account.createLobby(me, game, modes, systems) }
         refresh()
     }
 
     suspend fun join(id: String) {
-        if (_state.value.lobbies.find { it.id == id }?.members?.any { it.id == me } != true) send { account.joinLobby(id, me) }
+        if (_state.value.lobbies.find { it.id == id }?.members?.any { it.id == me } != true) {
+            val systems = capableSystems()
+            send { account.joinLobby(id, me, systems) }
+        }
         refresh()
     }
 

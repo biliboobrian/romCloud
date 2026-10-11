@@ -85,3 +85,21 @@ test('quitter, dissoudre, hôte parti : le lobby disparaît', () => {
   lobbies.create(b, { deviceId: 'bob-pc-0001' });
   assert.deepEqual(lobbies.list().lobbies.map((l) => l.members.length), [1, 1]);
 });
+
+test('systèmes jouables par tous (émulateur intégré) : jeu du lobby limité, appareil sans émulateur refusé', () => {
+  connect();
+  const lobby = lobbies.create(a, { deviceId: 'alice-phone-1', systems: ['snes', 'genesis', 'gba'] });
+  assert.deepEqual(lobby.systems, ['snes', 'genesis', 'gba']);
+  let l = lobbies.join(b, lobby.id, { deviceId: 'bob-pc-0001', systems: ['snes', 'gba', 'n64'] });
+  assert.deepEqual(l.systems, ['snes', 'gba']);
+  assert.throws(() => lobbies.update(a, lobby.id, { deviceId: 'alice-phone-1', game: { ...game, systemId: 'genesis' }, modes: ['netplay'] }), { status: 400 });
+  l = lobbies.update(a, lobby.id, { deviceId: 'alice-phone-1', game, modes: ['netplay'] });
+  assert.equal(l.game.systemId, 'snes');
+  // Appareil qui ne sait pas jouer le jeu choisi : refusé.
+  lobbies.leave(b, lobby.id, { deviceId: 'bob-pc-0001' });
+  assert.throws(() => lobbies.join(b, lobby.id, { deviceId: 'bob-pc-0001', systems: ['n64'] }), { status: 409 });
+  // Version précédente (systèmes non précisés) : aucune restriction de son côté.
+  l = lobbies.join(b, lobby.id, { deviceId: 'bob-pc-0001' });
+  assert.deepEqual(l.systems, ['snes', 'genesis', 'gba']);
+  assert.throws(() => lobbies.create(a, { deviceId: 'alice-phone-1', game: { ...game, systemId: 'psx' }, systems: ['snes'] }), { status: 400 });
+});

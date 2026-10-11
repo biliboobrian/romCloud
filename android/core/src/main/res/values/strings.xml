@@ -663,4 +663,5 @@
     <string name="vita_license_server">License offered by the server: change it for this device if needed.</string>
     <string name="vita_license_local">License saved on this device (empty the field and save to go back to the server’s one).</string>
     <string name="vita_license_hint">.pkg files are encrypted: their license (text often starting with “KO5i”) is taken from your own console (NoNpDrm, PKGj).</string>
+    <string name="netplay_host_left">%1$s left the game: the game is closed.</string>
 </resources>

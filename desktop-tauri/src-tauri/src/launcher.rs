@@ -161,8 +161,10 @@ fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()>
     let mut child = command.spawn().map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e.to_string() })))?;
     paths::allow_foreground(child.id());
     let started = paths::now_ms();
+    game_started();
     tauri::async_runtime::spawn(async move {
         let _ = child.wait().await;
+        game_exited(&game.as_ref().map(|g| g["id"].clone()).unwrap_or(Value::Null));
         if let Some(game) = game {
             account::add_playtime(game["id"].clone(), (paths::now_ms() - started) / 1000.0).await;
         }
@@ -378,6 +380,25 @@ pub fn check(system: &Value) -> Value {
     })
 }
 
+/// Jeux lancés par l'application encore ouverts (moteur intégré, émulateurs gérés ou externes).
+static RUNNING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Jeu lancé : compté jusqu'à sa fermeture ([game_exited]).
+pub fn game_started() {
+    RUNNING.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Jeu fermé : l'interface en est prévenue (« game:exited », statut du lobby de nouveau « en attente »).
+pub fn game_exited(game_id: &Value) {
+    let _ = RUNNING.try_update(std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst, |n| Some(n.saturating_sub(1)));
+    crate::events::emit("game:exited", json!({ "gameId": game_id, "running": RUNNING.load(std::sync::atomic::Ordering::SeqCst) }));
+}
+
+/// Nombre de jeux lancés par l'application encore ouverts.
+pub fn games_running() -> usize {
+    RUNNING.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// Partie à reprendre : moteur intégré choisi et état de reprise ou de l'historique pour ce jeu, fait
 /// avec l'un des cœurs intégrés du système (pas forcément celui choisi).
 pub fn resumable(system: &Value, game: &Value) -> bool {
@@ -546,16 +567,24 @@ async fn play_together(system: &Value, game: &Value, together: &Value) -> Result
         builtin::launch(system, game, &file, core, false, netplay::guest_join_args(join).await?, None).await?;
         return Ok(json!({ "manual": false }));
     }
-    if let Some(link) = netplay::link_for(system).filter(|_| !netplay::system_allows(system)) {
-        return play_link(system, game, link, None).await;
-    }
-    match prepare(system, game)? {
-        Plan::Builtin { core, file, .. } if netplay::core_allows(&core) => {
-            builtin::launch(system, game, &file, &core, false, netplay::host_args(system, game, &core), None).await?;
-            Ok(json!({ "manual": false }))
+    let Some(core) = netplay::netplay_core(system) else {
+        if let Some(link) = netplay::link_for(system) {
+            return play_link(system, game, link, None).await;
         }
-        _ => Err(needs_builtin()),
+        return Err(needs_builtin());
+    };
+    match prepare(system, game)? {
+        Plan::Builtin { core: chosen, file, .. } if chosen == core => {
+            builtin::launch(system, game, &file, &core, false, netplay::host_args(system, game, &core), None).await?;
+        }
+        // Émulateur externe choisi : la partie à plusieurs se joue avec le moteur intégré disponible.
+        _ => {
+            let main = library::file_for(system, game).to_string_lossy().into_owned();
+            let file = library::playlist(system, game).map(|p| p.to_string_lossy().into_owned()).unwrap_or(main);
+            builtin::launch(system, game, &file, &core, false, netplay::host_args(system, game, &core), None).await?;
+        }
     }
+    Ok(json!({ "manual": false }))
 }
 
 /// Lance le jeu (`resume` : reprend la partie sauvegardée, moteur intégré ; `netplay` : jeu à plusieurs).
