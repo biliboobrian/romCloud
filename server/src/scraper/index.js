@@ -117,6 +117,7 @@ export async function scrapeGame(gameId, source = 'auto') {
         meta = meta || { media: {} };
         meta.title ||= lr.title;
         meta.media.boxart ||= lr.media.boxart;
+        meta.media.coverFallback ||= lr.media.coverFallback;
         meta.media.screenshot ||= lr.media.screenshot;
         addScreenshots(meta, lr.media.screenshots);
         usedSources.push('libretro');
@@ -164,6 +165,7 @@ export async function scrapeGame(gameId, source = 'auto') {
     for (const key of ['developer', 'publisher', 'genre', 'releaseDate', 'players']) meta[key] ||= lb[key];
     if (lb.rating != null) ratings.set('launchbox', { source: 'launchbox', score: lb.rating, count: lb.ratingVotes });
     meta.media.boxart ||= lb.media.boxart;
+    meta.media.coverFallback ||= lb.media.coverFallback;
     meta.media.screenshot ||= lb.media.screenshot;
     addScreenshots(meta, lb.media.screenshots);
     meta.details = mergeDetails(meta.details, lb.details);
@@ -215,6 +217,7 @@ export async function scrapeGame(gameId, source = 'auto') {
             const lr = await scrapeLibretro({ system, fileName: `${wiki.title}.x`, crc32: null }).catch(() => null);
             if (lr) {
               meta.media.boxart ||= lr.media.boxart;
+              meta.media.coverFallback ||= lr.media.coverFallback;
               meta.media.screenshot ||= lr.media.screenshot;
               addScreenshots(meta, lr.media.screenshots);
               if (!usedSources.includes('libretro')) usedSources.push('libretro');
@@ -251,6 +254,8 @@ export async function scrapeGame(gameId, source = 'auto') {
   }
 
   const dir = gameMediaDir(row.id);
+  // Aucune vraie jaquette dans les sources : écran-titre, capture ou logo à la place.
+  meta.media.boxart ||= meta.media.coverFallback;
   const boxart = meta.media.boxart ? await downloadMedia(meta.media.boxart, dir, 'boxart') : null;
   // Jusqu'à 4 captures : la principale de la meilleure source, puis les autres trouvées. Rien de
   // téléchargé : celles du scraping précédent sont gardées.
