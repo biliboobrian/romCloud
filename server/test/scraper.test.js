@@ -10,7 +10,7 @@ process.env.SCREENSCRAPER_DEV_PASSWORD = 'pw';
 
 const { scrapeScreenScraper, screenscraperMaxThreads, QuotaError } = await import('../src/scraper/screenscraper.js');
 const { scrapeConcurrency } = await import('../src/jobs.js');
-const { libretroName, normalize, parseDat, scrapeLibretro, titleFromLibretroName } = await import('../src/scraper/libretro.js');
+const { libretroMetadata, libretroName, normalize, parseDat, scrapeLibretro, titleFromLibretroName } = await import('../src/scraper/libretro.js');
 const { titleFromFileName } = await import('../src/library.js');
 
 const sample = {
@@ -359,7 +359,7 @@ test('jeu d\'arcade renommé : retrouvé par les CRC des fichiers de l\'archive'
   assert.equal(isArcadeSystem({ libretroName: 'Nintendo - Game Boy', shortname: 'gb' }), false);
 });
 
-const { abbreviates, contentIdLabel, contentIdRegion, serialFromFileName, serialKey } = await import('../src/scraper/serial.js');
+const { abbreviates, acronymOf, contentIdLabel, contentIdRegion, initials, serialFromFileName, serialKey } = await import('../src/scraper/serial.js');
 
 test('numéro de série PlayStation lu dans le nom de fichier', () => {
   // Identifiant de contenu PS Vita (nom d'un dump NoNpDrm / VPK).
@@ -416,4 +416,29 @@ test('identifiant de contenu : libellé abrégé reconnu dans le titre, région 
   assert.equal(contentIdRegion('EP0001-PCSB00061_00-LUMINESELECTROSY.pkg'), 'Europe');
   assert.equal(contentIdRegion('UP0001-PCSE00009_00-LUMINESELECTROSY.pkg'), 'USA');
   assert.equal(contentIdRegion('Lumines.vpk'), null);
+});
+
+test('identifiant de contenu en sigle (« ACCVITA000000001 ») : jeu retrouvé par les initiales de son titre', async () => {
+  assert.equal(contentIdLabel('EP0001-PCSB00792_00-ACCVITA000000001.pkg'), 'ACCVITA');
+  assert.equal(acronymOf('ACCVITA'), 'ACC');
+  assert.equal(acronymOf('RAYMANORIGINS'), null);
+  assert.equal(acronymOf('WIPEOUT2048GAME0'), null);
+  assert.equal(initials("Assassin's Creed Chronicles"), 'ACC');
+  const dat = (games) => games
+    .map(([name, serial]) => `game (\n\tname "${name}"\n\tregion "USA"\n\tserial "${serial}"\n\trom ( name "${name}.vpk" size 1 crc 00000000 serial "${serial}" )\n)\n`)
+    .join('\n');
+  const serve = (games) => {
+    globalThis.fetch = async (url) => {
+      const ok = String(url).includes('/metadat/no-intro/') && String(url).includes('Vita');
+      return { ok, status: ok ? 200 : 404, text: async () => (ok ? dat(games) : '') };
+    };
+  };
+  const system = { libretroName: 'Sony - PlayStation Vita (sigle)' };
+  serve([["Assassin's Creed Chronicles (USA)", 'PCSE-00700'], ['Lumines - Electronic Symphony (USA)', 'PCSE-00009']]);
+  const meta = await libretroMetadata({ system, fileName: 'EP0001-PCSB00792_00-ACCVITA000000001.pkg' });
+  assert.equal(meta.title, "Assassin's Creed Chronicles");
+  // Plusieurs titres avec les mêmes initiales : aucun retenu.
+  serve([["Assassin's Creed Chronicles (USA)", 'PCSE-00700'], ['Ace Combat Collection (USA)', 'PCSE-00999']]);
+  const ambiguous = await libretroMetadata({ system: { libretroName: 'Sony - PlayStation Vita (sigles)' }, fileName: 'EP0001-PCSB00792_00-ACCVITA000000001.pkg' });
+  assert.equal(ambiguous?.title ?? null, null);
 });

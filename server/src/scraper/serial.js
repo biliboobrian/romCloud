@@ -26,9 +26,25 @@ export function contentIdLabel(fileName) {
   const name = String(fileName || '').replace(/\.[a-z0-9]+$/i, '');
   if (!CONTENT_ID.test(name)) return null;
   const label = name.replace(/^[^-]+-[^-]+-/, '').replace(/_/g, ' ').trim();
-  // Libellé complété par des zéros jusqu'à 16 caractères (« RAYMANORIGINS000 ») : remplissage retiré.
-  return (label.length === 16 ? label.replace(/(?<=[A-Z])0{2,}$/i, '') : label) || null;
+  // Libellé complété par des zéros jusqu'à 16 caractères (« RAYMANORIGINS000 », « ACCVITA000000001 ») :
+  // remplissage retiré.
+  return (label.length === 16 ? label.replace(/(?<=[A-Z])0{2,}[1-9]?$/i, '') : label) || null;
 }
+
+/**
+ * Sigle d'un libellé d'identifiant de contenu (« ACCVITA » : « ACC », Assassin's Creed Chronicles) :
+ * lettres seules, suffixe de la console (VITA, PSV, PSP) retiré ; null s'il reste moins de 3 lettres.
+ */
+export function acronymOf(label) {
+  const letters = String(label || '').toUpperCase();
+  if (!/^[A-Z]+$/.test(letters)) return null;
+  const acronym = letters.replace(/(?:PSVITA|VITA|PSV|PSP)$/, '');
+  return acronym.length >= 3 && acronym !== letters ? acronym : null;
+}
+
+/** Initiales des mots d'un titre (« Assassin's Creed Chronicles » : « ACC »). */
+export const initials = (title) =>
+  String(title || '').replace(/['’]/g, '').split(/[^A-Za-z0-9]+/).filter(Boolean).map((w) => w[0].toUpperCase()).join('');
 
 // Région de la boutique d'un identifiant de contenu (« EP0001-… » : Europe).
 const CONTENT_REGIONS = { EP: 'Europe', UP: 'USA', JP: 'Japan', HP: 'Asia', KP: 'Korea' };

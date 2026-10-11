@@ -1,6 +1,6 @@
 import { I18nError } from '../i18n.js';
 import { compactDetails } from './details.js';
-import { abbreviates, contentIdLabel, contentIdRegion, serialFromFileName, serialKey } from './serial.js';
+import { abbreviates, acronymOf, contentIdLabel, contentIdRegion, initials, serialFromFileName, serialKey } from './serial.js';
 
 // Scraper basé sur les miniatures Libretro (https://thumbnails.libretro.com) :
 // gratuit et sans compte, fournit jaquette, capture et écran-titre (pas de texte).
@@ -58,7 +58,7 @@ function regionScore(name) {
  * Jeu de la DAT désigné par le libellé abrégé d'un identifiant de contenu PS Vita / PSP
  * (« EP0001-PCSB00061_00-LUMINESELECTROSY » : « Lumines - Electronic Symphony »), quand son numéro
  * de série n'y figure pas (autre région) : de préférence de la même région, sinon le titre le
- * plus proche du libellé.
+ * plus proche du libellé ; à défaut, le seul titre dont les initiales forment le libellé (sigle).
  */
 function entryByContentLabel(meta, fileName) {
   const label = contentIdLabel(fileName);
@@ -67,7 +67,16 @@ function entryByContentLabel(meta, fileName) {
   const candidates = [...meta.byTitle].filter(([title]) => abbreviates(label, title)).map(([title, entry]) => ({ title, entry }));
   const sameRegion = (c) => (region && c.entry.fields.region?.includes(region) ? 0 : 1);
   candidates.sort((a, b) => sameRegion(a) - sameRegion(b) || a.title.length - b.title.length);
-  return candidates[0]?.entry ?? null;
+  if (candidates.length) return candidates[0].entry;
+  // Libellé en sigle suivi de la console (« ACCVITA » : « Assassin's Creed Chronicles ») : retenu
+  // seulement si un seul titre a ces initiales.
+  const acronym = acronymOf(label);
+  if (!acronym) return null;
+  const byInitials = [...meta.byTitle.values()].filter((e) => initials(titleFromLibretroName(e.name)) === acronym);
+  const titles = new Set(byInitials.map((e) => titleFromLibretroName(e.name)));
+  if (titles.size !== 1) return null;
+  byInitials.sort((a, b) => sameRegion({ entry: a }) - sameRegion({ entry: b }));
+  return byInitials[0];
 }
 
 /** Titre lisible depuis un nom Libretro : "Legend of Zelda, The - A Link to the Past (USA)". */
