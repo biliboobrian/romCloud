@@ -38,6 +38,7 @@
   X(PFNGLUNIFORM1IPROC, glUniform1i)                                            \
   X(PFNGLUNIFORM1FPROC, glUniform1f)                                            \
   X(PFNGLUNIFORM2FPROC, glUniform2f)                                            \
+  X(PFNGLUNIFORM4FPROC, glUniform4f)                                            \
   X(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer)                        \
   X(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray)                \
   X(PFNGLGENFRAMEBUFFERSPROC, glGenFramebuffers)                                \
@@ -413,11 +414,13 @@ static const char* kVertex150 =
   "  vec3 hitMax = (1.0 - max(mx4, e)) / (4.0 * mn4 - 4.0 - 1e-5);\n" \
   "  vec3 lobeRGB = max(-hitMin, hitMax);\n" \
   "  float lobe = max(-0.1875, min(max(lobeRGB.r, max(lobeRGB.g, lobeRGB.b)), 0.0)) * 0.87;\n" \
+  "  lobe = max(lobe * u_params.x, -0.2);\n" \
   "  return vec4((lobe * (b + d + f + h) + e) / (4.0 * lobe + 1.0), 1.0);\n" \
   "}\n"
 
 #define FILTER_FUNCTION                                                                  \
   "uniform int u_mode; uniform vec2 u_size; uniform vec2 u_scale;\n"                     \
+  "uniform vec4 u_params; uniform vec4 u_rect;\n"                                         \
   FILTER_EXTRA                                                                           \
   "float catmullRom(float x) {\n"                                                        \
   "  x = abs(x);\n"                                                                      \
@@ -427,6 +430,14 @@ static const char* kVertex150 =
   "}\n"                                                                                  \
   "bool same(vec4 a, vec4 b) { return distance(a.rgb, b.rgb) < 0.02; }\n"                \
   "vec4 filtered(sampler2D tex, vec2 uv) {\n"                                            \
+  "  vec2 du = dFdx(uv), dv = dFdy(uv);\n"                                               \
+  "  if ((u_mode == 5 || u_mode == 6) && u_params.z > 0.0) {\n"                          \
+  "    vec2 p = (gl_FragCoord.xy - u_rect.xy) / u_rect.zw * 2.0 - 1.0;\n"                \
+  "    vec2 q = p * (1.0 + u_params.z * 0.2 * (p.yx * p.yx));\n"                         \
+  "    if (abs(q.x) > 1.0 || abs(q.y) > 1.0) return vec4(0.0, 0.0, 0.0, 1.0);\n"         \
+  "    vec2 d = (q - p) * 0.5 * u_rect.zw;\n"                                            \
+  "    uv += du * d.x + dv * d.y;\n"                                                     \
+  "  }\n"                                                                                \
   "  if (u_mode == 0 || u_mode == 3) return TEX(tex, uv);\n"                             \
   "  if (u_mode == 8) return xbr(tex, uv);\n"                                            \
   "  if (u_mode == 9) return easu(tex, uv);\n"                                           \
@@ -458,20 +469,22 @@ static const char* kVertex150 =
   "  vec2 centerDist = fract(texel) - 0.5;\n"                                            \
   "  vec4 c = TEX(tex, uv);\n"                                                           \
   "  if (u_mode != 7) {\n"                                                               \
-  "    vec2 range = max(vec2(0.0), 0.5 - 0.5 / u_scale);\n"                              \
-  "    vec2 f = (centerDist - clamp(centerDist, -range, range)) * u_scale + 0.5;\n"      \
+  "    float width = u_mode == 1 ? u_params.x : 1.0;\n"                                  \
+  "    vec2 range = max(vec2(0.0), 0.5 - 0.5 * width / u_scale);\n"                      \
+  "    vec2 f = (centerDist - clamp(centerDist, -range, range)) * u_scale / width + 0.5;\n" \
   "    c = TEX(tex, (floor(texel) + f) / u_size);\n"                                     \
   "  }\n"                                                                                \
   "  if ((u_mode == 5 || u_mode == 6) && u_scale.y >= 2.0)\n"                            \
-  "    c.rgb *= mix(0.55, 1.1, sin(3.14159265 * fract(texel.y)));\n"                     \
+  "    c.rgb *= mix(1.0 - u_params.x, 1.0 + 0.22 * u_params.x, sin(3.14159265 * fract(texel.y)));\n" \
   "  if (u_mode == 6) {\n"                                                               \
   "    float m = mod(floor(gl_FragCoord.x), 3.0);\n"                                     \
-  "    vec3 mask = m < 1.0 ? vec3(1.0, 0.7, 0.7) : m < 2.0 ? vec3(0.7, 1.0, 0.7) : vec3(0.7, 0.7, 1.0);\n" \
-  "    c.rgb = min(c.rgb * mask * 1.3, vec3(1.0));\n"                                    \
+  "    float o = 1.0 - u_params.y;\n"                                                    \
+  "    vec3 mask = m < 1.0 ? vec3(1.0, o, o) : m < 2.0 ? vec3(o, 1.0, o) : vec3(o, o, 1.0);\n" \
+  "    c.rgb = min(c.rgb * mask * (1.0 + u_params.y), vec3(1.0));\n"                     \
   "  }\n"                                                                                \
   "  if (u_mode == 7 && min(u_scale.x, u_scale.y) >= 3.0) {\n"                           \
   "    vec2 line = step(vec2(1.0) - 1.0 / u_scale, fract(texel));\n"                     \
-  "    c.rgb *= 1.0 - 0.35 * max(line.x, line.y);\n"                                     \
+  "    c.rgb *= 1.0 - u_params.x * max(line.x, line.y);\n"                               \
   "  }\n"                                                                                \
   "  return c;\n"                                                                        \
   "}\n"
@@ -492,6 +505,19 @@ static const char* kFragment120 =
     FILTER_FUNCTION
     "varying vec2 v_uv; uniform sampler2D u_tex; uniform float u_alpha;\n"
     "void main() { vec4 c = filtered(u_tex, v_uv); gl_FragColor = vec4(c.rgb, mix(1.0, c.a, u_alpha)); }\n";
+
+std::vector<FilterParam> filterParams(Filter filter) {
+  const FilterParam scanlines{"scanlines", "fp_scanlines", 0, 0.45f, 0.0f, 0.9f, 0.05f};
+  const FilterParam curvature{"curvature", "fp_curvature", 2, 0.0f, 0.0f, 1.0f, 0.1f};
+  switch (filter) {
+    case Filter::Sharp: return {{"softness", "fp_softness", 0, 1.0f, 0.5f, 4.0f, 0.25f}};
+    case Filter::Crt: return {scanlines, curvature};
+    case Filter::CrtMask: return {scanlines, {"mask", "fp_mask", 1, 0.3f, 0.0f, 0.6f, 0.05f}, curvature};
+    case Filter::Lcd: return {{"grid", "fp_grid", 0, 0.35f, 0.0f, 0.9f, 0.05f}};
+    case Filter::Fsr: return {{"sharpness", "fp_sharpness", 0, 1.0f, 0.0f, 2.0f, 0.1f}};
+    default: return {};
+  }
+}
 
 static const char* kFilterIds[kFilterCount] = {"pixels", "sharp", "soft", "smooth", "epx", "crt", "crtmask", "lcd", "xbr", "fsr"};
 // Ordre du menu : lissages, agrandisseurs (EPX, xBR, FSR), puis imitations d'écrans.
@@ -565,6 +591,8 @@ bool Video::createProgram() {
   uniformMode_ = p_glGetUniformLocation(program_, "u_mode");
   uniformSize_ = p_glGetUniformLocation(program_, "u_size");
   uniformScale_ = p_glGetUniformLocation(program_, "u_scale");
+  uniformParams_ = p_glGetUniformLocation(program_, "u_params");
+  uniformRect_ = p_glGetUniformLocation(program_, "u_rect");
   if (p_glGenVertexArrays) p_glGenVertexArrays(1, &vao_);
   p_glGenBuffers(1, &vbo_);
   return true;
@@ -693,6 +721,9 @@ void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight,
     p_glUniform1i(uniformMode_, (int)filter_);
     p_glUniform2f(uniformSize_, texW, texH);
     p_glUniform2f(uniformScale_, scaleX, scaleY);
+    // Réglages du filtre ; emplacement de l'image dans la fenêtre (pixels, origine en bas) : courbure.
+    p_glUniform4f(uniformParams_, params_[0], params_[1], params_[2], params_[3]);
+    p_glUniform4f(uniformRect_, (winW - w) / 2.0f, (winH - h) / 2.0f, w, h);
     // Échantillons au centre des pixels (bicubique, EPX, LCD, pixels nets) : filtrage au plus proche.
     bool nearest = filter_ == Filter::Pixels || filter_ == Filter::Soft || filter_ == Filter::Epx || filter_ == Filter::Lcd ||
                    filter_ == Filter::Xbr || filter_ == Filter::Fsr;

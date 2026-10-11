@@ -370,6 +370,10 @@
     <string name="libretro_crash_text">%1$s (core %2$s) stopped unexpectedly. Share the report to help fix the problem, or try another core or RetroArch for this system.</string>
     <string name="action_share_report">Share the report</string>
     <string name="libretro_menu_gamepad">Set up the controller</string>
+    <string name="libretro_menu_filter_settings">Filter settings</string>
+    <string name="libretro_filter_settings_title">Filter settings: %1$s</string>
+    <string name="libretro_filter_sharpness">Sharpness</string>
+    <string name="libretro_filter_default">Default value</string>
     <string name="players_menu">Controller players</string>
     <string name="players_title">Controller players</string>
     <string name="players_press">Press a button on the controller of player %1$d</string>
