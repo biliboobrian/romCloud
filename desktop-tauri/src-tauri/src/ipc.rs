@@ -38,6 +38,14 @@ async fn pick(app: tauri::AppHandle, filters: Value, folder: bool) -> Result<Val
 pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> std::result::Result<Value, AppError> {
     let a = &args;
     Ok(match channel.as_str() {
+        // Barre de titre de la couleur du fond de l'écran affiché.
+        "window:titleColor" => {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                crate::title_bar::set_color(&window, &str_arg(a, 0))?;
+            }
+            Value::Null
+        }
         "settings:get" => settings::view(),
         "settings:save" => {
             settings::save(arg(a, 0));

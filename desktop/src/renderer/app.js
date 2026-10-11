@@ -193,6 +193,9 @@
     ({ systems: renderSystems, games: renderGames, game: renderGame, settings: renderSettings })[S.route.name]();
   }
 
+  /** Couleur donnée à la barre de titre de la fenêtre (envoyée seulement quand elle change). */
+  let titleColor = null;
+
   /**
    * Écran des systèmes sur fond noir ; liste des jeux et fiche d'un jeu sur la couleur du système
    * (réglages du serveur), surfaces et bordures éclaircies à partir d'elle.
@@ -205,6 +208,13 @@
     for (const [prop, light] of [['--bg', 0], ['--surface', 6], ['--surface-2', 12], ['--border', 20]]) {
       if (color && /^#[0-9a-f]{6}$/i.test(color)) style.setProperty(prop, light ? `color-mix(in srgb, ${color}, #fff ${light}%)` : color);
       else style.removeProperty(prop);
+    }
+    // Barre de titre de la fenêtre : même couleur que le fond affiché.
+    const rgb = getComputedStyle(document.body).backgroundColor.match(/\d+(\.\d+)?/g)?.slice(0, 3).map(Number);
+    const hex = rgb && `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+    if (hex && hex !== titleColor && rc.window?.titleColor) {
+      titleColor = hex;
+      rc.window.titleColor(hex).catch(() => {});
     }
   }
 
