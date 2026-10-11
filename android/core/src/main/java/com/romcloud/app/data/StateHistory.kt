@@ -92,12 +92,17 @@ class StateHistory(val dir: File, private val core: String) {
     }
 
     /**
-     * Ancien état unique du jeu (« Sauvegarder et quitter » d'une version précédente) : repris dans
-     * l'historique quand celui-ci est encore vide.
+     * Toute sauvegarde de la partie est dans l'historique : l'état de reprise [quick] (écrit en
+     * quittant, téléchargé depuis le profil — sauvegarde d'un autre appareil —, ou d'une version
+     * précédente) y est ajouté s'il n'y est pas déjà (même taille, date à 2 s près), daté de son
+     * fichier, avec l'appareil [device] qui l'a fait. Renvoie vrai s'il a été ajouté.
      */
-    fun adopt(legacy: File, device: String?, platform: String?) {
-        if (!legacy.isFile || dir.listFiles { f -> f.name.endsWith(".json") }.orEmpty().isNotEmpty()) return
-        runCatching { add(legacy.readBytes(), null, device, platform, legacy.lastModified()) }
+    fun record(quick: File, device: String?, platform: String?): Boolean {
+        if (!quick.isFile || quick.length() == 0L) return false
+        val date = quick.lastModified()
+        val size = quick.length()
+        if (list().any { Math.abs(it.createdAt - date) <= 2000 && stateFile(it.id).length() == size }) return false
+        return runCatching { add(quick.readBytes(), null, device, platform, date) }.isSuccess
     }
 
     fun setPinned(id: String, pinned: Boolean) {

@@ -16,6 +16,7 @@ import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
 import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
+import com.romcloud.app.data.StateHistory
 import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.libretro.LibretroActivity
@@ -120,10 +121,22 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         throw LaunchException(I18n.get(R.string.err_open_play_store))
     }
 
-    /** Partie à reprendre : émulateur intégré et état sauvegardé pour ce jeu et ce cœur. */
-    fun canResume(file: File, player: Player?): Boolean {
-        val core = player?.libretroCore ?: return false
-        return LibretroActivity.stateFile(context, core, file).isFile
+    /** Partie à reprendre : émulateur intégré et état de reprise ou de l'historique pour ce jeu et ce cœur. */
+    fun canResume(file: File, player: Player?): Boolean = resumeFile(file, player) != null
+
+    /**
+     * État à charger pour reprendre la partie : l'état de reprise (écrit en quittant), ou l'état de
+     * l'historique le plus récent s'il est plus récent ou que l'état de reprise manque.
+     */
+    fun resumeFile(file: File, player: Player?): File? {
+        val core = player?.libretroCore ?: return null
+        val quick = LibretroActivity.stateFile(context, core, file).takeIf { it.isFile }
+        val history = StateHistory(StateHistory.dir(context, core, file), core)
+        val latest = history.list().firstOrNull()
+        return when {
+            latest != null && (quick == null || latest.createdAt > quick.lastModified()) -> history.stateFile(latest.id)
+            else -> quick
+        }
     }
 
     /**
@@ -153,9 +166,15 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
         // Émulateur intégré : le cœur est téléchargé si besoin par l'activité de jeu elle-même.
         libretroCore?.let { core ->
+            // Reprise : état de l'historique s'il est plus récent que l'état de reprise (ou seul).
+            val resumeState = if (resume && state == null && core == player?.libretroCore) {
+                resumeFile(file, player)?.takeIf { it != LibretroActivity.stateFile(activityContext, core, file) }
+            } else {
+                null
+            }
             val intent = LibretroActivity.intent(
                 activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode, netplay,
-                state = state, autoUploadStates = settings.autoUploadStates,
+                state = state ?: resumeState, autoUploadStates = settings.autoUploadStates,
             )
             if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             activityContext.startActivity(intent)

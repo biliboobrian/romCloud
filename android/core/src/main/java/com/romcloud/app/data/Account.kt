@@ -393,8 +393,8 @@ class Account(private val context: Context, private val api: ApiClient, private 
      * Avant de jouer : les sauvegardes en ligne plus récentes que les fichiers de l'appareil (partie
      * continuée ailleurs) les remplacent. [files] : type (« state », « sram ») -> fichier.
      */
-    suspend fun downloadNewer(gameId: Long, core: String, files: Map<String, File>): List<String> {
-        val updated = mutableListOf<String>()
+    suspend fun downloadNewer(gameId: Long, core: String, files: Map<String, File>): List<OnlineSave> {
+        val updated = mutableListOf<OnlineSave>()
         // Variantes du même cœur (N64 : mupen64plus_next sous Windows, _gles3 sous Android) : la plus récente.
         val latest = saves(gameId).filter { sameSaveCore(it.core, core) }.groupBy { it.kind }.values.map { it.maxBy(OnlineSave::savedAtMillis) }
         for (save in latest) {
@@ -415,7 +415,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
                         file.setLastModified(save.savedAtMillis)
                     }
                 }
-                updated += save.kind
+                updated += save
             }
         }
         return updated

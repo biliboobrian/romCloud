@@ -570,7 +570,7 @@ class GameDetailViewModel(
                 val local = withContext(Dispatchers.IO) {
                     cores.flatMap { core ->
                         val history = historyFor(core, file)
-                        history.adopt(LibretroActivity.stateFile(app, core, file), app.account.deviceName, if (app.account.isTv) "androidtv" else "android")
+                        history.record(LibretroActivity.stateFile(app, core, file), app.account.deviceName, if (app.account.isTv) "androidtv" else "android")
                         history.list()
                     }
                 }

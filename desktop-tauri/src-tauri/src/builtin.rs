@@ -192,7 +192,15 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
     };
     let save_files: account::SaveFiles = vec![("state", state_path(core, file)), ("sram", sram_path(core, &rom))];
     let game_id = game.get("id").cloned().unwrap_or(Value::Null);
-    account::download_newer(&game_id, core, &save_files).await;
+    let downloaded = account::download_newer(&game_id, core, &save_files).await;
+    // Toute sauvegarde est dans l'historique : état de reprise téléchargé du profil (autre appareil)
+    // ou d'une version précédente, ajouté s'il n'y est pas.
+    let online_state = downloaded.iter().find(|s| s["kind"] == "state");
+    let (device, platform) = match online_state {
+        Some(s) => (s["device"].as_str().unwrap_or("").to_string(), s["platform"].as_str().unwrap_or("").to_string()),
+        None => (account::hostname(), "windows".to_string()),
+    };
+    crate::states::record_quick(&history_dir(core, file), &state_path(core, file), core, &device, &platform);
     // Historique des états : ceux des autres appareils du profil, proposés par le menu du moteur.
     let history = history_dir(core, file);
     states::prefetch(&game_id, core, &history).await;
