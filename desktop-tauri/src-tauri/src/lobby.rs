@@ -56,8 +56,9 @@ pub async fn create(options: &Value) -> Result<Value> {
     send("/api/account/play/lobbies", reqwest::Method::POST, Some(with_device(options.clone()))).await
 }
 
-pub async fn join(id: &str) -> Result<Value> {
-    send(&lobby_path(id, "/join")?, reqwest::Method::POST, Some(with_device(json!({})))).await
+/// Rejoint le lobby ; [systems] : systèmes que ce PC sait jouer en réseau (émulateur intégré).
+pub async fn join(id: &str, systems: &Value) -> Result<Value> {
+    send(&lobby_path(id, "/join")?, reqwest::Method::POST, Some(with_device(json!({ "systems": systems })))).await
 }
 
 pub async fn leave(id: &str) -> Result<Value> {

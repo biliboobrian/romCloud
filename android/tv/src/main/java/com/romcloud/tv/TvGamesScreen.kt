@@ -129,7 +129,7 @@ fun TvGamesScreen(
         }
     }
 
-    val games = state.visibleGames.filter { com.romcloud.app.ui.fitsLobby(it, lobbyState.minPlayers) }
+    val games = state.visibleGames.filter { com.romcloud.app.ui.fitsLobby(it, lobbyState) }
     val labels = RowLabels(
         downloaded = stringResource(R.string.row_downloaded),
         recent = stringResource(R.string.row_recent),

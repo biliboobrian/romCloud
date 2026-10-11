@@ -332,8 +332,31 @@ pub fn link_for(system: &Value) -> Option<&'static Link> {
 }
 
 /// Façon de jouer à plusieurs avec ce système : "netplay" (jeu synchronisé), "link" (consoles reliées) ou null.
+/**
+ * Cœur du moteur intégré pour jouer ce système en réseau : celui de l'émulateur choisi s'il convient,
+ * sinon le premier cœur intégré compatible proposé pour le système (émulateur externe choisi).
+ */
+pub fn netplay_core(system: &Value) -> Option<String> {
+    let known = [s(system, "id"), s(system, "shortname")].iter().any(|id| SYSTEMS.contains(&id.to_lowercase().as_str()));
+    if !known {
+        return None;
+    }
+    let opts = launcher::options(system);
+    let list = opts["options"].as_array().cloned().unwrap_or_default();
+    let allowed = |o: &&Value| o["kind"] == "builtin" && core_allows(s(o, "core"));
+    list.iter().find(|o| o["id"] == opts["selected"]).filter(allowed).or_else(|| list.iter().find(allowed)).map(|o| s(o, "core").to_string())
+}
+
+/**
+ * Systèmes que ce PC sait jouer à plusieurs avec un émulateur intégré disponible (même s'il n'est pas
+ * choisi), ou relier à une autre console : envoyés en créant ou en rejoignant un lobby.
+ */
+pub fn capable_systems(systems: &[Value]) -> Vec<Value> {
+    systems.iter().filter(|sys| !system_together(sys).is_null()).map(|sys| json!(s(sys, "id"))).collect()
+}
+
 pub fn system_together(system: &Value) -> Value {
-    if system_allows(system) {
+    if netplay_core(system).is_some() {
         json!("netplay")
     } else if link_for(system).is_some() {
         json!("link")

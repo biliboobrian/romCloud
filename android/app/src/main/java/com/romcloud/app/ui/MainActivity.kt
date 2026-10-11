@@ -144,7 +144,10 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
     Box(Modifier.fillMaxSize()) {
     NavHost(navController = nav, startDestination = start) {
         composable("lobby") {
-            LobbyScreen(app, snackbar, onBack = { nav.popBackStack() }, onChooseGame = { nav.navigate("systems") })
+            // Fond : couleur du système du jeu choisi, sinon noir.
+            SystemBackground(lobbyBackground(app)) {
+                LobbyScreen(app, snackbar, onBack = { nav.popBackStack() }, onChooseGame = { nav.navigate("systems") })
+            }
         }
         composable("systems") {
             val vm = viewModel { SystemsViewModel(app) }

@@ -211,6 +211,8 @@ class Player {
   bool comboLatched_ = false;
   std::string toast_;
   Uint64 toastUntil_ = 0;
+  std::string notice_;  // notification en haut de l'écran (invité arrivé)
+  Uint64 noticeUntil_ = 0;
   double nextFrame_ = 0;
 };
 
@@ -538,6 +540,11 @@ bool Player::handleEvents() {
       }
     }
   }
+  // Invité : l'hôte a quitté la partie, le jeu se ferme aussi (retour à l'application).
+  if (netplay_.hostLeft()) {
+    logf("Netplay : l'hôte a quitté la partie, fermeture du jeu");
+    quit_ = true;
+  }
   // Start + Select : ouvre le menu (une fois par appui, sinon il se rouvrirait aussitôt fermé).
   bool combo = input_.menuCombo();
   if (combo && !comboLatched_ && !menu_.isOpen()) openMenu();
@@ -567,7 +574,16 @@ void Player::present() {
   int canvasWidth = std::clamp(winH > 0 ? (int)std::lround((double)canvasHeight * winW / winH) : canvasHeight * 16 / 9,
                                canvasHeight * 11 / 9, canvasHeight * 32 / 9);
   if (canvasWidth != overlay_.width() || canvasHeight != overlay_.height()) overlay_.resize(canvasWidth, canvasHeight);
-  for (const auto& [key, name] : netplay_.takeMessages()) toast(trName(key.c_str(), name));
+  for (const auto& [key, name] : netplay_.takeMessages()) {
+    // Invité arrivé : notification en haut de l'écran (pas de confirmation demandée à l'hôte).
+    if (key == "netplay_joined" || key == "link_started") {
+      notice_ = trName(key.c_str(), name);
+      noticeUntil_ = SDL_GetTicks() + 4000;
+    } else {
+      toast(trName(key.c_str(), name));
+    }
+  }
+  const bool showNotice = SDL_GetTicks() < noticeUntil_ && !notice_.empty();
   bool showToast = SDL_GetTicks() < toastUntil_;
   if (!showToast && g.messageFrames > 0) {
     toast_ = g.message;
@@ -596,6 +612,12 @@ void Player::present() {
       overlay_.fill(x, 10, w, 20, rgba(0, 0, 0, 150));
       overlay_.text(x + 12, 16, text, 1, rgba(230, 230, 245));
     }
+    if (showNotice) {
+      std::string text = Canvas::fit(notice_, 1, overlay_.width() - 60);
+      int w = Canvas::measure(text, 1) + 28, x = (overlay_.width() - w) / 2, y = banner.empty() ? 10 : 36;
+      overlay_.roundRect((float)x, (float)y, (float)w, 24, 6, rgba(40, 34, 90, 230));
+      overlay_.text(x + 14, y + 8, text, 1, rgba(245, 245, 255));
+    }
     if (request) {
       std::string title = Canvas::fit(trName(netplay_.isLink() ? "link_request" : "netplay_request", requester), 2, overlay_.width() - 80);
       std::string hint = menu_.tr("netplay_request_hint");
@@ -615,7 +637,7 @@ void Player::present() {
     if (showToast && !toast_.empty()) drawToast();  // fin de la configuration d'une manette
     if (request) drawNetplay();
     video_.present(overlay_.data(), overlay_.width(), overlay_.height());
-  } else if ((showToast && !toast_.empty()) || !banner.empty() || request) {
+  } else if ((showToast && !toast_.empty()) || !banner.empty() || request || showNotice) {
     overlay_.clear();
     if (showToast && !toast_.empty()) drawToast();
     drawNetplay();

@@ -459,33 +459,26 @@ void Netplay::handleClient(SOCKET client) {
     closesocket(client);
     return;
   }
-  std::unique_lock<std::mutex> lock(mutex_);
-  requestPending_ = true;
-  requestName_ = name;
-  // Essai (ROMCLOUD_NETPLAY_ACCEPT) : invité accepté sans attendre l'utilisateur.
-  decision_ = getenv("ROMCLOUD_NETPLAY_ACCEPT") ? 1 : -1;
-  bool decided = decided_.wait_for(lock, std::chrono::seconds(60), [&] { return decision_ >= 0 || stopping_; });
-  bool accepted = decided && decision_ == 1 && !stopping_;
-  requestPending_ = false;
-  lock.unlock();
-  if (!accepted) {
+  if (stopping_) {
     reply(false, "refused");
     closesocket(client);
     return;
   }
+  // Invité accepté sans demander à l'hôte (lobby du multijoueur) : notification en haut de son écran.
+  if (config_.link.empty()) message("netplay_joined", name);
   reply(true, nullptr);
   if (!config_.link.empty() && !config_.packets) {
     // Liaison ouverte par le cœur (serveur Gambatte, ad hoc PPSSPP) : la connexion ne sert plus.
     closesocket(client);
     if (!config_.multi) announcing_ = false;
-    lock.lock();
+    std::lock_guard<std::mutex> lock(mutex_);
     linked_ = linked_.empty() ? name : linked_ + ", " + name;
     busy_ = true;
     messages_.emplace_back("link_started", name);
     return;
   }
   announcing_ = false;
-  lock.lock();
+  std::lock_guard<std::mutex> lock(mutex_);
   ready_ = client;
   readyHost_ = true;
   readyDelay_ = delay;
@@ -550,7 +543,9 @@ void Netplay::joinLoop() {
 }
 
 void Netplay::leave() {
+  leaving_ = true;
   end(true);
+  leaving_ = false;
   if (config_.role == Role::Host && listener_ != INVALID_SOCKET) announcing_ = true;
 }
 
@@ -588,6 +583,8 @@ void Netplay::end(bool notify) {
     if (config_.packets) logf("Netplay : fin de la liaison (%lu paquet(s) envoyé(s), %lu reçu(s))", packetsOut_, packetsIn_);
     else logf("Netplay : fin de la partie à l'image %u (%d écart(s) d'état recalé(s))", frame_, desyncs_);
     if (notify && state_ != State::Off) message(config_.link.empty() ? "netplay_ended" : "link_ended", partner_);
+    // Invité : partie terminée par l'hôte (jeu quitté, connexion perdue) : le jeu se ferme aussi ici.
+    if (notify && state_ != State::Off && !host_ && !leaving_) hostLeft_ = true;
   }
   state_ = State::Off;
   inFrame_ = false;

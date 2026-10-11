@@ -273,7 +273,7 @@ fun GamesScreen(
                     )
                 },
             ) {
-                val games = state.visibleGames.filter { fitsLobby(it, lobbyState.minPlayers) }
+                val games = state.visibleGames.filter { fitsLobby(it, lobbyState) }
                 when {
                     state.games.isEmpty() && state.loading -> Centered(stringResource(R.string.loading))
                     state.games.isEmpty() && state.error != null ->

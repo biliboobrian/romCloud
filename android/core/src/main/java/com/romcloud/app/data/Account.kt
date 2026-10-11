@@ -334,12 +334,20 @@ class Account(private val context: Context, private val api: ApiClient, private 
         return "/api/account/play/lobbies/$id$suffix"
     }
 
-    suspend fun createLobby(deviceId: String, game: com.romcloud.app.netplay.LobbyGame?, modes: List<String>) {
-        execute(request("/api/account/play/lobbies").post(lobbyBody(deviceId) { if (game != null) lobbyGameJson(game, modes)() }), 8)
+    private fun systemsJson(systems: List<String>?): kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {
+        if (systems != null) put("systems", JsonArray(systems.map { JsonPrimitive(it) }))
     }
 
-    suspend fun joinLobby(id: String, deviceId: String) {
-        execute(request(lobbyPath(id, "/join")).post(lobbyBody(deviceId)), 8)
+    /** [systems] : systèmes que l'appareil sait jouer en réseau avec un émulateur intégré. */
+    suspend fun createLobby(deviceId: String, game: com.romcloud.app.netplay.LobbyGame?, modes: List<String>, systems: List<String>? = null) {
+        execute(request("/api/account/play/lobbies").post(lobbyBody(deviceId) {
+            if (game != null) lobbyGameJson(game, modes)()
+            systemsJson(systems)()
+        }), 8)
+    }
+
+    suspend fun joinLobby(id: String, deviceId: String, systems: List<String>? = null) {
+        execute(request(lobbyPath(id, "/join")).post(lobbyBody(deviceId) { systemsJson(systems)() }), 8)
     }
 
     suspend fun leaveLobby(id: String, deviceId: String) {

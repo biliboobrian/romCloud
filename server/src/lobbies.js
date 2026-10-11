@@ -46,6 +46,23 @@ function gameOf(g) {
 const modesOf = (list) => [...new Set((Array.isArray(list) ? list : []).filter((m) => MODES.includes(m)))];
 
 /**
+ * Systèmes que l'appareil sait jouer en réseau avec un émulateur intégré (moteur de Windows,
+ * LibretroDroid) : liste envoyée en créant ou en rejoignant un lobby ; null : non précisée (version
+ * précédente de l'application, aucune restriction).
+ */
+const systemsOf = (list) => (Array.isArray(list) ? [...new Set(list.map((s) => text(s, 60)).filter(Boolean))] : null);
+
+/** Systèmes jouables par tous les membres (null : aucune restriction connue). */
+function commonSystems(lobby) {
+  let common = null;
+  for (const m of lobby.members) {
+    if (!m.systems) continue;
+    common = common ? common.filter((s) => m.systems.includes(s)) : [...m.systems];
+  }
+  return common;
+}
+
+/**
  * Membres dont l'appareil ne s'annonce plus depuis [LOBBY_GRACE_MS] : retirés ; lobby sans son hôte :
  * dissous.
  */
@@ -69,6 +86,8 @@ function view(lobby) {
     started: lobby.started,
     createdAt: lobby.createdAt,
     members: lobby.members.map((m) => ({ id: m.id, name: m.name, user: m.user, platform: m.platform, status: m.status, host: m.id === lobby.host })),
+    // Jeux possibles : seulement ces systèmes (émulateur intégré disponible chez tous les membres).
+    systems: commonSystems(lobby),
   };
 }
 
@@ -91,7 +110,7 @@ function leaveAll(deviceId) {
   }
 }
 
-const member = (dev) => ({ id: dev.id, name: dev.name, user: dev.user, platform: dev.platform, status: 'waiting', seenAt: Date.now() });
+const member = (dev, systems) => ({ id: dev.id, name: dev.name, user: dev.user, platform: dev.platform, status: 'waiting', seenAt: Date.now(), systems });
 
 /** Joueurs connectés (pastilles) et lobbies ouverts ; [now] : essais. */
 export function list(now = Date.now()) {
@@ -106,15 +125,18 @@ export function create(auth, body = {}) {
   leaveAll(dev.id);
   if (lobbies.size >= MAX_LOBBIES) throw new HttpError(429, 'errors.lobbyLimit');
   const modes = modesOf(body.modes);
+  const systems = systemsOf(body.systems);
+  const game = gameOf(body.game);
+  if (game && systems && !systems.includes(game.systemId)) throw new HttpError(400, 'errors.lobbyGameUnavailable');
   const lobby = {
     id: crypto.randomBytes(6).toString('hex'),
     host: dev.id,
-    game: gameOf(body.game),
+    game,
     modes,
     mode: modes.includes(body.mode) ? body.mode : modes[0] ?? null,
     started: false,
     createdAt: Date.now(),
-    members: [member(dev)],
+    members: [member(dev, systems)],
   };
   lobbies.set(lobby.id, lobby);
   return view(lobby);
@@ -124,9 +146,15 @@ export function create(auth, body = {}) {
 export function join(auth, id, body = {}) {
   const dev = device(auth, body.deviceId);
   const lobby = requireLobby(id);
-  if (!lobby.members.some((m) => m.id === dev.id)) {
+  const systems = systemsOf(body.systems);
+  const self = lobby.members.find((m) => m.id === dev.id);
+  if (self) {
+    if (systems) self.systems = systems;
+  } else {
+    // Jeu du lobby sans émulateur intégré sur cet appareil : il ne pourrait pas jouer.
+    if (lobby.game && systems && !systems.includes(lobby.game.systemId)) throw new HttpError(409, 'errors.lobbyGameUnsupported');
     leaveAll(dev.id);
-    lobby.members.push(member(dev));
+    lobby.members.push(member(dev, systems));
   }
   return view(lobby);
 }
@@ -148,7 +176,10 @@ export function update(auth, id, body = {}) {
   const lobby = requireLobby(id);
   requireHost(lobby, dev);
   if ('game' in body) {
-    lobby.game = gameOf(body.game);
+    const game = gameOf(body.game);
+    const systems = commonSystems(lobby);
+    if (game && systems && !systems.includes(game.systemId)) throw new HttpError(400, 'errors.lobbyGameUnavailable');
+    lobby.game = game;
     lobby.modes = modesOf(body.modes);
     lobby.mode = lobby.modes.includes(body.mode) ? body.mode : lobby.modes[0] ?? null;
     lobby.started = false;

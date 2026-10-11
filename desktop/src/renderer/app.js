@@ -209,8 +209,10 @@
    */
   function applySystemColor() {
     const { name, systemId } = S.route;
-    const color = (name === 'games' || name === 'game') && systemById(systemId)?.color;
-    document.body.classList.toggle('systems-screen', name === 'systems');
+    // Lobby : couleur du système du jeu choisi, sinon fond noir (comme l'écran des systèmes).
+    const lobbyColor = name === 'lobby' && S.lobby?.game ? systemById(S.lobby.game.systemId)?.color : null;
+    const color = ((name === 'games' || name === 'game') && systemById(systemId)?.color) || lobbyColor;
+    document.body.classList.toggle('systems-screen', name === 'systems' || (name === 'lobby' && !lobbyColor));
     const style = document.body.style;
     for (const [prop, light] of [['--bg', 0], ['--surface', 6], ['--surface-2', 12], ['--border', 20]]) {
       if (color && /^#[0-9a-f]{6}$/i.test(color)) style.setProperty(prop, light ? `color-mix(in srgb, ${color}, #fff ${light}%)` : color);
@@ -568,7 +570,9 @@
   }
 
   /** Systèmes proposés : hors ligne, seulement ceux dont des jeux sont sur le PC. */
-  const visibleSystems = () => (S.systemsOffline ? S.systems.filter((s) => S.localSystems.has(s.id)) : S.systems);
+  // Lobby : seulement les systèmes que tous ses membres savent jouer en réseau (émulateur intégré).
+  const visibleSystems = () => (S.systemsOffline ? S.systems.filter((s) => S.localSystems.has(s.id)) : S.systems)
+    .filter((s) => !S.lobby || lobbySystem(s.id));
 
   let searchTimer = null;
   function setSearch(query) {
@@ -1298,8 +1302,12 @@
   const lobbyLocked = () => Boolean(S.lobby) && !isLobbyHost();
   /** Joueurs minimum des jeux affichés dans un lobby (2 au moins). */
   const lobbyPlayers = () => (S.lobby ? Math.max(2, S.lobby.members.length) : 0);
-  /** Jeu jouable par les membres du lobby (nombre de joueurs du jeu suffisant). */
-  const fitsLobby = (game) => !S.lobby || maxPlayers(game.players) >= lobbyPlayers();
+  /** Système jouable en réseau par tous les membres du lobby (émulateur intégré chez chacun). */
+  const lobbySystem = (systemId) => !S.lobby?.systems || S.lobby.systems.includes(systemId);
+  /** Jeu jouable par les membres du lobby (système, nombre de joueurs du jeu suffisant). */
+  const fitsLobby = (game) => !S.lobby || (lobbySystem(game.systemId) && maxPlayers(game.players) >= lobbyPlayers());
+  /** Systèmes que ce PC sait jouer en réseau avec un émulateur intégré (envoyés au lobby). */
+  const capableSystems = () => call(rc.netplay.capabilities, S.systems).catch(() => null);
   /** Façons de jouer en réseau possibles pour ce jeu (netplay, liaison entre consoles). */
   const lobbyModes = (game) => [playKind(game)].filter(Boolean);
   const lobbyTitle = (lobby) => lobby.game?.title || t('lobby.new');
@@ -1344,11 +1352,12 @@
     if (S.route.name === 'lobby') renderLobby();
     else if (S.route.name === 'systems') $('#netplayBtn')?.replaceWith(...htmlNodes(multiplayerBtn(), showMultiplayer));
     if (S.multiplayerOpen) renderMultiplayer();
-    // Joueurs du lobby changés : jeux affichés (nombre de joueurs) à revoir.
-    const size = lobbyPlayers();
+    // Joueurs du lobby changés : systèmes et jeux affichés (nombre de joueurs, émulateurs) à revoir.
+    const size = `${lobbyPlayers()}|${S.lobby?.systems?.join(',') ?? ''}`;
     if (size !== S.lobbySize) {
       S.lobbySize = size;
       if (S.route.name === 'games') renderGamesBody();
+      if (S.route.name === 'systems' && !S.search.query) renderSystemsBody();
     }
   }
 
@@ -1360,18 +1369,28 @@
     return box.childNodes.length ? [...box.childNodes] : [document.createTextNode('')];
   }
 
-  /** « En jeu » tant que le moteur est ouvert : de retour en attente quand il se ferme. */
+  /**
+   * « En jeu » tant qu'un jeu lancé par l'application est ouvert : de retour en attente à sa fermeture
+   * (évènement « game:exited », et contrôle de secours à chaque relecture des lobbies).
+   */
   async function syncLobbyStatus() {
     const self = S.lobby?.members.find((m) => m.id === S.lobbies.me);
     if (!self || self.status !== 'playing') return;
-    // Le moteur met quelques secondes à s'annoncer après le lancement.
+    // Jeu en cours de lancement (téléchargement du cœur, invité qui attend la fin d'un téléchargement).
     if (Date.now() - (S.lobbyPlayingSince || 0) < 20000) return;
-    const own = await call(rc.netplay.own).catch(() => null);
-    if (own && !own.running) {
+    const running = await call(rc.launcher.running).catch(() => null);
+    if (running === 0) {
       await call(rc.lobby.status, S.lobby.id, 'waiting').catch(() => {});
       self.status = 'waiting';
     }
   }
+
+  rc.launcher.onExited?.(async ({ running }) => {
+    const self = S.lobby?.members.find((m) => m.id === S.lobbies.me);
+    if (!self || self.status !== 'playing' || running > 0) return;
+    await call(rc.lobby.status, S.lobby.id, 'waiting').catch(() => {});
+    await refreshLobbies();
+  });
 
   // Lobbies et pastilles : relus toutes les 3 s (profil connecté).
   setInterval(() => refreshLobbies(), 3000);
@@ -1438,7 +1457,7 @@
   /** Nouveau lobby (vierge, ou avec ce jeu) : ce PC en est l'hôte. */
   async function createLobby(game = null) {
     if (game) await refreshNetplaySystem(systemById(game.systemId));
-    const options = game ? { game: lobbyGameOf(game), modes: lobbyModes(game) } : {};
+    const options = { ...(game ? { game: lobbyGameOf(game), modes: lobbyModes(game) } : {}), systems: await capableSystems() };
     try {
       S.lobby = await call(rc.lobby.create, options);
       await refreshLobbies();
@@ -1456,7 +1475,7 @@
   async function openLobby(id) {
     const lobby = S.lobbies.lobbies.find((l) => l.id === id);
     try {
-      if (lobby && !lobby.members.some((m) => m.id === S.lobbies.me)) await call(rc.lobby.join, id);
+      if (lobby && !lobby.members.some((m) => m.id === S.lobbies.me)) await call(rc.lobby.join, id, await capableSystems());
       await refreshLobbies();
       $('#modalRoot').innerHTML = '';
       if (S.lobby) go({ name: 'lobby' });
@@ -1482,6 +1501,7 @@
     if (!lobby) return;
     const host = isLobbyHost(lobby);
     const hostMember = lobby.members.find((m) => m.host);
+    applySystemColor(); // jeu du lobby changé : couleur de son système
     setTopbar({ title: lobbyTitle(lobby), subtitle: t('lobby.hostedBy', { name: hostMember ? memberName(hostMember) : '?' }) });
     $('#backBtn').classList.toggle('hidden', !host);
     const game = await lobbyGame(lobby);

@@ -132,6 +132,7 @@ static const struct {
     {"netplay_waiting", "En attente de {name}…", "Waiting for {name}…"},
     {"netplay_playing", "À deux avec {name}", "Together with {name}"},
     {"netplay_request", "{name} veut rejoindre votre partie en joueur 2", "{name} wants to join your game as player 2"},
+    {"netplay_joined", "{name} a rejoint votre partie", "{name} joined your game"},
     {"netplay_request_hint", "A / Entrée : accepter   B / Échap : refuser", "A / Enter: accept   B / Esc: decline"},
     {"netplay_connecting", "Connexion à {name}…", "Joining {name}…"},
     {"netplay_started", "Partie à deux avec {name}", "Playing with {name}"},

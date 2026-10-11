@@ -449,8 +449,10 @@ pub async fn launch(app: &'static App, game: &Value, file: &str, extras: &[PathB
     paths::allow_foreground(child.id());
     let started = paths::now_ms();
     let game_id = game.get("id").cloned().unwrap_or(Value::Null);
+    crate::launcher::game_started();
     tauri::async_runtime::spawn(async move {
         let code = child.wait().await.ok().and_then(|s| s.code()).unwrap_or(0);
+        crate::launcher::game_exited(&game_id);
         account::add_playtime(game_id, (paths::now_ms() - started) / 1000.0).await;
         if code != 0 {
             account::report_error(&format!("player:{}", app.core), &format!("{} exit code {code}", app.core), app.last_log());

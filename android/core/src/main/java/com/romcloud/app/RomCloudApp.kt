@@ -87,7 +87,11 @@ class RomCloudApp : Application(), ImageLoaderFactory {
     val presence: PlayPresence by lazy { PlayPresence(this, account, account.deviceName, api.platform) }
 
     /** Multijoueurs : joueurs connectés et lobbies (relus tant qu'un écran est affiché). */
-    val lobbies: com.romcloud.app.netplay.Lobbies by lazy { com.romcloud.app.netplay.Lobbies(account, presence) }
+    val lobbies: com.romcloud.app.netplay.Lobbies by lazy {
+        com.romcloud.app.netplay.Lobbies(account, presence) {
+            runCatching { repository.systems().data }.getOrNull()?.filter { com.romcloud.app.ui.canPlayInLobby(this, it) }?.map { it.id }
+        }
+    }
 
     /** Activité de l'utilisateur (touche, toucher, manette) : « présent » pour les autres joueurs. */
     fun touchActivity() {

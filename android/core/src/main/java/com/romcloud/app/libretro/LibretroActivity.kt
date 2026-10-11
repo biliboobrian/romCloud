@@ -200,6 +200,8 @@ class LibretroActivity : ComponentActivity() {
     /** Problème de la partie par Internet (annonce ou relais), affiché dans le bandeau. */
     private var internetProblem by mutableStateOf<String?>(null)
     private var netplayRequest by mutableStateOf<Pair<NetplayProtocol.Join, CompletableDeferred<Boolean>>?>(null)
+    /** Invité arrivé (hôte) : notification affichée quelques secondes en haut de l'écran. */
+    private var joinNotice by mutableStateOf<String?>(null)
     private var netplayWaiting by mutableStateOf(false)
     /** Partie proposée, en attente d'un invité (hôte). */
     private var netplayOpen by mutableStateOf(false)
@@ -657,20 +659,13 @@ class LibretroActivity : ComponentActivity() {
             relaySession = session
             netplayHost = NetplayHost(
                 presence, launch.game.copy(session = session), coreFile,
-                ask = { join ->
-                    val answer = CompletableDeferred<Boolean>()
-                    netplayRequest = join to answer
-                    try {
-                        answer.await()
-                    } finally {
-                        netplayRequest = null
-                    }
-                },
+                // Invité accepté sans demander à l'hôte (lobby du multijoueur) : notification en haut.
+                ask = { true },
                 onStarted = { name, viaRelay ->
                     // Ad hoc de la PSP : toujours proposée aux autres consoles.
                     netplayOpen = link?.multi == true
                     netplayPartner = netplayPartner?.takeIf { link != null }?.let { "$it, $name" } ?: name
-                    toast = getString(if (link != null) R.string.link_started else R.string.netplay_started, name)
+                    joinNotice = getString(if (link != null) R.string.link_started else R.string.netplay_started, name)
                     // Câble ouvert par le cœur, invité par Internet : sa connexion au cœur passe par le relais.
                     if (viaRelay && link == LinkKind.GAME_LINK && session != null) {
                         lifecycleScope.tunnelHost({ account.relayRequest(session, Relay.CHANNEL_LINK, "host") }, LinkRules.GAMBATTE_PORT.toInt())
@@ -709,6 +704,13 @@ class LibretroActivity : ComponentActivity() {
             while (true) {
                 val status = Netplay.status()
                 netplayWaiting = status.waiting && netplayPartner != null && !menuOpen
+                if (status.state == Netplay.State.ENDED && netplayPartner != null && netplayHost == null) {
+                    // Invité : l'hôte a quitté la partie, le jeu se ferme aussi (retour à l'application).
+                    android.widget.Toast.makeText(this@LibretroActivity, getString(R.string.netplay_host_left, netplayPartner.orEmpty()), android.widget.Toast.LENGTH_LONG).show()
+                    netplayPartner = null
+                    finish()
+                    break
+                }
                 if (status.state == Netplay.State.ENDED && netplayPartner != null) {
                     toastMillis = ERROR_TOAST_MS
                     toast = getString(if (link != null) R.string.link_ended else R.string.netplay_ended, netplayPartner.orEmpty())
@@ -1195,6 +1197,19 @@ class LibretroActivity : ComponentActivity() {
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = if (streamingTo != null) 36.dp else 8.dp),
                 ) {
                     Text(text, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                }
+            }
+            joinNotice?.let { text ->
+                LaunchedEffect(text) {
+                    delay(4000)
+                    joinNotice = null
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp),
+                ) {
+                    Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 }
             }
             netplayRequest?.let { (join, answer) ->
