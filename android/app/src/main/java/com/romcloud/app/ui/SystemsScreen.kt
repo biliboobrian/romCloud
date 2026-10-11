@@ -3,6 +3,7 @@ package com.romcloud.app.ui
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -244,6 +245,8 @@ private fun SystemCard(system: GameSystem, imageUrl: String?, localSize: Long, o
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
+                        // Fond de l'image un peu plus clair que la carte, comme sous Windows.
+                        .background(Color.White.copy(alpha = 0.06f))
                         .padding(8.dp),
                 )
             }

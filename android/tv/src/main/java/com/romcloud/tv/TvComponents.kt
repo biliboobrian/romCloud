@@ -173,7 +173,8 @@ fun TvSystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Unit, mod
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .background(if (color != null) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant),
+                    // Fond de l'image un peu plus clair que la carte, comme sous Windows.
+                    .background(if (color != null) Color.White.copy(alpha = 0.06f) else MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
                 if (imageUrl != null) {

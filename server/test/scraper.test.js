@@ -359,7 +359,7 @@ test('jeu d\'arcade renommé : retrouvé par les CRC des fichiers de l\'archive'
   assert.equal(isArcadeSystem({ libretroName: 'Nintendo - Game Boy', shortname: 'gb' }), false);
 });
 
-const { serialFromFileName, serialKey } = await import('../src/scraper/serial.js');
+const { abbreviates, contentIdRegion, serialFromFileName, serialKey } = await import('../src/scraper/serial.js');
 
 test('numéro de série PlayStation lu dans le nom de fichier', () => {
   // Identifiant de contenu PS Vita (nom d'un dump NoNpDrm / VPK).
@@ -403,4 +403,14 @@ test('ScreenScraper : recherche par titre (homebrew), titre identique seulement'
   // Aucun nom identique : rien plutôt qu'un autre jeu.
   mockFetch(200, { response: { jeux: [jeux[0]] } });
   assert.equal(await searchScreenScraper({ system: {}, title: 'The Adventures of Gus and Rob' }), null);
+});
+
+test('identifiant de contenu : libellé abrégé reconnu dans le titre, région de la boutique', () => {
+  assert.equal(abbreviates('LUMINESELECTROSY', normalize('Lumines - Electronic Symphony (USA)')), true);
+  assert.equal(abbreviates('ASPHALTINJECTION', normalize('Asphalt - Injection (Europe)')), true);
+  assert.equal(abbreviates('LUMINESELECTROSY', normalize('Lumo (Europe)')), false);
+  assert.equal(abbreviates('LUMINESELECTROSY', normalize('Lumines (Europe)')), false);
+  assert.equal(contentIdRegion('EP0001-PCSB00061_00-LUMINESELECTROSY.pkg'), 'Europe');
+  assert.equal(contentIdRegion('UP0001-PCSE00009_00-LUMINESELECTROSY.pkg'), 'USA');
+  assert.equal(contentIdRegion('Lumines.vpk'), null);
 });

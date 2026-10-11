@@ -1,6 +1,6 @@
 import { I18nError } from '../i18n.js';
 import { compactDetails } from './details.js';
-import { serialFromFileName, serialKey } from './serial.js';
+import { abbreviates, contentIdLabel, contentIdRegion, serialFromFileName, serialKey } from './serial.js';
 
 // Scraper basé sur les miniatures Libretro (https://thumbnails.libretro.com) :
 // gratuit et sans compte, fournit jaquette, capture et écran-titre (pas de texte).
@@ -52,6 +52,22 @@ function regionScore(name) {
   const lower = name.toLowerCase();
   const i = REGION_PRIORITY.findIndex((r) => lower.includes(`(${r}`) || lower.includes(`, ${r}`));
   return i === -1 ? REGION_PRIORITY.length : i;
+}
+
+/**
+ * Jeu de la DAT désigné par le libellé abrégé d'un identifiant de contenu PS Vita / PSP
+ * (« EP0001-PCSB00061_00-LUMINESELECTROSY » : « Lumines - Electronic Symphony »), quand son numéro
+ * de série n'y figure pas (autre région) : de préférence de la même région, sinon le titre le
+ * plus proche du libellé.
+ */
+function entryByContentLabel(meta, fileName) {
+  const label = contentIdLabel(fileName);
+  if (!label) return null;
+  const region = contentIdRegion(fileName);
+  const candidates = [...meta.byTitle].filter(([title]) => abbreviates(label, title)).map(([title, entry]) => ({ title, entry }));
+  const sameRegion = (c) => (region && c.entry.fields.region?.includes(region) ? 0 : 1);
+  candidates.sort((a, b) => sameRegion(a) - sameRegion(b) || a.title.length - b.title.length);
+  return candidates[0]?.entry ?? null;
 }
 
 /** Titre lisible depuis un nom Libretro : "Legend of Zelda, The - A Link to the Past (USA)". */
@@ -214,6 +230,9 @@ export async function scrapeLibretro({ system, fileName, crc32 }) {
     const serial = serialFromFileName(fileName);
     const bySerial = serial && meta.bySerial.get(serialKey(serial))?.name;
     if (!found && bySerial) found = await findImages(system.libretroName, bySerial);
+    // Numéro de série d'une autre région : libellé abrégé de l'identifiant de contenu.
+    const byLabel = !found && !bySerial && entryByContentLabel(meta, fileName)?.name;
+    if (byLabel) found = await findImages(system.libretroName, byLabel);
   }
   if (!found) return null;
   const { box, snap, title } = found;
@@ -252,10 +271,13 @@ export async function libretroMetadata({ system, fileName, crc32 }) {
   const crc = crc32 ? crc32.toUpperCase() : null;
   const { meta: main } = await datIndex(system.libretroName);
   const fileSerial = serialFromFileName(fileName);
-  const game = (crc && main.byCrc.get(crc)) || main.byName.get(base) || main.byTitle.get(normalize(fileName))
+  const known = (crc && main.byCrc.get(crc)) || main.byName.get(base) || main.byTitle.get(normalize(fileName))
     || (fileSerial && main.bySerial.get(serialKey(fileSerial))) || null;
+  // Jeu d'une autre région retrouvé par le libellé de l'identifiant de contenu : le numéro de
+  // série reste celui du fichier.
+  const game = known || entryByContentLabel(main, fileName);
   const names = [...new Set([game?.name?.toLowerCase(), base].filter(Boolean))];
-  const serial = game?.serial || game?.fields.serial || fileSerial;
+  const serial = (known && (known.serial || known.fields.serial)) || fileSerial || game?.serial || game?.fields.serial;
   const files = await metaFiles(system.libretroName);
   const find = (index) =>
     (crc && index.byCrc.get(crc)) || names.map((n) => index.byName.get(n)).find(Boolean) || (serial && index.bySerial.get(serialKey(serial))) || null;
@@ -266,6 +288,8 @@ export async function libretroMetadata({ system, fileName, crc32 }) {
   const month = value('releasemonth', 'releasemonth');
   const users = Number(value('maxusers', 'users'));
   const esrb = value('esrb', 'esrb_rating');
+  // Région du fichier, plutôt que celle du jeu retrouvé par son libellé (autre région).
+  const region = known ? known.fields.region : contentIdRegion(fileName) || game?.fields.region;
   const meta = {
     title: game?.name ? titleFromLibretroName(game.name) : null,
     developer: value('developer', 'developer'),
@@ -277,7 +301,7 @@ export async function libretroMetadata({ system, fileName, crc32 }) {
       series: value('franchise', 'franchise'),
       ageRatings: esrb ? [{ type: 'ESRB', text: esrb }] : [],
       serial: serial || find(files.serial)?.serial || value('serial', 'serial'),
-      regions: game?.fields.region ? [game.fields.region] : [],
+      regions: region ? [region] : [],
       rumble: value('rumble', 'rumble') === '1' ? true : null,
       analog: value('analog', 'analog') === '1' ? true : null,
     }),

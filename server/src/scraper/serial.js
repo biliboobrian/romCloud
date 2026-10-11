@@ -28,3 +28,27 @@ export function contentIdLabel(fileName) {
   const label = name.replace(/^[^-]+-[^-]+-/, '').replace(/_/g, ' ').trim();
   return label || null;
 }
+
+// Région de la boutique d'un identifiant de contenu (« EP0001-… » : Europe).
+const CONTENT_REGIONS = { EP: 'Europe', UP: 'USA', JP: 'Japan', HP: 'Asia', KP: 'Korea' };
+
+/** Région de l'identifiant de contenu (« EP0001-PCSB00061_00-… » -> « Europe ») ; null sinon. */
+export function contentIdRegion(fileName) {
+  const name = String(fileName || '').replace(/\.[a-z0-9]+$/i, '');
+  return CONTENT_ID.test(name) ? CONTENT_REGIONS[name.slice(0, 2).toUpperCase()] ?? null : null;
+}
+
+/**
+ * Le libellé d'un identifiant de contenu, limité à 16 caractères et souvent abrégé
+ * (« LUMINESELECTROSY »), désigne-t-il le titre [compactTitle] (minuscules et chiffres seuls,
+ * « luminesselectronicsymphony ») ? Mêmes premières lettres, puis les suivantes dans l'ordre.
+ */
+export function abbreviates(label, compactTitle) {
+  const short = String(label || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (short.length < 4 || !compactTitle) return false;
+  const head = Math.min(6, short.length);
+  if (!compactTitle.startsWith(short.slice(0, head))) return false;
+  let i = head;
+  for (const c of compactTitle.slice(head)) if (c === short[i]) i++;
+  return i === short.length;
+}
