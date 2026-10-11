@@ -59,6 +59,22 @@ data class CloseEmulatorPrompt(
     val playerName: String,
 )
 
+/**
+ * Reprise ou état de l'historique faits avec un autre cœur que l'émulateur choisi pour le système :
+ * confirmation avant d'en faire l'émulateur du système ([target]), puis lancement avec ces options.
+ */
+data class CoreSwitchPrompt(
+    val system: GameSystem,
+    val game: Game,
+    val target: Player,
+    val currentName: String?,
+    val resume: Boolean,
+    val state: File?,
+    val core: String?,
+    val stream: StreamReceiver?,
+    val streamMode: StreamMode,
+)
+
 class GameLauncher(private val context: Context, private val settings: Settings) {
 
     private companion object {
@@ -121,21 +137,39 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         throw LaunchException(I18n.get(R.string.err_open_play_store))
     }
 
-    /** Partie à reprendre : émulateur intégré et état de reprise ou de l'historique pour ce jeu et ce cœur. */
-    fun canResume(file: File, player: Player?): Boolean = resumeFile(file, player) != null
+    /**
+     * Partie à reprendre : émulateur intégré choisi et état de reprise ou de l'historique pour ce jeu,
+     * fait avec l'un des cœurs intégrés du système (pas forcément celui choisi).
+     */
+    fun canResume(system: GameSystem, file: File, player: Player?): Boolean = latestResume(system, file, player) != null
 
     /**
-     * État à charger pour reprendre la partie : l'état de reprise (écrit en quittant), ou l'état de
-     * l'historique le plus récent s'il est plus récent ou que l'état de reprise manque.
+     * Partie à reprendre la plus récente parmi les cœurs intégrés du système (celui choisi d'abord) :
+     * cœur et état. Un état fait avec Yabause se reprend avec lui même si Beetle Saturn est choisi.
      */
-    fun resumeFile(file: File, player: Player?): File? {
-        val core = player?.libretroCore ?: return null
+    fun latestResume(system: GameSystem, file: File, player: Player?): Pair<String, File>? {
+        if (player?.libretroCore == null) return null
+        val cores = (listOfNotNull(player.libretroCore) + system.players.mapNotNull { it.libretroCore }).distinct()
+        var best: Triple<String, File, Long>? = null
+        for (core in cores) {
+            val (state, date) = resumePoint(core, file) ?: continue
+            if (best == null || date > best.third) best = Triple(core, state, date)
+        }
+        return best?.let { it.first to it.second }
+    }
+
+    /**
+     * État à charger pour reprendre la partie avec [core] et sa date : l'état de reprise (écrit en
+     * quittant), ou l'état de l'historique le plus récent s'il est plus récent ou que l'état de reprise manque.
+     */
+    private fun resumePoint(core: String, file: File): Pair<File, Long>? {
         val quick = LibretroActivity.stateFile(context, core, file).takeIf { it.isFile }
         val history = StateHistory(StateHistory.dir(context, core, file), core)
         val latest = history.list().firstOrNull()
         return when {
-            latest != null && (quick == null || latest.createdAt > quick.lastModified()) -> history.stateFile(latest.id)
-            else -> quick
+            latest != null && (quick == null || latest.createdAt > quick.lastModified()) -> history.stateFile(latest.id) to latest.createdAt
+            quick != null -> quick to quick.lastModified()
+            else -> null
         }
     }
 
@@ -161,17 +195,15 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
         // Partie à plusieurs : émulateur intégré seulement ; invité : cœur de l'hôte ; liaison : cœur de la liaison.
         // [core] : cœur imposé (état ou sauvegarde d'un autre cœur intégré du système).
-        val libretroCore = core ?: if (netplay != null && (!netplay.host || netplay.link != null)) netplay.game.core else player?.libretroCore
+        // Reprise sans cœur imposé : celui de la partie la plus récente (autre cœur intégré possible).
+        val latest = if (resume && state == null && core == null && netplay == null) latestResume(system, file, player) else null
+        val libretroCore = core ?: latest?.first ?: if (netplay != null && (!netplay.host || netplay.link != null)) netplay.game.core else player?.libretroCore
         if (netplay != null && libretroCore == null) throw LaunchException(I18n.get(R.string.netplay_needs_builtin))
 
         // Émulateur intégré : le cœur est téléchargé si besoin par l'activité de jeu elle-même.
         libretroCore?.let { core ->
             // Reprise : état de l'historique s'il est plus récent que l'état de reprise (ou seul).
-            val resumeState = if (resume && state == null && core == player?.libretroCore) {
-                resumeFile(file, player)?.takeIf { it != LibretroActivity.stateFile(activityContext, core, file) }
-            } else {
-                null
-            }
+            val resumeState = latest?.second?.takeIf { it != LibretroActivity.stateFile(activityContext, core, file) }
             val intent = LibretroActivity.intent(
                 activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode, netplay,
                 state = state ?: resumeState, autoUploadStates = settings.autoUploadStates,

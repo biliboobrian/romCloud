@@ -30,6 +30,7 @@ import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.data.sameSaveCore
 import com.romcloud.app.launch.CloseEmulatorPrompt
+import com.romcloud.app.launch.CoreSwitchPrompt
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulator
 import com.romcloud.app.launch.MissingEmulatorException
@@ -74,9 +75,22 @@ fun RomCloudApp.play(
     netplay: NetplayLaunch? = null,
     state: File? = null,
     core: String? = null,
+    coreSwitchConfirmed: Boolean = false,
 ): String? {
     val player = launcher.selectedPlayer(system, game.fileName)
     val file = library.launchFile(system, game, player)
+    // Reprise ou état faits avec un autre cœur intégré du système : il devient l'émulateur du
+    // système, après confirmation (un état ne se charge qu'avec le cœur qui l'a fait).
+    if (!coreSwitchConfirmed && netplay == null && (resume || state != null)) {
+        val target = core ?: if (resume) launcher.latestResume(system, file, player)?.first else null
+        val current = player?.libretroCore
+        if (target != null && (current == null || !sameSaveCore(current, target))) {
+            system.players.firstOrNull { p -> p.libretroCore?.let { sameSaveCore(it, target) } == true }?.let { next ->
+                coreSwitchPrompt.value = CoreSwitchPrompt(system, game, next, player?.name, resume, state, core, stream, streamMode)
+                return null
+            }
+        }
+    }
     // Émulateur externe à configurer (sauf émulateur absent : proposition d'installation ci-dessous).
     if (core == null && netplay == null) {
         gameIssues(system, game).firstOrNull { it.kind != GameIssue.Kind.EMULATOR_MISSING }?.let { return it.message }
@@ -416,7 +430,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
             val ids = app.library.downloadedIds(system, games)
             val resumable = games.filter { it.id in ids }.filter { game ->
                 val player = app.launcher.selectedPlayer(system, game.fileName)
-                app.launcher.canResume(app.library.launchFile(system, game, player), player)
+                app.launcher.canResume(system, app.library.launchFile(system, game, player), player)
             }.mapTo(mutableSetOf()) { it.id }
             LocalState(ids, app.library.missingBios(bios), resumable)
         }
@@ -552,7 +566,7 @@ class GameDetailViewModel(
             val emulatorFiles = withContext(Dispatchers.IO) { runCatching { app.library.exportForEmulators(system) }.getOrDefault(emptyList()) }
             val selected = app.launcher.selectedPlayer(system, game.fileName)
             val file = withContext(Dispatchers.IO) { app.library.launchFile(system, game, selected) }
-            val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(file, selected) }
+            val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(system, file, selected) }
             val cores = systemCores(system, selected)
             val onlineSaves = if (cores.isEmpty()) emptyList() else app.account.saves(game.id).filter { it.kind == "state" }
             // Partie en ligne du cœur choisi, sinon (plus récente) d'un autre cœur intégré du système.

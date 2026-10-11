@@ -370,6 +370,9 @@
     <string name="libretro_crash_text">%1$s (core %2$s) stopped unexpectedly. Share the report to help fix the problem, or try another core or RetroArch for this system.</string>
     <string name="action_share_report">Share the report</string>
     <string name="libretro_menu_gamepad">Set up the controller</string>
+    <string name="core_switch_title">Change the emulator?</string>
+    <string name="core_switch_text">This save was made with the %1$s core. It can only be loaded with it: the emulator of the system will change from « %2$s » to « %3$s ».</string>
+    <string name="core_switch_confirm">Change and resume</string>
     <string name="libretro_menu_filter_settings">Filter settings</string>
     <string name="libretro_filter_settings_title">Filter settings: %1$s</string>
     <string name="libretro_filter_sharpness">Sharpness</string>

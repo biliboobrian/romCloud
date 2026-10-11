@@ -108,11 +108,16 @@ pub fn latest(dir: &Path) -> Option<(PathBuf, f64)> {
  * l'état de l'historique s'il est plus récent ou que l'état de reprise manque ; None sans aucun état.
  */
 pub fn resume_file(quick: &Path, history: &Path) -> Option<PathBuf> {
+    resume_point(quick, history).map(|(file, _)| file)
+}
+
+/// Comme [resume_file], avec la date de l'état (ms) : comparaison entre les cœurs du système.
+pub fn resume_point(quick: &Path, history: &Path) -> Option<(PathBuf, f64)> {
     let quick_date = quick.is_file().then(|| crate::paths::mtime_ms(quick).unwrap_or(0.0));
     match (quick_date, latest(history)) {
-        (Some(q), Some((file, date))) if date > q => Some(file),
-        (Some(_), _) => Some(quick.to_path_buf()),
-        (None, Some((file, _))) => Some(file),
+        (Some(q), Some((file, date))) if date > q => Some((file, date)),
+        (Some(q), _) => Some((quick.to_path_buf(), q)),
+        (None, Some(point)) => Some(point),
         (None, None) => None,
     }
 }
