@@ -80,6 +80,16 @@
   window.romcloud = {
     settings: { get: call('settings:get'), save: call('settings:save') },
     window: { titleColor: call('window:titleColor') },
+    presence: { activity: call('presence:activity') },
+    lobby: {
+      list: call('lobby:list'),
+      create: call('lobby:create'),
+      join: call('lobby:join'),
+      leave: call('lobby:leave'),
+      update: call('lobby:update'),
+      status: call('lobby:status'),
+      dissolve: call('lobby:dissolve'),
+    },
     api: { test: call('api:test'), systems: call('api:systems'), games: call('api:games'), search: call('api:search') },
     library: {
       downloaded: call('library:downloaded'),
@@ -89,7 +99,7 @@
       usage: call('library:usage'),
     },
     connectivity: { state: call('connectivity:state'), check: call('connectivity:check'), onUpdate: on('connectivity:update') },
-    netplay: { peers: call('netplay:peers'), systemAllows: call('netplay:systemAllows'), systemTogether: call('netplay:systemTogether'), onPeers: on('netplay:peers') },
+    netplay: { peers: call('netplay:peers'), own: call('netplay:own'), systemAllows: call('netplay:systemAllows'), systemTogether: call('netplay:systemTogether'), onPeers: on('netplay:peers') },
     bios: { missing: call('bios:missing') },
     downloads: {
       start: call('downloads:start'),

@@ -123,6 +123,18 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         }
         "emulators:list" => launcher::list_emulators(),
         "netplay:peers" => netplay::peers(),
+        "netplay:own" => netplay::own_state(),
+        "presence:activity" => {
+            netplay::touch_activity();
+            Value::Null
+        }
+        "lobby:list" => crate::lobby::list().await?,
+        "lobby:create" => crate::lobby::create(&arg(a, 0)).await?,
+        "lobby:join" => crate::lobby::join(&str_arg(a, 0)).await?,
+        "lobby:leave" => crate::lobby::leave(&str_arg(a, 0)).await?,
+        "lobby:update" => crate::lobby::update(&str_arg(a, 0), &arg(a, 1)).await?,
+        "lobby:status" => crate::lobby::status(&str_arg(a, 0), &str_arg(a, 1)).await?,
+        "lobby:dissolve" => crate::lobby::dissolve(&str_arg(a, 0)).await?,
         "netplay:systemAllows" => json!(netplay::system_allows(&arg(a, 0))),
         "netplay:systemTogether" => netplay::system_together(&arg(a, 0)),
         "emulators:detect" => tokio::task::spawn_blocking(launcher::detect_emulators).await.map_err(|e| AppError::msg(e.to_string()))?,
