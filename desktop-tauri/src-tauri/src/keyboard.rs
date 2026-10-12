@@ -126,7 +126,8 @@ pub fn layout(keys: Value) -> Value {
 // Boutons de chaque console (comme PadLayouts de l'application Android) : bouton RetroPad -> nom
 // sur la console (français, anglais), dans l'ordre d'affichage ; les directions sont toujours
 // proposées. lx / ly, rx / ry : axes des sticks gauche et droit, pour la configuration des manettes
-// du moteur.
+// du moteur ; rx+ / rx- / ry+ / ry- : une direction du stick droit (boutons C de la Nintendo 64 :
+// un bouton ou le stick).
 type Pad = Vec<(&'static str, &'static str, &'static str)>;
 
 fn same(name: &'static str, label: &'static str) -> (&'static str, &'static str, &'static str) {
@@ -152,7 +153,7 @@ static PADS: LazyLock<HashMap<&'static str, Pad>> = LazyLock::new(|| {
     pads.insert("gameBoy", with(vec![same("b", "B"), same("a", "A")], vec![start_select()]));
     pads.insert("gba", with(vec![same("b", "B"), same("a", "A"), same("l", "L"), same("r", "R")], vec![start_select()]));
     pads.insert("snes", with(vec![same("b", "B"), same("a", "A"), same("y", "Y"), same("x", "X"), same("l", "L"), same("r", "R")], vec![start_select()]));
-    pads.insert("n64", with(vec![same("b", "A"), same("y", "B"), same("l2", "Z"), same("l", "L"), same("r", "R"), same("start", "Start")], vec![stick(), vec![("rx", "C gauche / droite", "C left / right"), ("ry", "C haut / bas", "C up / down")]]));
+    pads.insert("n64", with(vec![same("b", "A"), same("y", "B"), same("l2", "Z"), same("l", "L"), same("r", "R"), same("start", "Start")], vec![stick(), vec![("ry-", "C haut", "C up"), ("ry+", "C bas", "C down"), ("rx-", "C gauche", "C left"), ("rx+", "C droite", "C right")]]));
     pads.insert("psx", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L1"), same("r", "R1"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), left_stick(), right_stick()]));
     pads.insert("ps2", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L1"), same("r", "R1"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), left_stick(), right_stick()]));
     // GameCube (Dolphin) : A B X Y sous leur nom, gâchettes L / R sur L2 / R2, Z sur R, stick C à droite.
@@ -306,6 +307,8 @@ mod tests {
         assert!(console_buttons("perso", "inconnu", "fr").contains("r3=R3"));
         assert!(!console_buttons("gx4000", "cap32", "fr").contains("start"));
         assert_eq!(console_pad("n64", "mupen64plus_next"), "n64");
+        // Nintendo 64 : boutons C un par un (bouton ou stick droit poussé dans leur direction).
+        assert!(console_buttons("n64", "mupen64plus_next", "fr").ends_with("ry-=C haut,ry+=C bas,rx-=C gauche,rx+=C droite"));
         assert_eq!(console_pad("perso", "mesen-s"), "snes");
         assert_eq!(console_pad("ps2", "pcsx2"), "ps2");
         assert_eq!(console_pad("gc", "dolphin"), "gc");

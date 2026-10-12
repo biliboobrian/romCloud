@@ -18,11 +18,16 @@
 /** Applique les correspondances mémorisées pour le système ; avant l'ouverture des manettes. */
 void applySavedPadMappings();
 
-/** Étape : un bouton du RetroPad ([id]) ou un axe d'un stick ([stick] : 'X' ou 'Y' à gauche, 'x' ou 'y' à droite). */
+/**
+ * Étape : un bouton du RetroPad ([id]) ou un axe d'un stick ([stick] : 'X' ou 'Y' à gauche, 'x' ou
+ * 'y' à droite) ; [half] ('+' ou '-') : une seule direction du stick droit (bouton C de la Nintendo 64),
+ * donnée par un bouton ou par le stick poussé dans cette direction.
+ */
 struct PadStep {
   unsigned id = 0;
   char stick = 0;
   std::string label;
+  char half = 0;
 };
 
 class PadConfig {
