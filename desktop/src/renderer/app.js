@@ -2637,7 +2637,8 @@
     else if ((e.key === 'Escape' || (e.altKey && e.key === 'ArrowLeft')) && S.route.name !== 'systems' && !e.target.matches('input')) back();
   });
   // Bouton « précédent » de la souris (bouton 3) : fenêtre ouverte fermée, sinon retour, là où la
-  // flèche de retour est affichée. Navigation du navigateur intégré empêchée (boutons 3 et 4).
+  // flèche de retour est affichée ; bouton « suivant » (bouton 4) : clic sur ce qui est sous le
+  // pointeur. Navigation du navigateur intégré empêchée (boutons 3 et 4).
   const mouseHistoryButton = (e) => e.button === 3 || e.button === 4;
   document.addEventListener('mousedown', (e) => {
     if (mouseHistoryButton(e)) e.preventDefault();
@@ -2645,7 +2646,13 @@
   document.addEventListener('mouseup', (e) => {
     if (!mouseHistoryButton(e)) return;
     e.preventDefault();
-    if (e.button !== 3) return;
+    if (e.button === 4) {
+      const target = e.target instanceof Element ? e.target : null;
+      // Champ de saisie : sélectionné, comme au clic ; le reste : clic (mêmes actions qu'au bouton gauche).
+      if (target?.matches('input:not([type=checkbox]):not([type=radio]), textarea, select')) target.focus();
+      else target?.click();
+      return;
+    }
     if ($('#modalRoot').innerHTML) $('#modalRoot').innerHTML = '';
     else if (!$('#backBtn').classList.contains('hidden')) back();
   });

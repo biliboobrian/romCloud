@@ -39,6 +39,7 @@ add_executable(romcloud-player WIN32
   src/players.cpp
   src/netplay.cpp
   src/util.cpp
+  src/volumekeys.cpp
   src/font8x8.c
 )
 target_include_directories(romcloud-player PRIVATE third_party src)

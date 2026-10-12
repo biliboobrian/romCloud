@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "audio.h"
+#include "volumekeys.h"
 #include "canvas.h"
 #include "core.h"
 #include "history.h"
@@ -158,6 +159,16 @@ class Player {
   MenuState menuState() const;
   void openMenu();
   void closeMenu();
+  /** Volume du son changé de [percent] (touches de volume) : entendu aussitôt, mémorisé pour tous les émulateurs. */
+  void changeVolume(int percent) {
+    const int volume = std::clamp((int)std::lround(audio_.volume() * 100) + percent, 0, 100);
+    audio_.setVolume(volume / 100.0f);
+    global_.setSetting("romcloud_volume", std::to_string(volume));
+    // Panneau du son ouvert : sa valeur suit.
+    if (menu_.inSoundSettings()) menu_.openSoundSettings({{menu_.tr("volume"), audio_.volume(), 1.0f, 0.0f, 1.0f, 0.05f}});
+    toast(menu_.tr("sound") + " : " + std::to_string(volume) + " %");
+  }
+
   void toast(const std::string& text) {
     toast_ = text;
     toastUntil_ = SDL_GetTicks() + 2200;
@@ -558,6 +569,8 @@ bool Player::handleEvents() {
     logf("Netplay : l'hôte a quitté la partie, fermeture du jeu");
     quit_ = true;
   }
+  // Touches de volume du clavier (reçues pendant le traitement des messages ci-dessus) : son de RomCloud.
+  if (int steps = takeVolumeSteps()) changeVolume(steps * 5);
   // Start + Select : ouvre le menu (une fois par appui, sinon il se rouvrirait aussitôt fermé).
   bool combo = input_.menuCombo();
   if (combo && !comboLatched_ && !menu_.isOpen()) openMenu();
@@ -704,6 +717,8 @@ int Player::run() {
     g.api.deinit();
     return fail(menu_.tr("video_failed") + "\n" + error);
   }
+  // Touches de volume du clavier pour le son de RomCloud (pas en essai : fenêtre souvent cachée).
+  if (!hidden) startVolumeKeys(video_.window());
   input_.loadKeys(args_.keysFile);
   if (!args_.keysFile.empty()) {
     const size_t slash = args_.keysFile.find_last_of("/\\");
@@ -884,6 +899,7 @@ void Player::startNetplay() {
 void Player::shutdown() {
   netplay_.stop();
   g.netplay = nullptr;
+  stopVolumeKeys();
   video_.destroyCoreContext();
   g.api.unload_game();
   g.api.deinit();
