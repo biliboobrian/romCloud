@@ -74,6 +74,9 @@ static const struct {
     {"pad_config", "Configurer la manette", "Set up controller"},
     {"players", "Joueurs des manettes", "Controller players"},
     {"filter_settings", "Réglages du filtre", "Filter settings"},
+    {"sound", "Son", "Sound"},
+    {"sound_settings", "Son (tous les émulateurs)", "Sound (all emulators)"},
+    {"volume", "Volume", "Volume"},
     {"fp_softness", "Largeur de la transition", "Transition width"},
     {"fp_scanlines", "Lignes de balayage", "Scanlines"},
     {"fp_mask", "Masque RGB", "RGB mask"},
@@ -225,7 +228,7 @@ std::vector<Menu::Item> Menu::items(const MenuState& state) const {
   if (state.diskCount > 1 && !state.together) list.push_back(Item::Disk);
   list.push_back(Item::Filter);
   if (state.filterSettings) list.push_back(Item::FilterSettings);
-  list.insert(list.end(), {Item::Aspect, Item::Fullscreen});
+  list.insert(list.end(), {Item::Aspect, Item::Fullscreen, Item::Sound});
   if (state.netplay) list.push_back(Item::LeaveNetplay);
   list.insert(list.end(), {Item::SaveQuit, Item::Quit});
   return list;
@@ -258,6 +261,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
       return tr("aspect") + " : " + tr(names[state.aspect]);
     }
     case Item::Fullscreen: return tr("fullscreen") + " : " + tr(state.fullscreen ? "yes" : "no");
+    case Item::Sound: return tr("sound") + " : " + std::to_string(state.volume) + " %";
     case Item::LeaveNetplay: return tr("netplay_leave");
     case Item::SaveQuit: return tr("save_quit");
     case Item::Quit: return tr("quit");
@@ -265,8 +269,14 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
   return {};
 }
 
+void Menu::openSoundSettings(std::vector<FilterRow> rows) {
+  openFilterSettings(tr("sound"), std::move(rows));
+  sound_ = true;
+}
+
 void Menu::openFilterSettings(std::string filter, std::vector<FilterRow> rows) {
   screen_ = Screen::FilterSettings;
+  sound_ = false;
   filterName_ = std::move(filter);
   filterRows_ = std::move(rows);
   filterSelected_ = 0;
@@ -309,7 +319,8 @@ void Menu::renderFilterSettings(Canvas& c) const {
   const int top = c.height() - height;
   c.fill(0, top, c.width(), height, rgba(8, 9, 14, 215));
   int y = top + 14;
-  c.text(24, y, Canvas::fit(tr("filter_settings") + " — " + filterName_, 2, c.width() - 48), 2, kText);
+  const std::string title = sound_ ? tr("sound_settings") : tr("filter_settings") + " — " + filterName_;
+  c.text(24, y, Canvas::fit(title, 2, c.width() - 48), 2, kText);
   y += 34;
   const int barWidth = std::min(220, c.width() / 4), barX = c.width() - 24 - barWidth - 60;
   for (int i = 0; i < count; i++) {
@@ -419,6 +430,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
         case Item::FilterSettings: return MenuAction::FilterSettings;
         case Item::Aspect: return MenuAction::NextAspect;
         case Item::Fullscreen: return MenuAction::ToggleFullscreen;
+        case Item::Sound: return MenuAction::SoundSettings;
         case Item::LeaveNetplay: return MenuAction::LeaveNetplay;
         case Item::SaveQuit: return MenuAction::SaveQuit;
         case Item::Quit: return MenuAction::Quit;
