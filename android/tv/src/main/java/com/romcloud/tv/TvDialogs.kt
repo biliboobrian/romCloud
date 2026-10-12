@@ -94,23 +94,6 @@ fun DownloadDialog(
     )
 }
 
-/** Jeu présent mais BIOS du système absents : les télécharger avant de jouer ? */
-@Composable
-fun MissingBiosDialog(missingBios: List<BiosFile>, onDownloadAndPlay: () -> Unit, onPlay: () -> Unit, onDismiss: () -> Unit) {
-    val focus = rememberInitialFocus()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.bios_before_play_title)) },
-        text = { Text(stringResource(R.string.bios_before_play_text, missingBios.size, formatSize(missingBios.sumOf { it.size }))) },
-        confirmButton = {
-            TextButton(onClick = onDownloadAndPlay, modifier = Modifier.focusRequester(focus)) {
-                Text(stringResource(R.string.action_download_and_play))
-            }
-        },
-        dismissButton = { TextButton(onClick = onPlay) { Text(stringResource(R.string.action_play_anyway)) } },
-    )
-}
-
 @Composable
 fun CancelDownloadDialog(game: Game, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val focus = rememberInitialFocus()

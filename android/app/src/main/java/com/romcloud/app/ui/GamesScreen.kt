@@ -77,6 +77,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.romcloud.app.launch.PendingLaunch
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.data.Game
@@ -90,7 +91,7 @@ fun GamesScreen(
     viewModel: GamesViewModel,
     mediaUrl: (Game, String) -> String?,
     snackbar: SnackbarHostState,
-    autoLaunch: MutableSet<Long>,
+    autoLaunch: MutableMap<Long, PendingLaunch>,
     onBack: () -> Unit,
     onOpenGame: (Long) -> Unit,
     onOpenLobby: () -> Unit = {},
@@ -103,8 +104,6 @@ fun GamesScreen(
     var searching by rememberSaveable { mutableStateOf(false) }
     var askDownload by remember { mutableStateOf<Game?>(null) }
     var askCancel by remember { mutableStateOf<Game?>(null) }
-    // Jeu présent mais BIOS du système absents : proposer de les télécharger avant de jouer.
-    var askBios by remember { mutableStateOf<Game?>(null) }
     // Guide RetroArch ouvert après confirmation d'un téléchargement (jeu, guide, lancer ensuite ?)
     var postDownloadHelp by remember { mutableStateOf<Triple<Game, RetroArchInfo, Boolean>?>(null) }
     // Paysage : les filtres passent dans la barre du haut pour libérer une ligne.
@@ -169,7 +168,6 @@ fun GamesScreen(
             // Émulateur externe à configurer : la fiche du jeu explique quoi corriger.
             LocalStatus.Downloaded ->
                 if (viewModel.needsSetup(game)) onOpenGame(game.id)
-                else if (state.missingBios.isNotEmpty()) askBios = game
                 else viewModel.play(activity, game)?.let { scope.launch { snackbar.showSnackbar(it) } }
             is LocalStatus.Downloading -> askCancel = game
             else -> askDownload = game
@@ -372,7 +370,7 @@ fun GamesScreen(
                 TextButton(onClick = {
                     val help = viewModel.retroArchHelpFor(game)
                     // Avec le guide ouvert, le lancement attend sa fermeture (voir plus bas).
-                    if (launchAfter && help == null) autoLaunch += game.id else autoLaunch -= game.id
+                    if (launchAfter && help == null) autoLaunch[game.id] = PendingLaunch() else autoLaunch -= game.id
                     viewModel.download(game, withBios)
                     askDownload = null
                     if (help != null) postDownloadHelp = Triple(game, help, launchAfter)
@@ -397,36 +395,12 @@ fun GamesScreen(
                     if (statusOf(game) == LocalStatus.Downloaded) {
                         viewModel.play(activity, game)?.let { scope.launch { snackbar.showSnackbar(it) } }
                     } else {
-                        autoLaunch += game.id
+                        autoLaunch[game.id] = PendingLaunch()
                     }
                 }
             },
             onMessage = { scope.launch { snackbar.showSnackbar(it) } },
             onDontShowAgainChange = { viewModel.setRetroArchHelpDismissed(info.packageName, it) },
-        )
-    }
-
-    askBios?.let { game ->
-        val missingBios = state.missingBios
-        AlertDialog(
-            onDismissRequest = { askBios = null },
-            title = { Text(stringResource(R.string.bios_before_play_title)) },
-            text = {
-                Text(stringResource(R.string.bios_before_play_text, missingBios.size, formatSize(missingBios.sumOf { it.size })))
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    askBios = null
-                    autoLaunch += game.id
-                    viewModel.downloadBios(game)
-                }) { Text(stringResource(R.string.action_download_and_play)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    askBios = null
-                    viewModel.play(activity, game)?.let { scope.launch { snackbar.showSnackbar(it) } }
-                }) { Text(stringResource(R.string.action_play_anyway)) }
-            },
         )
     }
 

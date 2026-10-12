@@ -29,11 +29,13 @@ import com.romcloud.app.data.StorageUsage
 import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.data.sameSaveCore
+import com.romcloud.app.launch.BiosPrompt
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.CoreSwitchPrompt
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulator
 import com.romcloud.app.launch.MissingEmulatorException
+import com.romcloud.app.launch.PendingLaunch
 import com.romcloud.app.libretro.LibretroActivity
 import com.romcloud.app.launch.GameIssue
 import com.romcloud.app.launch.GameIssues
@@ -62,7 +64,8 @@ fun RomCloudApp.gameIssues(system: GameSystem, game: Game): List<GameIssue> {
  * Lance un jeu déjà téléchargé ; renvoie un message d'erreur ou null.
  * Si l'émulateur n'est pas installé, la proposition d'installation est affichée à la place ;
  * s'il doit être fermé d'abord (Android 14+), l'avertissement correspondant est affiché
- * (le lancement reprend avec [emulatorClosed] = true).
+ * (le lancement reprend avec [emulatorClosed] = true). [missingBios] : BIOS du système absents de
+ * l'appareil, proposés au téléchargement avant le lancement (le jeu est lancé à la fin, mêmes options).
  */
 fun RomCloudApp.play(
     activity: Activity,
@@ -76,6 +79,7 @@ fun RomCloudApp.play(
     state: File? = null,
     core: String? = null,
     coreSwitchConfirmed: Boolean = false,
+    missingBios: List<BiosFile> = emptyList(),
 ): String? {
     val player = launcher.selectedPlayer(system, game.fileName)
     val file = library.launchFile(system, game, player)
@@ -86,10 +90,15 @@ fun RomCloudApp.play(
         val current = player?.libretroCore
         if (target != null && (current == null || !sameSaveCore(current, target))) {
             system.players.firstOrNull { p -> p.libretroCore?.let { sameSaveCore(it, target) } == true }?.let { next ->
-                coreSwitchPrompt.value = CoreSwitchPrompt(system, game, next, player?.name, resume, state, core, stream, streamMode)
+                coreSwitchPrompt.value = CoreSwitchPrompt(system, game, next, player?.name, resume, state, core, stream, streamMode, missingBios)
                 return null
             }
         }
+    }
+    // BIOS absents : les télécharger d'abord ? (lancement à la fin, reprise et état compris).
+    if (missingBios.isNotEmpty() && netplay == null) {
+        biosPrompt.value = BiosPrompt(system, game, missingBios, PendingLaunch(resume, state, core, stream, streamMode))
+        return null
     }
     // Émulateur externe à configurer (sauf émulateur absent : proposition d'installation ci-dessous).
     if (core == null && netplay == null) {
@@ -496,7 +505,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
     /** [resume] : reprend la partie sauvegardée dans l'émulateur intégré. */
     fun play(activity: Activity, game: Game, resume: Boolean = false): String? {
         val system = _state.value.system ?: return I18n.get(R.string.err_system_not_found)
-        return app.play(activity, system, game, resume = resume)
+        return app.play(activity, system, game, resume = resume, missingBios = _state.value.missingBios)
     }
 }
 
@@ -762,7 +771,7 @@ class GameDetailViewModel(
                 return@launch
             }
             // Chargé avec le cœur qui l'a créé.
-            app.play(activity, system, game, state = file, core = state.core)?.let(onMessage)
+            app.play(activity, system, game, state = file, core = state.core, missingBios = s.missingBios)?.let(onMessage)
         }
     }
 
@@ -773,7 +782,7 @@ class GameDetailViewModel(
         val game = s.game ?: return I18n.get(R.string.game_not_found)
         // Reprise d'une partie faite avec un autre cœur intégré : lancée avec lui.
         val core = s.resumeCore?.takeIf { resume }
-        return app.play(activity, system, game, resume = resume, stream = tv, streamMode = mode, core = core)
+        return app.play(activity, system, game, resume = resume, stream = tv, streamMode = mode, core = core, missingBios = s.missingBios)
     }
 
     /** Appareils RomCloud du réseau local (jeu à plusieurs). */
