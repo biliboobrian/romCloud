@@ -47,7 +47,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
@@ -1058,8 +1058,10 @@ class LibretroActivity : ComponentActivity() {
         axisButtons.clear()
     }
 
-    override fun dispatchKeyEvent(original: KeyEvent): Boolean {
-        val event = gamepadButtonEvent(original)
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean = dispatchGameKey(gamepadButtonEvent(event))
+
+    /** Touche (de manette, déjà convertie par [gamepadButtonEvent]) : configuration, joueurs, menu ou jeu. */
+    private fun dispatchGameKey(event: KeyEvent): Boolean {
         mappingSession?.let { session ->
             return session.onKey(event) || super.dispatchKeyEvent(event)
         }
@@ -1573,7 +1575,7 @@ class LibretroActivity : ComponentActivity() {
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
                 if (groups.size > 1) {
-                    ScrollableTabRow(
+                    PrimaryScrollableTabRow(
                         selectedTabIndex = tab,
                         edgePadding = 0.dp,
                         containerColor = Color.Transparent,

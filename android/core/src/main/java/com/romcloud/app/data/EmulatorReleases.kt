@@ -39,7 +39,7 @@ class EmulatorReleases(private val api: ApiClient) {
         val request = Request.Builder().url(source.api).header("Accept", "application/json").build()
         val body = api.http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
-            response.body?.string() ?: return null
+            response.body.string()
         }
         val release = Json.parseToJsonElement(body).jsonObject
         val asset = pickAsset(release, source.asset, Build.VERSION.SDK_INT) ?: return null

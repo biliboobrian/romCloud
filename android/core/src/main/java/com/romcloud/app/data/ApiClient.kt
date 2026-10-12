@@ -117,7 +117,7 @@ class ApiClient(private val settings: Settings, val platform: String) {
     private suspend fun get(path: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url(path)).build()
         http.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
+            val body = response.body.string()
             if (!response.isSuccessful) throw ApiException(errorMessage(response, body), response.code)
             body
         }
@@ -163,7 +163,7 @@ class ApiClient(private val settings: Settings, val platform: String) {
                 if (apiKey.isNotBlank()) header("Authorization", "Bearer ${apiKey.trim()}")
             }.build()
             return client.newCall(request).execute().use { response ->
-                val body = response.body?.string().orEmpty()
+                val body = response.body.string()
                 if (!response.isSuccessful) throw ApiException(errorMessage(response, body), response.code)
                 body
             }

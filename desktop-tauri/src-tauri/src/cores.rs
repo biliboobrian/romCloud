@@ -51,7 +51,9 @@ fn ranking(system: &str) -> &'static [&'static str] {
     }
 }
 
-/// Système émulé par le moteur intégré (cœurs connus pour lui, sous Windows comme sous Android).
+/// Système émulé par le moteur intégré (cœurs connus pour lui, sous Windows comme sous Android) ;
+/// vérifie le catalogue des émulateurs externes (essais).
+#[cfg(test)]
 pub fn has_builtin_cores(system: &str) -> bool {
     !ranking(&system.to_lowercase()).is_empty()
 }

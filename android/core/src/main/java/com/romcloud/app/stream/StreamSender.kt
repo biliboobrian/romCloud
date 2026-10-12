@@ -168,7 +168,9 @@ class StreamSender(
 
         // La TV ferme la connexion pour arrêter (Retour sur la télécommande).
         try {
-            while (running && input.read() >= 0) Unit
+            while (running && input.read() >= 0) {
+                // Rien n'est attendu de la TV : seule la fin de la connexion compte.
+            }
         } catch (_: IOException) {
         }
         finish(null)

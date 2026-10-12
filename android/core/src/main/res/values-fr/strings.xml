@@ -254,7 +254,6 @@
     <string name="err_storage_permission">Autorisation d’accès aux fichiers manquante (voir Paramètres)</string>
     <string name="err_api_key">Clé d’API invalide ou manquante</string>
     <string name="err_server">Erreur serveur %1$d</string>
-    <string name="err_empty_response">Réponse vide</string>
     <string name="err_wrong_size">Taille incorrecte (%1$d / %2$d octets), réessayez</string>
     <string name="err_rename">Impossible de renommer le fichier téléchargé</string>
     <string name="err_no_server">Aucun serveur configuré</string>
