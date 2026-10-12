@@ -96,6 +96,8 @@ static const struct {
      "Press this button (or trigger), then release it. To skip this step, press the previous button again."},
     {"pad_hint_stick_x", "Poussez le stick vers la droite, puis relâchez-le. Pour passer cette étape, appuyez de nouveau sur le bouton précédent.",
      "Push the stick to the right, then release it. To skip this step, press the previous button again."},
+    {"pad_hint_half", "Appuyez sur ce bouton, ou poussez le stick dans cette direction, puis relâchez-le. Pour passer cette étape, appuyez de nouveau sur le bouton précédent.",
+     "Press this button, or push the stick in this direction, then release it. To skip this step, press the previous button again."},
     {"pad_hint_stick_y", "Poussez le stick vers le bas, puis relâchez-le. Pour passer cette étape, appuyez de nouveau sur le bouton précédent.",
      "Push the stick down, then release it. To skip this step, press the previous button again."},
     {"pad_already_used", "Ce bouton est déjà attribué.", "This button is already assigned."},

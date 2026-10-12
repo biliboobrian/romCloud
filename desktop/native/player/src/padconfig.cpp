@@ -63,8 +63,11 @@ void applySavedPadMappings() {
 
 // Bouton du RetroPad -> élément de la manette SDL (disposition Xbox : A en bas), inverse de
 // padButton (input.cpp) ; L2 / R2 : gâchettes.
-static const char* sdlElement(const PadStep& step) {
-  if (step.stick) return step.stick == 'X' ? "leftx" : step.stick == 'Y' ? "lefty" : step.stick == 'x' ? "rightx" : "righty";
+static std::string sdlElement(const PadStep& step) {
+  if (step.stick) {
+    std::string axis = step.stick == 'X' ? "leftx" : step.stick == 'Y' ? "lefty" : step.stick == 'x' ? "rightx" : "righty";
+    return step.half ? std::string(1, step.half) + axis : axis;
+  }
   switch (step.id) {
     case RETRO_DEVICE_ID_JOYPAD_UP: return "dpup";
     case RETRO_DEVICE_ID_JOYPAD_DOWN: return "dpdown";
@@ -84,6 +87,11 @@ static const char* sdlElement(const PadStep& step) {
     case RETRO_DEVICE_ID_JOYPAD_SELECT: return "back";
     default: return "";
   }
+}
+
+/** Élément de la manette SDL sans sa moitié (« +rightx » -> « rightx »). */
+static std::string baseElement(const std::string& element) {
+  return !element.empty() && (element[0] == '+' || element[0] == '-') ? element.substr(1) : element;
 }
 
 /** Numéro d'axe d'une source (« a2 », « +a2 », « a2~ ») ; -1 pour un bouton ou une croix. */
@@ -131,6 +139,11 @@ PadConfig::PadConfig(const std::string& buttons, const std::string& style, Trans
   }
   if (names.empty() || has("lx")) steps_.push_back({0, 'X', labels.count("lx") ? labels["lx"] : tr_("pad_left_x")});
   if (names.empty() || has("ly")) steps_.push_back({0, 'Y', labels.count("ly") ? labels["ly"] : tr_("pad_left_y")});
+  // Directions du stick droit séparées (boutons C de la Nintendo 64), dans l'ordre de la console.
+  for (const auto& name : names) {
+    if (name.size() == 3 && name[0] == 'r' && (name[1] == 'x' || name[1] == 'y') && (name[2] == '+' || name[2] == '-'))
+      steps_.push_back({0, name[1], labels.count(name) ? labels[name] : name, name[2]});
+  }
   if (names.empty() || has("rx")) steps_.push_back({0, 'x', labels.count("rx") ? labels["rx"] : tr_("pad_right_x")});
   if (names.empty() || has("ry")) steps_.push_back({0, 'y', labels.count("ry") ? labels["ry"] : tr_("pad_right_y")});
   assigned_.resize(steps_.size());
@@ -221,10 +234,14 @@ float PadConfig::delta(int axis) const {
 
 bool PadConfig::usesAxis(int axis) const {
   // Stick gauche demandé : ses axes de SDL sont permis ; sinon jamais pris.
-  const bool leftStep = step_ < steps_.size() && (steps_[step_].stick == 'X' || steps_[step_].stick == 'Y');
+  const PadStep* current = step_ < steps_.size() ? &steps_[step_] : nullptr;
+  const bool leftStep = current && (current->stick == 'X' || current->stick == 'Y');
   if (!leftStep && leftStick_.count(axis)) return true;
-  for (const auto& source : assigned_) {
-    if (axisOf(source) == axis) return true;
+  for (size_t i = 0; i < assigned_.size(); i++) {
+    if (axisOf(assigned_[i]) != axis) continue;
+    // Direction opposée du même axe du stick (C◀ après C▶) : même axe permis.
+    if (current && current->half && steps_[i].half && steps_[i].stick == current->stick) continue;
+    return true;
   }
   return false;
 }
@@ -240,7 +257,7 @@ void PadConfig::onButton(int button, bool down) {
   std::string source = "b" + std::to_string(button);
   if (source == lastButton_) {
     next();
-  } else if (steps_[step_].stick) {
+  } else if (steps_[step_].stick && !steps_[step_].half) {
     // Stick : seul un axe convient.
   } else if (std::find(assigned_.begin(), assigned_.end(), source) != assigned_.end()) {
     message_ = tr_("pad_already_used");
@@ -253,7 +270,7 @@ void PadConfig::onButton(int button, bool down) {
 }
 
 void PadConfig::onHat(int hat, Uint8 value) {
-  if (step_ >= steps_.size() || steps_[step_].stick) return;
+  if (step_ >= steps_.size() || (steps_[step_].stick && !steps_[step_].half)) return;
   if (value != SDL_HAT_CENTERED) {
     // Une seule direction (pas les diagonales) : validée quand la croix revient au centre.
     if (candidateHat_ < 0 && (value == SDL_HAT_UP || value == SDL_HAT_RIGHT || value == SDL_HAT_DOWN || value == SDL_HAT_LEFT)) {
@@ -301,11 +318,16 @@ void PadConfig::onAxes() {
   const float rest = axis < (int)rest_.size() ? rest_[(size_t)axis] : 0.0f;
   const std::string n = std::to_string(axis);
   std::string source;
-  if (steps_[step_].stick) source = "a" + n + (candidateDirection_ < 0 ? "~" : "");
+  if (steps_[step_].stick && !steps_[step_].half) source = "a" + n + (candidateDirection_ < 0 ? "~" : "");
   else if (rest < 0 && candidateDirection_ > 0) source = "a" + n;
   else if (rest > 0 && candidateDirection_ < 0) source = "a" + n + "~";
   else source = (candidateDirection_ > 0 ? "+a" : "-a") + n;
   candidateAxis_ = -1;
+  // Direction d'un axe déjà prise (C▶ et C◀ poussés du même côté) : refusée.
+  if (std::find(assigned_.begin(), assigned_.end(), source) != assigned_.end()) {
+    message_ = tr_("pad_already_used");
+    return;
+  }
   assign(source);
   // Certaines manettes envoient aussi un bouton pour la gâchette : son relâchement ne compte pas.
   ignoredReleases_.insert(held_.begin(), held_.end());
@@ -337,12 +359,13 @@ void PadConfig::save() {
 
   std::vector<std::string> binds;
   for (size_t i = 0; i < steps_.size(); i++) {
-    if (!assigned_[i].empty()) binds.push_back(std::string(sdlElement(steps_[i])) + ":" + assigned_[i]);
+    if (!assigned_[i].empty()) binds.push_back(sdlElement(steps_[i]) + ":" + assigned_[i]);
   }
   auto taken = [&](const std::string& element, const std::string& source) {
     for (size_t i = 0; i < steps_.size(); i++) {
       if (assigned_[i].empty()) continue;
-      if (element == sdlElement(steps_[i])) return true;
+      // Élément configuré, entier ou en partie (« +rightx » remplace « rightx » de la correspondance de départ).
+      if (baseElement(element) == baseElement(sdlElement(steps_[i]))) return true;
       if (source == assigned_[i] || (axisOf(source) >= 0 && axisOf(source) == axisOf(assigned_[i]))) return true;
     }
     return false;
@@ -480,11 +503,16 @@ class PadPainter {
     }
     return -1;
   }
-  int axisStep(char axis) const {
+  int axisStep(char axis, char half = 0) const {
     for (size_t i = 0; i < steps_.size(); i++) {
-      if (steps_[i].stick == axis) return (int)i;
+      if (steps_[i].stick == axis && steps_[i].half == half) return (int)i;
     }
     return -1;
+  }
+  /** Étape d'une direction du stick droit (bouton C), sinon celle de l'axe entier. */
+  int halfStep(char axis, char half) const {
+    int i = axisStep(axis, half);
+    return i >= 0 ? i : axisStep(axis);
   }
   /** Étape du stick droit à repérer : l'axe en cours, sinon l'horizontal. */
   int rightAxis() const { return isCurrent(axisStep('y')) ? axisStep('y') : axisStep('x'); }
@@ -830,13 +858,13 @@ void PadPainter::n64() {
   button(RETRO_DEVICE_ID_JOYPAD_Y, 230, 46, 12, kGreen);
   button(RETRO_DEVICE_ID_JOYPAD_B, 254, 66, 12, rgba(42, 82, 200));
   // Boutons C.
-  const int stepX = axisStep('x'), stepY = axisStep('y');
-  if (stepX >= 0 || stepY >= 0) {
+  const int left = halfStep('x', '-'), right = halfStep('x', '+'), up = halfStep('y', '-'), down = halfStep('y', '+');
+  if (left >= 0 || right >= 0 || up >= 0 || down >= 0) {
     const float ccx = 288, ccy = 42, off = 13, cr = 7.5f;
     const struct {
       float ox, oy;
       int step;
-    } cs[] = {{-off, 0, stepX}, {off, 0, stepX}, {0, -off, stepY}, {0, off, stepY}};
+    } cs[] = {{-off, 0, left}, {off, 0, right}, {0, -off, up}, {0, off, down}};
     for (const auto& b : cs) {
       disc(ccx + b.ox, ccy + b.oy + 1.2f, cr + 1, rgba(0, 0, 0, 90));
       disc(ccx + b.ox, ccy + b.oy, cr, kYellow);
@@ -1201,7 +1229,8 @@ void PadConfig::render(Canvas& c) const {
       y += 16;
       centered(c, cx, y, Canvas::fit(step.label, 2, textWidth), 2, kAccent);
       y += 26;
-      const char* hint = step.stick == 'x' || step.stick == 'X' ? "pad_hint_stick_x"
+      const char* hint = step.half ? "pad_hint_half"
+                         : step.stick == 'x' || step.stick == 'X' ? "pad_hint_stick_x"
                          : step.stick == 'y' || step.stick == 'Y' ? "pad_hint_stick_y" : "pad_hint";
       for (const auto& line : wrap(tr_(hint), 1, textWidth)) {
         centered(c, cx, y, line, 1, kText);
