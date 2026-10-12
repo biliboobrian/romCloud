@@ -164,7 +164,7 @@ fun TvGamesScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                OfflineBadge(size = 40.dp, explainOnClick = false)
+                OfflineBadge(size = 40.dp)
                 Spacer(Modifier.weight(1f))
                 // Hors ligne : seuls les jeux de l'appareil sont listés, les filtres n'ont pas lieu d'être.
                 if (!state.offline) GameFilter.entries.forEach { f ->

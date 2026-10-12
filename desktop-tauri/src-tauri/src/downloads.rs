@@ -1,7 +1,7 @@
 // Téléchargements des ROMs et des BIOS : fichier « .part » et reprise (requête HTTP Range).
 use crate::error::{AppError, Result};
 use crate::library::{n, s};
-use crate::{api, events, library, settings};
+use crate::{api, connectivity, events, library, settings};
 use futures_util::StreamExt;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -69,6 +69,8 @@ pub fn start(system: Value, game: Value, options: Value) {
     notify(&game_id, Some(running(0)), None);
     tauri::async_runtime::spawn(async move {
         let result: Result<()> = async {
+            // Hors ligne : rien n'est demandé au serveur.
+            connectivity::ensure_online()?;
             let server = settings::get_str("serverUrl");
             let mut done = 0u64;
             for b in &bios {
@@ -174,6 +176,12 @@ fn make_parent_dirs(target: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Téléchargement interrompu par le réseau (délai dépassé, serveur injoignable) : hors ligne.
+fn network_failure(e: reqwest::Error) -> AppError {
+    connectivity::mark_offline();
+    AppError::new("errors.download", json!({ "detail": api::network_detail(&e) }))
+}
+
 /// Télécharge `url` vers `target` (via « .part », avec reprise) ; `on_bytes` reçoit les octets reçus.
 async fn fetch_to(url: &str, target: &Path, expected: u64, cancelled: &AtomicBool, on_bytes: impl Fn(u64)) -> Result<()> {
     make_parent_dirs(target)?;
@@ -187,7 +195,7 @@ async fn fetch_to(url: &str, target: &Path, expected: u64, cancelled: &AtomicBoo
     if offset > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
     }
-    let res = request.send().await.map_err(|e| AppError::new("errors.download", json!({ "detail": api::network_detail(&e) })))?;
+    let res = request.send().await.map_err(network_failure)?;
     let status = res.status().as_u16();
     if status != 416 {
         if !res.status().is_success() {
@@ -202,7 +210,7 @@ async fn fetch_to(url: &str, target: &Path, expected: u64, cancelled: &AtomicBoo
             if cancelled.load(Ordering::SeqCst) {
                 return Err(AppError::msg("cancelled"));
             }
-            let chunk = chunk.map_err(|e| AppError::new("errors.download", json!({ "detail": api::network_detail(&e) })))?;
+            let chunk = chunk.map_err(network_failure)?;
             file.write_all(&chunk)?;
             bytes += chunk.len() as u64;
             if last.elapsed() > Duration::from_millis(250) {

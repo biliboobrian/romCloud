@@ -272,7 +272,7 @@
   const profileBtn = () => `<button class="icon-btn${S.account.signedIn ? ' signed-in' : ''}" data-action="profile" title="${esc(profileTitle())}">${icon('user')}</button>`;
   // Pastille « hors ligne », placée avant ces boutons sur chaque écran.
   const offlineTitle = () => [t('offline.badge'), S.connectivity.pending ? t('offline.pending', { n: S.connectivity.pending }) : ''].filter(Boolean).join(' ');
-  const offlineBadge = () => `<span class="offline-badge${S.connectivity.online ? ' hidden' : ''}" data-offline title="${esc(offlineTitle())}">${icon('cloudOff', 20)}</span>`;
+  const offlineBadge = () => `<button class="offline-badge${S.connectivity.online ? ' hidden' : ''}" data-offline data-action="reconnect" title="${esc(offlineTitle())}">${icon('cloudOff', 20)}</button>`;
   const settingsBtn = () => offlineBadge() + `<button class="icon-btn${S.cast.status === 'idle' ? '' : ' casting'}" data-action="cast" title="${esc(castBtnTitle())}">${castBtnInner()}</button>`
     + profileBtn()
     + `<button class="icon-btn" data-action="settings" title="${esc(t('app.settings'))}">${icon('gear')}</button>`;
@@ -282,6 +282,7 @@
     if (el?.dataset.action === 'settings') go({ name: 'settings' });
     if (el?.dataset.action === 'cast') openCast();
     if (el?.dataset.action === 'profile') openProfile();
+    if (el?.dataset.action === 'reconnect') reconnect();
   });
 
   // ---------------------------------------------------------------------------
@@ -403,6 +404,21 @@
     else if (S.route.name === 'games') renderGames();
   }
 
+  /** Pastille « hors ligne » touchée : le serveur est sondé ; joignable, l'application repasse en ligne. */
+  async function reconnect() {
+    const badges = $$('[data-offline]');
+    if (badges.some((b) => b.classList.contains('checking'))) return;
+    for (const b of badges) b.classList.add('checking');
+    try {
+      const state = await call(rc.connectivity.check);
+      if (!state.online) toast(t('offline.still'), { type: 'error' });
+    } catch {
+      toast(t('offline.still'), { type: 'error' });
+    } finally {
+      for (const b of $$('[data-offline]')) b.classList.remove('checking');
+    }
+  }
+
   rc.connectivity.onUpdate(async (state) => {
     const wasOnline = S.connectivity.online;
     paintConnectivity(state);
@@ -425,9 +441,6 @@
     }
   });
 
-  // Réseau du PC coupé ou rétabli : le serveur est sondé aussitôt.
-  window.addEventListener('online', () => rc.connectivity.check());
-  window.addEventListener('offline', () => rc.connectivity.check());
 
   // ---------------------------------------------------------------------------
   // Moteur intégré arrêté sur une erreur : réinitialiser le cœur
@@ -2646,7 +2659,9 @@
     S.downloads = await call(rc.downloads.states);
     S.cast = await call(rc.cast.state);
     S.account = await call(rc.account.state).catch(() => ({ signedIn: false }));
-    S.connectivity = await call(rc.connectivity.state).catch(() => S.connectivity);
+    // Mode en ligne ou hors ligne : le serveur est sondé une fois à l'ouverture (hors ligne, il n'est
+    // plus interrogé jusqu'à ce que la pastille soit touchée).
+    S.connectivity = await call(S.settings.serverUrl ? rc.connectivity.check : rc.connectivity.state).catch(() => S.connectivity);
     if (S.account.signedIn) S.playtime = await call(rc.account.playtime).catch(() => ({}));
     S.peers = await call(rc.netplay.peers).catch(() => []);
     render();

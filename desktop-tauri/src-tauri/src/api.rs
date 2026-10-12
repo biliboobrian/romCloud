@@ -60,7 +60,11 @@ pub async fn request(api_path: &str, target: Option<(&str, &str)>) -> Result<Str
         return Err(AppError::new("errors.noServer", json!({})));
     }
     // Seul le serveur configuré compte pour l'état de connexion (pas une adresse en cours de test).
+    // Hors ligne, il n'est pas interrogé.
     let tracked = server == settings::get_str("serverUrl");
+    if tracked {
+        connectivity::ensure_online()?;
+    }
     let res = match client().get(format!("{server}{api_path}")).headers(headers(&key)).timeout(Duration::from_secs(10)).send().await {
         Ok(res) => res,
         Err(e) => {

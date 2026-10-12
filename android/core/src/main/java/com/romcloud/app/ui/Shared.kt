@@ -2,8 +2,12 @@ package com.romcloud.app.ui
 
 import androidx.annotation.PluralsRes
 import android.widget.Toast
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,6 +26,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +49,7 @@ import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.GameSystem
 import com.romcloud.core.R
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 // Éléments communs aux applications téléphone et TV.
 
@@ -48,26 +57,42 @@ val DownloadedGreen = Color(0xFF2EB872)
 val OfflineAmber = Color(0xFFF0B429)
 
 /**
- * Pastille « hors ligne » de la barre du haut, affichée tant que le serveur est injoignable : seuls
- * les jeux téléchargés sont proposés, les sauvegardes partent au retour de la connexion.
- * [explainOnClick] : un appui affiche l'explication (téléphone ; pas sur TV, hors du parcours au D-pad).
+ * Pastille « hors ligne » de la barre du haut, affichée en mode hors ligne : seuls les jeux
+ * téléchargés sont proposés, le serveur n'est plus interrogé. Un appui (ou OK sur la télécommande)
+ * sonde le serveur : joignable, l'application repasse en ligne (les sauvegardes partent alors).
  */
 @Composable
-fun OfflineBadge(modifier: Modifier = Modifier, size: Dp = 32.dp, explainOnClick: Boolean = true) {
+fun OfflineBadge(modifier: Modifier = Modifier, size: Dp = 32.dp) {
     val context = LocalContext.current
     val app = context.applicationContext as RomCloudApp
     val online by app.connectivity.online.collectAsStateWithLifecycle()
     if (online) return
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     val description = stringResource(R.string.offline_badge)
     Box(
         modifier
             .size(size)
             .clip(CircleShape)
-            .background(OfflineAmber.copy(alpha = 0.16f))
-            .then(if (explainOnClick) Modifier.clickable { Toast.makeText(context, description, Toast.LENGTH_LONG).show() } else Modifier),
+            .background(OfflineAmber.copy(alpha = if (focused) 0.4f else 0.16f))
+            .then(if (focused) Modifier.border(2.dp, OfflineAmber, CircleShape) else Modifier)
+            .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = !checking) {
+                checking = true
+                scope.launch {
+                    val reachable = app.connectivity.ping()
+                    checking = false
+                    if (!reachable) Toast.makeText(context, I18n.get(R.string.offline_still), Toast.LENGTH_SHORT).show()
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Filled.CloudOff, contentDescription = description, tint = OfflineAmber, modifier = Modifier.size(size * 0.6f))
+        if (checking) {
+            CircularProgressIndicator(color = OfflineAmber, strokeWidth = 2.dp, modifier = Modifier.size(size * 0.5f))
+        } else {
+            Icon(Icons.Filled.CloudOff, contentDescription = description, tint = OfflineAmber, modifier = Modifier.size(size * 0.6f))
+        }
     }
 }
 

@@ -327,7 +327,7 @@ fun TvGameDetailScreen(
                 TvGameInfo(gameFacts(game))
             }
         }
-        OfflineBadge(Modifier.align(Alignment.TopEnd).padding(top = 27.dp, end = 48.dp), size = 40.dp, explainOnClick = false)
+        OfflineBadge(Modifier.align(Alignment.TopEnd).padding(top = 27.dp, end = 48.dp), size = 40.dp)
     }
 
     if (pickEmulator) {

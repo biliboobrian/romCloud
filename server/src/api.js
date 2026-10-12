@@ -78,6 +78,13 @@ api.get('/info', (req, res) => {
   });
 });
 
+// Sonde de connexion des applications (au démarrage, et pour repasser en ligne) : publique et sans
+// lecture de la base, pour répondre vite.
+api.get('/ping', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, version: VERSION });
+});
+
 // ---- Authentification : clé des applications (lecture) et clé d'administration (tout) ----
 function keyMatches(given, expected) {
   if (!given || !expected) return false;

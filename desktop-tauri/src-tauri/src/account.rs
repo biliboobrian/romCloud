@@ -68,6 +68,7 @@ pub(crate) async fn call(api_path: &str, method: reqwest::Method, body: Body, ra
     if server.is_empty() {
         return Err(AppError::new("errors.noServer", json!({})));
     }
+    connectivity::ensure_online()?;
     let mut request = api::client()
         .request(method, format!("{server}{api_path}"))
         .headers(api::headers(&settings::get_str("apiKey")))
@@ -160,8 +161,11 @@ pub async fn play_presence(body: Value) -> Result<Value> {
     Ok(call("/api/account/play/presence", reqwest::Method::PUT, Body::Json(body), false, &[], Duration::from_secs(8)).await?.json)
 }
 
-/// Connexion de relais à ouvrir (partie [session], [channel], rôle [role]), ou None sans profil.
+/// Connexion de relais à ouvrir (partie [session], [channel], rôle [role]), ou None sans profil (ou hors ligne).
 pub fn relay_request(session: &str, channel: &str, role: &str) -> Option<crate::relay::Request> {
+    if !connectivity::is_online() {
+        return None;
+    }
     let token = self::session()?.get("token").and_then(Value::as_str)?.to_string();
     let server = settings::get_str("serverUrl");
     if server.is_empty() {

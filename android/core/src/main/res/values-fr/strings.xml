@@ -25,7 +25,9 @@
     <string name="banner_storage">Autorisez l’accès aux fichiers dans les paramètres pour pouvoir télécharger des ROMs.</string>
     <string name="banner_offline_full">Hors ligne — seuls les jeux déjà téléchargés sont affichés.</string>
     <string name="banner_offline">Hors ligne — seuls les jeux déjà téléchargés sont affichés.</string>
-    <string name="offline_badge">Hors ligne : seuls les jeux téléchargés sont disponibles. Les sauvegardes seront synchronisées dès que le serveur sera de nouveau joignable.</string>
+    <string name="offline_badge">Hors ligne : seuls les jeux téléchargés sont disponibles et le serveur n’est plus interrogé. Touchez l’icône pour vous reconnecter ; les sauvegardes seront alors synchronisées.</string>
+    <string name="offline_still">Serveur toujours injoignable — mode hors ligne conservé</string>
+    <string name="err_offline">Hors ligne : touchez l’icône hors ligne pour vous reconnecter au serveur.</string>
     <plurals name="offline_synced">
         <item quantity="one">%1$d sauvegarde synchronisée avec le serveur</item>
         <item quantity="other">%1$d sauvegardes synchronisées avec le serveur</item>

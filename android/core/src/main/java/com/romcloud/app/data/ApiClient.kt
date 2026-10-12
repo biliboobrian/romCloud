@@ -18,6 +18,9 @@ import java.util.concurrent.TimeUnit
 
 class ApiException(message: String, val code: Int = 0) : IOException(message)
 
+/** Requête au serveur refusée sans réseau : l'application est en mode hors ligne. */
+class OfflineException : IOException(I18n.get(R.string.err_offline))
+
 /**
  * [platform] : « android » ou « androidtv », envoyé au serveur (en-tête X-RomCloud-Platform) qui ne
  * liste que les systèmes proposés à cette plateforme.
@@ -32,6 +35,10 @@ class ApiClient(private val settings: Settings, val platform: String) {
      */
     @Volatile
     var onReachability: (Boolean) -> Unit = {}
+
+    /** Mode hors ligne ([Connectivity]) : aucune requête vers le serveur, sauf le ping. */
+    @Volatile
+    var isOffline: () -> Boolean = { false }
 
     /**
      * En-têtes ajoutés aux requêtes vers le serveur (appareil, version, session du profil) : le
@@ -50,6 +57,8 @@ class ApiClient(private val settings: Settings, val platform: String) {
         val base = config.serverUrl.toHttpUrlOrNull()
         val sameServer = base != null && request.url.host == base.host && request.url.port == base.port
         if (!sameServer) return@Interceptor chain.proceed(request)
+        // Hors ligne : refusée sans réseau (listes relues depuis le cache, images du cache disque).
+        if (isOffline() && request.tag(Ping::class.java) == null) throw OfflineException()
         val builder = request.newBuilder().header("Accept-Language", I18n.language()).header("X-RomCloud-Platform", platform)
         // Valeur refusée par OkHttp (caractère hors ASCII dans le nom de l'appareil) : en-tête omis.
         for ((name, value) in clientHeaders()) if (request.header(name) == null) runCatching { builder.header(name, value) }
@@ -120,6 +129,22 @@ class ApiClient(private val settings: Settings, val platform: String) {
     }
 
     suspend fun info(): ServerInfo = json.decodeFromString(get("/api/info"))
+
+    /**
+     * Sonde de connexion (/api/ping, permise hors ligne) : true si le serveur répond, quel que soit
+     * le code ; null sans serveur configuré (ou adresse invalide).
+     */
+    suspend fun ping(): Boolean? = withContext(Dispatchers.IO) {
+        val request = runCatching { Request.Builder().url(url("/api/ping")).tag(Ping::class.java, Ping).build() }.getOrNull()
+            ?: return@withContext null
+        runCatching { pingClient.newCall(request).execute().close() }.isSuccess
+    }
+
+    private object Ping
+
+    private val pingClient: OkHttpClient by lazy {
+        http.newBuilder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).callTimeout(6, TimeUnit.SECONDS).build()
+    }
 
     /** Teste une adresse et une clé sans modifier les paramètres enregistrés. */
     suspend fun testConnection(serverUrl: String, apiKey: String): ServerInfo = withContext(Dispatchers.IO) {
