@@ -2,6 +2,11 @@ package com.romcloud.app.ui
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -26,6 +33,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -104,6 +112,8 @@ class StateHistoryController(
         val online: Boolean = false,
         /** Opération en cours (téléchargement, envoi). */
         val busy: Boolean = false,
+        /** État du profil en ligne en cours de téléchargement (icône sur sa ligne). */
+        val downloading: String? = null,
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -125,11 +135,11 @@ class StateHistoryController(
         state.local?.let { return historyFor(it.core).stateFile(it.id) }
         val target = File(cacheDir, "states/${state.id}.state")
         if (!target.isFile) {
-            _state.update { it.copy(busy = true) }
+            _state.update { it.copy(busy = true, downloading = state.id) }
             try {
                 account.downloadState(state.id, target)
             } finally {
-                _state.update { it.copy(busy = false) }
+                _state.update { it.copy(busy = false, downloading = null) }
             }
         }
         return target
@@ -214,7 +224,8 @@ fun StateHistoryList(
                     Text(stringResource(R.string.action_close))
                 }
             }
-            if (ui.loading || ui.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
+            // Téléchargement d'un état : montré sur sa ligne plutôt qu'en haut.
+            if (ui.loading || (ui.busy && ui.downloading == null)) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
             if (controller.signedIn && !ui.loading && !ui.online) {
                 Text(stringResource(R.string.states_offline), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
             }
@@ -232,6 +243,7 @@ fun StateHistoryList(
                         controller = controller,
                         loadLabel = loadLabel,
                         enabled = !ui.busy,
+                        downloading = state.id == ui.downloading,
                         loadModifier = if (state == ui.states.first()) Modifier.focusRequester(focus) else Modifier,
                         onLoad = { onLoad(state) },
                         onDelete = { confirmDelete = state },
@@ -270,6 +282,7 @@ private fun StateRow(
     controller: StateHistoryController,
     loadLabel: String,
     enabled: Boolean,
+    downloading: Boolean,
     loadModifier: Modifier,
     onLoad: () -> Unit,
     onDelete: () -> Unit,
@@ -281,6 +294,7 @@ private fun StateRow(
             contentAlignment = Alignment.Center,
         ) {
             thumbnail?.let { Image(it, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
+            if (downloading) DownloadingOverlay()
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(formatStateDate(state.createdAt), style = MaterialTheme.typography.titleMedium)
@@ -296,6 +310,12 @@ private fun StateRow(
                     Icon(Icons.Filled.Cloud, stringResource(R.string.states_online), Modifier.size(16.dp))
                 }
                 if (state.pinned) Icon(Icons.Filled.PushPin, stringResource(R.string.states_pinned), Modifier.size(16.dp))
+            }
+            if (downloading) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Filled.CloudDownload, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                    Text(stringResource(R.string.states_downloading), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
             }
             // Fiche du jeu : cœur de l'état (chargé avec lui).
             if (controller.multiCore) {
@@ -317,5 +337,26 @@ private fun StateRow(
                 IconButton(onClick = onDelete, enabled = enabled) { Icon(Icons.Filled.Delete, stringResource(R.string.action_delete)) }
             }
         }
+    }
+}
+
+/** Miniature d'un état en cours de téléchargement : voile, flèche de téléchargement animée et progression. */
+@Composable
+private fun DownloadingOverlay() {
+    val transition = rememberInfiniteTransition(label = "download")
+    val offset by transition.animateFloat(
+        initialValue = -3f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
+        label = "arrow",
+    )
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(Modifier.size(56.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 3.dp)
+        Icon(
+            Icons.Filled.CloudDownload,
+            stringResource(R.string.states_downloading),
+            Modifier.size(28.dp).offset(y = offset.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
     }
 }
