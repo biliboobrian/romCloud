@@ -117,6 +117,9 @@ private class PadPainter(
     /** Étape du stick droit à repérer : l'axe en cours, sinon l'horizontal. */
     private fun rightAxis(): Int = axisStep(StickAxis.Y).takeIf(::isCurrent) ?: axisStep(StickAxis.X)
 
+    /** Étape du stick gauche à repérer : l'axe en cours, sinon l'horizontal. */
+    private fun leftAxis(): Int = axisStep(StickAxis.LEFT_Y).takeIf(::isCurrent) ?: axisStep(StickAxis.LEFT_X)
+
     // ---- Formes (unités de la boîte) ----
 
     private fun rect(x: Number, y: Number, w: Number, h: Number, r: Number, color: Color) =
@@ -296,7 +299,7 @@ private class PadPainter(
         }
     }
 
-    /** Stick analogique : [step] (L3 / R3) ou [axis] (axe du stick droit) ; -1 : décor. */
+    /** Stick analogique : [step] (L3 / R3) ou [axis] (axe du stick) ; -1 : décor. */
     private fun stick(cx: Float, cy: Float, r: Float, cap: Color, well: Color, step: Int, axis: Int, name: String) {
         disc(cx, cy, r + 5, well)
         disc(cx, cy + 1.5f, r + 0.5f, rgb(0, 0, 0, 100))
@@ -362,7 +365,7 @@ private class PadPainter(
             disc(274, 100, 46 + g, c)
         }
         rect(40, 20, 260, 9, 4.5f, color.shade(0.12f))
-        stick(70f, 54f, 15f, rgb(34, 34, 38), color.shade(-0.25f), stepOf(BTN_L3), -1, "L3")
+        stick(70f, 54f, 15f, rgb(34, 34, 38), color.shade(-0.25f), stepOf(BTN_L3), leftAxis(), "L3")
         disc(118, 96, 28, color.shade(-0.15f))
         dpad(118f, 96f, 14f, 7.5f, rgb(28, 28, 32))
         stick(222f, 96f, 15f, rgb(34, 34, 38), color.shade(-0.25f), stepOf(BTN_R3), rightAxis(), "R3")
@@ -431,7 +434,7 @@ private class PadPainter(
         }
         disc(66, 50, 28, color.shade(-0.08f))
         dpad(66f, 50f, 14f, 8f, rgb(84, 84, 92))
-        stick(170f, 84f, 12f, rgb(150, 150, 158), color.shade(-0.3f), -1, -1, "")
+        stick(170f, 84f, 12f, rgb(150, 150, 158), color.shade(-0.3f), -1, leftAxis(), "")
         pill(BTN_L2, 170f, 132f, 34f, 14f, rgb(96, 96, 104))
         button(BTN_START, 170f, 42f, 9f, rgb(200, 40, 40), LabelPlace.ABOVE, rgb(40, 40, 48))
         button(BTN_Y, 230f, 46f, 12f, GREEN)
@@ -483,7 +486,7 @@ private class PadPainter(
         disc(170, 82, 3, rgb(220, 40, 40))  // voyant « Analog »
         val cap = if (dark) rgb(28, 28, 32) else rgb(50, 50, 56)
         val well = color.shade(if (dark) 0.12f else -0.22f)
-        stick(128f, 100f, 15f, cap, well, stepOf(BTN_L3), -1, "L3")
+        stick(128f, 100f, 15f, cap, well, stepOf(BTN_L3), leftAxis(), "L3")
         stick(212f, 100f, 15f, cap, well, stepOf(BTN_R3), rightAxis(), "R3")
     }
 
@@ -496,7 +499,7 @@ private class PadPainter(
         body(color, edge) { g, c -> rect(8 - g, 26 - g, 324 + 2 * g, 104 + 2 * g, 50 + g, c) }
         screen(94f, 32f, 152f, 84f, rgb(24, 24, 28), rgb(18, 22, 32))
         dpad(50f, 62f, 12f, 7f, rgb(84, 84, 90), separate = true)
-        stick(50f, 104f, 8f, rgb(110, 110, 116), rgb(24, 24, 26), -1, -1, "")
+        stick(50f, 104f, 8f, rgb(110, 110, 116), rgb(24, 24, 26), -1, leftAxis(), "")
         val dark = rgb(30, 30, 34)
         symbol(BTN_X, 290f, 46f, 9f, dark, Symbol.TRIANGLE, rgb(76, 196, 156))
         symbol(BTN_Y, 271f, 66f, 9f, dark, Symbol.SQUARE, rgb(232, 136, 206))
@@ -611,7 +614,7 @@ private class PadPainter(
         rect(132, 24, 76, 46, 4, rgb(170, 170, 178))
         rect(140, 30, 60, 34, 2, rgb(120, 164, 104))  // écran de la carte mémoire (VMU)
         rect(140, 30, 60, 8, 2, rgb(255, 255, 255, 30))
-        stick(74f, 52f, 13f, rgb(206, 206, 210), color.shade(-0.25f), -1, -1, "")
+        stick(74f, 52f, 13f, rgb(206, 206, 210), color.shade(-0.25f), -1, leftAxis(), "")
         dpad(104f, 98f, 13f, 7.5f, rgb(70, 70, 76))
         button(BTN_X, 262f, 48f, 10.5f, GREEN)  // Y
         button(BTN_Y, 240f, 70f, 10.5f, YELLOW)  // X
@@ -776,7 +779,7 @@ private class PadPainter(
             disc(72, 104, 40 + g, c)
             disc(268, 104, 40 + g, c)
         }
-        stick(76f, 56f, 14f, rgb(170, 170, 180), color.shade(-0.3f), -1, -1, "")
+        stick(76f, 56f, 14f, rgb(170, 170, 180), color.shade(-0.3f), -1, leftAxis(), "")
         disc(112, 102, 20, color.shade(-0.2f))
         dpad(112f, 102f, 11f, 6f, rgb(170, 170, 180))
         button(BTN_START, 170f, 64f, 6f, rgb(200, 200, 208), LabelPlace.BELOW)

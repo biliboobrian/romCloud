@@ -16,7 +16,8 @@ internal data class AxisButton(val axis: Int, val rest: Float, val direction: Fl
 
 /**
  * Configuration d'une manette faite par l'utilisateur (manettes dont Android mélange les boutons,
- * comme la DualShock 3 en Bluetooth) : touches Android et axes -> boutons RetroPad, axes du stick droit.
+ * comme la DualShock 3 en Bluetooth) : touches Android et axes -> boutons RetroPad, axes des sticks
+ * (axes standard d'Android sans configuration : X / Y à gauche, Z / RZ à droite).
  */
 @Serializable
 internal data class GamepadMapping(
@@ -26,6 +27,10 @@ internal data class GamepadMapping(
     val rightStickY: Int? = null,
     val invertRightX: Boolean = false,
     val invertRightY: Boolean = false,
+    val leftStickX: Int? = null,
+    val leftStickY: Int? = null,
+    val invertLeftX: Boolean = false,
+    val invertLeftY: Boolean = false,
 ) {
     /** Bouton RetroPad d'une touche : configuration, sinon correspondance par défaut si ce bouton est libre. */
     fun retroKey(keyCode: Int): Int? {
@@ -35,12 +40,16 @@ internal data class GamepadMapping(
     }
 }
 
-/** Axe du stick droit demandé par une étape de la configuration. */
-internal enum class StickAxis { X, Y }
+/** Axe d'un stick demandé par une étape de la configuration : stick gauche ([LEFT_X], [LEFT_Y]) ou droit ([X], [Y]). */
+internal enum class StickAxis {
+    LEFT_X, LEFT_Y, X, Y;
+
+    val left: Boolean get() = this == LEFT_X || this == LEFT_Y
+}
 
 /**
  * Étape de la configuration : un bouton de la console (libellé [label] de sa manette, bouton
- * RetroPad [retroKey]) ou un axe du stick droit ([stick]) ; [labelRes] le décrit (croix, stick).
+ * RetroPad [retroKey]) ou un axe d'un stick ([stick]) ; [labelRes] le décrit (croix, stick).
  */
 internal data class MappingStep(
     val label: String? = null,
@@ -51,7 +60,8 @@ internal data class MappingStep(
 
 /**
  * Étapes de la configuration pour la manette d'une console ([layout]) : croix, boutons (rangée du
- * bas d'abord), tranches, Select / Start, puis sticks. Boutons C de la Nintendo 64 : stick droit.
+ * bas d'abord), tranches, Select / Start, puis sticks (gauche, puis droit). Boutons C de la
+ * Nintendo 64 : stick droit.
  */
 internal fun mappingSteps(layout: PadLayout): List<MappingStep> = buildList {
     add(MappingStep(labelRes = R.string.pad_up, retroKey = KeyEvent.KEYCODE_DPAD_UP))
@@ -69,6 +79,11 @@ internal fun mappingSteps(layout: PadLayout): List<MappingStep> = buildList {
         add(MappingStep("R3", R.string.pad_r3, KeyEvent.KEYCODE_BUTTON_THUMBR))
     }
     val cButtons = layout.buttons.mapNotNull { b -> b.rightStick?.let { b.label to it } }
+    // Deux sticks (L3 / R3) : « stick gauche » ; un seul (Nintendo 64, PSP…) : « stick ».
+    if (layout.stick || layout.thumbs) {
+        add(MappingStep(labelRes = if (layout.thumbs) R.string.pad_left_stick_x else R.string.pad_stick_x, stick = StickAxis.LEFT_X))
+        add(MappingStep(labelRes = if (layout.thumbs) R.string.pad_left_stick_y else R.string.pad_stick_y, stick = StickAxis.LEFT_Y))
+    }
     if (cButtons.isNotEmpty() || layout.thumbs) {
         add(MappingStep(cButtons.firstOrNull { it.second.x > 0 }?.first, R.string.pad_right_stick_x, stick = StickAxis.X))
         add(MappingStep(cButtons.firstOrNull { it.second.y > 0 }?.first, R.string.pad_right_stick_y, stick = StickAxis.Y))

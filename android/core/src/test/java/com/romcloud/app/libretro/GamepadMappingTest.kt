@@ -30,13 +30,21 @@ class GamepadMappingTest {
         // Mega Drive : rangée du bas d'abord, ni Select ni stick droit.
         val genesis = mappingSteps(PadLayouts.forGame("genesis", "")).mapNotNull { it.label }
         assertEquals(listOf("A", "B", "C", "X", "Y", "Z", "START"), genesis)
-        // Nintendo 64 : boutons C sur le stick droit.
+        // Nintendo 64 : stick, puis boutons C sur le stick droit.
         val n64 = mappingSteps(PadLayouts.forGame("n64", "")).filter { it.stick != null }
-        assertEquals(listOf("C▶" to StickAxis.X, "C▼" to StickAxis.Y), n64.map { it.label to it.stick })
-        // PlayStation : L3, R3 et stick droit ; PSP : ni l'un ni l'autre.
-        val psx = mappingSteps(PadLayouts.forGame("psx", ""))
-        assertTrue(psx.any { it.retroKey == KeyEvent.KEYCODE_BUTTON_THUMBR } && psx.count { it.stick != null } == 2)
-        assertTrue(mappingSteps(PadLayouts.forGame("psp", "")).none { it.stick != null || it.label == "L3" })
+        assertEquals(
+            listOf(null to StickAxis.LEFT_X, null to StickAxis.LEFT_Y, "C▶" to StickAxis.X, "C▼" to StickAxis.Y),
+            n64.map { it.label to it.stick },
+        )
+        // PlayStation 2 : L3, R3, stick gauche puis stick droit ; PSP : son stick seul, sans L3.
+        val ps2 = mappingSteps(PadLayouts.forGame("ps2", ""))
+        assertTrue(ps2.any { it.retroKey == KeyEvent.KEYCODE_BUTTON_THUMBR })
+        assertEquals(listOf(StickAxis.LEFT_X, StickAxis.LEFT_Y, StickAxis.X, StickAxis.Y), ps2.mapNotNull { it.stick })
+        val psp = mappingSteps(PadLayouts.forGame("psp", ""))
+        assertTrue(psp.none { it.label == "L3" })
+        assertEquals(listOf(StickAxis.LEFT_X, StickAxis.LEFT_Y), psp.mapNotNull { it.stick })
+        // Mega Drive : pas de stick.
+        assertTrue(mappingSteps(PadLayouts.forGame("genesis", "")).none { it.stick != null })
     }
 
     @Test

@@ -403,6 +403,10 @@
     <string name="pad_right">D-pad: right</string>
     <string name="pad_l3">L3 (press the left stick)</string>
     <string name="pad_r3">R3 (press the right stick)</string>
+    <string name="pad_stick_x">Stick: push it to the right</string>
+    <string name="pad_stick_y">Stick: push it down</string>
+    <string name="pad_left_stick_x">Left stick: push it to the right</string>
+    <string name="pad_left_stick_y">Left stick: push it down</string>
     <string name="pad_right_stick_x">Right stick: push it to the right</string>
     <string name="pad_right_stick_y">Right stick: push it down</string>
     <string name="info_title">Information</string>

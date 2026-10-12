@@ -64,7 +64,7 @@ void applySavedPadMappings() {
 // Bouton du RetroPad -> élément de la manette SDL (disposition Xbox : A en bas), inverse de
 // padButton (input.cpp) ; L2 / R2 : gâchettes.
 static const char* sdlElement(const PadStep& step) {
-  if (step.stick) return step.stick == 'x' ? "rightx" : "righty";
+  if (step.stick) return step.stick == 'X' ? "leftx" : step.stick == 'Y' ? "lefty" : step.stick == 'x' ? "rightx" : "righty";
   switch (step.id) {
     case RETRO_DEVICE_ID_JOYPAD_UP: return "dpup";
     case RETRO_DEVICE_ID_JOYPAD_DOWN: return "dpdown";
@@ -129,6 +129,8 @@ PadConfig::PadConfig(const std::string& buttons, const std::string& style, Trans
     }
     steps_.push_back({id, 0, label});
   }
+  if (names.empty() || has("lx")) steps_.push_back({0, 'X', labels.count("lx") ? labels["lx"] : tr_("pad_left_x")});
+  if (names.empty() || has("ly")) steps_.push_back({0, 'Y', labels.count("ly") ? labels["ly"] : tr_("pad_left_y")});
   if (names.empty() || has("rx")) steps_.push_back({0, 'x', labels.count("rx") ? labels["rx"] : tr_("pad_right_x")});
   if (names.empty() || has("ry")) steps_.push_back({0, 'y', labels.count("ry") ? labels["ry"] : tr_("pad_right_y")});
   assigned_.resize(steps_.size());
@@ -218,7 +220,9 @@ float PadConfig::delta(int axis) const {
 }
 
 bool PadConfig::usesAxis(int axis) const {
-  if (leftStick_.count(axis)) return true;
+  // Stick gauche demandé : ses axes de SDL sont permis ; sinon jamais pris.
+  const bool leftStep = step_ < steps_.size() && (steps_[step_].stick == 'X' || steps_[step_].stick == 'Y');
+  if (!leftStep && leftStick_.count(axis)) return true;
   for (const auto& source : assigned_) {
     if (axisOf(source) == axis) return true;
   }
@@ -484,6 +488,8 @@ class PadPainter {
   }
   /** Étape du stick droit à repérer : l'axe en cours, sinon l'horizontal. */
   int rightAxis() const { return isCurrent(axisStep('y')) ? axisStep('y') : axisStep('x'); }
+  /** Étape du stick gauche à repérer : l'axe en cours, sinon l'horizontal. */
+  int leftAxis() const { return isCurrent(axisStep('Y')) ? axisStep('Y') : axisStep('X'); }
   bool isCurrent(int i) const { return i >= 0 && i == current_; }
   bool isDone(int i) const { return i >= 0 && !assigned_[(size_t)i].empty(); }
   std::string labelOf(int i) const { return i >= 0 ? steps_[(size_t)i].label : std::string(); }
@@ -749,7 +755,7 @@ void PadPainter::defaultPad() {
     disc(274, 100, 46 + g, col);
   }, color, edge);
   rect(40, 20, 260, 9, 4.5f, shade(color, 0.12f));
-  stick(70, 54, 15, rgba(34, 34, 38), shade(color, -0.25f), stepOf(RETRO_DEVICE_ID_JOYPAD_L3), -1, "L3");
+  stick(70, 54, 15, rgba(34, 34, 38), shade(color, -0.25f), stepOf(RETRO_DEVICE_ID_JOYPAD_L3), leftAxis(), "L3");
   disc(118, 96, 28, shade(color, -0.15f));
   dpad(118, 96, 14, 7.5f, rgba(28, 28, 32));
   stick(222, 96, 15, rgba(34, 34, 38), shade(color, -0.25f), stepOf(RETRO_DEVICE_ID_JOYPAD_R3), rightAxis(), "R3");
@@ -818,7 +824,7 @@ void PadPainter::n64() {
   }, color, edge);
   disc(66, 50, 28, shade(color, -0.08f));
   dpad(66, 50, 14, 8, rgba(84, 84, 92));
-  stick(170, 84, 12, rgba(150, 150, 158), shade(color, -0.3f), -1, -1, "");
+  stick(170, 84, 12, rgba(150, 150, 158), shade(color, -0.3f), -1, leftAxis(), "");
   pill(RETRO_DEVICE_ID_JOYPAD_L2, 170, 132, 34, 14, rgba(96, 96, 104));
   button(RETRO_DEVICE_ID_JOYPAD_START, 170, 42, 9, rgba(200, 40, 40), Label::Above, rgba(40, 40, 48));
   button(RETRO_DEVICE_ID_JOYPAD_Y, 230, 46, 12, kGreen);
@@ -865,7 +871,7 @@ void PadPainter::playstation(uint32_t color, uint32_t edge, uint32_t trigger, ui
   pill(RETRO_DEVICE_ID_JOYPAD_START, 194, 56, 24, 8, shade(color, dark ? 0.3f : -0.55f), Label::Below, print);
   disc(170, 82, 3, rgba(220, 40, 40));  // voyant « Analog »
   const uint32_t cap = dark ? rgba(28, 28, 32) : rgba(50, 50, 56), well = shade(color, dark ? 0.12f : -0.22f);
-  stick(128, 100, 15, cap, well, stepOf(RETRO_DEVICE_ID_JOYPAD_L3), -1, "L3");
+  stick(128, 100, 15, cap, well, stepOf(RETRO_DEVICE_ID_JOYPAD_L3), leftAxis(), "L3");
   stick(212, 100, 15, cap, well, stepOf(RETRO_DEVICE_ID_JOYPAD_R3), rightAxis(), "R3");
 }
 
@@ -877,7 +883,7 @@ void PadPainter::psp() {
   body([&](float g, uint32_t col) { rect(8 - g, 26 - g, 324 + 2 * g, 104 + 2 * g, 50 + g, col); }, color, edge);
   screen(94, 32, 152, 84, rgba(24, 24, 28), rgba(18, 22, 32));
   dpad(50, 62, 12, 7, rgba(84, 84, 90), true);
-  stick(50, 104, 8, rgba(110, 110, 116), rgba(24, 24, 26), -1, -1, "");
+  stick(50, 104, 8, rgba(110, 110, 116), rgba(24, 24, 26), -1, leftAxis(), "");
   const uint32_t dark = rgba(30, 30, 34);
   symbol(RETRO_DEVICE_ID_JOYPAD_X, 290, 46, 9, dark, Symbol::Triangle, rgba(76, 196, 156));
   symbol(RETRO_DEVICE_ID_JOYPAD_Y, 271, 66, 9, dark, Symbol::Square, rgba(232, 136, 206));
@@ -986,7 +992,7 @@ void PadPainter::dreamcast() {
   rect(132, 24, 76, 46, 4, rgba(170, 170, 178));
   rect(140, 30, 60, 34, 2, rgba(120, 164, 104));  // écran de la carte mémoire (VMU)
   rect(140, 30, 60, 8, 2, rgba(255, 255, 255, 30));
-  stick(74, 52, 13, rgba(206, 206, 210), shade(color, -0.25f), -1, -1, "");
+  stick(74, 52, 13, rgba(206, 206, 210), shade(color, -0.25f), -1, leftAxis(), "");
   dpad(104, 98, 13, 7.5f, rgba(70, 70, 76));
   button(RETRO_DEVICE_ID_JOYPAD_X, 262, 48, 10.5f, kGreen);   // Y
   button(RETRO_DEVICE_ID_JOYPAD_Y, 240, 70, 10.5f, kYellow);  // X
@@ -1138,7 +1144,7 @@ void PadPainter::gamecube() {
     disc(72, 104, 40 + g, col);
     disc(268, 104, 40 + g, col);
   }, color, edge);
-  stick(76, 56, 14, rgba(170, 170, 180), shade(color, -0.3f), -1, -1, "");
+  stick(76, 56, 14, rgba(170, 170, 180), shade(color, -0.3f), -1, leftAxis(), "");
   disc(112, 102, 20, shade(color, -0.2f));
   dpad(112, 102, 11, 6, rgba(170, 170, 180));
   button(RETRO_DEVICE_ID_JOYPAD_START, 170, 64, 6, rgba(200, 200, 208), Label::Below);
@@ -1195,7 +1201,8 @@ void PadConfig::render(Canvas& c) const {
       y += 16;
       centered(c, cx, y, Canvas::fit(step.label, 2, textWidth), 2, kAccent);
       y += 26;
-      const char* hint = step.stick == 'x' ? "pad_hint_stick_x" : step.stick == 'y' ? "pad_hint_stick_y" : "pad_hint";
+      const char* hint = step.stick == 'x' || step.stick == 'X' ? "pad_hint_stick_x"
+                         : step.stick == 'y' || step.stick == 'Y' ? "pad_hint_stick_y" : "pad_hint";
       for (const auto& line : wrap(tr_(hint), 1, textWidth)) {
         centered(c, cx, y, line, 1, kText);
         y += 12;

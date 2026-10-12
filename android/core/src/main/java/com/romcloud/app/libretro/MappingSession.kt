@@ -16,7 +16,7 @@ import kotlin.math.sign
 /**
  * Configuration d'une manette pour une console, étape par étape ([steps], d'après la manette de la
  * console) : l'utilisateur appuie sur chaque bouton demandé (touche ou gâchette analogique), puis
- * pousse le stick droit. La première manette
+ * pousse les sticks. La première manette
  * utilisée est celle configurée ; appuyer de nouveau sur la dernière touche passe l'étape.
  * [onDone] reçoit le message à afficher en fin de configuration.
  */
@@ -50,6 +50,8 @@ internal class MappingSession(
     private val axes = mutableListOf<AxisButton>()
     private var rightX: Pair<Int, Boolean>? = null
     private var rightY: Pair<Int, Boolean>? = null
+    private var leftX: Pair<Int, Boolean>? = null
+    private var leftY: Pair<Int, Boolean>? = null
 
     private var lastKey: Int? = null
     private val heldKeys = mutableSetOf<Int>()
@@ -99,7 +101,7 @@ internal class MappingSession(
         return true
     }
 
-    /** Traite un mouvement d'axe (gâchettes, stick droit) ; true s'il vient d'une manette. */
+    /** Traite un mouvement d'axe (gâchettes, sticks) ; true s'il vient d'une manette. */
     fun onMotion(event: MotionEvent): Boolean {
         val device = event.device ?: return false
         if (!event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return false
@@ -120,7 +122,9 @@ internal class MappingSession(
         }
         val pending = candidate
         if (pending == null) {
-            val used = axes.map { it.axis } + listOfNotNull(rightX?.first, rightY?.first) + IGNORED_AXES
+            // Stick gauche demandé : ses axes (X / Y en général) sont permis ; sinon jamais pris.
+            val ignored = if (current.stick?.left == true) HAT_AXES else IGNORED_AXES
+            val used = axes.map { it.axis } + listOfNotNull(rightX?.first, rightY?.first, leftX?.first, leftY?.first) + ignored
             val axis = axesOfDevice.filter { it !in used }.maxByOrNull { abs(delta(it)) } ?: return true
             if (abs(delta(axis)) > 0.6f) candidate = axis to sign(delta(axis))
         } else if (abs(delta(pending.first)) < 0.3f) {
@@ -128,6 +132,8 @@ internal class MappingSession(
             when (current.stick) {
                 StickAxis.X -> rightX = axis to (direction < 0)
                 StickAxis.Y -> rightY = axis to (direction < 0)
+                StickAxis.LEFT_X -> leftX = axis to (direction < 0)
+                StickAxis.LEFT_Y -> leftY = axis to (direction < 0)
                 null -> {
                     axes += AxisButton(axis, rest[axis] ?: 0f, direction, current.retroKey)
                     // Certaines manettes envoient aussi une touche pour la gâchette : même bouton.
@@ -172,6 +178,10 @@ internal class MappingSession(
                 rightStickY = rightY?.first,
                 invertRightX = rightX?.second ?: false,
                 invertRightY = rightY?.second ?: false,
+                leftStickX = leftX?.first,
+                leftStickY = leftY?.first,
+                invertLeftX = leftX?.second ?: false,
+                invertLeftY = leftY?.second ?: false,
             ),
         )
         onDone(R.string.pad_config_saved)
@@ -187,7 +197,10 @@ internal class MappingSession(
             return if (direction == null) name else "$name ${if (direction > 0) "+" else "−"}"
         }
 
-        /** Stick gauche et croix analogique : jamais pris pour une gâchette ou le stick droit. */
-        val IGNORED_AXES = listOf(MotionEvent.AXIS_X, MotionEvent.AXIS_Y, MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y)
+        /** Croix analogique : jamais prise pour une gâchette ou un stick. */
+        val HAT_AXES = listOf(MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y)
+
+        /** Stick gauche (axes standard) et croix : jamais pris pour une gâchette ou le stick droit. */
+        val IGNORED_AXES = listOf(MotionEvent.AXIS_X, MotionEvent.AXIS_Y) + HAT_AXES
     }
 }

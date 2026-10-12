@@ -106,6 +106,8 @@ static const struct {
     {"pad_keys", "Tab : passer   Suppr : configuration par défaut   Échap : annuler",
      "Tab: skip   Delete: default setup   Esc: cancel"},
     {"pad_keys_cancel", "Échap : annuler", "Esc: cancel"},
+    {"pad_left_x", "Stick gauche horizontal", "Left stick horizontal"},
+    {"pad_left_y", "Stick gauche vertical", "Left stick vertical"},
     {"pad_right_x", "Stick droit horizontal", "Right stick horizontal"},
     {"pad_right_y", "Stick droit vertical", "Right stick vertical"},
     {"pad_stick", "Stick droit", "Right stick"},

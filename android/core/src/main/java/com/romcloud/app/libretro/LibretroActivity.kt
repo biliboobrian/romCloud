@@ -1094,7 +1094,12 @@ class LibretroActivity : ComponentActivity() {
             event.getAxisValue(axis ?: default) * if (axis != null && invert) -1f else 1f
 
         view.sendMotionEvent(GLRetroView.MOTION_SOURCE_DPAD, event.getAxisValue(MotionEvent.AXIS_HAT_X), event.getAxisValue(MotionEvent.AXIS_HAT_Y), port)
-        view.sendMotionEvent(GLRetroView.MOTION_SOURCE_ANALOG_LEFT, event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_Y), port)
+        view.sendMotionEvent(
+            GLRetroView.MOTION_SOURCE_ANALOG_LEFT,
+            axis(mapping?.leftStickX, mapping?.invertLeftX == true, MotionEvent.AXIS_X),
+            axis(mapping?.leftStickY, mapping?.invertLeftY == true, MotionEvent.AXIS_Y),
+            port,
+        )
         view.sendMotionEvent(
             GLRetroView.MOTION_SOURCE_ANALOG_RIGHT,
             axis(mapping?.rightStickX, mapping?.invertRightX == true, MotionEvent.AXIS_Z),
