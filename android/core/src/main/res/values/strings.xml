@@ -26,7 +26,9 @@
     <string name="banner_storage">Allow file access in the settings to download ROMs.</string>
     <string name="banner_offline_full">Offline — only the games already downloaded are shown.</string>
     <string name="banner_offline">Offline — only the games already downloaded are shown.</string>
-    <string name="offline_badge">Offline: only downloaded games are available. Saves will be synced as soon as the server is reachable again.</string>
+    <string name="offline_badge">Offline: only downloaded games are available and the server is no longer contacted. Tap the icon to reconnect; saves will then be synced.</string>
+    <string name="offline_still">Server still unreachable — offline mode kept</string>
+    <string name="err_offline">Offline: tap the offline icon to reconnect to the server.</string>
     <plurals name="offline_synced">
         <item quantity="one">%1$d save synced with the server</item>
         <item quantity="other">%1$d saves synced with the server</item>

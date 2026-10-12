@@ -80,7 +80,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
     /** Profil du joueur : temps de jeu, sauvegardes en ligne, erreurs signalées. */
     lateinit var account: Account
         private set
-    /** Serveur joignable ou non (pastille « hors ligne », synchronisation au retour de la connexion). */
+    /** Mode en ligne ou hors ligne (pastille « hors ligne », synchronisation au retour en ligne). */
     lateinit var connectivity: Connectivity
         private set
 
@@ -122,7 +122,8 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         account = Account(this, api, appScope)
         api.clientHeaders = account::clientHeaders
         connectivity = Connectivity(this, api, appScope)
-        // Processus de l'émulateur intégré : ni suivi de la connexion, ni envoi du temps de jeu.
+        // Processus de l'émulateur intégré : mode en ligne / hors ligne repris de l'application (pas de
+        // sonde du serveur), ni envoi du temps de jeu.
         if (isMainProcess()) {
             watchConnection()
             watchScreens()

@@ -1,18 +1,29 @@
-// Connexion au serveur RomCloud : hors ligne dès qu'une requête n'aboutit pas, de nouveau en ligne
-// à la première réponse (quel que soit son code). Hors ligne, le serveur est sondé régulièrement ;
-// au retour de la connexion, l'interface est prévenue et le travail en attente est envoyé.
+// Connexion au serveur RomCloud : mode en ligne ou hors ligne. Le serveur est sondé (/api/ping) à
+// l'ouverture de l'application et quand l'utilisateur touche la pastille « hors ligne » ; une requête
+// qui n'aboutit pas (délai dépassé, serveur injoignable) passe l'application hors ligne. Hors ligne,
+// aucune requête ne part vers le serveur : seuls les fichiers déjà sur le PC sont utilisés. Au retour
+// en ligne, l'interface est prévenue et le travail en attente est envoyé.
+use crate::error::{AppError, Result};
 use crate::{account, events, settings};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-const PROBE_INTERVAL: Duration = Duration::from_secs(15);
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
 
 static ONLINE: AtomicBool = AtomicBool::new(true);
-static PROBING: AtomicBool = AtomicBool::new(false);
 
 pub fn is_online() -> bool {
     ONLINE.load(Ordering::SeqCst)
+}
+
+/// Hors ligne : erreur « serveur injoignable » sans requête (listes relues depuis le cache).
+pub fn ensure_online() -> Result<()> {
+    if is_online() {
+        Ok(())
+    } else {
+        Err(AppError::new("errors.unreachable", json!({ "detail": "offline" })))
+    }
 }
 
 /// État affiché par l'interface : { online, pending }.
@@ -33,14 +44,6 @@ fn set(value: bool) {
             s["synced"] = json!(synced);
             events::emit("connectivity:update", s);
         });
-    } else if !PROBING.swap(true, Ordering::SeqCst) {
-        tauri::async_runtime::spawn(async {
-            while !is_online() {
-                tokio::time::sleep(PROBE_INTERVAL).await;
-                probe().await;
-            }
-            PROBING.store(false, Ordering::SeqCst);
-        });
     }
 }
 
@@ -48,22 +51,35 @@ pub fn mark_online() {
     set(true);
 }
 
+/// Requête au serveur sans réponse (délai dépassé, serveur injoignable) : hors ligne.
 pub fn mark_offline() {
     set(false);
 }
 
-/// Le serveur répond-il ? Met l'état à jour et le renvoie (sans serveur configuré : inchangé).
-pub async fn probe() -> bool {
+/// Sonde le serveur (/api/ping) : toute réponse le met en ligne, son absence hors ligne. Renvoie
+/// l'état obtenu (sans serveur configuré : inchangé).
+pub async fn ping() -> bool {
     let server = settings::get_str("serverUrl");
     if server.is_empty() {
         return is_online();
     }
-    let ok = crate::api::client()
-        .get(format!("{server}/api/info"))
-        .timeout(Duration::from_secs(5))
-        .send()
-        .await
-        .is_ok();
-    if ok { mark_online() } else { mark_offline() }
-    is_online()
+    let ok = crate::api::client().get(format!("{server}/api/ping")).timeout(PING_TIMEOUT).send().await.is_ok();
+    set(ok);
+    ok
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hors_ligne_aucune_requete() {
+        ONLINE.store(false, Ordering::SeqCst);
+        let refused = ensure_online().unwrap_err();
+        // Même erreur qu'un serveur injoignable : les listes sont relues depuis le cache.
+        assert!(refused.is("errors.unreachable"));
+        assert!(account::relay_request("partie", "play", "host").is_none());
+        ONLINE.store(true, Ordering::SeqCst);
+        assert!(ensure_online().is_ok());
+    }
 }

@@ -141,7 +141,7 @@ fun TvSystemsScreen(
     Column(Modifier.fillMaxSize().padding(TvSafePadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TvDiskBar(usage)
-            OfflineBadge(Modifier.padding(start = 16.dp), size = 40.dp, explainOnClick = false)
+            OfflineBadge(Modifier.padding(start = 16.dp), size = 40.dp)
             Spacer(Modifier.weight(1f))
             if (search.active) {
                 // Recherche en cours : modifier ou effacer

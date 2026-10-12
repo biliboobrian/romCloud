@@ -65,7 +65,7 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "library:usage" => library::usage(&list(a, 0)),
         "connectivity:state" => connectivity::state(),
         "connectivity:check" => {
-            connectivity::probe().await;
+            connectivity::ping().await;
             connectivity::state()
         }
         // BIOS du système absents du PC (téléchargés avec le jeu si l'utilisateur le demande).
