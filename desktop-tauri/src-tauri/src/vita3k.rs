@@ -76,7 +76,7 @@ pub fn title_id_from_sfo(sfo: &[u8]) -> Option<String> {
 /// TITLE_ID du param.sfo d'une archive .vpk / .zip (sce_sys/param.sfo, éventuellement dans un dossier).
 fn title_id_from_archive(file: &Path) -> Option<String> {
     let mut archive = zip::ZipArchive::new(std::fs::File::open(file).ok()?).ok()?;
-    let name = archive.file_names().filter(|n| n.to_ascii_lowercase().ends_with("sce_sys/param.sfo")).min_by_key(|n| n.len())?.to_string();
+    let name = archive.file_names().filter_map(|n| n.ok()).filter(|n| n.to_ascii_lowercase().ends_with("sce_sys/param.sfo")).min_by_key(|n| n.len())?.to_string();
     let mut sfo = Vec::new();
     archive.by_name(&name).ok()?.read_to_end(&mut sfo).ok()?;
     title_id_from_sfo(&sfo)

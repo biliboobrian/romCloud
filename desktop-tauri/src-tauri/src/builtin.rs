@@ -89,7 +89,7 @@ fn extract_dll(archive: &[u8]) -> Option<Result<Vec<u8>>> {
         Ok(zip) => zip,
         Err(e) => return Some(Err(e.into())),
     };
-    let index = (0..zip.len()).find(|&i| zip.by_index(i).map(|f| f.name().to_lowercase().ends_with(".dll")).unwrap_or(false))?;
+    let index = (0..zip.len()).find(|&i| zip.by_index(i).is_ok_and(|f| f.name().is_ok_and(|n| n.to_lowercase().ends_with(".dll"))))?;
     let mut data = Vec::new();
     Some(zip.by_index(index).map_err(AppError::from).and_then(|mut f| f.read_to_end(&mut data).map_err(AppError::from)).map(|_| data))
 }
@@ -100,7 +100,7 @@ fn prepare_rom(core: &str, file: &str) -> Result<String> {
         return Ok(file.to_string());
     }
     let mut zip = zip::ZipArchive::new(std::fs::File::open(file)?)?;
-    let entries: Vec<(String, u64)> = (0..zip.len()).filter_map(|i| zip.by_index(i).ok().map(|f| (f.name().to_string(), f.size()))).collect();
+    let entries: Vec<(String, u64)> = (0..zip.len()).filter_map(|i| zip.by_index(i).ok().and_then(|f| Some((f.name().ok()?.to_string(), f.size())))).collect();
     let dir = root().join("rom-cache");
     let _ = std::fs::remove_dir_all(&dir);
     let chosen = cores::main_entry(&entries);
