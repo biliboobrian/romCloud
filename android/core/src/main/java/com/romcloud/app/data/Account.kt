@@ -227,7 +227,8 @@ class Account(private val context: Context, private val api: ApiClient, private 
     /** Relit le profil et le temps de jeu ; envoie d'abord le travail en attente. */
     suspend fun refresh() {
         if (token == null) return
-        flush()
+        // Sauvegardes faites hors ligne : envoyées seulement avec l'accord de l'utilisateur (uploadPending).
+        flush(includeSaves = false)
         try {
             val me = json.decodeFromString(MeResponse.serializer(), execute(request("/api/account/me")))
             val list = json.decodeFromString(ListSerializer(PlaytimeEntry.serializer()), execute(request("/api/account/playtime")))
@@ -609,12 +610,25 @@ class Account(private val context: Context, private val api: ApiClient, private 
 
     private fun saveEntryName(gameId: Long, core: String, kind: String) = "save-$gameId-$kind-" + core.replace(Regex("[^A-Za-z0-9._]"), "_")
 
+    /** Sauvegardes et états faits hors ligne, en attente d'envoi (proposé au retour en ligne). */
+    fun pendingSaves(): Int = if (token == null) 0 else queued("save-").size + queued("state-").size
+
     /**
-     * Envoie le temps de jeu et les sauvegardes en attente (serveur joignable) ; renvoie le nombre
-     * de sauvegardes envoyées. [savesOnly] : processus de l'émulateur intégré (le temps de jeu n'est
-     * envoyé que par l'application, pour ne jamais être compté deux fois).
+     * Envoie les sauvegardes et états faits hors ligne (accord de l'utilisateur) : (envoyés, ignorés).
+     * Ignorés : un état dont le jeu a déjà assez d'états plus récents en ligne (il ne serait pas
+     * gardé), une sauvegarde dont le serveur a une version plus récente (elle l'écraserait).
      */
-    suspend fun flush(savesOnly: Boolean = false): Int {
+    suspend fun uploadPending(): Pair<Int, Int> {
+        if (token == null) return 0 to 0
+        return flushLock.withLock { withContext(Dispatchers.IO) { sendQueued(skipOutdated = true) } }
+    }
+
+    /**
+     * Envoie le temps de jeu et, si [includeSaves], les sauvegardes en attente (serveur joignable) ;
+     * renvoie le nombre de sauvegardes envoyées. [savesOnly] : processus de l'émulateur intégré (le
+     * temps de jeu n'est envoyé que par l'application, pour ne jamais être compté deux fois).
+     */
+    suspend fun flush(savesOnly: Boolean = false, includeSaves: Boolean = true): Int {
         // Erreurs en attente : envoyées avec ou sans profil.
         if (!savesOnly) flushErrors()
         if (token == null) return 0
@@ -641,53 +655,84 @@ class Account(private val context: Context, private val api: ApiClient, private 
                         }
                     }
                 }
-                for (entry in queued("save-")) {
-                    val (gameId, kind, core) = entry.name.removePrefix("save-").split('-', limit = 3)
-                    val path = runCatching { entry.readText() }.getOrNull()
-                    val file = path?.let(::File)
-                    if (file == null || !file.isFile) {
-                        entry.delete()
-                        continue
-                    }
-                    val modified = entry.lastModified()
-                    try {
-                        putCompressed(request(savePath(gameId.toLong(), core, kind)).header("X-Saved-At", file.lastModified().toString()), file)
-                        sent++
-                        // Nouvelle sauvegarde mise en file pendant l'envoi : gardée pour le prochain.
-                        if (entry.lastModified() == modified) entry.delete()
-                    } catch (e: ApiException) {
-                        entry.delete()
-                        reportError("saves:$kind", e.message ?: "upload", file.name)
-                    } catch (e: IOException) {
-                        // réessayé au retour de la connexion ou dans l'application
-                    }
-                }
-                for (entry in queued("state-")) {
-                    val id = entry.name.removePrefix("state-")
-                    val lines = runCatching { entry.readText().lines() }.getOrNull()
-                    val gameId = lines?.getOrNull(0)?.toLongOrNull()
-                    val dir = lines?.getOrNull(1)?.let(::File)
-                    val core = dir?.parentFile?.name
-                    val meta = if (dir != null && core != null) StateHistory(dir, core).get(id) else null
-                    // État supprimé de l'historique entre-temps : rien à envoyer.
-                    if (gameId == null || dir == null || core == null || meta == null) {
-                        entry.delete()
-                        continue
-                    }
-                    try {
-                        uploadState(gameId, StateHistory(dir, core), meta)
-                        sent++
-                        entry.delete()
-                    } catch (e: ApiException) {
-                        entry.delete()
-                        reportError("states", e.message ?: "upload", id)
-                    } catch (e: IOException) {
-                        // réessayé au retour de la connexion ou dans l'application
-                    }
-                }
+                if (includeSaves) sent += sendQueued(skipOutdated = false).first
             }
         }
         return sent
+    }
+
+
+    /**
+     * Sauvegardes puis états en file (appelé sous [flushLock], hors du fil principal) : (envoyés,
+     * ignorés). [skipOutdated] : ceux qui ne seraient pas gardés ou écraseraient plus récent sont retirés.
+     */
+    private suspend fun sendQueued(skipOutdated: Boolean): Pair<Int, Int> {
+        var sent = 0
+        var skipped = 0
+        // Sauvegardes et états en ligne de chaque jeu, relus une fois.
+        val savesOf = HashMap<Long, List<OnlineSave>>()
+        val statesOf = HashMap<Long, List<OnlineState>>()
+        for (entry in queued("save-")) {
+            val (gameId, kind, core) = entry.name.removePrefix("save-").split('-', limit = 3)
+            val path = runCatching { entry.readText() }.getOrNull()
+            val file = path?.let(::File)
+            if (file == null || !file.isFile) {
+                entry.delete()
+                continue
+            }
+            val modified = entry.lastModified()
+            if (skipOutdated) {
+                val online = savesOf.getOrPut(gameId.toLong()) { saves(gameId.toLong()) }
+                if (newerOnline(online, core, kind, file.lastModified())) {
+                    skipped++
+                    entry.delete()
+                    continue
+                }
+            }
+            try {
+                putCompressed(request(savePath(gameId.toLong(), core, kind)).header("X-Saved-At", file.lastModified().toString()), file)
+                sent++
+                // Nouvelle sauvegarde mise en file pendant l'envoi : gardée pour le prochain.
+                if (entry.lastModified() == modified) entry.delete()
+            } catch (e: ApiException) {
+                entry.delete()
+                reportError("saves:$kind", e.message ?: "upload", file.name)
+            } catch (e: IOException) {
+                // réessayé au retour de la connexion ou dans l'application
+            }
+        }
+        for (entry in queued("state-")) {
+            val id = entry.name.removePrefix("state-")
+            val lines = runCatching { entry.readText().lines() }.getOrNull()
+            val gameId = lines?.getOrNull(0)?.toLongOrNull()
+            val dir = lines?.getOrNull(1)?.let(::File)
+            val core = dir?.parentFile?.name
+            val meta = if (dir != null && core != null) StateHistory(dir, core).get(id) else null
+            // État supprimé de l'historique entre-temps : rien à envoyer.
+            if (gameId == null || dir == null || core == null || meta == null) {
+                entry.delete()
+                continue
+            }
+            if (skipOutdated) {
+                val online = statesOf.getOrPut(gameId) { onlineStates(gameId).orEmpty() }
+                if (tooManyNewer(online, meta.createdAt)) {
+                    skipped++
+                    entry.delete()
+                    continue
+                }
+            }
+            try {
+                uploadState(gameId, StateHistory(dir, core), meta)
+                sent++
+                entry.delete()
+            } catch (e: ApiException) {
+                entry.delete()
+                reportError("states", e.message ?: "upload", id)
+            } catch (e: IOException) {
+                // réessayé au retour de la connexion ou dans l'application
+            }
+        }
+        return sent to skipped
     }
 
     // -------------------------------------------------------------------------
@@ -827,3 +872,14 @@ class Account(private val context: Context, private val api: ApiClient, private 
 internal fun saveCoreFamily(core: String): String = core.removeSuffix("_gles3").removeSuffix("_gles2")
 
 internal fun sameSaveCore(a: String, b: String): Boolean = saveCoreFamily(a) == saveCoreFamily(b)
+
+/**
+ * État fait hors ligne à [createdAt] (ms) : le jeu a-t-il déjà [StateHistory.LIMIT] états plus récents
+ * en ligne (hors épinglés) ? Envoyé, il ne serait pas gardé.
+ */
+internal fun tooManyNewer(online: List<OnlineState>, createdAt: Long): Boolean =
+    online.count { !it.pinned && it.createdAtMillis > createdAt } >= StateHistory.LIMIT
+
+/** Le serveur a-t-il une sauvegarde [kind] du même cœur plus récente que celle de l'appareil ([modified], ms) ? */
+internal fun newerOnline(online: List<OnlineSave>, core: String, kind: String, modified: Long): Boolean =
+    online.any { it.kind == kind && sameSaveCore(it.core, core) && it.savedAtMillis > modified + 1000 }

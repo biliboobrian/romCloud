@@ -27,6 +27,18 @@
     <string name="banner_offline_full">Offline — only the games already downloaded are shown.</string>
     <string name="banner_offline">Offline — only the games already downloaded are shown.</string>
     <string name="offline_badge">Offline: only downloaded games are available and the server is no longer contacted. Tap the icon to reconnect; saves will then be synced.</string>
+    <string name="offline_upload_title">Saves made offline</string>
+    <plurals name="offline_upload_text">
+        <item quantity="one">%d save made offline has not been sent to the server yet. Send it now?</item>
+        <item quantity="other">%d saves made offline have not been sent to the server yet. Send them now?</item>
+    </plurals>
+    <string name="offline_upload_rule">A save is not sent if the game already has enough more recent saves online (it would not be kept), nor if it would overwrite a more recent save.</string>
+    <string name="offline_upload_send">Send</string>
+    <string name="offline_upload_later">Later</string>
+    <plurals name="offline_upload_skipped">
+        <item quantity="one">%d save not sent: more recent saves are already online</item>
+        <item quantity="other">%d saves not sent: more recent saves are already online</item>
+    </plurals>
     <string name="offline_still">Server still unreachable — offline mode kept</string>
     <string name="err_offline">Offline: tap the offline icon to reconnect to the server.</string>
     <plurals name="offline_synced">

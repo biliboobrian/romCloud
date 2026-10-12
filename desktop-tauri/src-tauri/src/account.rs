@@ -425,28 +425,63 @@ pub async fn upload_changed(game_id: &Value, core: &str, files: &SaveFiles, sinc
 
 static FLUSHING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// Envoie le travail en attente (temps de jeu, sauvegardes faites hors ligne) ; renvoie le nombre de
-/// sauvegardes envoyées. Un seul envoi à la fois.
-pub async fn flush() -> usize {
-    let Ok(_guard) = FLUSHING.try_lock() else { return 0 };
+/// Envoie le travail en attente qui part sans confirmation : erreurs et temps de jeu. Les
+/// sauvegardes faites hors ligne attendent l'accord de l'utilisateur ([upload_pending]).
+pub async fn flush() {
+    let Ok(_guard) = FLUSHING.try_lock() else { return };
     // Erreurs gardées hors ligne : envoyées avec ou sans profil.
     flush_errors().await;
     if session().is_none() {
-        return 0;
+        return;
     }
     flush_playtime().await;
-    let mut sent = crate::states::flush_pending().await;
+}
+
+/// Sauvegardes et états faits hors ligne, en attente d'envoi (proposé au retour en ligne).
+pub fn pending_saves() -> usize {
+    if session().is_none() {
+        return 0;
+    }
+    pending("pendingSaves").len() + pending("pendingStates").len()
+}
+
+/**
+ * Envoie les sauvegardes et états faits hors ligne (accord de l'utilisateur) : { sent, skipped }.
+ * Ignorés : un état dont le jeu a déjà assez d'états plus récents en ligne, une sauvegarde dont le
+ * serveur a une version plus récente (elle l'écraserait).
+ */
+pub async fn upload_pending() -> Value {
+    let _guard = FLUSHING.lock().await;
+    if session().is_none() {
+        return json!({ "sent": 0, "skipped": 0 });
+    }
+    let (mut sent, mut skipped) = crate::states::flush_pending().await;
+    let mut online: std::collections::HashMap<String, Vec<Value>> = std::collections::HashMap::new();
     for entry in pending("pendingSaves") {
-        if !send_save(&entry).await {
+        let key = game_key(&entry["gameId"]);
+        if !online.contains_key(&key) {
+            online.insert(key.clone(), saves(&entry["gameId"]).await);
+        }
+        let file = Path::new(entry["file"].as_str().unwrap_or(""));
+        let mtime = paths::mtime_ms(file).unwrap_or(0.0);
+        if newer_online(&online[&key], entry["core"].as_str().unwrap_or(""), entry["kind"].as_str().unwrap_or(""), mtime) {
+            skipped += 1;
+        } else if send_save(&entry).await {
+            sent += 1;
+        } else {
             break; // serveur de nouveau injoignable : le reste attend
         }
-        sent += 1;
         settings::save(json!({ "pendingSaves": other_saves(&entry) }));
     }
-    if sent > 0 {
-        changed();
-    }
-    sent
+    changed();
+    json!({ "sent": sent, "skipped": skipped })
+}
+
+/// Le serveur a-t-il une sauvegarde [kind] du même cœur plus récente que celle du PC ([mtime], ms) ?
+pub fn newer_online(online: &[Value], core: &str, kind: &str, mtime: f64) -> bool {
+    online
+        .iter()
+        .any(|s| s["kind"] == kind && same_save_core(s["core"].as_str().unwrap_or(""), core) && parse_date_ms(s["savedAt"].as_str().unwrap_or("")) > mtime + 1000.0)
 }
 
 /// Nombre d'envois en attente (sauvegardes et durées de jeu).
@@ -589,6 +624,18 @@ pub fn install_panic_hook() {
 #[cfg(test)]
 mod compression_tests {
     use super::*;
+
+    #[test]
+    fn sauvegarde_plus_recente_en_ligne_pas_ecrasee() {
+        let online = vec![json!({ "kind": "sram", "core": "mupen64plus_next", "savedAt": "2026-10-10T12:00:00.000Z" })];
+        let before = parse_date_ms("2026-10-09T12:00:00.000Z");
+        let after = parse_date_ms("2026-10-11T12:00:00.000Z");
+        // Même cœur (variante GLES3 d'Android comprise) et même type : plus récente en ligne.
+        assert!(newer_online(&online, "mupen64plus_next_gles3", "sram", before));
+        assert!(!newer_online(&online, "mupen64plus_next", "sram", after));
+        assert!(!newer_online(&online, "mupen64plus_next", "state", before));
+        assert!(!newer_online(&online, "parallel_n64", "sram", before));
+    }
 
     #[test]
     fn sauvegarde_compressee_seulement_si_plus_petite() {

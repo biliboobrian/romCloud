@@ -26,6 +26,18 @@
     <string name="banner_offline_full">Hors ligne — seuls les jeux déjà téléchargés sont affichés.</string>
     <string name="banner_offline">Hors ligne — seuls les jeux déjà téléchargés sont affichés.</string>
     <string name="offline_badge">Hors ligne : seuls les jeux téléchargés sont disponibles et le serveur n’est plus interrogé. Touchez l’icône pour vous reconnecter ; les sauvegardes seront alors synchronisées.</string>
+    <string name="offline_upload_title">Sauvegardes faites hors ligne</string>
+    <plurals name="offline_upload_text">
+        <item quantity="one">%d sauvegarde faite hors ligne n’a pas encore été envoyée au serveur. L’envoyer maintenant ?</item>
+        <item quantity="other">%d sauvegardes faites hors ligne n’ont pas encore été envoyées au serveur. Les envoyer maintenant ?</item>
+    </plurals>
+    <string name="offline_upload_rule">Une sauvegarde n’est pas envoyée si le jeu a déjà assez de parties plus récentes en ligne (elle ne serait pas gardée), ni si elle écraserait une sauvegarde plus récente.</string>
+    <string name="offline_upload_send">Envoyer</string>
+    <string name="offline_upload_later">Plus tard</string>
+    <plurals name="offline_upload_skipped">
+        <item quantity="one">%d sauvegarde non envoyée : des parties plus récentes sont déjà en ligne</item>
+        <item quantity="other">%d sauvegardes non envoyées : des parties plus récentes sont déjà en ligne</item>
+    </plurals>
     <string name="offline_still">Serveur toujours injoignable — mode hors ligne conservé</string>
     <string name="err_offline">Hors ligne : touchez l’icône hors ligne pour vous reconnecter au serveur.</string>
     <plurals name="offline_synced">
