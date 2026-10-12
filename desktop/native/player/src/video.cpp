@@ -50,7 +50,7 @@
   X(PFNGLBINDRENDERBUFFERPROC, glBindRenderbuffer)                              \
   X(PFNGLRENDERBUFFERSTORAGEPROC, glRenderbufferStorage)                        \
   X(PFNGLFRAMEBUFFERRENDERBUFFERPROC, glFramebufferRenderbuffer)                \
-  X(PFNGLDELETERENDERBUFFERSPROC, glDeleteRenderbuffers)
+  X(PFNGLDELETERENDERBUFFERSPROC, glDeleteRenderbuffers)                          X(PFNGLBLENDFUNCSEPARATEPROC, glBlendFuncSeparate)
 
 // Facultatives (absentes des contextes OpenGL 2.1).
 #define GL_OPTIONAL_FUNCTIONS(X)                                                \
@@ -72,6 +72,98 @@ GL_OPTIONAL_FUNCTIONS(DECLARE)
 #ifndef GL_FRAMEBUFFER_SRGB
 #define GL_FRAMEBUFFER_SRGB 0x8DB9
 #endif
+#ifndef GL_VERTEX_ARRAY_BINDING
+#define GL_VERTEX_ARRAY_BINDING 0x85B5
+#endif
+#ifndef GL_SAMPLER_BINDING
+#define GL_SAMPLER_BINDING 0x8919
+#endif
+
+// ---------------------------------------------------------------------------
+// État OpenGL du cœur
+// ---------------------------------------------------------------------------
+
+namespace {
+/**
+ * État OpenGL du cœur gardé pendant que l'affichage dessine (même contexte que le cœur) : tout ce
+ * que l'affichage change est rétabli à l'identique en sortant. Les cœurs à rendu matériel mémorisent
+ * ce qu'ils ont lié (LRPS2 : son tableau de sommets, qui porte aussi son tampon d'indices) et ne le
+ * relient pas d'une image à l'autre ; avec le tableau de sommets de l'affichage resté lié, LRPS2
+ * dessinait sans ses indices et le pilote lisait une adresse presque nulle (plantage).
+ */
+class GLStateGuard {
+ public:
+  GLStateGuard() {
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFb_);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFb_);
+    glGetIntegerv(GL_RENDERBUFFER_BINDING, &renderbuffer_);
+    glGetIntegerv(GL_VIEWPORT, viewport_);
+    for (int i = 0; i < kCaps; i++) enabled_[i] = glIsEnabled(kCapList[i]);
+    glGetBooleanv(GL_COLOR_WRITEMASK, colorMask_);
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, clearColor_);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program_);
+    if (p_glBindVertexArray) glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao_);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &arrayBuffer_);
+    glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpackBuffer_);
+    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &packBuffer_);
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment_);
+    glGetIntegerv(GL_UNPACK_ROW_LENGTH, &unpackRowLength_);
+    glGetIntegerv(GL_PACK_ALIGNMENT, &packAlignment_);
+    glGetIntegerv(GL_READ_BUFFER, &readBuffer_);
+    glGetIntegerv(GL_BLEND_SRC_RGB, &blend_[0]);
+    glGetIntegerv(GL_BLEND_DST_RGB, &blend_[1]);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &blend_[2]);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &blend_[3]);
+    // Unité de texture 0 (celle de l'affichage) : texture et échantillonneur.
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture_);
+    p_glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture0_);
+    if (p_glBindSampler) glGetIntegerv(GL_SAMPLER_BINDING, &sampler0_);
+  }
+
+  ~GLStateGuard() {
+    p_glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)texture0_);
+    if (p_glBindSampler) p_glBindSampler(0, (GLuint)sampler0_);
+    p_glActiveTexture((GLenum)activeTexture_);
+    p_glBlendFuncSeparate((GLenum)blend_[0], (GLenum)blend_[1], (GLenum)blend_[2], (GLenum)blend_[3]);
+    glPixelStorei(GL_PACK_ALIGNMENT, packAlignment_);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, unpackRowLength_);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment_);
+    p_glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)packBuffer_);
+    p_glBindBuffer(GL_PIXEL_UNPACK_BUFFER, (GLuint)unpackBuffer_);
+    p_glBindBuffer(GL_ARRAY_BUFFER, (GLuint)arrayBuffer_);
+    if (p_glBindVertexArray) p_glBindVertexArray((GLuint)vao_);
+    p_glUseProgram((GLuint)program_);
+    glClearColor(clearColor_[0], clearColor_[1], clearColor_[2], clearColor_[3]);
+    glColorMask(colorMask_[0], colorMask_[1], colorMask_[2], colorMask_[3]);
+    for (int i = 0; i < kCaps; i++) {
+      if (enabled_[i]) glEnable(kCapList[i]);
+      else glDisable(kCapList[i]);
+    }
+    glViewport(viewport_[0], viewport_[1], viewport_[2], viewport_[3]);
+    p_glBindRenderbuffer(GL_RENDERBUFFER, (GLuint)renderbuffer_);
+    p_glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)readFb_);
+    p_glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)drawFb_);
+    // Tampon de lecture : celui du framebuffer lu, une fois celui-ci relié.
+    glReadBuffer((GLenum)readBuffer_);
+  }
+
+  GLStateGuard(const GLStateGuard&) = delete;
+  GLStateGuard& operator=(const GLStateGuard&) = delete;
+
+ private:
+  static constexpr int kCaps = 6;
+  static constexpr GLenum kCapList[kCaps] = {GL_DEPTH_TEST, GL_STENCIL_TEST, GL_SCISSOR_TEST, GL_CULL_FACE, GL_BLEND, GL_FRAMEBUFFER_SRGB};
+  GLint drawFb_ = 0, readFb_ = 0, renderbuffer_ = 0, viewport_[4] = {0, 0, 0, 0};
+  GLboolean enabled_[kCaps] = {}, colorMask_[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE};
+  GLfloat clearColor_[4] = {0, 0, 0, 0};
+  GLint program_ = 0, vao_ = 0, arrayBuffer_ = 0, unpackBuffer_ = 0, packBuffer_ = 0;
+  GLint unpackAlignment_ = 4, unpackRowLength_ = 0, packAlignment_ = 4, readBuffer_ = GL_BACK;
+  GLint blend_[4] = {GL_ONE, GL_ZERO, GL_ONE, GL_ZERO};
+  GLint activeTexture_ = GL_TEXTURE0, texture0_ = 0, sampler0_ = 0;
+};
+}  // namespace
 
 retro_proc_address_t Video::procAddress(const char* sym) {
   return reinterpret_cast<retro_proc_address_t>(SDL_GL_GetProcAddress(sym));
@@ -199,6 +291,7 @@ bool Video::saveFrame(const std::string& path) {
 
 SDL_Surface* Video::captureFrame() {
   if (!hasFrame_ || !frameWidth_ || !frameHeight_) return nullptr;
+  GLStateGuard keep;
   int w = (int)frameWidth_, h = (int)frameHeight_;
   SDL_Surface* surface = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_RGBA32);
   if (!surface) return nullptr;
@@ -241,6 +334,8 @@ void Video::toggleFullscreen() {
 void Video::allocateHwFramebuffer() {
   int w = (int)std::max(1u, g.av.geometry.max_width), h = (int)std::max(1u, g.av.geometry.max_height);
   if (fbo_ && w <= fboWidth_ && h <= fboHeight_) return;
+  // Agrandi en cours de partie (SET_SYSTEM_AV_INFO pendant retro_run) : état du cœur gardé.
+  GLStateGuard keep;
   fboWidth_ = std::max(w, fboWidth_);
   fboHeight_ = std::max(h, fboHeight_);
   if (!fbo_) {
@@ -647,6 +742,15 @@ struct Vertex {
 }  // namespace
 
 void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool swap) {
+  // Rétabli avant l'échange des tampons (fin de la portée).
+  {
+    GLStateGuard keep;
+    draw(overlay, overlayWidth, overlayHeight);
+  }
+  if (swap) SDL_GL_SwapWindow(window_);
+}
+
+void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight) {
   int winW, winH;
   SDL_GetWindowSizeInPixels(window_, &winW, &winH);
 
@@ -794,11 +898,10 @@ void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight,
     drawQuad(quad);
     glDisable(GL_BLEND);
   }
-
-  if (swap) SDL_GL_SwapWindow(window_);
 }
 
 bool Video::saveWindow(const std::string& path) {
+  GLStateGuard keep;
   int w, h;
   SDL_GetWindowSizeInPixels(window_, &w, &h);
   std::vector<uint8_t> pixels((size_t)w * h * 4);
