@@ -2636,6 +2636,19 @@
     if (e.key === 'Escape' && $('#modalRoot').innerHTML) $('#modalRoot').innerHTML = '';
     else if ((e.key === 'Escape' || (e.altKey && e.key === 'ArrowLeft')) && S.route.name !== 'systems' && !e.target.matches('input')) back();
   });
+  // Bouton « précédent » de la souris (bouton 3) : fenêtre ouverte fermée, sinon retour, là où la
+  // flèche de retour est affichée. Navigation du navigateur intégré empêchée (boutons 3 et 4).
+  const mouseHistoryButton = (e) => e.button === 3 || e.button === 4;
+  document.addEventListener('mousedown', (e) => {
+    if (mouseHistoryButton(e)) e.preventDefault();
+  });
+  document.addEventListener('mouseup', (e) => {
+    if (!mouseHistoryButton(e)) return;
+    e.preventDefault();
+    if (e.button !== 3) return;
+    if ($('#modalRoot').innerHTML) $('#modalRoot').innerHTML = '';
+    else if (!$('#backBtn').classList.contains('hidden')) back();
+  });
   // Erreurs de l'interface signalées à l'administration (avec le profil connecté).
   window.addEventListener('error', (e) => rc.account.reportError({ context: 'ui', message: e.message, details: e.error?.stack }));
   window.addEventListener('unhandledrejection', (e) => rc.account.reportError({ context: 'ui', message: String(e.reason?.message || e.reason), details: e.reason?.stack }));
