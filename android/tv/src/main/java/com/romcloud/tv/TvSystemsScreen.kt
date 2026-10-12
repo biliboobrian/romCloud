@@ -1,5 +1,7 @@
 package com.romcloud.tv
 
+import com.romcloud.app.data.MediaUrl
+import com.romcloud.app.data.MediaSize
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -69,7 +71,7 @@ fun TvSystemsScreen(
     viewModel: SystemsViewModel,
     storageWarning: Boolean,
     imageUrl: (GameSystem) -> String?,
-    mediaUrl: (Game, String) -> String?,
+    mediaUrl: MediaUrl,
     onOpenSystem: (String) -> Unit,
     onOpenGame: (systemId: String, gameId: Long) -> Unit,
     onOpenSettings: () -> Unit,
@@ -254,7 +256,7 @@ private fun TvSearchResults(
     viewModel: SystemsViewModel,
     search: SystemsViewModel.SearchState,
     imageUrl: (GameSystem) -> String?,
-    mediaUrl: (Game, String) -> String?,
+    mediaUrl: MediaUrl,
     onOpenGame: (systemId: String, gameId: Long) -> Unit,
 ) {
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
@@ -298,7 +300,7 @@ private fun TvSearchResults(
                         val system = viewModel.system(game.systemId)
                         TvGameCard(
                             game = game,
-                            coverUrl = mediaUrl(game, "boxart"),
+                            coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
                             status = statusOf(game),
                             onClick = { onOpenGame(game.systemId, game.id) },
                             onLongClick = { onOpenGame(game.systemId, game.id) },

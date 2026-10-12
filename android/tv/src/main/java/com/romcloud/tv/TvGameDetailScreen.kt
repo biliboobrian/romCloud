@@ -1,5 +1,7 @@
 package com.romcloud.tv
 
+import com.romcloud.app.data.MediaUrl
+import com.romcloud.app.data.MediaSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import android.app.Activity
@@ -89,7 +91,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun TvGameDetailScreen(
     viewModel: GameDetailViewModel,
-    mediaUrl: (Game, String) -> String?,
+    mediaUrl: MediaUrl,
     onMessage: (String) -> Unit,
     onOpenLobby: () -> Unit = {},
 ) {
@@ -129,7 +131,7 @@ fun TvGameDetailScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        Backdrop(mediaUrl(game, "screenshot") ?: mediaUrl(game, "boxart"))
+        Backdrop(mediaUrl(game, "screenshot", MediaSize.MEDIUM) ?: mediaUrl(game, "boxart", MediaSize.MEDIUM))
         // Pas de marge en haut : la jaquette commence en haut de l'écran.
         Row(Modifier.fillMaxSize().padding(start = 48.dp, end = 48.dp, bottom = 27.dp)) {
             // Jaquette
@@ -141,7 +143,7 @@ fun TvGameDetailScreen(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
-                val cover = mediaUrl(game, "boxart")
+                val cover = mediaUrl(game, "boxart", MediaSize.MEDIUM)
                 if (cover != null) {
                     AsyncImage(cover, game.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 } else {
@@ -323,7 +325,7 @@ fun TvGameDetailScreen(
                     Text(it, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth(0.9f))
                 }
                 // Captures d'écran (jusqu'à 4) : OK pour les voir en plein écran, flèches pour passer aux autres.
-                ScreenshotGallery(game.screenshotTypes.mapNotNull { mediaUrl(game, it) }, Modifier.fillMaxWidth(), height = 160.dp)
+                ScreenshotGallery(game.screenshotTypes.mapNotNull { mediaUrl(game, it, MediaSize.MEDIUM) }, Modifier.fillMaxWidth(), height = 160.dp)
                 TvGameInfo(gameFacts(game))
             }
         }

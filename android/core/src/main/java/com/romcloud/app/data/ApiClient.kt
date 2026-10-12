@@ -92,15 +92,21 @@ class ApiClient(private val settings: Settings, val platform: String) {
         return if (key.isNotEmpty()) mapOf("Authorization" to "Bearer $key") else emptyMap()
     }
 
-    fun mediaUrl(game: Game, type: String): String? {
+    /**
+     * Image d'un jeu ; [size] : version allégée du serveur ([MediaSize.THUMB] : grilles et listes,
+     * [MediaSize.MEDIUM] : fiche et fond d'écran), sinon l'original.
+     */
+    fun mediaUrl(game: Game, type: String, size: String? = null): String? {
         val has = if (type == "boxart") game.hasBoxart else type in game.screenshotTypes
         if (!has || settings.config.value.serverUrl.isBlank()) return null
-        return url("/api/games/${game.id}/media/$type?v=${game.updatedAt}")
+        val sized = size?.let { "&size=$it" }.orEmpty()
+        return url("/api/games/${game.id}/media/$type?v=${game.updatedAt}$sized")
     }
 
+    /** Image du système, en vignette (cartes des systèmes, pastilles). */
     fun systemImageUrl(system: GameSystem): String? {
         if (!system.hasImage || settings.config.value.serverUrl.isBlank()) return null
-        return url("/api/systems/${system.id}/image?v=${system.imageVersion}")
+        return url("/api/systems/${system.id}/image?v=${system.imageVersion}&size=${MediaSize.THUMB}")
     }
 
     fun fileUrl(game: Game): String = fileUrl(game.id)
@@ -184,3 +190,14 @@ class ApiClient(private val settings: Settings, val platform: String) {
 
     fun apkFileUrl(apk: EmulatorApk): String = url("/api/apks/${apk.id}/file")
 }
+
+/** Tailles des images allégées du serveur (server/src/media-variants.js). */
+object MediaSize {
+    /** Vignette (400 px au plus) : grilles, listes, petites jaquettes. */
+    const val THUMB = "thumb"
+    /** Version moyenne (800 px au plus) : fiche du jeu, fonds d'écran, galeries. */
+    const val MEDIUM = "medium"
+}
+
+/** Adresse d'une image d'un jeu : jeu, type (« boxart », « screenshot »…), taille ([MediaSize], null : original). */
+typealias MediaUrl = (game: Game, type: String, size: String?) -> String?

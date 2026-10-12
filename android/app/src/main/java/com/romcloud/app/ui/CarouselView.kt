@@ -1,5 +1,7 @@
 package com.romcloud.app.ui
 
+import com.romcloud.app.data.MediaUrl
+import com.romcloud.app.data.MediaSize
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.foundation.border
 import androidx.compose.runtime.getValue
@@ -67,7 +69,7 @@ import com.romcloud.core.R
 fun GamesCarousel(
     games: List<Game>,
     downloaded: Set<Long>,
-    mediaUrl: (Game, String) -> String?,
+    mediaUrl: MediaUrl,
     statusOf: (Game) -> LocalStatus,
     onClick: (Game) -> Unit,
     onDetails: (Game) -> Unit,
@@ -103,8 +105,8 @@ fun GamesCarousel(
         featured?.let { game ->
             HeroBanner(
                 game = game,
-                backgroundUrl = mediaUrl(game, "screenshot") ?: mediaUrl(game, "boxart"),
-                coverUrl = mediaUrl(game, "boxart"),
+                backgroundUrl = mediaUrl(game, "screenshot", MediaSize.MEDIUM) ?: mediaUrl(game, "boxart", MediaSize.MEDIUM),
+                coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
                 status = statusOf(game),
                 canResume = canResume(game),
                 needsSetup = remember(game.id, statusOf(game)) { statusOf(game) == LocalStatus.Downloaded && needsSetup(game) },
@@ -140,7 +142,7 @@ fun GamesCarousel(
                         items(row.games, key = { it.id }) { game ->
                             GameCard(
                                 game = game,
-                                coverUrl = mediaUrl(game, "boxart"),
+                                coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
                                 status = statusOf(game),
                                 // Appui : jeu affiché dans la bannière (jouer / télécharger depuis la bannière) ;
                                 // appui long ou bouton « i » : fiche du jeu.

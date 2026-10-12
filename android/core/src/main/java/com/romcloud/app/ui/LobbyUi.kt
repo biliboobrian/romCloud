@@ -1,5 +1,6 @@
 package com.romcloud.app.ui
 
+import com.romcloud.app.data.MediaSize
 import android.app.Activity
 import android.content.Context
 import androidx.compose.foundation.background
@@ -369,7 +370,7 @@ fun LobbyContent(app: RomCloudApp, onChooseGame: () -> Unit, onMessage: (String)
                 Modifier.width(coverWidth).aspectRatio(3f / 4f).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
-                val cover = game?.let { app.api.mediaUrl(it, "boxart") }
+                val cover = game?.let { app.api.mediaUrl(it, "boxart", MediaSize.THUMB) }
                 if (cover != null) AsyncImage(cover, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
                 else Icon(Icons.Filled.SportsEsports, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

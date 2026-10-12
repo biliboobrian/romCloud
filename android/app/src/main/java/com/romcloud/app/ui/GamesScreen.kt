@@ -1,5 +1,7 @@
 package com.romcloud.app.ui
 
+import com.romcloud.app.data.MediaUrl
+import com.romcloud.app.data.MediaSize
 import android.app.Activity
 import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -89,7 +91,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun GamesScreen(
     viewModel: GamesViewModel,
-    mediaUrl: (Game, String) -> String?,
+    mediaUrl: MediaUrl,
     snackbar: SnackbarHostState,
     autoLaunch: MutableMap<Long, PendingLaunch>,
     onBack: () -> Unit,
@@ -308,7 +310,7 @@ fun GamesScreen(
                         items(games, key = { it.id }) { game ->
                             GameCard(
                                 game = game,
-                                coverUrl = mediaUrl(game, "boxart"),
+                                coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
                                 status = statusOf(game),
                                 onClick = { onOpenGame(game.id) },
                                 onDetails = { onOpenGame(game.id) },
@@ -320,7 +322,7 @@ fun GamesScreen(
                         items(games, key = { it.id }) { game ->
                             GameRow(
                                 game = game,
-                                coverUrl = mediaUrl(game, "boxart"),
+                                coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
                                 status = statusOf(game),
                                 onClick = { onOpenGame(game.id) },
                                 onDetails = { onOpenGame(game.id) },

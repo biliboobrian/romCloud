@@ -115,16 +115,22 @@
   /** Médias des captures du jeu : « screenshot », « screenshot2 »… */
   const screenshotTypes = (game) => Array.from({ length: screenshotCount(game) }, (_, i) => (i ? `screenshot${i + 1}` : 'screenshot'));
 
-  function mediaUrl(game, type) {
+  /**
+   * Image d'un jeu ; [size] : version allégée du serveur (« thumb » : grilles et listes, « medium » :
+   * fiche et fond d'écran), sinon l'original (capture en grand).
+   */
+  function mediaUrl(game, type, size) {
     const shot = /^screenshot(\d?)$/.exec(type);
     const has = type === 'boxart' ? game.hasBoxart : shot ? Number(shot[1] || 1) <= screenshotCount(game) : false;
     if (!has || !S.settings.serverUrl) return null;
-    return withKey(`${S.settings.serverUrl}/api/games/${game.id}/media/${type}?v=${encodeURIComponent(game.updatedAt || '')}`);
+    const sized = size ? `&size=${size}` : '';
+    return withKey(`${S.settings.serverUrl}/api/games/${game.id}/media/${type}?v=${encodeURIComponent(game.updatedAt || '')}${sized}`);
   }
 
+  /** Image du système, en vignette (cartes des systèmes, pastilles). */
   function systemImageUrl(system) {
     if (!system?.hasImage || !S.settings.serverUrl) return null;
-    return withKey(`${S.settings.serverUrl}/api/systems/${encodeURIComponent(system.id)}/image?v=${encodeURIComponent(system.imageVersion || '')}`);
+    return withKey(`${S.settings.serverUrl}/api/systems/${encodeURIComponent(system.id)}/image?v=${encodeURIComponent(system.imageVersion || '')}&size=thumb`);
   }
 
   const systemById = (id) => S.systems.find((s) => s.id === id);
@@ -727,7 +733,7 @@
 
   function cardHtml(game, downloaded, { badge = false } = {}) {
     const st = statusOf(game, downloaded);
-    const cover = mediaUrl(game, 'boxart');
+    const cover = mediaUrl(game, 'boxart', 'thumb');
     const system = systemById(game.systemId);
     const logo = systemImageUrl(system);
     return `<div class="game-card${st.kind === 'downloaded' ? '' : ' remote'}" data-card="${game.id}">
@@ -956,7 +962,7 @@
     }
     if (S.settings.view === 'list') {
       main.innerHTML = `<div class="page"><div class="list">${games.map((g) => {
-        const cover = mediaUrl(g, 'boxart');
+        const cover = mediaUrl(g, 'boxart', 'thumb');
         return `<div class="list-row" data-card="${g.id}">
           <div class="thumb">${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : ''}</div>
           <div class="main"><div class="t">${esc(g.title)}${multiBadge(g)}</div>
@@ -1102,9 +1108,9 @@
     const game = featured(visibleGames());
     if (!game) return;
     for (const el of $$('.game-card[data-card]', $('#main'))) el.classList.toggle('selected', Number(el.dataset.card) === game.id);
-    const shot = mediaUrl(game, 'screenshot') || mediaUrl(game, 'boxart');
+    const shot = mediaUrl(game, 'screenshot', 'medium') || mediaUrl(game, 'boxart', 'medium');
     $('#backdrop').innerHTML = shot ? `<img src="${esc(shot)}" alt="">` : '';
-    const cover = mediaUrl(game, 'boxart');
+    const cover = mediaUrl(game, 'boxart', 'thumb');
     const st = statusOf(game, S.games.downloaded);
     const resume = canResume(game);
     const statusLine = st.kind === 'downloaded' ? `<span class="good">${esc(t('hero.ready'))}</span>`
@@ -1566,7 +1572,7 @@
     const game = await lobbyGame(lobby);
     if (S.route.name !== 'lobby' || S.lobby !== lobby) return;
     const system = game && systemById(game.systemId);
-    const cover = game && mediaUrl(game, 'boxart');
+    const cover = game && mediaUrl(game, 'boxart', 'thumb');
     const self = lobby.members.find((m) => m.id === S.lobbies.me);
     const canPlay = Boolean(lobby.game) && (host || lobby.started);
     const modeText = (m) => t(m === 'link' ? 'lobby.mode.link' : 'lobby.mode.netplay');
@@ -2134,8 +2140,10 @@
     const resumable = localResume || Boolean(online);
     if (S.route.name !== 'game' || S.route.gameId !== gameId) return;
     const st = statusOf(game, downloaded);
-    const cover = mediaUrl(game, 'boxart');
-    const shot = mediaUrl(game, 'screenshot');
+    const cover = mediaUrl(game, 'boxart', 'medium');
+    const shot = mediaUrl(game, 'screenshot', 'medium');
+    // Vignettes des captures ; en grand (clic) : les originaux.
+    const shotThumbs = screenshotTypes(game).map((type) => mediaUrl(game, type, 'thumb'));
     const shots = screenshotTypes(game).map((type) => mediaUrl(game, type));
     const selected = emu.options.find((o) => o.id === emu.selected);
     const optionLabel = (o) => {
@@ -2216,7 +2224,7 @@
           </div>
           ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
           ${gameInfoHtml(game)}
-          ${shots.length ? `<div class="shots">${shots.map((url, i) => `<button class="shot" data-shot="${i}" title="${esc(t('detail.screenshot', { n: i + 1, total: shots.length }))}"><img src="${esc(url)}" alt=""></button>`).join('')}</div>` : ''}
+          ${shots.length ? `<div class="shots">${shotThumbs.map((url, i) => `<button class="shot" data-shot="${i}" title="${esc(t('detail.screenshot', { n: i + 1, total: shots.length }))}"><img src="${esc(url)}" alt=""></button>`).join('')}</div>` : ''}
           <div class="mono muted">${esc(localPath)}</div>
         </div>
       </div>
