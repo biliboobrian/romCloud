@@ -146,6 +146,7 @@
       sendReport: call('account:sendReport'),
       logout: call('account:logout'),
       playtime: call('account:playtime'),
+      uploadPending: call('account:uploadPending'),
       reportError: call('account:reportError'),
       onUpdate: on('account:update'),
     },

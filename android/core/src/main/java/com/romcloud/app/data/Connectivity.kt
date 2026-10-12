@@ -1,25 +1,23 @@
 package com.romcloud.app.data
 
 import android.content.Context
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 /**
  * Connexion au serveur RomCloud : mode en ligne ou hors ligne. Le serveur est sondé (/api/ping) à
- * l'ouverture de l'application ([start]) et quand l'utilisateur touche la pastille « hors ligne »
+ * l'ouverture de l'application et quand l'utilisateur touche la pastille « hors ligne »
  * ([ping]) ; une requête qui n'aboutit pas (délai dépassé, serveur injoignable) passe l'application
  * hors ligne. Hors ligne, aucune requête ne part vers le serveur ([ApiClient.isOffline]) : seuls les
  * fichiers déjà sur l'appareil sont utilisés. Chaque retour en ligne est signalé par [reconnected]
  * (envoi des sauvegardes faites hors ligne, listes relues). Le mode est mémorisé pour le processus
  * de l'émulateur intégré, qui le reprend au lancement d'un jeu sans sonder le serveur.
  */
-class Connectivity(context: Context, private val api: ApiClient, private val scope: CoroutineScope) {
+class Connectivity(context: Context, private val api: ApiClient) {
 
     private val prefs = context.getSharedPreferences("romcloud_connectivity", Context.MODE_PRIVATE)
 
@@ -33,11 +31,6 @@ class Connectivity(context: Context, private val api: ApiClient, private val sco
         api.isOffline = { !_online.value }
         // Requête sans réponse : hors ligne (le retour en ligne passe seulement par le ping).
         api.onReachability = { reachable -> if (!reachable) set(false) }
-    }
-
-    /** Ouverture de l'application : le serveur est sondé une fois (processus de l'application seulement). */
-    fun start() {
-        scope.launch { ping() }
     }
 
     @Synchronized

@@ -49,6 +49,9 @@ class RomCloudApp : Application(), ImageLoaderFactory {
     /** Lancement en attente de la fermeture de l'émulateur par l'utilisateur. */
     val closeEmulatorPrompt = MutableStateFlow<CloseEmulatorPrompt?>(null)
 
+    /** Sauvegardes faites hors ligne à envoyer (nombre) : proposition affichée au retour en ligne. */
+    val uploadPrompt = MutableStateFlow<Int?>(null)
+
     /** Reprise avec un autre cœur que l'émulateur choisi : en attente de confirmation du changement. */
     val coreSwitchPrompt = MutableStateFlow<CoreSwitchPrompt?>(null)
 
@@ -121,7 +124,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         emulatorReleases = EmulatorReleases(api)
         account = Account(this, api, appScope)
         api.clientHeaders = account::clientHeaders
-        connectivity = Connectivity(this, api, appScope)
+        connectivity = Connectivity(this, api)
         // Processus de l'émulateur intégré : mode en ligne / hors ligne repris de l'application (pas de
         // sonde du serveur), ni envoi du temps de jeu.
         if (isMainProcess()) {
@@ -179,21 +182,24 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         return name == null || name == packageName
     }
 
+    /** Sauvegardes faites hors ligne en attente : envoi proposé (LaunchDialogs). */
+    private fun offerPendingUploads() {
+        val pending = account.pendingSaves()
+        if (pending > 0) uploadPrompt.value = pending
+    }
+
     /**
-     * Retour de la connexion : sauvegardes et temps de jeu en attente envoyés, profil relu. Les jeux
+     * Retour de la connexion : temps de jeu en attente envoyé, profil relu, sauvegardes faites hors
+     * ligne proposées à l'envoi. Les jeux
      * téléchargés sont notés pour rester listés hors ligne.
      */
     private fun watchConnection() {
-        connectivity.start()
+        // Ouverture : le serveur est sondé ; en ligne, les sauvegardes faites hors ligne sont proposées.
+        appScope.launch { if (connectivity.ping()) offerPendingUploads() }
         appScope.launch {
             connectivity.reconnected.collect {
-                val synced = account.flush()
                 account.refresh()
-                if (synced > 0) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@RomCloudApp, I18n.plural(R.plurals.offline_synced, synced, synced), Toast.LENGTH_SHORT).show()
-                    }
-                }
+                offerPendingUploads()
             }
         }
         appScope.launch {

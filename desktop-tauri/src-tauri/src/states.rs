@@ -8,6 +8,7 @@ use crate::error::{AppError, Result};
 use crate::{events, settings};
 use base64::Engine;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -329,21 +330,56 @@ pub async fn after_session(game_id: &Value, dir: &Path) {
 }
 
 /// États en attente d'envoi (serveur injoignable après la partie) : renvoie le nombre envoyé.
-pub async fn flush_pending() -> usize {
-    let mut sent = 0;
+pub async fn flush_pending() -> (usize, usize) {
+    let (mut sent, mut skipped) = (0, 0);
+    // États en ligne de chaque jeu, relus une fois.
+    let mut remote: HashMap<String, Option<Vec<Value>>> = HashMap::new();
     for entry in account::pending("pendingStates") {
         let dir = PathBuf::from(entry["dir"].as_str().unwrap_or(""));
         let id = entry["id"].as_str().unwrap_or("");
+        let key = account::game_key(&entry["gameId"]);
+        if !remote.contains_key(&key) {
+            remote.insert(key.clone(), online(&entry["gameId"]).await);
+        }
+        let created_at = valid_id(id).ok().and_then(|id| read_json(&dir.join(format!("{id}.json")))).and_then(|m| m["createdAt"].as_f64());
+        // Assez d'états plus récents en ligne pour le jeu : il ne serait pas gardé, il n'est pas envoyé.
+        if let (Some(list), Some(created_at)) = (remote[&key].as_ref(), created_at) {
+            if too_many_newer(list, created_at) {
+                skipped += 1;
+                forget_pending(id);
+                continue;
+            }
+        }
         match upload(&entry["gameId"], &dir, id).await {
             Err(e) if e.is("errors.unreachable") => break,
             Ok(()) => sent += 1,
             Err(_) => {} // état supprimé, refusé : abandonné
         }
-        let mut list = account::pending("pendingStates");
-        list.retain(|p| p["id"] != entry["id"]);
-        settings::save(json!({ "pendingStates": list }));
+        forget_pending(id);
     }
-    sent
+    (sent, skipped)
+}
+
+fn forget_pending(id: &str) {
+    let mut list = account::pending("pendingStates");
+    list.retain(|p| p["id"] != id);
+    settings::save(json!({ "pendingStates": list }));
+}
+
+/// États gardés en ligne par jeu et par appareil (hors épinglés), comme sur le serveur.
+pub const HISTORY_LIMIT: usize = 10;
+
+/**
+ * État fait hors ligne à [created_at] (ms) : le jeu a-t-il déjà [HISTORY_LIMIT] états plus récents
+ * en ligne (hors épinglés) ? Envoyé, il ne serait pas gardé.
+ */
+pub fn too_many_newer(remote: &[Value], created_at: f64) -> bool {
+    remote
+        .iter()
+        .filter(|s| s["pinned"] != json!(true))
+        .filter(|s| account::parse_date_ms(s["createdAt"].as_str().unwrap_or("")) > created_at)
+        .count()
+        >= HISTORY_LIMIT
 }
 
 /// Épingle (jamais supprimé par la limite de l'historique) ou désépingle un état, sur le PC et en ligne.
@@ -380,6 +416,20 @@ pub async fn delete(dir: &Path, id: &str, online: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn etat_hors_ligne_trop_ancien_pas_envoye() {
+        let at = |day: u32, pinned: bool| json!({ "createdAt": format!("2026-10-{day:02}T12:00:00.000Z"), "pinned": pinned });
+        let offline = account::parse_date_ms("2026-10-05T12:00:00.000Z");
+        // 9 états plus récents (et un épinglé, qui ne compte pas) : encore gardé, envoyé.
+        let mut remote: Vec<Value> = (6..15).map(|d| at(d, false)).collect();
+        remote.push(at(20, true));
+        remote.push(at(1, false));
+        assert!(!too_many_newer(&remote, offline));
+        // 10 plus récents : il ne serait pas gardé.
+        remote.push(at(16, false));
+        assert!(too_many_newer(&remote, offline));
+    }
 
     #[test]
     fn etat_de_reprise_ajoute_a_l_historique() {

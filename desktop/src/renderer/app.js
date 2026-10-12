@@ -419,10 +419,55 @@
     }
   }
 
+  /**
+   * Sauvegardes faites hors ligne (retour en ligne, ouverture de l'application) : envoi proposé. Ne
+   * sont pas envoyées celles qui ne seraient pas gardées (assez d'états plus récents en ligne pour le
+   * jeu) ou qui écraseraient une sauvegarde plus récente du serveur.
+   */
+  let askingUpload = false;
+  let uploadingPending = false;
+  function askUploadPending(n) {
+    if (askingUpload || uploadingPending || !n || !S.connectivity.online) return;
+    askingUpload = true;
+    const done = () => (askingUpload = false);
+    modal({
+      title: t('offline.uploadTitle'),
+      body: `<p>${esc(t('offline.uploadText', { n }))}</p><p class="muted">${esc(t('offline.uploadRule'))}</p>`,
+      buttons: [
+        { label: t('offline.uploadLater'), kind: 'ghost', onClick: done },
+        {
+          label: t('offline.uploadSend'),
+          kind: 'primary',
+          onClick: async () => {
+            uploadingPending = true;
+            try {
+              const r = await call(rc.account.uploadPending);
+              if (r.sent) toast(t('offline.synced', { n: r.sent }));
+              if (r.skipped) toast(t('offline.uploadSkipped', { n: r.skipped }));
+              paintConnectivity(await call(rc.connectivity.state));
+            } catch (e) {
+              toast(e.message, { type: 'error' });
+            } finally {
+              uploadingPending = false;
+            }
+          },
+        },
+      ],
+    });
+    // Fermée sans choisir (clic à côté) : comme « Plus tard ».
+    const root = $('#modalRoot');
+    const watch = new MutationObserver(() => {
+      if (root.innerHTML) return;
+      watch.disconnect();
+      done();
+    });
+    watch.observe(root, { childList: true });
+  }
+
   rc.connectivity.onUpdate(async (state) => {
     const wasOnline = S.connectivity.online;
     paintConnectivity(state);
-    if (state.synced) toast(t('offline.synced', { n: state.synced }));
+    if (state.online) askUploadPending(state.pendingSaves);
     if (wasOnline === state.online) return;
     if (state.online) {
       // Listes complètes relues sur le serveur.
@@ -2676,6 +2721,7 @@
     // Mode en ligne ou hors ligne : le serveur est sondé une fois à l'ouverture (hors ligne, il n'est
     // plus interrogé jusqu'à ce que la pastille soit touchée).
     S.connectivity = await call(S.settings.serverUrl ? rc.connectivity.check : rc.connectivity.state).catch(() => S.connectivity);
+    askUploadPending(S.connectivity.pendingSaves);
     if (S.account.signedIn) S.playtime = await call(rc.account.playtime).catch(() => ({}));
     S.peers = await call(rc.netplay.peers).catch(() => []);
     render();

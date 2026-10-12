@@ -26,9 +26,10 @@ pub fn ensure_online() -> Result<()> {
     }
 }
 
-/// État affiché par l'interface : { online, pending }.
+/// État affiché par l'interface : { online, pending, pendingSaves } (sauvegardes faites hors ligne à
+/// proposer à l'envoi).
 pub fn state() -> serde_json::Value {
-    json!({ "online": is_online(), "pending": account::pending_count() })
+    json!({ "online": is_online(), "pending": account::pending_count(), "pendingSaves": account::pending_saves() })
 }
 
 fn set(value: bool) {
@@ -37,12 +38,11 @@ fn set(value: bool) {
     }
     events::emit("connectivity:update", state());
     if value {
-        // Retour de la connexion : sauvegardes et durées de jeu en attente envoyées.
+        // Retour de la connexion : durées de jeu et erreurs envoyées ; les sauvegardes faites hors
+        // ligne sont proposées par l'interface (pendingSaves).
         tauri::async_runtime::spawn(async {
-            let synced = account::flush().await;
-            let mut s = state();
-            s["synced"] = json!(synced);
-            events::emit("connectivity:update", s);
+            account::flush().await;
+            events::emit("connectivity:update", state());
         });
     }
 }

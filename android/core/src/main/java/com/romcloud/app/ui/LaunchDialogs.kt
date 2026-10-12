@@ -287,6 +287,40 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         )
     }
 
+    // Sauvegardes faites hors ligne (retour en ligne, ouverture) : envoi proposé. Ne sont pas envoyées
+    // celles qui ne seraient pas gardées ou écraseraient une sauvegarde plus récente du serveur.
+    val uploadPending by app.uploadPrompt.collectAsStateWithLifecycle()
+    uploadPending?.let { count ->
+        val focus = remember { FocusRequester() }
+        if (app.account.isTv) LaunchedEffect(count) { runCatching { focus.requestFocus() } }
+        AlertDialog(
+            onDismissRequest = { app.uploadPrompt.value = null },
+            title = { Text(stringResource(R.string.offline_upload_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(pluralString(R.plurals.offline_upload_text, count, count))
+                    Text(stringResource(R.string.offline_upload_rule), style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    app.uploadPrompt.value = null
+                    // Envoi poursuivi même si l'écran change (portée de l'application).
+                    app.appScope.launch {
+                        val (sent, skipped) = app.account.uploadPending()
+                        withContext(Dispatchers.Main) {
+                            if (sent > 0) snackbar.showSnackbar(I18n.plural(R.plurals.offline_synced, sent, sent))
+                            if (skipped > 0) snackbar.showSnackbar(I18n.plural(R.plurals.offline_upload_skipped, skipped, skipped))
+                        }
+                    }
+                }, modifier = Modifier.focusRequester(focus)) { Text(stringResource(R.string.offline_upload_send)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { app.uploadPrompt.value = null }) { Text(stringResource(R.string.offline_upload_later)) }
+            },
+        )
+    }
+
     // Reprise ou état fait avec un autre cœur que l'émulateur du système : il le remplace, après confirmation.
     val switchPrompt by app.coreSwitchPrompt.collectAsStateWithLifecycle()
     switchPrompt?.let { prompt ->
