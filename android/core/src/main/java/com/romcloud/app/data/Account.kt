@@ -389,6 +389,21 @@ class Account(private val context: Context, private val api: ApiClient, private 
         ))
     }
 
+    /**
+     * Connexion au réseau ad hoc PSP de la partie [session] sur le serveur ([kind] : « adhocctl » ou
+     * « postoffice »), ou null sans profil.
+     */
+    fun pspRequest(session: String, kind: String): com.romcloud.app.netplay.RelayRequest? {
+        val session0 = token ?: return null
+        val url = runCatching { api.url("/api/play/psp/$kind?session=$session") }.getOrNull() ?: return null
+        return com.romcloud.app.netplay.RelayRequest(url, api.authHeaders() + mapOf(
+            "X-RomCloud-Session" to session0,
+            "X-RomCloud-Device" to deviceName,
+            "X-RomCloud-Platform" to api.platform,
+            "X-RomCloud-Version" to appVersion,
+        ))
+    }
+
     /** TV : application quittée, plus proposée aux téléphones. */
     suspend fun withdrawReceiver() {
         if (token == null) return

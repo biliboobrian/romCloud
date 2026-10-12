@@ -163,6 +163,17 @@ pub async fn play_presence(body: Value) -> Result<Value> {
 
 /// Connexion de relais à ouvrir (partie [session], [channel], rôle [role]), ou None sans profil (ou hors ligne).
 pub fn relay_request(session: &str, channel: &str, role: &str) -> Option<crate::relay::Request> {
+    play_request(&format!("/api/play/relay?session={session}&channel={channel}&role={role}"))
+}
+
+/// Connexion au réseau ad hoc PSP de la partie [session] sur le serveur ([kind] : « adhocctl » ou
+/// « postoffice »), ou None sans profil (ou hors ligne).
+pub fn psp_request(session: &str, kind: &str) -> Option<crate::relay::Request> {
+    play_request(&format!("/api/play/psp/{kind}?session={session}"))
+}
+
+/// Requête « Upgrade » vers [path] du serveur, avec la clé d'API et la session du profil.
+fn play_request(path: &str) -> Option<crate::relay::Request> {
     if !connectivity::is_online() {
         return None;
     }
@@ -178,7 +189,7 @@ pub fn relay_request(session: &str, channel: &str, role: &str) -> Option<crate::
     headers.push(("X-RomCloud-Session".into(), token));
     headers.push(("X-RomCloud-Device".into(), hostname()));
     headers.push(("X-RomCloud-Version".into(), version()));
-    Some(crate::relay::Request { url: format!("{server}/api/play/relay?session={session}&channel={channel}&role={role}"), headers })
+    Some(crate::relay::Request { url: format!("{server}{path}"), headers })
 }
 
 pub(crate) async fn get(api_path: &str, timeout_ms: u64) -> Result<Value> {

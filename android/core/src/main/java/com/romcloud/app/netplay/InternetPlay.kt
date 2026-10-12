@@ -5,6 +5,7 @@ import com.romcloud.app.data.Account
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -331,6 +332,65 @@ class PlayPresence(context: Context, account: Account, name: String, platform: S
         lan.stop()
         scope?.let { internet.stop(it) }
         _peers.value = emptyList()
+    }
+}
+
+/** Ports de PPSSPP pour le jeu ad hoc de la PSP : mise en relation et « bureau de poste » (sans décalage). */
+const val PSP_ADHOCCTL_PORT = 27312
+const val PSP_POSTOFFICE_PORT = 27313
+
+/**
+ * Jeu ad hoc de la PSP par le serveur (server/src/psp-adhoc.js) : les deux ports de PPSSPP sur la
+ * boucle locale, chaque connexion reliée au serveur par sa propre requête ([request] : « adhocctl »
+ * ou « postoffice » -> requête, null sans profil), jusqu'à l'arrêt de la portée. Null si un port est
+ * déjà pris (rien n'est alors ouvert).
+ */
+fun CoroutineScope.pspBridges(request: (String) -> RelayRequest?): Job? {
+    val adhocctl = runCatching { ServerSocket(PSP_ADHOCCTL_PORT, 8, InetAddress.getLoopbackAddress()) }.getOrNull() ?: return null
+    val postoffice = runCatching { ServerSocket(PSP_POSTOFFICE_PORT, 16, InetAddress.getLoopbackAddress()) }.getOrNull()
+    if (postoffice == null) {
+        runCatching { adhocctl.close() }
+        return null
+    }
+    return launch(Dispatchers.IO) {
+        for ((server, kind) in listOf(adhocctl to "adhocctl", postoffice to "postoffice")) {
+            launch {
+                try {
+                    while (isActive) {
+                        val local = runCatching { server.accept().apply { tcpNoDelay = true } }.getOrNull() ?: break
+                        // Plusieurs connexions à la fois (une par socket du jeu) : chacune ouverte à part.
+                        launch {
+                            val remote = request(kind)?.let { runCatching { Relay.open(it) }.getOrNull() }
+                            if (remote == null) runCatching { local.close() } else Relay.pipe(remote, local)
+                        }
+                    }
+                } finally {
+                    runCatching { server.close() }
+                }
+            }
+        }
+        // Portée arrêtée : les ports sont fermés (accept() interrompu).
+        try {
+            awaitCancellation()
+        } finally {
+            runCatching { adhocctl.close() }
+            runCatching { postoffice.close() }
+        }
+    }
+}
+
+/**
+ * PPSSPP : le serveur ad hoc de la boucle locale déclaré « avec relais » (mode AEMU postoffice :
+ * toutes les données par le serveur) dans la liste des serveurs qu'il lit hors connexion,
+ * <BIOS>/PPSSPP/adhoc-servers.json ; les autres serveurs de la liste sont gardés.
+ */
+fun pspRelayServerEntry(systemDir: java.io.File) {
+    val file = java.io.File(systemDir, "PPSSPP/adhoc-servers.json")
+    val current = runCatching { file.readText() }.getOrDefault("")
+    val updated = LinkRules.withPspRelayEntry(current) ?: return
+    runCatching {
+        file.parentFile?.mkdirs()
+        file.writeText(updated)
     }
 }
 

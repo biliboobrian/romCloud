@@ -79,6 +79,33 @@ class LinkRulesTest {
     }
 
     @Test
+    fun `ppsspp par le serveur romcloud`() {
+        // Ni hôte ni invité n'ouvrent de serveur : tous reliés à 127.0.0.1 (passerelles vers le serveur).
+        for (host in listOf(true, false)) {
+            val options = LinkRules.options(LinkKind.PSP_ADHOC, host, "192.168.1.5", "a", ownAddress = "192.168.1.20", pspServer = true)
+            assertEquals("disabled", options["ppsspp_enable_builtin_pro_ad_hoc_server"])
+            assertEquals("IP address", options["ppsspp_change_pro_ad_hoc_server_address"])
+            assertEquals("1", options["ppsspp_pro_ad_hoc_server_address01"])
+            assertEquals("0", options["ppsspp_pro_ad_hoc_server_address04"])
+            assertEquals("1", options["ppsspp_pro_ad_hoc_server_address12"])
+        }
+    }
+
+    @Test
+    fun `serveur ad hoc en mode relais pour ppsspp`() {
+        // Liste absente ou invalide : créée avec l'entrée de la boucle locale en mode relais.
+        val created = LinkRules.withPspRelayEntry("pas du json")!!
+        assertTrue(created.contains("\"host\": \"127.0.0.1\""))
+        assertTrue(created.contains("\"data_mode\": \"AemuPostoffice\""))
+        // Liste de PPSSPP gardée ; ancienne entrée 127.0.0.1 sans relais remplacée ; rien à changer ensuite.
+        val existing = """{"servers":[{"name":"Socom","host":"socom.cc"},{"name":"Local","host":"127.0.0.1"}]}"""
+        val merged = LinkRules.withPspRelayEntry(existing)!!
+        assertTrue(merged.contains("socom.cc"))
+        assertFalse(merged.contains("\"Local\""))
+        assertNull(LinkRules.withPspRelayEntry(merged))
+    }
+
+    @Test
     fun `appareils libres et parties proposees`() {
         val zelda = Game(7, "gbc", "zelda.gbc", 10, "Zelda", players = "1-2")
         val hosted = NetplayProtocol.HostedGame(7, "gbc", "Zelda", "zelda.gbc", 10, "gambatte", "gb")

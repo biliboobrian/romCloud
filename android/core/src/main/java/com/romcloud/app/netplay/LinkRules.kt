@@ -1,5 +1,11 @@
 package com.romcloud.app.netplay
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
@@ -78,9 +84,17 @@ object LinkRules {
     /**
      * Options du cœur pour la liaison : [host] (serveur) ou invité relié à [hostAddress] ; [deviceId] :
      * adresse MAC propre à l'appareil (PSP : deux consoles de même adresse ne se voient pas) ;
-     * [ownAddress] : adresse de cet appareil sur le réseau local (hôte de la PSP).
+     * [ownAddress] : adresse de cet appareil sur le réseau local (hôte de la PSP) ; [pspServer] : PSP par
+     * le serveur RomCloud (ports locaux de PPSSPP reliés au serveur, pspBridges).
      */
-    fun options(kind: LinkKind, host: Boolean, hostAddress: String, deviceId: String, ownAddress: String? = null): Map<String, String> = when (kind) {
+    fun options(
+        kind: LinkKind,
+        host: Boolean,
+        hostAddress: String,
+        deviceId: String,
+        ownAddress: String? = null,
+        pspServer: Boolean = false,
+    ): Map<String, String> = when (kind) {
         LinkKind.GAME_LINK -> buildMap {
             put("gambatte_gb_link_mode", if (host) "Network Server" else "Network Client")
             put("gambatte_gb_link_network_port", GAMBATTE_PORT)
@@ -92,11 +106,17 @@ object LinkRules {
             // Ports des jeux décalés (PSP : souvent sous 1024, interdits aux applications Android) ;
             // le même décalage sur toutes les consoles reliées (port de l'autre calculé avec).
             put("ppsspp_port_offset", PSP_PORT_OFFSET)
-            put("ppsspp_enable_builtin_pro_ad_hoc_server", if (host) "enabled" else "disabled")
-            // Hôte : relié à son propre serveur par son adresse sur le réseau local, pas par « localhost » :
-            // le serveur annonce chaque console aux autres avec l'adresse de sa connexion (127.0.0.1
-            // sinon, injoignable pour les invités).
-            val server = if (host) ownAddress?.let(::ipDigits) else ipDigits(hostAddress)
+            // Par le serveur RomCloud : pas de serveur intégré, celui de la boucle locale (relié au serveur),
+            // en mode relais (toutes les données passent par le serveur, voir withPspRelayEntry).
+            put("ppsspp_enable_builtin_pro_ad_hoc_server", if (host && !pspServer) "enabled" else "disabled")
+            // Hôte sur le réseau local : relié à son propre serveur par son adresse sur le réseau local, pas
+            // par « localhost » : le serveur annonce chaque console aux autres avec l'adresse de sa
+            // connexion (127.0.0.1 sinon, injoignable pour les invités).
+            val server = when {
+                pspServer -> ipDigits(PSP_LOOPBACK)
+                host -> ownAddress?.let(::ipDigits)
+                else -> ipDigits(hostAddress)
+            }
             if (server == null) {
                 put("ppsspp_change_pro_ad_hoc_server_address", "localhost")
             } else {
@@ -106,6 +126,30 @@ object LinkRules {
             mac(deviceId).forEachIndexed { i, digit -> put("ppsspp_change_mac_address%02d".format(i + 1), digit.toString()) }
         }
     }
+
+    /** Adresse du serveur ad hoc donnée à PPSSPP pour la PSP par le serveur RomCloud (passerelles locales). */
+    const val PSP_LOOPBACK = "127.0.0.1"
+
+    /**
+     * Liste des serveurs ad hoc de PPSSPP ([current], vide ou invalide : nouvelle) avec l'entrée du
+     * serveur de la boucle locale en mode relais ; null si elle y est déjà.
+     */
+    fun withPspRelayEntry(current: String): String? {
+        val root = runCatching { Json.parseToJsonElement(current) as? JsonObject }.getOrNull() ?: JsonObject(emptyMap())
+        val old = (root["servers"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+        fun field(entry: JsonObject, name: String) = (entry[name] as? JsonPrimitive)?.content
+        if (old.any { field(it, "host") == PSP_LOOPBACK && field(it, "data_mode") == "AemuPostoffice" }) return null
+        val entry = buildJsonObject {
+            put("name", "RomCloud")
+            put("host", PSP_LOOPBACK)
+            put("data_mode", "AemuPostoffice")
+            put("hidden", true)
+        }
+        val servers = JsonArray(old.filter { field(it, "host") != PSP_LOOPBACK } + entry)
+        return PRETTY.encodeToString(JsonObject.serializer(), JsonObject(root + ("servers" to servers)))
+    }
+
+    private val PRETTY = Json { prettyPrint = true }
 
     /** Adresse IPv4 en 12 chiffres, comme les options des cœurs (« 192.168.1.5 » -> « 192168001005 »). */
     fun ipDigits(address: String): String? {
