@@ -29,12 +29,16 @@ class Audio {
   /** Amplitude maximale du son reçu du cœur depuis [resetPeak] (mode d'essai). */
   int peak() const { return peak_; }
   void resetPeak() { peak_ = 0; }
+  /** Volume du son joué (0 : muet, 1 : son du cœur tel quel), gardé si la sortie est rouverte. */
+  void setVolume(float volume);
+  float volume() const { return volume_; }
 
  private:
   SDL_AudioStream* stream_ = nullptr;
   double rate_ = 0, coreRate_ = 0;
   Uint64 lastPush_ = 0;
   int peak_ = 0;
+  float volume_ = 1.0f;
   // Moyenne de [decimate_] trames (fréquences très élevées) avant l'envoi à SDL.
   int decimate_ = 1;
   int32_t sumLeft_ = 0, sumRight_ = 0;

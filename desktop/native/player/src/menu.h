@@ -14,7 +14,7 @@
 
 enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext };
 
-enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, Players, FilterSettings, FilterParam, FilterDefaults, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
+enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, Players, FilterSettings, FilterParam, FilterDefaults, SoundSettings, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
 
 /** État affiché par le menu (fourni par la boucle principale). */
 struct MenuState {
@@ -29,6 +29,7 @@ struct MenuState {
   bool together = false;
   bool netplay = false;
   bool filterSettings = false;  // le filtre choisi a des réglages
+  int volume = 100;  // volume du son (%), commun à tous les émulateurs
 };
 
 /** Réglage du filtre affiché dans l'écran « Réglages du filtre » (valeur montrée en pourcentage). */
@@ -74,6 +75,10 @@ class Menu {
    * toutes (FilterDefaults).
    */
   void openFilterSettings(std::string filter, std::vector<FilterRow> rows);
+  /** Même panneau pour le son (volume, commun à tous les émulateurs) : FilterParam / FilterDefaults. */
+  void openSoundSettings(std::vector<FilterRow> rows);
+  /** Panneau du son ouvert (sinon celui du filtre). */
+  bool inSoundSettings() const { return open_ && screen_ == Screen::FilterSettings && sound_; }
   const std::vector<FilterRow>& filterRows() const { return filterRows_; }
   /** Réglage changé par la dernière action FilterParam. */
   int filterRowChanged() const { return filterChanged_; }
@@ -85,7 +90,7 @@ class Menu {
 
  private:
   enum class Screen { Main, Options, Keys, States, FilterSettings };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, FilterSettings, Aspect, Fullscreen, LeaveNetplay, SaveQuit, Quit };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, FilterSettings, Aspect, Fullscreen, Sound, LeaveNetplay, SaveQuit, Quit };
 
   std::vector<Item> items(const MenuState& state) const;
   int itemCount(const MenuState& state) const;
@@ -112,6 +117,7 @@ class Menu {
   bool waitingKey_ = false;
   std::string keyMessage_;  // touche refusée
   std::string filterName_;
+  bool sound_ = false;  // panneau des réglages : son plutôt que filtre
   std::vector<FilterRow> filterRows_;
   int filterSelected_ = 0;  // réglages, puis « Valeurs par défaut »
   int filterChanged_ = -1;

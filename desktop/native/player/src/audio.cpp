@@ -25,9 +25,15 @@ bool Audio::open(double sampleRate) {
     logf("Audio indisponible : %s", SDL_GetError());
     return false;
   }
+  SDL_SetAudioStreamGain(stream_, volume_);
   SDL_ResumeAudioStreamDevice(stream_);
   logf("Audio : %d Hz envoyés (cœur %.2f Hz%s)", spec.freq, coreRate_, decimate_ > 1 ? ", moyenne des trames" : "");
   return true;
+}
+
+void Audio::setVolume(float volume) {
+  volume_ = std::clamp(volume, 0.0f, 1.0f);
+  if (stream_) SDL_SetAudioStreamGain(stream_, volume_);
 }
 
 void Audio::close() {

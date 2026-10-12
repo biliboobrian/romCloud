@@ -200,6 +200,8 @@ class Player {
   std::vector<HistoryEntry> shownStates_;  // états listés dans le menu
   Video video_;
   Audio audio_;
+  // Réglages communs à tous les émulateurs (volume) : player.cfg, à côté des touches du clavier.
+  CoreOptions global_;
   Input input_;
   Netplay netplay_;
   std::unique_ptr<PadConfig> padConfig_;  // configuration d'une manette en cours (depuis le menu)
@@ -330,6 +332,7 @@ MenuState Player::menuState() const {
   s.filterSettings = !filterParams(video_.filter()).empty();
   s.aspect = (int)video_.aspect();
   s.fullscreen = video_.fullscreen();
+  s.volume = (int)std::lround(audio_.volume() * 100);
   if (g.hasDiskControl && g.disk.get_num_images) {
     s.diskCount = (int)g.disk.get_num_images();
     s.diskIndex = (int)g.disk.get_image_index();
@@ -400,9 +403,19 @@ void Player::onMenuAction(MenuAction action) {
       menu_.openFilterSettings(menu_.tr(names[(int)video_.filter()]), std::move(rows));
       break;
     }
+    case MenuAction::SoundSettings:
+      menu_.openSoundSettings({{menu_.tr("volume"), audio_.volume(), 1.0f, 0.0f, 1.0f, 0.05f}});
+      break;
     case MenuAction::FilterParam:
     case MenuAction::FilterDefaults: {
-      // Visible aussitôt au-dessus du panneau ; mémorisé pour le système.
+      // Son : entendu aussitôt ; mémorisé pour tous les émulateurs.
+      if (menu_.inSoundSettings()) {
+        if (menu_.filterRows().empty()) break;
+        audio_.setVolume(menu_.filterRows()[0].value);
+        global_.setSetting("romcloud_volume", std::to_string((int)std::lround(audio_.volume() * 100)));
+        break;
+      }
+      // Filtre : visible aussitôt au-dessus du panneau ; mémorisé pour le système.
       const auto params = filterParams(video_.filter());
       const auto& rows = menu_.filterRows();
       for (size_t i = 0; i < params.size() && i < rows.size(); i++) {
@@ -692,6 +705,11 @@ int Player::run() {
     return fail(menu_.tr("video_failed") + "\n" + error);
   }
   input_.loadKeys(args_.keysFile);
+  if (!args_.keysFile.empty()) {
+    const size_t slash = args_.keysFile.find_last_of("/\\");
+    global_.load((slash == std::string::npos ? std::string() : args_.keysFile.substr(0, slash + 1)) + "player.cfg");
+  }
+  audio_.setVolume(std::clamp(atoi(global_.setting("romcloud_volume", "100").c_str()), 0, 100) / 100.0f);
   menu_.setButtons(args_.buttons);
   applySavedPadMappings();  // manettes configurées pour ce système (avant leur ouverture)
   input_.init();
