@@ -17,6 +17,8 @@
 //   de l'écran), relue dans son framebuffer pour les cœurs à rendu OpenGL ;
 // - format d'image choisi par l'utilisateur (CoreShim, JNI) : proportions annoncées à LibretroDroid
 //   remplacées (géométrie du cœur), y compris en cours de partie ;
+// - options du cœur sans aucune valeur (LRPS2 sans BIOS trouvé) : écartées avant LibretroDroid, qui
+//   recopie leur valeur nulle sans vérifier (plantage au démarrage du cœur) ;
 // - jeu à plusieurs en réseau local (Netplay, JNI) : touches échangées image par image avec l'autre
 //   appareil, qui émule le même jeu (section « Jeu à plusieurs » en fin de fichier) ; ou liaison entre
 //   consoles (câble, adaptateur sans fil) : paquets du cœur échangés (interface netpacket de libretro).
@@ -276,12 +278,39 @@ static void apply_aspect() {
 }
 
 const unsigned SET_NETPACKET_INTERFACE = 78;
+const unsigned SET_VARIABLES = 16;
+
+struct retro_variable {
+    const char *key;
+    const char *value;
+};
+
+/**
+ * Options du cœur (ancien format, le seul que lit LibretroDroid) : une option sans aucune valeur
+ * arrive avec une valeur nulle (LRPS2 sans BIOS dans pcsx2/bios : « pcsx2_bios » vide), que
+ * LibretroDroid recopie sans vérifier ; elle est écartée. Le cœur échoue ensuite à charger le jeu.
+ */
+static bool set_variables(const retro_variable *variables) {
+    size_t count = 0, kept = 0;
+    while (variables[count].key) count++;
+    auto *copy = static_cast<retro_variable *>(calloc(count + 1, sizeof(retro_variable)));
+    if (!copy) return false;
+    for (size_t i = 0; i < count; i++) {
+        if (variables[i].value) copy[kept++] = variables[i];
+        else __android_log_print(ANDROID_LOG_WARN, LOG_TAG, "option %s sans valeur : écartée", variables[i].key);
+    }
+    // LibretroDroid recopie les chaînes : la liste peut être libérée aussitôt.
+    bool handled = frontend_environment(SET_VARIABLES, copy);
+    free(copy);
+    return handled;
+}
 const unsigned GET_SAVESTATE_CONTEXT = 72 | 0x10000;  // RETRO_ENVIRONMENT_EXPERIMENTAL
 const int SAVESTATE_CONTEXT_NORMAL = 0, SAVESTATE_CONTEXT_ROLLBACK_NETPLAY = 3;
 
 static bool on_environment(unsigned cmd, void *data) {
     // Inconnue de LibretroDroid : la liaison entre consoles passe par l'adaptateur.
     if (cmd == SET_NETPACKET_INTERFACE) return np_on_netpacket(data);
+    if (cmd == SET_VARIABLES && data) return set_variables(static_cast<const retro_variable *>(data));
     // Jeu synchronisé : états échangés entre appareils. FBNeo coupe alors ce qui diffère d'un appareil
     // à l'autre (meilleurs scores de hiscore.dat, horloge de la Neo Geo, graine du hasard).
     if (cmd == GET_SAVESTATE_CONTEXT) {

@@ -467,7 +467,7 @@ class LibretroActivity : ComponentActivity() {
                     // Invité : l'état de l'hôte remplace la partie reprise.
                     if (netplayLaunch?.host != false) {
                         val chosen = startState
-                        if (chosen != null) loadStateFile(chosen) else if (resume) resumeGame()
+                        if (chosen != null) loadStateAtStart(chosen) else if (resume) loadStateAtStart(stateFile)
                     }
                     streamTarget?.let { startStreaming(view, it) }
                     netplayLaunch?.let { startNetplay(it, coreFile) }
@@ -824,15 +824,27 @@ class LibretroActivity : ComponentActivity() {
         }
     }
 
-    /** Au lancement par « Reprendre » : état sauvegardé de la partie. */
-    private fun resumeGame() {
+    /**
+     * Au lancement (« Reprendre » ou état de l'historique) : état chargé dès la première image,
+     * réessayé un moment s'il est refusé (mupen64plus_next_gles3 finit de démarrer la console
+     * pendant ses premières images et refuse l'état jusque-là).
+     */
+    private suspend fun loadStateAtStart(file: File) {
         val view = retroView ?: return
-        toast = when {
-            !stateFile.isFile -> getString(R.string.libretro_no_state)
-            runCatching { view.unserializeState(stateFile.readBytes(), false) }.getOrDefault(false) ->
-                getString(R.string.libretro_state_loaded)
-            else -> getString(R.string.libretro_state_error)
+        val bytes = file.takeIf { it.isFile }?.let { runCatching { it.readBytes() }.getOrNull() }
+        if (bytes == null) {
+            toast = getString(if (file.isFile) R.string.libretro_state_error else R.string.libretro_no_state)
+            return
         }
+        repeat(START_STATE_ATTEMPTS) { attempt ->
+            if (runCatching { view.unserializeState(bytes, false) }.getOrDefault(false)) {
+                toast = getString(R.string.libretro_state_loaded)
+                return
+            }
+            if (attempt < START_STATE_ATTEMPTS - 1) delay(START_STATE_RETRY_MS)
+        }
+        account.reportError("states:$core", "unserialize at start", rom.name)
+        toast = getString(R.string.libretro_state_error)
     }
 
     /** Enregistre l'état de la partie (repris par « Reprendre » dans la fiche du jeu) puis quitte. */
@@ -1772,6 +1784,9 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_STATE = "state"
         private const val EXTRA_AUTO_UPLOAD_STATES = "autoUploadStates"
         private const val TOAST_MS = 2000L
+        /** État chargé au lancement : essais espacés de [START_STATE_RETRY_MS] (environ 3 s en tout). */
+        private const val START_STATE_ATTEMPTS = 15
+        private const val START_STATE_RETRY_MS = 200L
         private const val ERROR_TOAST_MS = 8000L
         private const val RETRO_DEVICE_JOYPAD = 1
         private const val RETRO_DEVICE_MASK = 0xff
