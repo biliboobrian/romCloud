@@ -157,7 +157,7 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
                     viewModel = vm,
                     storageWarning = storageWarning,
                     imageUrl = { app.api.systemImageUrl(it) },
-                    mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                    mediaUrl = { game, type, size -> app.api.mediaUrl(game, type, size) },
                     onOpenSystem = { nav.navigate("games/$it") },
                     onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
                     onOpenSettings = { nav.navigate("settings") },
@@ -180,7 +180,7 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
             SystemBackground(system?.backgroundColor) {
                 GamesScreen(
                     viewModel = vm,
-                    mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                    mediaUrl = { game, type, size -> app.api.mediaUrl(game, type, size) },
                     snackbar = snackbar,
                     autoLaunch = app.autoLaunch,
                     onBack = { nav.popBackStack() },
@@ -203,7 +203,7 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
             SystemBackground(system?.backgroundColor) {
                 GameDetailScreen(
                     viewModel = vm,
-                    mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                    mediaUrl = { game, type, size -> app.api.mediaUrl(game, type, size) },
                     snackbar = snackbar,
                     onBack = { nav.popBackStack() },
                     onOpenLobby = { nav.navigate("lobby") { popUpTo("lobby") { inclusive = true } } },

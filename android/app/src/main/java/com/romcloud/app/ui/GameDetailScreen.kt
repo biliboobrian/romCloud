@@ -1,5 +1,7 @@
 package com.romcloud.app.ui
 
+import com.romcloud.app.data.MediaUrl
+import com.romcloud.app.data.MediaSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import android.app.Activity
@@ -88,7 +90,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun GameDetailScreen(
     viewModel: GameDetailViewModel,
-    mediaUrl: (Game, String) -> String?,
+    mediaUrl: MediaUrl,
     snackbar: SnackbarHostState,
     onBack: () -> Unit,
     onOpenLobby: () -> Unit = {},
@@ -150,7 +152,7 @@ fun GameDetailScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row {
-                Cover(mediaUrl(game, "boxart"), game.title, 130.dp, 175.dp)
+                Cover(mediaUrl(game, "boxart", MediaSize.THUMB), game.title, 130.dp, 175.dp)
                 Spacer(Modifier.width(16.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(game.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
@@ -413,7 +415,7 @@ fun GameDetailScreen(
             GameInfoSection(gameFacts(game))
 
             // Captures d'écran (jusqu'à 4), en grand au toucher.
-            ScreenshotGallery(game.screenshotTypes.mapNotNull { mediaUrl(game, it) }, Modifier.fillMaxWidth(), height = 140.dp)
+            ScreenshotGallery(game.screenshotTypes.mapNotNull { mediaUrl(game, it, MediaSize.MEDIUM) }, Modifier.fillMaxWidth(), height = 140.dp)
 
             Text(
                 // Nom et taille du fichier : dans les informations ; ici, l'emplacement sur l'appareil.

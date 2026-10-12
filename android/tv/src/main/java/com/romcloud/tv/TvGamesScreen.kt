@@ -2,6 +2,8 @@
 
 package com.romcloud.tv
 
+import com.romcloud.app.data.MediaUrl
+import com.romcloud.app.data.MediaSize
 import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -81,7 +83,7 @@ import com.romcloud.core.R
 @Composable
 fun TvGamesScreen(
     viewModel: GamesViewModel,
-    mediaUrl: (Game, String) -> String?,
+    mediaUrl: MediaUrl,
     autoLaunch: MutableMap<Long, PendingLaunch>,
     onMessage: (String) -> Unit,
     onOpenGame: (Long) -> Unit,
@@ -146,7 +148,7 @@ fun TvGamesScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        Backdrop(featured?.let { mediaUrl(it, "screenshot") ?: mediaUrl(it, "boxart") }, alignment = Alignment.TopCenter)
+        Backdrop(featured?.let { mediaUrl(it, "screenshot", MediaSize.MEDIUM) ?: mediaUrl(it, "boxart", MediaSize.MEDIUM) }, alignment = Alignment.TopCenter)
 
         Column(Modifier.fillMaxSize()) {
             // Barre du haut : nom du système à gauche, filtres et actions à droite.
@@ -199,7 +201,7 @@ fun TvGamesScreen(
 
             GameHero(
                 game = featured,
-                coverUrl = featured?.let { mediaUrl(it, "boxart") },
+                coverUrl = featured?.let { mediaUrl(it, "boxart", MediaSize.MEDIUM) },
                 status = featured?.let(::statusOf),
                 resumable = !lobbyHost && featured?.let { it.id in state.resumable } == true,
                 together = featured?.let { viewModel.together(it, peers) },
@@ -371,7 +373,7 @@ private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean, t
 @Composable
 private fun GameRows(
     rows: List<CarouselRow>,
-    mediaUrl: (Game, String) -> String?,
+    mediaUrl: MediaUrl,
     statusOf: (Game) -> LocalStatus,
     focusedRow: String?,
     focusedGameId: Long?,
@@ -427,7 +429,7 @@ private fun GameRows(
                         val isTarget = row.title == target?.first && game.id == target.second
                         TvGameCard(
                             game = game,
-                            coverUrl = mediaUrl(game, "boxart"),
+                            coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
                             status = statusOf(game),
                             // Validation : fiche du jeu (jouer / télécharger depuis la fiche).
                             onClick = { onDetails(game) },

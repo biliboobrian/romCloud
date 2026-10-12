@@ -125,7 +125,7 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                             viewModel = vm,
                             storageWarning = storageWarning,
                             imageUrl = { app.api.systemImageUrl(it) },
-                            mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                            mediaUrl = { game, type, size -> app.api.mediaUrl(game, type, size) },
                             onOpenSystem = { nav.navigate("games/$it") },
                             onOpenGame = { systemId, gameId -> nav.navigate("game/$systemId/$gameId") },
                             onOpenSettings = { nav.navigate("settings") },
@@ -148,7 +148,7 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                     TvScreenBackground(system?.backgroundColor) {
                         TvGamesScreen(
                             viewModel = vm,
-                            mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                            mediaUrl = { game, type, size -> app.api.mediaUrl(game, type, size) },
                             autoLaunch = app.autoLaunch,
                             onMessage = message,
                             onOpenGame = { nav.navigate("game/$systemId/$it") },
@@ -170,7 +170,7 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                     TvScreenBackground(system?.backgroundColor) {
                         TvGameDetailScreen(
                             viewModel = vm,
-                            mediaUrl = { game, type -> app.api.mediaUrl(game, type) },
+                            mediaUrl = { game, type, size -> app.api.mediaUrl(game, type, size) },
                             onMessage = message,
                             onOpenLobby = openLobby,
                         )

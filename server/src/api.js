@@ -35,6 +35,7 @@ import {
 } from './library.js';
 import { SCRAPE_SOURCES, saveCustomMedia, scrapeGame } from './scraper/index.js';
 import { importLicenseList } from './licenses.js';
+import { mediaVariant, VARIANTS_DIR } from './media-variants.js';
 import {
   createSystem,
   daijishouPlayers,
@@ -152,12 +153,21 @@ api.delete('/systems/:id', (req, res) => {
   res.status(204).end();
 });
 
-api.get('/systems/:id/image', (req, res) => {
+api.get('/systems/:id/image', async (req, res) => {
   const file = systemImagePath(req.params.id);
   if (!file) throw new HttpError(404, 'errors.noSystemImage');
   // Le nom de fichier change à chaque envoi : on peut mettre en cache longtemps.
-  res.sendFile(file, { maxAge: '30d' });
+  await sendImage(res, file, req.query.size, path.join(path.dirname(file), VARIANTS_DIR));
 });
+
+/**
+ * Image envoyée aux applications : version réduite en WebP si une taille est demandée (?size=thumb
+ * ou medium, media-variants.js), sinon l'original. Adresses versionnées : mise en cache longue.
+ */
+async function sendImage(res, file, size, variantsDir) {
+  const variant = size ? await mediaVariant(file, String(size), variantsDir) : null;
+  res.sendFile(variant || file, { maxAge: '30d' });
+}
 
 api.put(
   '/systems/:id/image',
@@ -437,14 +447,15 @@ api.get('/games/:id/file', (req, res, next) => {
 
 const MEDIA_TYPES = ['boxart', ...SCREENSHOT_TYPES];
 
-api.get('/games/:id/media/:type', (req, res) => {
+api.get('/games/:id/media/:type', async (req, res) => {
   const { type } = req.params;
   if (!MEDIA_TYPES.includes(type)) throw new HttpError(404, 'errors.unknownMediaType');
   const row = requireGameRow(req.params.id);
   if (!row[type]) throw new HttpError(404, 'errors.noMedia');
   // Adresse versionnée par les applications (?v=updatedAt) : mise en cache longue, ce qui garde
   // les jaquettes des jeux déjà vus affichables hors ligne.
-  res.sendFile(path.join(gameMediaDir(row.id), row[type]), { maxAge: '30d' });
+  const dir = gameMediaDir(row.id);
+  await sendImage(res, path.join(dir, row[type]), req.query.size, path.join(dir, VARIANTS_DIR));
 });
 
 api.put(
