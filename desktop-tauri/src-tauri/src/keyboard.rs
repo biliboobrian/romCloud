@@ -125,7 +125,8 @@ pub fn layout(keys: Value) -> Value {
 
 // Boutons de chaque console (comme PadLayouts de l'application Android) : bouton RetroPad -> nom
 // sur la console (français, anglais), dans l'ordre d'affichage ; les directions sont toujours
-// proposées. rx / ry : axes du stick droit, pour la configuration des manettes du moteur.
+// proposées. lx / ly, rx / ry : axes des sticks gauche et droit, pour la configuration des manettes
+// du moteur.
 type Pad = Vec<(&'static str, &'static str, &'static str)>;
 
 fn same(name: &'static str, label: &'static str) -> (&'static str, &'static str, &'static str) {
@@ -134,7 +135,10 @@ fn same(name: &'static str, label: &'static str) -> (&'static str, &'static str,
 
 static PADS: LazyLock<HashMap<&'static str, Pad>> = LazyLock::new(|| {
     let start_select = || vec![same("start", "Start"), same("select", "Select")];
+    let left_stick = || vec![("lx", "Stick gauche horizontal", "Left stick horizontal"), ("ly", "Stick gauche vertical", "Left stick vertical")];
     let right_stick = || vec![("rx", "Stick droit horizontal", "Right stick horizontal"), ("ry", "Stick droit vertical", "Right stick vertical")];
+    // Console à un seul stick (Nintendo 64, Dreamcast, PSP, GameCube) : « Stick ».
+    let stick = || vec![("lx", "Stick horizontal", "Stick horizontal"), ("ly", "Stick vertical", "Stick vertical")];
     let mut pads: HashMap<&'static str, Pad> = HashMap::new();
     let with = |mut base: Pad, extra: Vec<Pad>| {
         for e in extra {
@@ -142,22 +146,22 @@ static PADS: LazyLock<HashMap<&'static str, Pad>> = LazyLock::new(|| {
         }
         base
     };
-    pads.insert("default", with(vec![same("a", "A"), same("b", "B"), same("x", "X"), same("y", "Y"), same("l", "L"), same("r", "R"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), right_stick()]));
+    pads.insert("default", with(vec![same("a", "A"), same("b", "B"), same("x", "X"), same("y", "Y"), same("l", "L"), same("r", "R"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), left_stick(), right_stick()]));
     pads.insert("nes", with(vec![same("b", "B"), same("a", "A")], vec![start_select()]));
     pads.insert("fds", with(vec![same("b", "B"), same("a", "A"), ("l", "Face du disque", "Disk side"), ("r", "Éjecter / insérer", "Eject / insert")], vec![start_select()]));
     pads.insert("gameBoy", with(vec![same("b", "B"), same("a", "A")], vec![start_select()]));
     pads.insert("gba", with(vec![same("b", "B"), same("a", "A"), same("l", "L"), same("r", "R")], vec![start_select()]));
     pads.insert("snes", with(vec![same("b", "B"), same("a", "A"), same("y", "Y"), same("x", "X"), same("l", "L"), same("r", "R")], vec![start_select()]));
-    pads.insert("n64", vec![same("b", "A"), same("y", "B"), same("l2", "Z"), same("l", "L"), same("r", "R"), same("start", "Start"), ("rx", "C gauche / droite", "C left / right"), ("ry", "C haut / bas", "C up / down")]);
-    pads.insert("psx", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L1"), same("r", "R1"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), right_stick()]));
-    pads.insert("ps2", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L1"), same("r", "R1"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), right_stick()]));
+    pads.insert("n64", with(vec![same("b", "A"), same("y", "B"), same("l2", "Z"), same("l", "L"), same("r", "R"), same("start", "Start")], vec![stick(), vec![("rx", "C gauche / droite", "C left / right"), ("ry", "C haut / bas", "C up / down")]]));
+    pads.insert("psx", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L1"), same("r", "R1"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), left_stick(), right_stick()]));
+    pads.insert("ps2", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L1"), same("r", "R1"), same("l2", "L2"), same("r2", "R2"), same("l3", "L3"), same("r3", "R3")], vec![start_select(), left_stick(), right_stick()]));
     // GameCube (Dolphin) : A B X Y sous leur nom, gâchettes L / R sur L2 / R2, Z sur R, stick C à droite.
-    pads.insert("gc", vec![same("a", "A"), same("b", "B"), same("x", "X"), same("y", "Y"), same("l2", "L"), same("r2", "R"), same("r", "Z"), same("start", "Start"), ("rx", "Stick C horizontal", "C stick horizontal"), ("ry", "Stick C vertical", "C stick vertical")]);
-    pads.insert("psp", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L"), same("r", "R")], vec![start_select()]));
+    pads.insert("gc", with(vec![same("a", "A"), same("b", "B"), same("x", "X"), same("y", "Y"), same("l2", "L"), same("r2", "R"), same("r", "Z"), same("start", "Start")], vec![stick(), vec![("rx", "Stick C horizontal", "C stick horizontal"), ("ry", "Stick C vertical", "C stick vertical")]]));
+    pads.insert("psp", with(vec![("b", "Croix", "Cross"), ("a", "Rond", "Circle"), ("y", "Carré", "Square"), same("x", "Triangle"), same("l", "L"), same("r", "R")], vec![start_select(), stick()]));
     pads.insert("genesis", vec![same("y", "A"), same("b", "B"), same("a", "C"), same("l", "X"), same("x", "Y"), same("r", "Z"), same("start", "Start")]);
     pads.insert("saturn", vec![same("b", "A"), same("a", "B"), same("r", "C"), same("y", "X"), same("x", "Y"), same("l", "Z"), same("l2", "L"), same("r2", "R"), same("start", "Start")]);
     pads.insert("master", vec![same("b", "1"), same("a", "2"), same("start", "Start")]);
-    pads.insert("dreamcast", vec![same("b", "A"), same("a", "B"), same("y", "X"), same("x", "Y"), same("l2", "L"), same("r2", "R"), same("start", "Start")]);
+    pads.insert("dreamcast", with(vec![same("b", "A"), same("a", "B"), same("y", "X"), same("x", "Y"), same("l2", "L"), same("r2", "R"), same("start", "Start")], vec![stick()]));
     pads.insert("pcEngine", vec![same("b", "II"), same("a", "I"), same("select", "Select"), same("start", "Run")]);
     pads.insert("neoGeo", vec![same("b", "A"), same("a", "B"), same("y", "C"), same("x", "D"), ("select", "Pièce", "Coin"), same("start", "Start")]);
     pads.insert("ngp", vec![same("b", "A"), same("a", "B"), same("start", "Option")]);
@@ -305,6 +309,12 @@ mod tests {
         assert_eq!(console_pad("perso", "mesen-s"), "snes");
         assert_eq!(console_pad("ps2", "pcsx2"), "ps2");
         assert_eq!(console_pad("gc", "dolphin"), "gc");
-        assert_eq!(console_buttons("gc", "dolphin", "fr"), "up,down,left,right,a=A,b=B,x=X,y=Y,l2=L,r2=R,r=Z,start=Start,rx=Stick C horizontal,ry=Stick C vertical");
+        assert_eq!(
+            console_buttons("gc", "dolphin", "fr"),
+            "up,down,left,right,a=A,b=B,x=X,y=Y,l2=L,r2=R,r=Z,start=Start,lx=Stick horizontal,ly=Stick vertical,rx=Stick C horizontal,ry=Stick C vertical"
+        );
+        // Deux sticks (PlayStation 2) : gauche puis droit ; Mega Drive : aucun.
+        assert!(console_buttons("ps2", "pcsx2", "fr").ends_with("lx=Stick gauche horizontal,ly=Stick gauche vertical,rx=Stick droit horizontal,ry=Stick droit vertical"));
+        assert!(!console_buttons("genesis", "genesis_plus_gx", "fr").contains("lx"));
     }
 }

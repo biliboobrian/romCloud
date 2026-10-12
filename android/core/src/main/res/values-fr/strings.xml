@@ -394,6 +394,10 @@
     <string name="pad_right">Croix : droite</string>
     <string name="pad_l3">L3 (appui sur le stick gauche)</string>
     <string name="pad_r3">R3 (appui sur le stick droit)</string>
+    <string name="pad_stick_x">Stick : poussez-le vers la droite</string>
+    <string name="pad_stick_y">Stick : poussez-le vers le bas</string>
+    <string name="pad_left_stick_x">Stick gauche : poussez-le vers la droite</string>
+    <string name="pad_left_stick_y">Stick gauche : poussez-le vers le bas</string>
     <string name="pad_right_stick_x">Stick droit : poussez-le vers la droite</string>
     <string name="pad_right_stick_y">Stick droit : poussez-le vers le bas</string>
     <string name="info_title">Informations</string>

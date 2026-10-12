@@ -1,6 +1,6 @@
 // Configuration d'une manette pour la console, étape par étape (comme l'application Android) :
 // l'utilisateur appuie sur chaque bouton demandé (bouton, croix ou gâchette analogique), puis pousse
-// le stick droit. Les boutons sont lus sur la manette brute (SDL_Joystick) : les manettes inconnues
+// les sticks. Les boutons sont lus sur la manette brute (SDL_Joystick) : les manettes inconnues
 // de SDL sont aussi configurables. La première manette utilisée est celle configurée ; appuyer de
 // nouveau sur le dernier bouton passe l'étape. Le résultat est une correspondance SDL (SDL_Gamepad)
 // mémorisée pour le système et le modèle de manette (GUID), appliquée au lancement suivant et aussitôt.
@@ -18,7 +18,7 @@
 /** Applique les correspondances mémorisées pour le système ; avant l'ouverture des manettes. */
 void applySavedPadMappings();
 
-/** Étape : un bouton du RetroPad ([id]) ou un axe du stick droit ([stick] : 'x' ou 'y'). */
+/** Étape : un bouton du RetroPad ([id]) ou un axe d'un stick ([stick] : 'X' ou 'Y' à gauche, 'x' ou 'y' à droite). */
 struct PadStep {
   unsigned id = 0;
   char stick = 0;
@@ -74,7 +74,7 @@ class PadConfig {
   std::string lastButton_;  // dernier bouton attribué : appuyé de nouveau, l'étape est passée
   std::set<int> held_, ignoredReleases_;
   std::vector<float> rest_;  // position de repos de chaque axe (-1, 0 ou 1)
-  std::set<int> leftStick_;  // axes du stick gauche : jamais pris pour une gâchette ou le stick droit
+  std::set<int> leftStick_;  // axes du stick gauche de SDL : pris seulement pour le stick gauche
   int candidateAxis_ = -1;
   float candidateDirection_ = 0;
   int candidateHat_ = -1;
