@@ -30,7 +30,8 @@
     usage: { systems: {}, disk: null },
     games: { systemId: null, list: [], downloaded: new Set(), resumable: new Set(), offline: false, loading: false, error: null, filter: 'all', query: '', criteria: {} },
     downloads: {}, // gameId -> { status, bytes, total, title, error }
-    autoLaunch: new Set(),
+    // Jeux à lancer à la fin de leur téléchargement, avec les options du lancement (reprise…).
+    autoLaunch: new Map(),
     route: { name: 'systems' },
     history: [],
     focusedGameId: null,
@@ -1173,7 +1174,7 @@
           label: t('bios.downloadAndPlay'),
           kind: 'primary',
           onClick: async () => {
-            S.autoLaunch.add(game.id);
+            S.autoLaunch.set(game.id, options);
             await call(rc.downloads.dismiss, game.id);
             await call(rc.downloads.start, system, game, { bios: missing, includeRom: false });
           },
@@ -1881,7 +1882,7 @@
     // le lancement automatique attend alors sa fermeture.
     const check = await call(rc.launcher.check, system);
     const showHelp = check.usesRetroArch && !S.settings.retroarchHelpDismissed && (!check.retroarchOk || !check.coreOk);
-    if (launchAfter && !showHelp) S.autoLaunch.add(game.id);
+    if (launchAfter && !showHelp) S.autoLaunch.set(game.id, {});
     await call(rc.downloads.start, system, game, { bios });
     if (showHelp) {
       showRetroArchHelp(system, {
@@ -1890,7 +1891,7 @@
           if (!launchAfter) return;
           const downloaded = S.route.name === 'systems' ? S.search.downloaded : S.games.downloaded;
           if (statusOf(game, downloaded).kind === 'downloaded') play(system, game);
-          else S.autoLaunch.add(game.id);
+          else S.autoLaunch.set(game.id, {});
         },
       });
     }
@@ -2460,8 +2461,9 @@
       }
       const system = systemById(event.systemId);
       const game = findGame(gameId) || { id: gameId, systemId: event.systemId, title: event.title };
+      const launchOptions = S.autoLaunch.get(gameId);
       if (S.autoLaunch.delete(gameId) && document.hasFocus()) {
-        play(system, game);
+        play(system, game, launchOptions);
       } else if (event.romIncluded === false) {
         toast(t('bios.done', { system: system?.name || '' }));
       } else {

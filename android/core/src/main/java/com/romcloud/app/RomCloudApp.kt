@@ -23,10 +23,12 @@ import com.romcloud.app.data.Downloader
 import com.romcloud.app.data.LocalLibrary
 import com.romcloud.app.data.Repository
 import com.romcloud.app.data.Settings
+import com.romcloud.app.launch.BiosPrompt
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.CoreSwitchPrompt
 import com.romcloud.app.launch.GameLauncher
 import com.romcloud.app.launch.MissingEmulator
+import com.romcloud.app.launch.PendingLaunch
 import com.romcloud.core.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,8 +52,11 @@ class RomCloudApp : Application(), ImageLoaderFactory {
     /** Reprise avec un autre cœur que l'émulateur choisi : en attente de confirmation du changement. */
     val coreSwitchPrompt = MutableStateFlow<CoreSwitchPrompt?>(null)
 
-    /** Jeux à lancer automatiquement dès la fin de leur téléchargement. */
-    val autoLaunch: MutableSet<Long> = ConcurrentHashMap.newKeySet()
+    /** BIOS du système absents au lancement : en attente du choix (les télécharger avant de jouer ?). */
+    val biosPrompt = MutableStateFlow<BiosPrompt?>(null)
+
+    /** Jeux à lancer automatiquement dès la fin de leur téléchargement, avec les options du lancement (reprise…). */
+    val autoLaunch: MutableMap<Long, PendingLaunch> = ConcurrentHashMap()
 
     lateinit var settings: Settings
         private set

@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
+import com.romcloud.app.data.BiosFile
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
@@ -73,6 +74,24 @@ data class CoreSwitchPrompt(
     val core: String?,
     val stream: StreamReceiver?,
     val streamMode: StreamMode,
+    val missingBios: List<BiosFile> = emptyList(),
+)
+
+/** Options d'un lancement différé : jeu lancé ainsi à la fin de son téléchargement (ou de celui des BIOS). */
+data class PendingLaunch(
+    val resume: Boolean = false,
+    val state: File? = null,
+    val core: String? = null,
+    val stream: StreamReceiver? = null,
+    val streamMode: StreamMode = StreamMode.NATIVE,
+)
+
+/** BIOS du système absents de l'appareil : les télécharger avant de lancer le jeu ([launch]) ? */
+data class BiosPrompt(
+    val system: GameSystem,
+    val game: Game,
+    val missing: List<BiosFile>,
+    val launch: PendingLaunch,
 )
 
 class GameLauncher(private val context: Context, private val settings: Settings) {

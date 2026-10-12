@@ -35,6 +35,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -78,8 +80,13 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
             when (event) {
                 is DownloadEvent.Completed -> {
                     val resumed = activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-                    if (app.autoLaunch.remove(event.game.id) && resumed) {
-                        app.play(activity, event.system, event.game)?.let { snackbar.showSnackbar(it) }
+                    val pending = app.autoLaunch.remove(event.game.id)
+                    if (pending != null && resumed) {
+                        // Mêmes options qu'au lancement demandé (reprise, état, cœur), changement de cœur déjà confirmé.
+                        app.play(
+                            activity, event.system, event.game, resume = pending.resume, stream = pending.stream,
+                            streamMode = pending.streamMode, state = pending.state, core = pending.core, coreSwitchConfirmed = true,
+                        )?.let { snackbar.showSnackbar(it) }
                     } else if (!event.romIncluded) {
                         launch { snackbar.showSnackbar(I18n.get(R.string.bios_downloaded_snackbar, event.system.name)) }
                     } else {
@@ -296,11 +303,44 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                     app.play(
                         activity, prompt.system, prompt.game, resume = prompt.resume, stream = prompt.stream,
                         streamMode = prompt.streamMode, state = prompt.state, core = prompt.core, coreSwitchConfirmed = true,
+                        missingBios = prompt.missingBios,
                     )?.let { scope.launch { snackbar.showSnackbar(it) } }
                 }) { Text(stringResource(R.string.core_switch_confirm)) }
             },
             dismissButton = {
                 TextButton(onClick = { app.coreSwitchPrompt.value = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    // BIOS du système absents : les télécharger avant de jouer (jeu lancé à la fin, mêmes options) ou jouer quand même.
+    val biosPrompt by app.biosPrompt.collectAsStateWithLifecycle()
+    biosPrompt?.let { prompt ->
+        val scope = rememberCoroutineScope()
+        val pending = prompt.launch
+        // TV : bouton principal sélectionné à la télécommande.
+        val focus = remember { FocusRequester() }
+        if (app.account.isTv) LaunchedEffect(prompt) { runCatching { focus.requestFocus() } }
+        AlertDialog(
+            onDismissRequest = { app.biosPrompt.value = null },
+            title = { Text(stringResource(R.string.bios_before_play_title)) },
+            text = { Text(stringResource(R.string.bios_before_play_text, prompt.missing.size, formatSize(prompt.missing.sumOf { it.size }))) },
+            confirmButton = {
+                TextButton(onClick = {
+                    app.biosPrompt.value = null
+                    app.autoLaunch[prompt.game.id] = pending
+                    app.downloader.dismissError(prompt.game.id)
+                    app.downloader.start(prompt.system, prompt.game, prompt.missing, includeRom = false)
+                }, modifier = Modifier.focusRequester(focus)) { Text(stringResource(R.string.action_download_and_play)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    app.biosPrompt.value = null
+                    app.play(
+                        activity, prompt.system, prompt.game, resume = pending.resume, stream = pending.stream,
+                        streamMode = pending.streamMode, state = pending.state, core = pending.core, coreSwitchConfirmed = true,
+                    )?.let { scope.launch { snackbar.showSnackbar(it) } }
+                }) { Text(stringResource(R.string.action_play_anyway)) }
             },
         )
     }

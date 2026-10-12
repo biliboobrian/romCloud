@@ -54,6 +54,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.romcloud.app.launch.PendingLaunch
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.netplay.Together
@@ -81,7 +82,7 @@ import com.romcloud.core.R
 fun TvGamesScreen(
     viewModel: GamesViewModel,
     mediaUrl: (Game, String) -> String?,
-    autoLaunch: MutableSet<Long>,
+    autoLaunch: MutableMap<Long, PendingLaunch>,
     onMessage: (String) -> Unit,
     onOpenGame: (Long) -> Unit,
     onOpenLobby: () -> Unit = {},
@@ -95,7 +96,6 @@ fun TvGamesScreen(
     var focusedRow by rememberSaveable { mutableStateOf<String?>(null) }
     var askDownload by remember { mutableStateOf<Game?>(null) }
     var askCancel by remember { mutableStateOf<Game?>(null) }
-    var askBios by remember { mutableStateOf<Game?>(null) }
     // Guide RetroArch ouvert après confirmation d'un téléchargement (jeu, guide, lancer ensuite ?)
     var postDownloadHelp by remember { mutableStateOf<Triple<Game, RetroArchInfo, Boolean>?>(null) }
     var searching by remember { mutableStateOf(false) }
@@ -123,7 +123,7 @@ fun TvGamesScreen(
             // Émulateur externe à configurer : la fiche du jeu explique quoi corriger.
             LocalStatus.Downloaded ->
                 if (viewModel.needsSetup(game)) onOpenGame(game.id)
-                else if (state.missingBios.isNotEmpty()) askBios = game else viewModel.play(activity, game)?.let(onMessage)
+                else viewModel.play(activity, game)?.let(onMessage)
             is LocalStatus.Downloading -> askCancel = game
             else -> askDownload = game
         }
@@ -246,7 +246,7 @@ fun TvGamesScreen(
             onDownload = { launchAfter, withBios ->
                 val help = viewModel.retroArchHelpFor(game)
                 // Avec le guide ouvert, le lancement attend sa fermeture (voir plus bas).
-                if (launchAfter && help == null) autoLaunch += game.id else autoLaunch -= game.id
+                if (launchAfter && help == null) autoLaunch[game.id] = PendingLaunch() else autoLaunch -= game.id
                 viewModel.download(game, withBios)
                 askDownload = null
                 if (help != null) postDownloadHelp = Triple(game, help, launchAfter)
@@ -266,27 +266,11 @@ fun TvGamesScreen(
                 if (launchAfter) {
                     // Déjà téléchargé : on lance ; sinon lancement automatique à la fin du téléchargement.
                     if (statusOf(game) == LocalStatus.Downloaded) viewModel.play(activity, game)?.let(onMessage)
-                    else autoLaunch += game.id
+                    else autoLaunch[game.id] = PendingLaunch()
                 }
             },
             onMessage = onMessage,
             onDontShowAgainChange = { viewModel.setRetroArchHelpDismissed(info.packageName, it) },
-        )
-    }
-
-    askBios?.let { game ->
-        MissingBiosDialog(
-            missingBios = state.missingBios,
-            onDownloadAndPlay = {
-                askBios = null
-                autoLaunch += game.id
-                viewModel.downloadBios(game)
-            },
-            onPlay = {
-                askBios = null
-                viewModel.play(activity, game)?.let(onMessage)
-            },
-            onDismiss = { askBios = null },
         )
     }
 
