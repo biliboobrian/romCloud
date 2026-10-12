@@ -54,7 +54,7 @@ internal suspend fun fetchFile(
             }
             val append = response.code == 206 && offset > 0
             if (!append) offset = 0
-            val body = response.body ?: throw IOException(I18n.get(R.string.err_empty_response))
+            val body = response.body
             var bytes = offset
             var lastUpdate = 0L
             body.byteStream().use { input ->

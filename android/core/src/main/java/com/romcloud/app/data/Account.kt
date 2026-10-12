@@ -175,7 +175,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
     private suspend fun execute(builder: Request.Builder, timeoutSeconds: Long = 20): String = withContext(Dispatchers.IO) {
         val client = api.http.newBuilder().readTimeout(timeoutSeconds, TimeUnit.SECONDS).writeTimeout(timeoutSeconds, TimeUnit.SECONDS).build()
         client.newCall(builder.build()).execute().use { response ->
-            val body = response.body?.string().orEmpty()
+            val body = response.body.string()
             if (!response.isSuccessful) throw failure(response.code, body)
             body
         }
@@ -486,7 +486,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
                         if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
                         file.parentFile?.mkdirs()
                         val part = File(file.path + ".download")
-                        response.body!!.byteStream().use { input -> part.outputStream().use { input.copyTo(it) } }
+                        response.body.byteStream().use { input -> part.outputStream().use { input.copyTo(it) } }
                         if (!part.renameTo(file)) {
                             part.copyTo(file, overwrite = true)
                             part.delete()
@@ -526,10 +526,10 @@ class Account(private val context: Context, private val api: ApiClient, private 
     suspend fun downloadState(id: String, target: File) = withContext(Dispatchers.IO) {
         val client = api.http.newBuilder().readTimeout(120, TimeUnit.SECONDS).build()
         client.newCall(request("/api/account/states/$id").build()).execute().use { response ->
-            if (!response.isSuccessful) throw failure(response.code, response.body?.string().orEmpty())
+            if (!response.isSuccessful) throw failure(response.code, response.body.string())
             target.parentFile?.mkdirs()
             val part = File(target.path + ".download")
-            response.body!!.byteStream().use { input -> part.outputStream().use { input.copyTo(it) } }
+            response.body.byteStream().use { input -> part.outputStream().use { input.copyTo(it) } }
             if (!part.renameTo(target)) {
                 part.copyTo(target, overwrite = true)
                 part.delete()
@@ -541,7 +541,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
     suspend fun stateThumbnail(id: String): ByteArray? = runCatching {
         withContext(Dispatchers.IO) {
             api.http.newCall(request("/api/account/states/$id/thumbnail").build()).execute().use { response ->
-                if (response.isSuccessful) response.body?.bytes() else null
+                if (response.isSuccessful) response.body.bytes() else null
             }
         }
     }.getOrNull()

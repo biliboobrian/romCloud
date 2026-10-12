@@ -260,7 +260,6 @@
     <string name="err_storage_permission">File access permission missing (see Settings)</string>
     <string name="err_api_key">Invalid or missing API key</string>
     <string name="err_server">Server error %1$d</string>
-    <string name="err_empty_response">Empty response</string>
     <string name="err_wrong_size" tools:ignore="PluralsCandidate">Wrong size (%1$d / %2$d bytes), try again</string>
     <string name="err_rename">Unable to rename the downloaded file</string>
     <string name="err_no_server">No server configured</string>

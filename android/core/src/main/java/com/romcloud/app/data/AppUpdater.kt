@@ -64,7 +64,7 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
             .build()
         val body = api.http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
-            response.body?.string() ?: return null
+            response.body.string()
         }
         val release = Json.parseToJsonElement(body).jsonObject
         val version = release["tag_name"]?.jsonPrimitive?.content?.removePrefix("v") ?: return null
@@ -92,7 +92,7 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
             .build()
         api.http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return emptyList()
-            changesFromCompare(response.body?.string() ?: return emptyList(), latest)
+            changesFromCompare(response.body.string(), latest)
         }
     }.getOrDefault(emptyList())
 

@@ -94,7 +94,7 @@ class LibretroCores(context: Context) {
                 if (response.code == 404) throw IOException(I18n.get(R.string.core_not_found, core, abi))
                 if (!response.isSuccessful) throw IOException(I18n.get(R.string.err_server, response.code))
                 version = response.header("Last-Modified")
-                val body = response.body ?: throw IOException(I18n.get(R.string.err_empty_response))
+                val body = response.body
                 val total = body.contentLength()
                 var bytes = 0L
                 var lastUpdate = 0L
@@ -149,7 +149,7 @@ class LibretroCores(context: Context) {
         try {
             http.newCall(Request.Builder().url("$SYSTEM_FILES_URL/$archive").build()).execute().use { response ->
                 if (!response.isSuccessful) throw IOException(I18n.get(R.string.err_server, response.code))
-                val body = response.body ?: throw IOException(I18n.get(R.string.err_empty_response))
+                val body = response.body
                 val total = body.contentLength()
                 var bytes = 0L
                 body.byteStream().use { input ->

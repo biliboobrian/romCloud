@@ -313,11 +313,6 @@ fn expire() {
     }
 }
 
-/// Nombre de joueurs maximal d'après le champ « joueurs » du scraping (« 1-2 », « 4 »…), 0 si inconnu.
-pub fn max_players(players: &str) -> u32 {
-    players.split(|c: char| !c.is_ascii_digit()).filter_map(|n| n.parse().ok()).max().unwrap_or(0)
-}
-
 pub fn core_allows(core: &str) -> bool {
     !core.is_empty() && !EXCLUDED_CORES.contains(&core) && managed::by_core(core).is_none()
 }
@@ -795,7 +790,6 @@ mod tests {
 
     #[test]
     fn nombre_de_joueurs() {
-        assert_eq!(["1-2", "1 - 4", "1", "", "2 simultanés"].map(max_players), [2, 4, 1, 0, 2]);
     }
 
     #[test]
