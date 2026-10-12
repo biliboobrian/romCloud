@@ -409,8 +409,9 @@ fn mac(device_id: &str) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Options du cœur imposées pour la liaison (« --option clé=valeur ») : hôte (serveur) ou invité relié à [host_address].
-fn link_options(link: &Link, host: bool, host_address: &str) -> Vec<String> {
+/// Options du cœur imposées pour la liaison (« --option clé=valeur ») : hôte (serveur) ou invité relié à [host_address] ;
+/// [psp_server] : PSP par le serveur RomCloud (ports locaux de PPSSPP reliés au serveur, relay::psp_bridges).
+fn link_options(link: &Link, host: bool, host_address: &str, psp_server: bool) -> Vec<String> {
     let mut options: Vec<(String, String)> = Vec::new();
     let digits = ip_digits(host_address).unwrap_or_default();
     match link.id {
@@ -428,11 +429,19 @@ fn link_options(link: &Link, host: bool, host_address: &str) -> Vec<String> {
             // Ports des jeux décalés (PSP : souvent sous 1024, interdits aux applications Android) ;
             // le même décalage sur toutes les consoles reliées (port de l'autre calculé avec).
             options.push(("ppsspp_port_offset".into(), PSP_PORT_OFFSET.into()));
-            options.push(("ppsspp_enable_builtin_pro_ad_hoc_server".into(), if host { "enabled" } else { "disabled" }.into()));
-            // Hôte : relié à son propre serveur par son adresse sur le réseau local, pas par « localhost » :
-            // le serveur annonce chaque console aux autres avec l'adresse de sa connexion (127.0.0.1
-            // sinon, injoignable pour les invités).
-            let server = if host { local_address().and_then(|a| ip_digits(&a)) } else { Some(digits.clone()) };
+            // Par le serveur RomCloud : pas de serveur intégré, celui de la boucle locale (relié au serveur),
+            // en mode relais (toutes les données passent par le serveur, voir psp_relay_server_entry).
+            options.push(("ppsspp_enable_builtin_pro_ad_hoc_server".into(), if host && !psp_server { "enabled" } else { "disabled" }.into()));
+            // Hôte sur le réseau local : relié à son propre serveur par son adresse sur le réseau local, pas
+            // par « localhost » : le serveur annonce chaque console aux autres avec l'adresse de sa
+            // connexion (127.0.0.1 sinon, injoignable pour les invités).
+            let server = if psp_server {
+                ip_digits(PSP_LOOPBACK)
+            } else if host {
+                local_address().and_then(|a| ip_digits(&a))
+            } else {
+                Some(digits.clone())
+            };
             match server.filter(|d| !d.is_empty()) {
                 Some(server) => {
                     options.push(("ppsspp_change_pro_ad_hoc_server_address".into(), "IP address".into()));
@@ -471,18 +480,18 @@ fn link_flags(link: &Link) -> Vec<String> {
 }
 
 /**
- * Partie proposée aussi par Internet (profil connecté ; pas l'ad hoc de la PSP, nombreux ports) :
- * identifiant de relais ajouté au jeu annoncé, port d'écoute fixe du moteur, relié au relais tant
- * que le moteur est ouvert ([link_port] : serveur du câble ouvert par le cœur, relié aussi).
+ * Partie proposée aussi par Internet (profil connecté) : identifiant de relais ([session], sinon
+ * nouveau) ajouté au jeu annoncé, port d'écoute fixe du moteur, relié au relais tant que le moteur
+ * est ouvert ([link_port] : serveur du câble ouvert par le cœur, relié aussi).
  */
-fn internet_host(game: &mut Value, link_port: Option<u16>) -> Vec<String> {
+fn internet_host(game: &mut Value, link_port: Option<u16>, session: Option<String>) -> Vec<String> {
     if !account::signed_in() {
         return Vec::new();
     }
     let Some(port) = std::net::TcpListener::bind("0.0.0.0:0").ok().and_then(|l| l.local_addr().ok()).map(|a| a.port()) else {
         return Vec::new();
     };
-    let session = relay::new_session();
+    let session = session.unwrap_or_else(relay::new_session);
     game["session"] = json!(session);
     let stop = new_stop();
     let s1 = session.clone();
@@ -492,6 +501,84 @@ fn internet_host(game: &mut Value, link_port: Option<u16>) -> Vec<String> {
         tauri::async_runtime::spawn(relay::host_loop(move || account::relay_request(&s2, relay::CHANNEL_LINK, "host"), link_port, stop));
     }
     vec!["--netplay-port".into(), port.to_string()]
+}
+
+/// Adresse du serveur ad hoc donnée à PPSSPP pour la PSP par le serveur RomCloud (passerelles locales).
+const PSP_LOOPBACK: &str = "127.0.0.1";
+
+/**
+ * PSP proposée (profil connecté, serveur joignable) : réseau ad hoc de la partie sur le serveur, pour
+ * les invités par Internet comme sur le réseau local ; ports locaux de PPSSPP reliés à lui. Renvoie
+ * les arguments de la partie par Internet et vrai dans ce cas ; sinon (sans profil, ports pris) :
+ * rien, jeu direct sur le réseau local (serveur intégré de PPSSPP).
+ */
+fn psp_host(hosted: &mut Value) -> (Vec<String>, bool) {
+    if !account::signed_in() || !crate::connectivity::is_online() {
+        return (Vec::new(), false);
+    }
+    let session = relay::new_session();
+    let args = internet_host(hosted, None, Some(session.clone()));
+    if args.is_empty() {
+        return (Vec::new(), false);
+    }
+    // Passerelles arrêtées avec les relais de la partie (fermeture du moteur).
+    let Some(stop) = STOP.lock().unwrap().as_ref().map(|tx| tx.subscribe()) else { return (args, false) };
+    if !relay::psp_bridges(move |kind| account::psp_request(&session, kind), stop) {
+        // Ports de PPSSPP pris (autre émulateur ouvert) : réseau local seulement.
+        player_exited();
+        if let Some(game) = hosted.as_object_mut() {
+            game.remove("session");
+        }
+        return (Vec::new(), false);
+    }
+    psp_relay_server_entry();
+    (args, true)
+}
+
+/// Invité d'une partie PSP acceptée : réseau ad hoc sur le serveur si l'hôte l'y a ouvert (session de la partie).
+fn psp_guest(join: &Value) -> Result<Value> {
+    let session = s(&join["game"], "session").to_string();
+    if session.is_empty() {
+        return Ok(join.clone());
+    }
+    if account::psp_request(&session, "adhocctl").is_none() {
+        return Err(AppError::new("errors.signedOut", json!({})));
+    }
+    if !relay::psp_bridges(move |kind| account::psp_request(&session, kind), new_stop()) {
+        return Err(AppError::new("errors.linkUnreachable", json!({ "name": s(join, "peerName"), "detail": "port 27312" })));
+    }
+    psp_relay_server_entry();
+    let mut local = join.clone();
+    local["pspServer"] = json!(true);
+    Ok(local)
+}
+
+/**
+ * PPSSPP : le serveur ad hoc de la boucle locale déclaré « avec relais » (mode AEMU postoffice :
+ * toutes les données par le serveur) dans la liste des serveurs qu'il lit hors connexion,
+ * <BIOS>/PPSSPP/adhoc-servers.json ; les autres serveurs de la liste sont gardés.
+ */
+fn psp_relay_server_entry() {
+    let path = settings::bios_dir().join("PPSSPP").join("adhoc-servers.json");
+    let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if let Some(text) = with_psp_relay_entry(&current) {
+        let _ = std::fs::write(&path, text);
+    }
+}
+
+/// Liste des serveurs ad hoc de PPSSPP ([current], vide ou invalide : nouvelle) avec l'entrée du
+/// serveur de la boucle locale en mode relais ; None si elle y est déjà.
+fn with_psp_relay_entry(current: &str) -> Option<String> {
+    let mut root: Value = serde_json::from_str(current).ok().filter(Value::is_object).unwrap_or_else(|| json!({}));
+    let mut servers: Vec<Value> = root["servers"].as_array().cloned().unwrap_or_default();
+    if servers.iter().any(|e| e["host"] == PSP_LOOPBACK && e["data_mode"] == "AemuPostoffice") {
+        return None;
+    }
+    servers.retain(|e| e["host"] != PSP_LOOPBACK);
+    servers.push(json!({ "name": "RomCloud", "host": PSP_LOOPBACK, "data_mode": "AemuPostoffice", "hidden": true }));
+    root["servers"] = Value::Array(servers);
+    serde_json::to_string_pretty(&root).ok()
 }
 
 /// Nouveaux relais de partie : ceux d'avant arrêtés ; arrêtés aussi à la fermeture du moteur ([player_exited]).
@@ -555,11 +642,15 @@ pub async fn guest_link_join_args(join: &Value, system: &Value, game: &Value, li
 /// Liaison proposée : annonce et demandes gérées par le moteur, options du cœur côté serveur.
 pub fn link_host_args(system: &Value, game: &Value, link: &Link) -> Vec<String> {
     let mut hosted = link_game(system, game, link);
-    let internet = if link.id == "psp" { Vec::new() } else { internet_host(&mut hosted, (link.id == "gb").then(|| GAMBATTE_PORT.parse().unwrap_or(56400))) };
+    let (internet, psp_server) = if link.id == "psp" {
+        psp_host(&mut hosted)
+    } else {
+        (internet_host(&mut hosted, (link.id == "gb").then(|| GAMBATTE_PORT.parse().unwrap_or(56400)), None), false)
+    };
     let mut args = vec!["--netplay-host".to_string(), "--netplay-game".into(), hosted.to_string()];
     args.extend(internet);
     args.extend(link_flags(link));
-    args.extend(link_options(link, true, ""));
+    args.extend(link_options(link, true, "", psp_server));
     args.extend(identity());
     args
 }
@@ -582,7 +673,7 @@ pub fn link_join_args(join: &Value, system: &Value, game: &Value, link: &Link) -
 /// Liaison ouverte par le cœur, déjà acceptée par l'hôte : options du cœur côté client.
 pub fn linked_args(join: &Value, link: &Link) -> Vec<String> {
     let mut args = vec!["--linked".to_string(), s(join, "peerName").to_string()];
-    args.extend(link_options(link, false, s(join, "address")));
+    args.extend(link_options(link, false, s(join, "address"), join["pspServer"] == true));
     args.extend(identity());
     args
 }
@@ -632,6 +723,10 @@ pub async fn link_handshake(join: &Value, game: &Value, link: &Link) -> Result<V
     .map_err(|e| unreachable(e.to_string()))?;
     let answer: Value = serde_json::from_slice(&answer).unwrap_or(Value::Null);
     if answer["ok"] == true {
+        // PSP : réseau ad hoc de la partie sur le serveur (hôte connecté à un profil), sinon direct.
+        if link.id == "psp" {
+            return psp_guest(join);
+        }
         if !internet {
             return Ok(join.clone());
         }
@@ -656,7 +751,7 @@ pub fn host_args(system: &Value, game: &Value, core: &str) -> Vec<String> {
         "gameId": game["id"], "systemId": s(system, "id"), "title": s(game, "title"),
         "fileName": s(game, "fileName"), "size": game["size"], "core": core,
     });
-    let internet = internet_host(&mut hosted, None);
+    let internet = internet_host(&mut hosted, None, None);
     let mut args = vec!["--netplay-host".to_string(), "--netplay-game".into(), hosted.to_string()];
     args.extend(internet);
     args.extend(netplay_options());
@@ -741,19 +836,45 @@ mod tests {
         assert_eq!(system_together(&json!({ "id": "gba", "shortname": "gba" })), json!("link"));
         assert_eq!(ip_digits("192.168.1.5").as_deref(), Some("192168001005"));
         assert_eq!(ip_digits("fe80::1"), None);
-        let options = link_options(link_by_id("gb").unwrap(), false, "10.0.0.42");
+        let options = link_options(link_by_id("gb").unwrap(), false, "10.0.0.42", false);
         assert!(options.contains(&"gambatte_gb_link_mode=Network Client".to_string()));
         assert!(options.contains(&"gambatte_gb_link_network_server_ip_2=1".to_string()));
         assert!(options.contains(&"gambatte_gb_link_network_server_ip_12=2".to_string()));
         // Hôte de la PSP : relié à son serveur par son adresse sur le réseau, pas par 127.0.0.1.
-        let host = link_options(link_by_id("psp").unwrap(), true, "");
+        let host = link_options(link_by_id("psp").unwrap(), true, "", false);
         assert!(host.contains(&"ppsspp_port_offset=10000".to_string()));
+        assert!(host.contains(&"ppsspp_enable_builtin_pro_ad_hoc_server=enabled".to_string()));
         if local_address().is_some() {
             assert!(host.contains(&"ppsspp_change_pro_ad_hoc_server_address=IP address".to_string()));
+        }
+        // PSP par le serveur RomCloud : ni hôte ni invité n'ouvrent de serveur, tous reliés à 127.0.0.1.
+        for host in [true, false] {
+            let options = link_options(link_by_id("psp").unwrap(), host, "192.168.1.5", true);
+            assert!(options.contains(&"ppsspp_enable_builtin_pro_ad_hoc_server=disabled".to_string()));
+            assert!(options.contains(&"ppsspp_pro_ad_hoc_server_address01=1".to_string()));
+            assert!(options.contains(&"ppsspp_pro_ad_hoc_server_address04=0".to_string()));
+            assert!(options.contains(&"ppsspp_pro_ad_hoc_server_address12=1".to_string()));
         }
         assert_eq!(mac("a").len(), 12);
         assert_ne!(mac("a"), mac("b"));
         assert_eq!(u8::from_str_radix(&mac("a")[..2], 16).unwrap() & 3, 2);
+    }
+
+    #[test]
+    fn serveur_ad_hoc_en_mode_relais_pour_ppsspp() {
+        // Liste absente ou invalide : créée avec l'entrée de la boucle locale en mode relais.
+        let created: Value = serde_json::from_str(&with_psp_relay_entry("").unwrap()).unwrap();
+        assert_eq!(created["servers"][0]["host"], "127.0.0.1");
+        assert_eq!(created["servers"][0]["data_mode"], "AemuPostoffice");
+        // Liste de PPSSPP gardée ; ancienne entrée 127.0.0.1 sans relais remplacée ; rien à changer ensuite.
+        let existing = r#"{"servers":[{"name":"Socom","host":"socom.cc"},{"name":"Local","host":"127.0.0.1"}]}"#;
+        let merged_text = with_psp_relay_entry(existing).unwrap();
+        let merged: Value = serde_json::from_str(&merged_text).unwrap();
+        let servers = merged["servers"].as_array().unwrap();
+        assert_eq!(servers.len(), 2);
+        assert_eq!(servers[0]["host"], "socom.cc");
+        assert_eq!(servers[1]["data_mode"], "AemuPostoffice");
+        assert_eq!(with_psp_relay_entry(&merged_text), None);
     }
 
     #[test]

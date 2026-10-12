@@ -593,6 +593,7 @@
     <string name="netplay_busy">%1$s joue déjà avec quelqu’un d’autre.</string>
     <string name="netplay_other_game">L’autre appareil a une autre version du jeu ou de l’émulateur.</string>
     <string name="netplay_other_version">Mettez RomCloud à jour sur les deux appareils pour jouer ensemble.</string>
+    <string name="profile_signed_out">profil non connecté</string>
     <string name="netplay_unreachable">Impossible de joindre %1$s (%2$s).</string>
     <string name="netplay_ended">Partie avec %1$s terminée : vous continuez seul.</string>
     <string name="netplay_waiting">En attente de %1$s…</string>

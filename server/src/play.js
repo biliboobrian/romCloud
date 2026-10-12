@@ -9,6 +9,7 @@
 //    un hôte attend. Même échange ensuite qu'en réseau local (demande, réponse, touches ou paquets).
 import crypto from 'node:crypto';
 import { HttpError } from './http-error.js';
+import * as pspAdhoc from './psp-adhoc.js';
 
 export const PRESENCE_TTL_MS = 30_000;
 /** Joueur « présent » (pastille verte) : activité dans l'application ou en partie depuis moins de 5 min. */
@@ -157,6 +158,7 @@ function join(host, guest) {
  */
 export function handleUpgrade(req, socket, authorize) {
   const url = new URL(req.url, 'http://relay');
+  if (url.pathname === PSP_ADHOCCTL || url.pathname === PSP_POSTOFFICE) return pspUpgrade(req, socket, authorize, url);
   if (url.pathname !== '/api/play/relay') return false;
   socket.on('error', () => socket.destroy());
   const auth = authorize(req);
@@ -190,12 +192,31 @@ export function handleUpgrade(req, socket, authorize) {
   return true;
 }
 
+// Jeu ad hoc de la PSP par Internet (psp-adhoc.js) : une requête « Upgrade » par connexion de
+// PPSSPP (mise en relation ou « bureau de poste »), dans le réseau de la partie proposée.
+const PSP_ADHOCCTL = '/api/play/psp/adhocctl';
+const PSP_POSTOFFICE = '/api/play/psp/postoffice';
+
+function pspUpgrade(req, socket, authorize, url) {
+  socket.on('error', () => socket.destroy());
+  if (!authorize(req)) return refuse(socket, 401, 'Unauthorized'), true;
+  const session = String(url.searchParams.get('session') || '').toLowerCase();
+  if (!SESSION_RE.test(session)) return refuse(socket, 400, 'Bad Request'), true;
+  // Seulement le réseau d'une partie proposée en ce moment.
+  if (sessionOwner(session) === null) return refuse(socket, 404, 'Not Found'), true;
+  accept(socket, req.headers['sec-websocket-key'] || null);
+  if (url.pathname === PSP_ADHOCCTL) pspAdhoc.attachAdhocctl(session, socket);
+  else pspAdhoc.attachPostoffice(session, socket);
+  return true;
+}
+
 /** Identifiant de session de relais (hôte). */
 export const newSession = () => crypto.randomBytes(16).toString('hex');
 
 /** Essais : tout oublier. */
 export function reset() {
   presence.clear();
+  pspAdhoc.reset();
   for (const list of waiting.values()) for (const s of list) s.destroy();
   waiting.clear();
 }

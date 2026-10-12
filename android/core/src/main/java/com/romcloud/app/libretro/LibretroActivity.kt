@@ -107,6 +107,9 @@ import com.romcloud.core.R
 import com.romcloud.app.netplay.LanPresence
 import com.romcloud.app.netplay.tunnelHost
 import com.romcloud.app.netplay.tunnelGuest
+import com.romcloud.app.netplay.PSP_ADHOCCTL_PORT
+import com.romcloud.app.netplay.pspBridges
+import com.romcloud.app.netplay.pspRelayServerEntry
 import com.romcloud.app.netplay.Relay
 import com.romcloud.app.netplay.PlayPresence
 import com.romcloud.app.netplay.LinkKind
@@ -423,6 +426,7 @@ class LibretroActivity : ComponentActivity() {
     private suspend fun startGame(coreFile: File, game: File) {
         // Hôte d'une liaison ad hoc (PSP) : adresse de cet appareil sur le réseau local.
         val ownAddress = if (link == LinkKind.PSP_ADHOC && netplayLaunch?.host == true) withContext(Dispatchers.IO) { LanPresence.localAddress() } else null
+        if (link == LinkKind.PSP_ADHOC && !startPspServer()) return
         val sram = withContext(Dispatchers.IO) {
             // Liaison : sauvegarde de l'émulateur choisi reprise si elle est plus récente.
             linkedSram?.takeIf { it.isFile && (!sramFile.isFile || it.lastModified() > sramFile.lastModified()) }
@@ -440,7 +444,9 @@ class LibretroActivity : ComponentActivity() {
             // Valeurs imposées par le jeu (cartouche GX4000…), sauf choix de l'utilisateur.
             // Liaison entre consoles : options du cœur imposées (serveur chez l'hôte, adresse de l'hôte chez l'invité).
             val linkOptions = netplayLaunch?.let { launch ->
-                link?.let { LinkRules.options(it, launch.host, launch.address, LanPresence.deviceId(this@LibretroActivity), ownAddress) }
+                link?.let {
+                    LinkRules.options(it, launch.host, launch.address, LanPresence.deviceId(this@LibretroActivity), ownAddress, pspServer = pspSession != null)
+                }
             }.orEmpty()
             // Jeu synchronisé : options qui diffèrent d'un appareil à l'autre coupées (meilleurs scores de FBNeo).
             val netplayOptions = if (netplayLaunch != null && link == null) NetplayRules.CORE_OPTIONS else emptyMap()
@@ -653,9 +659,9 @@ class LibretroActivity : ComponentActivity() {
             netplayPartner = launch.peerName
             toast = getString(R.string.link_started, launch.peerName)
         } else if (launch.host) {
-            // Profil connecté : partie aussi proposée par Internet (relais du serveur), sauf l'ad hoc
-            // de la PSP (nombreux ports, réseau local seulement).
-            val session = Relay.newSession().takeIf { account.state.value.signedIn && link != LinkKind.PSP_ADHOC }
+            // Profil connecté : partie aussi proposée par Internet (relais du serveur) ; ad hoc de la PSP :
+            // seulement par le serveur (réseau ad hoc de la partie ouvert au lancement, startPspServer).
+            val session = if (link == LinkKind.PSP_ADHOC) pspSession else Relay.newSession().takeIf { account.state.value.signedIn }
             relaySession = session
             netplayHost = NetplayHost(
                 presence, launch.game.copy(session = session), coreFile,
@@ -845,6 +851,39 @@ class LibretroActivity : ComponentActivity() {
         }
         account.reportError("states:$core", "unserialize at start", rom.name)
         toast = getString(R.string.libretro_state_error)
+    }
+
+    /** PSP par le serveur RomCloud : session de la partie (réseau ad hoc sur le serveur), null : réseau local direct. */
+    private var pspSession: String? = null
+
+    /**
+     * Liaison ad hoc de la PSP : hôte connecté à un profil (ou invité d'un tel hôte) -> réseau ad hoc de
+     * la partie sur le serveur, pour les invités par Internet comme sur le réseau local (ports locaux
+     * de PPSSPP reliés au serveur, mode relais). Sans profil côté hôte : réseau local direct. Faux si le
+     * jeu ne peut pas démarrer (invité sans profil, ports de PPSSPP pris).
+     */
+    private suspend fun startPspServer(): Boolean {
+        val launch = netplayLaunch ?: return true
+        val session = if (launch.host) {
+            Relay.newSession().takeIf { account.state.value.signedIn }
+        } else {
+            launch.game.session ?: launch.relay
+        } ?: return true
+        if (account.pspRequest(session, "adhocctl") == null) {
+            if (launch.host) return true
+            phase = Phase.Failed(getString(R.string.netplay_unreachable, launch.peerName, getString(R.string.profile_signed_out)))
+            return false
+        }
+        val bridges = withContext(Dispatchers.IO) { lifecycleScope.pspBridges { kind -> account.pspRequest(session, kind) } }
+        if (bridges == null) {
+            // Ports de PPSSPP pris (autre émulateur ouvert) : hôte en réseau local, invité impossible.
+            if (launch.host) return true
+            phase = Phase.Failed(getString(R.string.netplay_unreachable, launch.peerName, "port $PSP_ADHOCCTL_PORT"))
+            return false
+        }
+        withContext(Dispatchers.IO) { pspRelayServerEntry(File(intent.getStringExtra(EXTRA_SYSTEM_DIR) ?: filesDir.absolutePath)) }
+        pspSession = session
+        return true
     }
 
     /** Enregistre l'état de la partie (repris par « Reprendre » dans la fiche du jeu) puis quitte. */

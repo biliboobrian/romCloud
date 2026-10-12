@@ -168,6 +168,51 @@ pub async fn guest_bridge(request: Request, port: u16, mut stop: watch::Receiver
     Some(port)
 }
 
+/// Ports de PPSSPP pour le jeu ad hoc de la PSP : mise en relation et « bureau de poste » (fixes, sans
+/// le décalage des ports des jeux).
+pub const PSP_ADHOCCTL_PORT: u16 = 27312;
+pub const PSP_POSTOFFICE_PORT: u16 = 27313;
+
+/**
+ * Jeu ad hoc de la PSP par le serveur (server/src/psp-adhoc.js) : les deux ports de PPSSPP sur la
+ * boucle locale, chaque connexion reliée au serveur par sa propre requête ([request] : « adhocctl »
+ * ou « postoffice » -> requête, None hors connexion), jusqu'à [stop]. Faux si un port est déjà pris
+ * (rien n'est alors ouvert).
+ */
+pub fn psp_bridges(request: impl Fn(&str) -> Option<Request> + Send + Sync + 'static, stop: watch::Receiver<bool>) -> bool {
+    let bind = |port: u16| {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port)).ok()?;
+        listener.set_nonblocking(true).ok()?;
+        Some(listener)
+    };
+    let (Some(adhocctl), Some(postoffice)) = (bind(PSP_ADHOCCTL_PORT), bind(PSP_POSTOFFICE_PORT)) else {
+        return false;
+    };
+    let request = std::sync::Arc::new(request);
+    for (listener, kind) in [(adhocctl, "adhocctl"), (postoffice, "postoffice")] {
+        let request = request.clone();
+        let mut stop = stop.clone();
+        tauri::async_runtime::spawn(async move {
+            let Ok(listener) = TcpListener::from_std(listener) else { return };
+            loop {
+                let accepted = tokio::select! { a = listener.accept() => a.ok(), _ = stop.changed() => None };
+                let Some((local, _)) = accepted else { break };
+                // Plusieurs connexions à la fois (une par socket du jeu) : chacune ouverte à part.
+                let Some(req) = request(kind) else { continue };
+                tauri::async_runtime::spawn(async move {
+                    if let Ok(remote) = open(&req).await {
+                        pipe(remote, local).await;
+                    }
+                });
+                if *stop.borrow() {
+                    break;
+                }
+            }
+        });
+    }
+    true
+}
+
 /// Nouvel identifiant de partie sur le relais (hôte).
 pub fn new_session() -> String {
     hex::encode(rand::random::<[u8; 16]>())
