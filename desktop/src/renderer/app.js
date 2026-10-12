@@ -1807,11 +1807,12 @@
     const states = history.states || [];
     const dateText = (ms) => new Date(ms).toLocaleString(window.I18N.language, { dateStyle: 'medium', timeStyle: 'short' });
     const rows = states.map((st) => `<div class="state-row" data-id="${esc(st.id)}">
-        <div class="state-thumb">${icon('pad', 32)}</div>
+        <div class="state-thumb">${icon('pad', 32)}<span class="state-download">${icon('cloud', 28)}</span></div>
         <div class="state-info">
           <strong>${esc(dateText(st.createdAt))}</strong>
           <span class="muted">${esc(st.local ? t('states.thisPc') : st.device || t('states.otherDevice'))}${st.online ? ` · ${icon('cloud', 14)} ${esc(t('states.online'))}` : ''}${st.pinned ? ` · ${esc(t('states.pinned'))}` : ''}</span>
           ${(history.cores || []).length > 1 ? `<span class="muted small">${esc(t('states.core', { core: st.core }))}</span>` : ''}
+          <span class="state-status muted small"></span>
           <div class="line">
             <button class="btn primary" data-state-play>${icon('play', 18)} ${esc(t('action.play'))}</button>
             <button class="btn ghost" data-state-pin>${esc(t(st.pinned ? 'states.unpin' : 'states.pin'))}</button>
@@ -1841,9 +1842,22 @@
     for (const row of $$('.state-row', root)) {
       const st = states.find((s) => s.id === row.dataset.id);
       call(rc.states.action, system, game, 'thumbnail', st).then((url) => {
-        if (url) $('.state-thumb', row).innerHTML = `<img src="${esc(url)}" alt="">`;
+        if (url) $('.state-thumb', row).innerHTML = `<img src="${esc(url)}" alt=""><span class="state-download">${icon('cloud', 28)}</span>`;
       }).catch(() => {});
-      $('[data-state-play]', row).onclick = () => {
+      $('[data-state-play]', row).onclick = async () => {
+        // État d'un autre appareil : téléchargé d'abord, icône de téléchargement sur sa ligne.
+        if (!st.local) {
+          row.classList.add('downloading');
+          $('.state-status', row).innerHTML = `${icon('cloud', 14)} ${esc(t('states.downloading'))}`;
+          for (const b of $$('button', root)) b.disabled = true;
+          try {
+            await call(rc.states.action, system, game, 'download', st);
+          } catch (e) {
+            toast(e.message, { type: 'error' });
+            showStates(system, game);
+            return;
+          }
+        }
         close();
         // Chargé avec le cœur qui l'a créé.
         playChecked(system, game, { state: st.id, stateCore: st.core });

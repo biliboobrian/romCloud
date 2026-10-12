@@ -492,6 +492,11 @@ pub async fn state_action(system: &Value, game: &Value, action: &str, state: &Va
             crate::states::upload(&game["id"], &dir, id).await?;
             Value::Null
         }
+        // État du profil en ligne : téléchargé sur le PC (avant de jouer à partir de lui).
+        "download" => {
+            crate::states::file_for(&game["id"], &dir, id).await?;
+            Value::Null
+        }
         "delete" => {
             crate::states::delete(&dir, id, online).await?;
             Value::Null
