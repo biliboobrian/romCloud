@@ -88,6 +88,8 @@ class Video {
   bool createContext(std::string& error);
   bool loadFunctions();
   bool createProgram();
+  /** Dessin de [present], état OpenGL du cœur gardé autour. */
+  void draw(const uint8_t* overlay, int overlayWidth, int overlayHeight);
   void allocateHwFramebuffer();
   bool preparePostTarget(int width, int height);
 
