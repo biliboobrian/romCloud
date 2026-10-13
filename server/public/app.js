@@ -392,7 +392,68 @@ function openSystemSettings() {
   // Sans émulateur, la section est ouverte d'emblée pour inviter à en ajouter.
   $('#sysPlayersBox').open = s.players.length === 0;
   fillCopyPlayersSelect(s);
+  state.emulatorOrder = structuredClone(s.emulatorOrder || {});
+  loadEmulatorCandidates();
   if (!$('#sysDialog').open) $('#sysDialog').showModal();
+}
+
+// ---- Ordre des émulateurs dans chaque application ----
+
+async function loadEmulatorCandidates() {
+  const id = state.current.id;
+  state.emulatorCandidates = null;
+  renderEmulatorOrder();
+  await guard(async () => {
+    const candidates = await api(`/systems/${encodeURIComponent(id)}/emulators`);
+    if (state.current?.id !== id) return;
+    state.emulatorCandidates = candidates;
+    renderEmulatorOrder();
+  });
+}
+
+/** Émulateurs de la plateforme : ceux de l'ordre enregistré d'abord, puis les autres dans l'ordre par défaut. */
+function orderedEmulators(platform) {
+  const candidates = state.emulatorCandidates?.[platform] || [];
+  const order = state.emulatorOrder[platform] || [];
+  const rank = (e) => (order.includes(e.id) ? order.indexOf(e.id) : order.length);
+  return candidates.map((e, i) => ({ e, i })).sort((a, b) => rank(a.e) - rank(b.e) || a.i - b.i).map((x) => x.e);
+}
+
+function renderEmulatorOrder() {
+  const platform = $('#sysOrderPlatform').value;
+  const custom = Boolean(state.emulatorOrder[platform]?.length);
+  $('#sysOrderStatus').textContent = t(custom ? 'sys.orderCustom' : 'sys.orderDefault');
+  $('#sysOrderReset').disabled = !custom;
+  const list = $('#sysOrder');
+  list.innerHTML = '';
+  if (!state.emulatorCandidates) return;
+  const emulators = orderedEmulators(platform);
+  if (!emulators.length) {
+    list.innerHTML = `<li class="muted">${escapeHtml(t('sys.orderNone'))}</li>`;
+    return;
+  }
+  emulators.forEach((e, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<div><strong>${escapeHtml(e.name)}</strong>${e.kind === 'builtin' ? ` <span class="muted">(${escapeHtml(t('sys.orderBuiltin'))})</span>` : ''}<span class="muted mono">${escapeHtml(e.id)}</span></div>`;
+    for (const [label, text, to] of [['↑', 'sys.orderUp', i - 1], ['↓', 'sys.orderDown', i + 1]]) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn small ghost';
+      btn.textContent = label;
+      btn.title = t(text);
+      btn.disabled = to < 0 || to >= emulators.length;
+      btn.onclick = () => moveEmulator(platform, emulators, i, to);
+      li.append(btn);
+    }
+    list.append(li);
+  });
+}
+
+function moveEmulator(platform, emulators, from, to) {
+  const ids = emulators.map((e) => e.id);
+  ids.splice(to, 0, ...ids.splice(from, 1));
+  state.emulatorOrder[platform] = ids;
+  renderEmulatorOrder();
 }
 
 function renderPlayers(s) {
@@ -466,6 +527,7 @@ async function savePlayers(players, message) {
   await guard(async () => {
     state.current = await api(`/systems/${encodeURIComponent(state.current.id)}`, { method: 'PUT', body: { players } });
     renderPlayers(state.current);
+    loadEmulatorCandidates();
     toast(message);
     await loadSystems();
   });
@@ -515,6 +577,7 @@ async function saveSystemSettings(e) {
   if ($('#sysColor').dataset.default) data.color = '';
   data.platforms = form.getAll('platforms');
   if (!data.platforms.length) return toast(t('sys.platformsNone'), 'error');
+  data.emulatorOrder = state.emulatorOrder;
   await guard(async () => {
     state.current = await api(`/systems/${encodeURIComponent(state.current.id)}`, { method: 'PUT', body: data });
     $('#sysDialog').close();
@@ -1373,6 +1436,11 @@ function bindEvents() {
   $('#sysColor').oninput = (e) => setSystemColor(e.target.value, false);
   $('#sysColorDefault').onclick = () => setSystemColor(state.current.defaultColor || '#000000', true);
   $('#copyPlayersBtn').onclick = copyPlayers;
+  $('#sysOrderPlatform').onchange = renderEmulatorOrder;
+  $('#sysOrderReset').onclick = () => {
+    delete state.emulatorOrder[$('#sysOrderPlatform').value];
+    renderEmulatorOrder();
+  };
   $('#scanSysBtn').onclick = () => guard(async () => {
     const r = await api(`/systems/${encodeURIComponent(state.current.id)}/scan`, { method: 'POST' });
     toast(t('rescan.done', { added: r.added.length, updated: r.updated, removed: r.removed }));

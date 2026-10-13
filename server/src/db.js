@@ -190,6 +190,8 @@ if (!systemColumns.includes('image')) db.exec('ALTER TABLE systems ADD COLUMN im
 if (!systemColumns.includes('platforms')) db.exec("ALTER TABLE systems ADD COLUMN platforms TEXT NOT NULL DEFAULT '[]'");
 // Couleur de fond choisie dans les réglages du système (NULL : couleur par défaut, system-colors.js).
 if (!systemColumns.includes('color')) db.exec('ALTER TABLE systems ADD COLUMN color TEXT');
+// Ordre des émulateurs dans chaque application (JSON { plateforme: [identifiants] }, emulator-order.js).
+if (!systemColumns.includes('emulator_order')) db.exec("ALTER TABLE systems ADD COLUMN emulator_order TEXT NOT NULL DEFAULT '{}'");
 const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
 // Licence zRIF d'un jeu PS Vita en .pkg (proposée aux applications pour l'installer dans Vita3K).
