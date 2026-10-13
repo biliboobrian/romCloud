@@ -43,7 +43,23 @@ data class GameSystem(
     val biosCount: Int = 0,
     /** Couleur de fond « #rrggbb » (réglages du système sur le serveur) : carte, liste des jeux, fiche. */
     val color: String? = null,
+    /**
+     * Ordre des émulateurs choisi sur le serveur, par plateforme (« android », « androidtv »,
+     * « windows ») : uniqueId des émulateurs ; absent : ordre de l'application.
+     */
+    val emulatorOrder: Map<String, List<String>> = emptyMap(),
 ) {
+    /**
+     * Émulateurs de l'ordre choisi sur le serveur pour [platform] d'abord, dans cet ordre ; les
+     * autres ensuite, dans leur ordre. Le premier compatible est le choix par défaut.
+     */
+    fun withEmulatorOrder(platform: String): GameSystem {
+        val order = emulatorOrder[platform].orEmpty()
+        if (order.isEmpty()) return this
+        val sorted = players.sortedBy { p -> order.indexOf(p.uniqueId).let { if (it < 0) order.size else it } }
+        return if (sorted == players) this else copy(players = sorted)
+    }
+
     /**
      * Certains modèles Daijishou contiennent deux émulateurs de même uniqueId (ex. deux variantes
      * de DuckStation pour la PlayStation) : les suivants sont suffixés (« …#2 ») pour que chacun

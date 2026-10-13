@@ -181,6 +181,22 @@
           </div>
         </div>
       </details>
+      <details id="sysOrderBox">
+        <summary data-i18n="sys.order"></summary>
+        <div class="emu-order">
+          <span class="muted" data-i18n="sys.orderHint"></span>
+          <div class="row">
+            <select id="sysOrderPlatform">
+              <option value="windows" data-i18n="platform.windows"></option>
+              <option value="android" data-i18n="platform.android"></option>
+              <option value="androidtv" data-i18n="platform.androidtv"></option>
+            </select>
+            <span class="muted" id="sysOrderStatus"></span>
+            <button type="button" class="btn small ghost" id="sysOrderReset" data-i18n="sys.orderReset"></button>
+          </div>
+          <ol id="sysOrder" class="players"></ol>
+        </div>
+      </details>
       <div class="dialog-foot split">
         <button type="button" class="btn danger" id="deleteSysBtn" data-i18n="sys.delete"></button>
         <button class="btn primary" data-i18n="sys.save"></button>

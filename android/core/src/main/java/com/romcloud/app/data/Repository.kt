@@ -101,7 +101,7 @@ class Repository(
             load = {
                 loadWithCache("systems.json", api::systemsRaw) {
                     api.json.decodeFromString(systemListSerializer, it)
-                        .map { system -> LibretroPlayers.addTo(system.withUniquePlayerIds()) }
+                        .map { system -> LibretroPlayers.addTo(system.withUniquePlayerIds()).withEmulatorOrder(api.platform) }
                 }
             },
             extra = { it.systems.values.toList() },

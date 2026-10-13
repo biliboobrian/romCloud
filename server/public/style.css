@@ -212,6 +212,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .copy-players .row { align-items: center; }
 .players { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
 .players li { margin-bottom: 4px; }
+.emu-order { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; font-size: 12px; }
+.emu-order .row { align-items: center; gap: 8px; }
+.emu-order li { align-items: center; }
+.emu-order li .mono { margin-left: 4px; }
 
 .game-edit { display: flex; gap: 8px; }
 .media-col { display: flex; flex-direction: column; gap: 12px; padding: 16px 0 16px 18px; width: 200px; flex-shrink: 0; }

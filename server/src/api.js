@@ -50,6 +50,7 @@ import {
   systemImagePath,
   updateSystem,
 } from './systems.js';
+import { emulatorCandidates } from './emulator-order.js';
 
 const VERSION = '1.0.0';
 export const api = express.Router();
@@ -147,6 +148,10 @@ api.post('/systems', (req, res) => res.status(201).json(createSystem(req.body ||
 api.get('/systems/:id', (req, res) => res.json(requireSystem(req.params.id)));
 
 api.put('/systems/:id', (req, res) => res.json(updateSystem(req.params.id, req.body || {})));
+
+// Émulateurs proposés par chaque application pour ce système, dans leur ordre par défaut
+// ({ windows, android, androidtv } : [{ id, name, kind }]), pour en choisir l'ordre.
+api.get('/systems/:id/emulators', (req, res) => res.json(emulatorCandidates(requireSystem(req.params.id))));
 
 api.delete('/systems/:id', (req, res) => {
   deleteSystem(req.params.id, { deleteFiles: req.query.deleteFiles === '1' });

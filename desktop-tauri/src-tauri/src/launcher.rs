@@ -211,13 +211,23 @@ pub fn options(system: &Value) -> Value {
     for emu in catalog::for_system(system) {
         list.push(json!({ "id": format!("emu:{}", emu.id), "kind": "emulator", "emuId": emu.id, "name": emu.name, "installed": emulator_path(emu.id).is_some() }));
     }
+    let order = server_order(system);
+    sort_by_order(&mut list, &order);
     list.push(json!({ "id": "custom", "kind": "custom" }));
     list.push(json!({ "id": "default", "kind": "default" }));
     let saved = settings::load().get("emulators").and_then(|e| e.get(s(system, "id"))).cloned().unwrap_or(Value::Null);
     let kind = |o: &Value, k: &str| o["kind"] == k;
+    // Ordre choisi sur le serveur : le premier utilisable de cet ordre ; sinon le moteur intégré d'abord.
+    let usable = |o: &Value| match o["kind"].as_str().unwrap_or("") {
+        "builtin" => managed::by_core(s(o, "core")).is_some() || cores::core_available(s(o, "core")),
+        "retroarch" => retroarch_ok(),
+        "emulator" => o["installed"] == true,
+        _ => false,
+    };
     let fallback = list
         .iter()
-        .find(|o| kind(o, "builtin"))
+        .find(|o| order.contains(&s(o, "id").to_string()) && usable(o))
+        .or_else(|| list.iter().find(|o| kind(o, "builtin")))
         .or_else(|| if retroarch_ok() { list.iter().find(|o| kind(o, "retroarch")) } else { None })
         .or_else(|| list.iter().find(|o| kind(o, "emulator") && o["installed"] == true))
         .or_else(|| list.iter().find(|o| kind(o, "retroarch") || kind(o, "emulator")))
@@ -226,6 +236,25 @@ pub fn options(system: &Value) -> Value {
         .unwrap_or(Value::Null);
     let selected = if list.iter().any(|o| o["id"] == saved["option"] && !saved["option"].is_null()) { saved["option"].clone() } else { fallback };
     json!({ "options": list, "selected": selected, "command": saved["command"].as_str().unwrap_or("") })
+}
+
+/// Ordre des émulateurs choisi sur le serveur pour Windows (identifiants des choix) ; vide : ordre de l'application.
+fn server_order(system: &Value) -> Vec<String> {
+    system["emulatorOrder"]["windows"].as_array().map(|ids| ids.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default()
+}
+
+/// Choix de l'ordre [order] d'abord, dans cet ordre ; les autres après, dans leur ordre. « retroarch:<cœur> »
+/// suit « builtin:<cœur> » s'il n'est pas lui-même dans l'ordre.
+fn sort_by_order(list: &mut [Value], order: &[String]) {
+    if order.is_empty() {
+        return;
+    }
+    let rank = |o: &Value| {
+        let id = s(o, "id");
+        let builtin = id.strip_prefix("retroarch:").map(|core| format!("builtin:{core}"));
+        order.iter().position(|x| x == id).or_else(|| builtin.and_then(|b| order.iter().position(|x| *x == b))).unwrap_or(order.len())
+    };
+    list.sort_by_key(|o| rank(o));
 }
 
 pub fn choose(system_id: &str, option: &Value, command: &Value) {
@@ -674,4 +703,27 @@ pub fn vita_status(system: &Value, game: &Value) -> Value {
     let mut status = vita3k::status(exe.as_deref(), &library::file_for(system, game), game);
     status["exe"] = json!(exe);
     status
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ordre_des_emulateurs_choisi_sur_le_serveur() {
+        let ids = |list: &[Value]| list.iter().map(|o| s(o, "id").to_string()).collect::<Vec<_>>();
+        let options = |names: &[&str]| names.iter().map(|id| json!({ "id": id })).collect::<Vec<_>>();
+        let system = json!({ "emulatorOrder": { "windows": ["emu:ryujinx", "builtin:duckstation", "builtin:pcsx_rearmed"], "android": ["x"] } });
+        let order = server_order(&system);
+        let mut list = options(&["builtin:mednafen_psx_hw", "builtin:pcsx_rearmed", "builtin:duckstation", "retroarch:duckstation", "emu:ryujinx"]);
+        sort_by_order(&mut list, &order);
+        assert_eq!(
+            ids(&list),
+            ["emu:ryujinx", "builtin:duckstation", "retroarch:duckstation", "builtin:pcsx_rearmed", "builtin:mednafen_psx_hw"]
+        );
+        // Sans ordre : celui de l'application.
+        let mut list = options(&["b", "a"]);
+        sort_by_order(&mut list, &server_order(&json!({ "id": "snes" })));
+        assert_eq!(ids(&list), ["b", "a"]);
+    }
 }

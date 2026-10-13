@@ -5,6 +5,7 @@ import { db } from './db.js';
 import { HttpError } from './http-error.js';
 import { SCREENSCRAPER_SYSTEM_IDS } from './screenscraper-systems.js';
 import { DEFAULT_SYSTEM_COLORS, normalizeColor } from './system-colors.js';
+import { normalizeEmulatorOrder } from './emulator-order.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
@@ -41,6 +42,8 @@ function rowToSystem(row, stats) {
     screenscraperId: row.screenscraper_id,
     players: JSON.parse(row.players || '[]'),
     platforms: JSON.parse(row.platforms || '[]'),
+    // Ordre des émulateurs par plateforme ({ windows: [...], android: [...] } ; absente : ordre de l'application).
+    emulatorOrder: JSON.parse(row.emulator_order || '{}'),
     source: row.source,
     hasImage: Boolean(row.image),
     // Nom du fichier image : change à chaque envoi, sert à invalider les caches.
@@ -162,9 +165,10 @@ export function updateSystem(id, input) {
     platforms: input.platforms !== undefined ? normalizePlatforms(input.platforms) : current.platforms,
     // Vide : retour à la couleur par défaut du système.
     color: input.color !== undefined ? validateColor(input.color) : current.customColor ? current.color : null,
+    emulatorOrder: input.emulatorOrder !== undefined ? normalizeEmulatorOrder(input.emulatorOrder) : current.emulatorOrder,
   };
   db.prepare(
-    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?, color = ?
+    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?, color = ?, emulator_order = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -175,6 +179,7 @@ export function updateSystem(id, input) {
     JSON.stringify(next.players),
     JSON.stringify(next.platforms),
     next.color,
+    JSON.stringify(next.emulatorOrder),
     id,
   );
   return getSystem(id);

@@ -25,6 +25,18 @@ class GameSystemTest {
     }
 
     @Test
+    fun `ordre des emulateurs choisi sur le serveur pour la plateforme`() {
+        val original = system(player("libretrodroid.mednafen_psx_hw"), player("libretrodroid.pcsx_rearmed"), player("duck"), player("duck#2"))
+            .copy(emulatorOrder = mapOf("androidtv" to listOf("duck#2", "libretrodroid.pcsx_rearmed", "inconnu"), "windows" to listOf("x")))
+        assertEquals(
+            listOf("duck#2", "libretrodroid.pcsx_rearmed", "libretrodroid.mednafen_psx_hw", "duck"),
+            original.withEmulatorOrder("androidtv").players.map { it.uniqueId },
+        )
+        // Sans ordre pour cette plateforme : celui de l'application.
+        assertSame(original, original.withEmulatorOrder("android"))
+    }
+
+    @Test
     fun `systeme sans doublon inchange`() {
         val original = system(player("a"), player("b"))
         assertSame(original, original.withUniquePlayerIds())
