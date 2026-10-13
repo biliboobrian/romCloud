@@ -228,7 +228,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
     suspend fun refresh() {
         if (token == null) return
         // Sauvegardes faites hors ligne : envoyées seulement avec l'accord de l'utilisateur (uploadPending).
-        flush(includeSaves = false)
+        flush()
         try {
             val me = json.decodeFromString(MeResponse.serializer(), execute(request("/api/account/me")))
             val list = json.decodeFromString(ListSerializer(PlaytimeEntry.serializer()), execute(request("/api/account/playtime")))
@@ -518,7 +518,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
      */
     fun queueStateUpload(gameId: Long, history: StateHistory, id: String, sendNow: Boolean = false) {
         if (token == null || gameId <= 0) return
-        enqueue("state-$id", "$gameId\n${history.dir.absolutePath}")
+        enqueue("${onlinePrefix()}state-$id","$gameId\n${history.dir.absolutePath}")
         if (sendNow) scope.launch { flush(savesOnly = true) }
     }
 
@@ -619,9 +619,16 @@ class Account(private val context: Context, private val api: ApiClient, private 
         if (token == null || gameId <= 0) return
         val changed = files.filter { (_, f) -> f.isFile && f.length() > 0 && f.lastModified() >= since }
         if (changed.isEmpty()) return
-        for ((kind, file) in changed) enqueue(saveEntryName(gameId, core, kind), file.absolutePath)
+        for ((kind, file) in changed) enqueue(onlinePrefix() + saveEntryName(gameId, core, kind), file.absolutePath)
         if (sendNow) scope.launch { flush(savesOnly = true) }
     }
+
+    /**
+     * Préfixe des sauvegardes et états mis en file en ligne : faits après la reprise des sauvegardes
+     * en ligne plus récentes ([downloadNewer]), ils sont envoyés sans demander ([flush]). Sans
+     * préfixe : faits hors ligne, envoyés avec l'accord de l'utilisateur ([uploadPending]).
+     */
+    private fun onlinePrefix() = if (api.isOffline()) "" else ONLINE
 
     private fun saveEntryName(gameId: Long, core: String, kind: String) = "save-$gameId-$kind-" + core.replace(Regex("[^A-Za-z0-9._]"), "_")
 
@@ -635,7 +642,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
      */
     suspend fun uploadPending(): Pair<Int, Int> {
         if (token == null) return 0 to 0
-        return flushLock.withLock { withContext(Dispatchers.IO) { sendQueued(skipOutdated = true) } }
+        return flushLock.withLock { withContext(Dispatchers.IO) { sendQueued(prefix = "", skipOutdated = true) } }
     }
 
     /**
@@ -670,7 +677,8 @@ class Account(private val context: Context, private val api: ApiClient, private 
                         }
                     }
                 }
-                if (includeSaves) sent += sendQueued(skipOutdated = false).first
+                // Faites en ligne seulement : celles faites hors ligne attendent l'accord de l'utilisateur.
+                if (includeSaves) sent += sendQueued(prefix = ONLINE, skipOutdated = false).first
             }
         }
         return sent
@@ -681,14 +689,14 @@ class Account(private val context: Context, private val api: ApiClient, private 
      * Sauvegardes puis états en file (appelé sous [flushLock], hors du fil principal) : (envoyés,
      * ignorés). [skipOutdated] : ceux qui ne seraient pas gardés ou écraseraient plus récent sont retirés.
      */
-    private suspend fun sendQueued(skipOutdated: Boolean): Pair<Int, Int> {
+    private suspend fun sendQueued(prefix: String, skipOutdated: Boolean): Pair<Int, Int> {
         var sent = 0
         var skipped = 0
         // Sauvegardes et états en ligne de chaque jeu, relus une fois.
         val savesOf = HashMap<Long, List<OnlineSave>>()
         val statesOf = HashMap<Long, List<OnlineState>>()
-        for (entry in queued("save-")) {
-            val (gameId, kind, core) = entry.name.removePrefix("save-").split('-', limit = 3)
+        for (entry in queued("${prefix}save-")) {
+            val (gameId, kind, core) = entry.name.removePrefix("${prefix}save-").split('-', limit = 3)
             val path = runCatching { entry.readText() }.getOrNull()
             val file = path?.let(::File)
             if (file == null || !file.isFile) {
@@ -716,8 +724,8 @@ class Account(private val context: Context, private val api: ApiClient, private 
                 // réessayé au retour de la connexion ou dans l'application
             }
         }
-        for (entry in queued("state-")) {
-            val id = entry.name.removePrefix("state-")
+        for (entry in queued("${prefix}state-")) {
+            val id = entry.name.removePrefix("${prefix}state-")
             val lines = runCatching { entry.readText().lines() }.getOrNull()
             val gameId = lines?.getOrNull(0)?.toLongOrNull()
             val dir = lines?.getOrNull(1)?.let(::File)
@@ -850,6 +858,8 @@ class Account(private val context: Context, private val api: ApiClient, private 
         private const val MAX_QUEUED_ERRORS = 50
         /** Compression gardée seulement si elle fait gagner au moins 5 % (états déjà compressés : PPSSPP…). */
         private const val MIN_GAIN = 0.95
+        /** Préfixe des entrées de la file faites en ligne ([onlinePrefix]). */
+        private const val ONLINE = "online-"
         private const val KEY_TOKEN = "token"
         private const val KEY_USER = "username"
         private const val KEY_USER_ID = "userId"
