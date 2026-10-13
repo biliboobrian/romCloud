@@ -157,6 +157,8 @@ class RomCloudApp : Application(), ImageLoaderFactory {
                     presence.start(appScope)
                     lobbies.start(appScope)
                     touchActivity()
+                    // Retour d'une partie : temps de jeu, sauvegardes et états faits en ligne envoyés.
+                    appScope.launch { account.flush() }
                 }
             }
             override fun onActivityStopped(activity: Activity) {
