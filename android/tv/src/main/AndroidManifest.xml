@@ -11,9 +11,11 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
+    <!-- Catégorie « jeu » : modes jeu d'Android et des constructeurs (performances du moteur intégré). -->
     <application
         android:name="com.romcloud.app.RomCloudApp"
         android:allowBackup="true"
+        android:appCategory="game"
         android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

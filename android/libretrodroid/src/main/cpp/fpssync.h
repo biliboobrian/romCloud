@@ -35,6 +35,8 @@ public:
     unsigned advanceFrames();
     void wait();
     double getTimeStretchFactor();
+    /** RomCloud : fréquence de l'écran changée en cours de partie (calée sur le jeu) ; synchronisation revue. */
+    void updateScreenRefreshRate(double screenRefreshRate);
 private:
 
     double screenRefreshRate;

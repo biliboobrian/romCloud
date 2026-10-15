@@ -34,6 +34,8 @@ add_library(libretrodroid SHARED
         video.cpp
         vulkan.h
         vulkan.cpp
+        perfhint.h
+        perfhint.cpp
         immersivemode.h
         immersivemode.cpp
         videolayout.h

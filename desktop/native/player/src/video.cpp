@@ -771,16 +771,16 @@ struct Vertex {
 };
 }  // namespace
 
-void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool swap) {
+void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool swap, bool overlayChanged) {
   // Rétabli avant l'échange des tampons (fin de la portée).
   {
     GLStateGuard keep;
-    draw(overlay, overlayWidth, overlayHeight);
+    draw(overlay, overlayWidth, overlayHeight, overlayChanged);
   }
   if (swap) SDL_GL_SwapWindow(window_);
 }
 
-void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight) {
+void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool overlayChanged) {
   int winW, winH;
   SDL_GetWindowSizeInPixels(window_, &winW, &winH);
 
@@ -907,11 +907,19 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight) {
     p_glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, overlayWidth, overlayHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, overlay);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Texture créée à la première image ou au changement de taille, ensuite seulement mise à jour
+    // quand la surimpression a changé.
+    if (overlayWidth != overlayTextureWidth_ || overlayHeight != overlayTextureHeight_) {
+      overlayTextureWidth_ = overlayWidth;
+      overlayTextureHeight_ = overlayHeight;
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, overlayWidth, overlayHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, overlay);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    } else if (overlayChanged) {
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, overlayWidth, overlayHeight, GL_RGBA, GL_UNSIGNED_BYTE, overlay);
+    }
     // Surimpression à l'échelle de la fenêtre, proportions conservées.
     float aspect = (float)overlayWidth / overlayHeight;
     float w = (float)winW, h = w / aspect;

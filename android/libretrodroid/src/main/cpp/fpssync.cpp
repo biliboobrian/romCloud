@@ -52,6 +52,15 @@ void FPSSync::reset() {
     lastFrame = MIN_TIME;
 }
 
+void FPSSync::updateScreenRefreshRate(double rate) {
+    const bool vsync = std::abs(contentRefreshRate - rate) < FPS_TOLERANCE;
+    screenRefreshRate = rate;
+    if (vsync == useVSync) return;
+    useVSync = vsync;
+    reset();
+    LOGI("Screen refresh rate is now %f for a game at %f fps. Using vsync: %d", rate, contentRefreshRate, useVSync);
+}
+
 double FPSSync::getTimeStretchFactor() {
     return useVSync ? contentRefreshRate / screenRefreshRate : 1.0;
 }
