@@ -273,13 +273,14 @@ Tests : `npm test`.
 
 ## 2. Application Android (`android/`)
 
-Kotlin + Jetpack Compose, minSdk 26 (Android 8), targetSdk 36 (Android 16). Trois modules Gradle :
+Kotlin + Jetpack Compose, minSdk 26 (Android 8), targetSdk 36 (Android 16). Quatre modules Gradle :
 
 | Module | Contenu |
 |---|---|
 | `core` | Code partagé : API du serveur, cache hors ligne, téléchargements (service de premier plan), lancement des émulateurs (modèles `am start`, chemins SAF RetroArch…), réglages, ViewModels, fenêtres communes |
 | `app` | Application téléphone / tablette (`com.romcloud.app`) |
 | `tv` | Application Android TV (`com.romcloud.app.tv`), interface [tv-material](https://developer.android.com/jetpack/androidx/releases/tv) pour la télécommande |
+| `libretrodroid` | Moteur intégré (cœurs libretro) : [LibretroDroid](https://github.com/Swordfish90/LibretroDroid) 0.14.0 repris dans le projet (plus maintenu en amont, GPL 3), avec Oboe et libretro-common aux versions de la 0.14.0 ; ajout du **rendu Vulkan** des cœurs (PPSSPP, Beetle PSX HW… : OpenGL ES par défaut, Vulkan choisi dans les options du cœur ; image Vulkan recopiée et affichée par OpenGL ES, filtres et diffusion compris) |
 
 L’application Windows est dans [`desktop-tauri/`](desktop-tauri/) (Tauri : processus principal en Rust, interface WebView2 de [`desktop/src/renderer/`](desktop/src/renderer/)) : voir [son README](desktop-tauri/README.md) pour la compiler (`npm run build` produit l’installeur), `cargo test` dans `desktop-tauri/src-tauri` et `npm test` dans `desktop/` (tests de l’interface). Le moteur intégré est dans [`desktop/native/player/`](desktop/native/player/) : `npm run player` (dans `desktop/`) le compile avec CMake (Visual Studio 2022 ou LLVM-MinGW ; SDL3 est téléchargé et lié statiquement) dans `desktop/native/player/build/romcloud-player.exe`, inclus ensuite dans l’installeur. Essai sans interface : `romcloud-player.exe --core <cœur.dll> --rom <jeu> --test-frames 300 --screenshot image.bmp`. Le workflow [`.github/workflows/desktop-tauri.yml`](.github/workflows/desktop-tauri.yml) joint l’installeur et `latest.json` (mise à jour automatique signée) à chaque Release.
 

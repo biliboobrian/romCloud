@@ -33,7 +33,8 @@ internal data class CoreOption(val key: String, val label: String, val values: L
  * pour le système :
  * - cartouche Amstrad GX4000 / CPC+ (.cpr) avec cap32 -> modèle CPC 6128+, seul à les lire ;
  * - LRPS2 (pcsx2, PlayStation 2) -> rendu logiciel « Software (SW) » : son rendu OpenGL exige des
- *   extensions d'OpenGL de bureau (absentes d'OpenGL ES : écran noir), et LibretroDroid n'a pas Vulkan.
+ *   extensions d'OpenGL de bureau (absentes d'OpenGL ES : écran noir) ; son rendu Vulkan reste
+ *   au choix dans les options du cœur.
  */
 internal object GameOptionDefaults {
     fun forGame(core: String, game: java.io.File): Map<String, String> = when {
