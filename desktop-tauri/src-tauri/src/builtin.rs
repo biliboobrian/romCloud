@@ -83,6 +83,67 @@ pub async fn ensure_core(core: &str) -> Result<PathBuf> {
     .map_err(|e| AppError::msg(e.to_string()))?
 }
 
+/// Fichiers système des cœurs (« Core System Files » de RetroArch) : cœur -> archive du buildbot et
+/// fichier témoin de leur présence dans le dossier des BIOS, le dernier de l'archive (installation
+/// interrompue : refaite). Dolphin : polices de la console, shaders, ressources, gestionnaire des
+/// codes ; sans eux, des jeux GameCube plantent ou n'affichent pas leurs textes.
+const SYSTEM_FILES: &[(&str, &str, &str)] = &[("dolphin", "Dolphin.zip", "dolphin-emu/license.txt")];
+const SYSTEM_FILES_URL: &str = "https://buildbot.libretro.com/assets/system";
+
+/// Archive des fichiers système à installer pour ce cœur, s'ils manquent dans [bios].
+fn missing_system_files(core: &str, bios: &Path) -> Option<&'static str> {
+    let (_, archive, marker) = SYSTEM_FILES.iter().find(|(c, _, _)| *c == core)?;
+    (!cores::safe_entry_path(bios, marker).is_file()).then_some(*archive)
+}
+
+/// Fichiers système du cœur téléchargés et décompressés dans le dossier des BIOS s'ils manquent
+/// (le jeu est lancé même en cas d'échec : le cœur signale ce qui lui manque).
+async fn ensure_system_files(core: &str) {
+    let bios = settings::bios_dir();
+    let Some(archive) = missing_system_files(core, &bios) else { return };
+    let lock = CORE_LOCKS.lock().unwrap().entry(format!("system:{core}")).or_default().clone();
+    let _guard = lock.lock().await;
+    if missing_system_files(core, &bios).is_none() {
+        return;
+    }
+    let data = match api::client().get(format!("{SYSTEM_FILES_URL}/{archive}")).send().await {
+        Ok(res) if res.status().is_success() => res.bytes().await.ok(),
+        _ => None,
+    };
+    let Some(data) = data else {
+        eprintln!("[builtin] fichiers système {archive} impossibles à télécharger");
+        return;
+    };
+    let result = tokio::task::spawn_blocking(move || extract_into(&data, &bios)).await;
+    match result {
+        Ok(Ok(count)) => eprintln!("[builtin] fichiers système {archive} installés ({count} fichiers)"),
+        _ => eprintln!("[builtin] fichiers système {archive} impossibles à décompresser"),
+    }
+}
+
+/// Décompresse [archive] dans [dir] (chemins hors du dossier ignorés) ; nombre de fichiers.
+fn extract_into(archive: &[u8], dir: &Path) -> Result<usize> {
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(archive))?;
+    let mut count = 0;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i)?;
+        let Some(name) = entry.name().ok().map(|n| n.to_string()) else { continue };
+        let target = cores::safe_entry_path(dir, &name);
+        if name.ends_with('/') {
+            std::fs::create_dir_all(&target)?;
+            continue;
+        }
+        // Déjà présent à la bonne taille (installation interrompue reprise) : gardé.
+        if std::fs::metadata(&target).is_ok_and(|m| m.is_file() && m.len() == entry.size()) {
+            continue;
+        }
+        std::fs::create_dir_all(target.parent().unwrap_or(dir))?;
+        std::io::copy(&mut entry, &mut std::fs::File::create(&target)?)?;
+        count += 1;
+    }
+    Ok(count)
+}
+
 /// DLL contenue dans l'archive d'un cœur du buildbot ; None si l'archive n'en contient pas.
 fn extract_dll(archive: &[u8]) -> Option<Result<Vec<u8>>> {
     let mut zip = match zip::ZipArchive::new(std::io::Cursor::new(archive)) {
@@ -186,6 +247,7 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         return Err(AppError::new("errors.playerMissing", json!({ "path": player_path().to_string_lossy() })));
     }
     let dll = ensure_core(core).await?;
+    ensure_system_files(core).await;
     let rom = {
         let (core, file) = (core.to_string(), file.to_string());
         tokio::task::spawn_blocking(move || prepare_rom(&core, &file)).await.map_err(|e| AppError::msg(e.to_string()))??
@@ -317,6 +379,36 @@ mod tests {
             zip.write_all(data).unwrap();
         }
         zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn fichiers_systeme_de_dolphin() {
+        let dir = std::env::temp_dir().join(format!("romcloud-sysfiles-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(missing_system_files("dolphin", &dir), Some("Dolphin.zip"));
+        assert_eq!(missing_system_files("snes9x", &dir), None);
+        // Archive : dossiers et fichiers, chemin hors du dossier ignoré.
+        let mut buf = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = zip::write::SimpleFileOptions::default();
+            zip.add_directory("dolphin-emu/Sys/GC/", options).unwrap();
+            zip.start_file("dolphin-emu/Sys/GC/dsp_rom.bin", options).unwrap();
+            std::io::Write::write_all(&mut zip, b"rom").unwrap();
+            zip.start_file("dolphin-emu/license.txt", options).unwrap();
+            std::io::Write::write_all(&mut zip, b"gpl").unwrap();
+            zip.start_file("../evil.txt", options).unwrap();
+            std::io::Write::write_all(&mut zip, b"x").unwrap();
+            zip.finish().unwrap();
+        }
+        // Installation interrompue (témoin absent) : refaite, fichiers déjà présents gardés.
+        std::fs::create_dir_all(dir.join("dolphin-emu/Sys/GC")).unwrap();
+        std::fs::write(dir.join("dolphin-emu/Sys/GC/dsp_rom.bin"), b"rom").unwrap();
+        assert_eq!(missing_system_files("dolphin", &dir), Some("Dolphin.zip"));
+        assert_eq!(extract_into(&buf, &dir).unwrap(), 2);
+        assert_eq!(missing_system_files("dolphin", &dir), None);
+        assert!(dir.join("evil.txt").is_file() && !dir.parent().unwrap().join("evil.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

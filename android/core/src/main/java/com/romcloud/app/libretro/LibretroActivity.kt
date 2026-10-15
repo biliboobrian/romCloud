@@ -375,11 +375,16 @@ class LibretroActivity : ComponentActivity() {
                 val text = getString(R.string.libretro_downloading_system_files, core)
                 phase = Phase.Loading(text)
                 runCatching {
-                    cores.downloadSystemFiles(core, systemDir) { bytes, total ->
+                    val installing = getString(R.string.libretro_installing_system_files, core)
+                    cores.downloadSystemFiles(core, systemDir) { done, total, extracting ->
                         phase = Phase.Loading(
-                            text,
-                            fraction = if (total > 0) bytes.toFloat() / total else null,
-                            detail = if (total > 0) "${formatSize(bytes)} / ${formatSize(total)}" else formatSize(bytes),
+                            if (extracting) installing else text,
+                            fraction = if (total > 0) done.toFloat() / total else null,
+                            detail = when {
+                                extracting -> getString(R.string.libretro_system_files_count, done, total)
+                                total > 0 -> "${formatSize(done)} / ${formatSize(total)}"
+                                else -> formatSize(done)
+                            },
                         )
                     }
                 }.onFailure { if (it is CancellationException) throw it }

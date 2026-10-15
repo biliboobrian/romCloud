@@ -325,6 +325,8 @@
     <string name="libretro_downloading_core">Downloading the %1$s core…</string>
     <string name="libretro_preparing">Preparing the game…</string>
     <string name="libretro_downloading_system_files">Downloading the %1$s system files…</string>
+    <string name="libretro_installing_system_files">Installing the %1$s system files (only once, please wait)…</string>
+    <string name="libretro_system_files_count">%1$d / %2$d files</string>
     <string name="core_not_found">The %1$s core is not available for %2$s on the libretro buildbot.</string>
     <string name="core_unsupported_abi">This device’s processor is not supported by libretro cores.</string>
     <string name="core_invalid_archive">Invalid archive for the %1$s core.</string>

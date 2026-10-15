@@ -13,6 +13,7 @@ import okhttp3.Request
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 /**
@@ -141,8 +142,15 @@ class LibretroCores(context: Context) {
     fun systemFilesMissing(core: String, systemDir: File): Boolean =
         SYSTEM_FILES[core]?.let { (_, marker) -> !File(systemDir, marker).isFile } ?: false
 
-    /** Télécharge les fichiers système du cœur depuis le buildbot et les décompresse dans [systemDir]. */
-    suspend fun downloadSystemFiles(core: String, systemDir: File, progress: (Long, Long) -> Unit) = withContext(Dispatchers.IO) {
+    /**
+     * Télécharge les fichiers système du cœur depuis le buildbot et les décompresse dans [systemDir] ;
+     * [progress] : octets reçus puis fichiers décompressés ([extracting]), sur le total.
+     */
+    suspend fun downloadSystemFiles(
+        core: String,
+        systemDir: File,
+        progress: (done: Long, total: Long, extracting: Boolean) -> Unit,
+    ) = withContext(Dispatchers.IO) {
         val (archive, _) = SYSTEM_FILES[core] ?: return@withContext
         if (!systemDir.isDirectory && !systemDir.mkdirs()) throw IOException(I18n.get(R.string.err_invalid_folder))
         val zip = File(dir.apply { mkdirs() }, "$archive.part")
@@ -161,23 +169,30 @@ class LibretroCores(context: Context) {
                             if (read < 0) break
                             output.write(buffer, 0, read)
                             bytes += read
-                            progress(bytes, total)
+                            progress(bytes, total, false)
                         }
                     }
                 }
             }
             // Archive : dossiers du dossier système (« dolphin-emu/Sys/… ») ; chemins hors du dossier ignorés.
+            // Milliers de petits fichiers, lents à écrire sur le stockage partagé : progression par
+            // fichier, et fichiers déjà présents à la bonne taille gardés (installation interrompue
+            // reprise vite). Le fichier témoin est le dernier de l'archive : installation complète.
             val root = systemDir.canonicalPath + File.separator
-            ZipInputStream(zip.inputStream().buffered()).use { input ->
-                generateSequence { input.nextEntry }.forEach { entry ->
+            ZipFile(zip).use { archiveFile ->
+                val entries = archiveFile.entries().toList()
+                entries.forEachIndexed { index, entry ->
+                    currentCoroutineContext().ensureActive()
                     val out = File(systemDir, entry.name)
-                    if (!out.canonicalPath.startsWith(root)) return@forEach
-                    if (entry.isDirectory) {
-                        out.mkdirs()
-                    } else {
-                        out.parentFile?.mkdirs()
-                        out.outputStream().use { input.copyTo(it) }
+                    if (out.canonicalPath.startsWith(root)) {
+                        if (entry.isDirectory) {
+                            out.mkdirs()
+                        } else if (!(out.isFile && out.length() == entry.size)) {
+                            out.parentFile?.mkdirs()
+                            archiveFile.getInputStream(entry).use { input -> out.outputStream().use { input.copyTo(it, 128 * 1024) } }
+                        }
                     }
+                    progress(index + 1L, entries.size.toLong(), true)
                 }
             }
         } finally {
@@ -189,8 +204,11 @@ class LibretroCores(context: Context) {
         const val BUILDBOT = "https://buildbot.libretro.com/nightly/android/latest"
         const val SYSTEM_FILES_URL = "https://buildbot.libretro.com/assets/system"
 
-        /** Cœur -> archive des fichiers système du buildbot et fichier témoin de leur présence. */
-        val SYSTEM_FILES = mapOf("dolphin" to ("Dolphin.zip" to "dolphin-emu/Sys/GC/dsp_rom.bin"))
+        /**
+         * Cœur -> archive des fichiers système du buildbot et fichier témoin de leur présence : le
+         * dernier de l'archive (installation interrompue : refaite).
+         */
+        val SYSTEM_FILES = mapOf("dolphin" to ("Dolphin.zip" to "dolphin-emu/license.txt"))
         val BUILDBOT_ABIS = setOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
         const val CHECK_INTERVAL_MS = 24 * 3600_000L
     }
