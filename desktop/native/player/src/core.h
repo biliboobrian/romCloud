@@ -54,6 +54,7 @@ struct Session {
   unsigned rotation = 0;         // SET_ROTATION : quarts de tour (sens antihoraire)
 
   bool hwRender = false;
+  bool vulkan = false;  // rendu matériel Vulkan (vulkan.h) plutôt qu'OpenGL
   retro_hw_render_callback hw{};
 
   bool hasDiskControl = false;

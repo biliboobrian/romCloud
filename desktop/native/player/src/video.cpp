@@ -9,6 +9,7 @@
 
 #include "core.h"
 #include "util.h"
+#include "vulkan.h"
 
 // ---------------------------------------------------------------------------
 // Fonctions OpenGL (chargées à l'exécution : opengl32.dll n'exporte que l'OpenGL 1.1)
@@ -206,12 +207,12 @@ bool Video::createContext(std::string& error) {
   const int core = SDL_GL_CONTEXT_PROFILE_CORE;
   const int compat = SDL_GL_CONTEXT_PROFILE_COMPATIBILITY;
   bool ok;
-  if (g.hwRender && g.hw.context_type == RETRO_HW_CONTEXT_OPENGL_CORE) {
+  if (g.hwRender && !g.vulkan && g.hw.context_type == RETRO_HW_CONTEXT_OPENGL_CORE) {
     int major = g.hw.version_major ? (int)g.hw.version_major : 3;
     int minor = g.hw.version_major ? (int)g.hw.version_minor : 2;
     ok = tryContext(window_, major, minor, core, context_);
     coreProfile_ = true;
-  } else if (g.hwRender) {
+  } else if (g.hwRender && !g.vulkan) {
     // Profil de compatibilité : les cœurs « OpenGL » peuvent utiliser les fonctions anciennes.
     int major = g.hw.version_major ? (int)g.hw.version_major : 2;
     int minor = g.hw.version_major ? (int)g.hw.version_minor : 1;
@@ -257,7 +258,11 @@ bool Video::create(const std::string& title, bool fullscreen, bool hidden, std::
   }
   glGenTextures(1, &frameTexture_);
   glGenTextures(1, &overlayTexture_);
-  if (g.hwRender) {
+  if (g.vulkan) {
+    // Cœur Vulkan : périphérique créé avant son context_reset, image affichée par OpenGL.
+    if (!vulkan::create(error)) return false;
+    if (g.hw.context_reset) g.hw.context_reset();
+  } else if (g.hwRender) {
     allocateHwFramebuffer();
     if (g.hw.context_reset) g.hw.context_reset();
   }
@@ -275,6 +280,7 @@ void Video::destroyCoreContext() {
 }
 
 void Video::destroy() {
+  if (g.vulkan) vulkan::destroy();
   if (context_) SDL_GL_DestroyContext(context_);
   if (window_) SDL_DestroyWindow(window_);
   context_ = nullptr;
@@ -392,7 +398,7 @@ bool Video::preparePostTarget(int width, int height) {
 }
 
 void Video::onGeometryChanged() {
-  if (context_ && g.hwRender) allocateHwFramebuffer();
+  if (context_ && g.hwRender && !g.vulkan) allocateHwFramebuffer();
 }
 
 // ---------------------------------------------------------------------------
@@ -702,6 +708,30 @@ void Video::onFrame(const void* data, unsigned width, unsigned height, size_t pi
   frameWidth_ = width;
   frameHeight_ = height;
   hasFrame_ = true;
+  if (data == RETRO_HW_FRAME_BUFFER_VALID && g.vulkan) {
+    // Cœur Vulkan : image recopiée, puis affichée comme celle d'un cœur logiciel.
+    const uint8_t* pixels;
+    size_t vkPitch;
+    bool bgra;
+    if (!vulkan::readFrame(width, height, pixels, vkPitch, bgra)) return;
+    frameIsHw_ = false;
+    p_glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, frameTexture_);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(vkPitch / 4));
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+    const GLenum format = bgra ? GL_BGRA : GL_RGBA;
+    if ((int)width != textureWidth_ || (int)height != textureHeight_) {
+      textureWidth_ = (int)width;
+      textureHeight_ = (int)height;
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, (GLsizei)width, (GLsizei)height, 0, format, GL_UNSIGNED_BYTE, pixels);
+    } else {
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)width, (GLsizei)height, format, GL_UNSIGNED_BYTE, pixels);
+    }
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    return;
+  }
   if (data == RETRO_HW_FRAME_BUFFER_VALID) {
     frameIsHw_ = true;
     return;

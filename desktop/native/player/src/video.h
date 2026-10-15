@@ -1,6 +1,7 @@
 // Fenêtre SDL et rendu OpenGL : images des cœurs logiciels (texture), rendu matériel des cœurs
 // OpenGL (framebuffer fourni au cœur, comme LibretroDroid), mise à l'échelle avec bandes noires,
-// rotation et surimpression du menu.
+// rotation et surimpression du menu. Cœurs Vulkan : image recopiée par vulkan.h, affichée comme
+// celle d'un cœur logiciel.
 #pragma once
 
 #include <SDL3/SDL.h>
