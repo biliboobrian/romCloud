@@ -18,6 +18,7 @@
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <cmath>
 #include <utility>
@@ -214,6 +215,12 @@ void Video::renderFrame() {
 
         glUseProgram(0);
     }
+
+    // RomCloud : tampon partagé lu par cet affichage, réécrit par Vulkan seulement une fois lu.
+    if (shownSlot >= 0) {
+        if (shareFences[shownSlot]) glDeleteSync(shareFences[shownSlot]);
+        shareFences[shownSlot] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    }
 }
 
 float Video::getScreenDensity() {
@@ -231,6 +238,11 @@ float Video::getTextureHeight() {
 void Video::onNewFrame(const void *data, unsigned width, unsigned height, size_t pitch) {
     // RomCloud : image d'un cœur Vulkan, recopiée en mémoire puis affichée comme une image logicielle.
     if (data == RETRO_HW_FRAME_BUFFER_VALID && Environment::getInstance().isUseVulkan()) {
+        // Image partagée par Vulkan (sur la carte graphique) si possible, sinon recopiée.
+        if (showShared(width, height)) {
+            isDirty = true;
+            return;
+        }
         const uint8_t* pixels;
         size_t vkPitch;
         if (!vulkan::readFrame(width, height, pixels, vkPitch)) return;
@@ -241,6 +253,67 @@ void Video::onNewFrame(const void *data, unsigned width, unsigned height, size_t
         renderer->onNewFrame(data, width, height, pitch);
         isDirty = true;
     }
+}
+
+bool Video::showShared(unsigned width, unsigned height) {
+    if (!shareTried) {
+        shareTried = true;
+        shareDisplay = eglGetCurrentDisplay();
+        const char* extensions = shareDisplay != EGL_NO_DISPLAY ? eglQueryString(shareDisplay, EGL_EXTENSIONS) : nullptr;
+        const bool egl = extensions && strstr(extensions, "EGL_ANDROID_get_native_client_buffer") &&
+                         strstr(extensions, "EGL_ANDROID_image_native_buffer");
+        shareOk = egl && vulkan::interopSupported();
+        LOGI("Vulkan : image %s", shareOk ? "partagée avec OpenGL ES (sans recopie)" : "recopiée (partage avec OpenGL ES impossible)");
+    }
+    if (!shareOk) return false;
+    static auto clientBuffer = reinterpret_cast<PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC>(eglGetProcAddress("eglGetNativeClientBufferANDROID"));
+    static auto createImage = reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
+    auto fail = [&](const char* why) {
+        LOGE("Vulkan : partage avec OpenGL ES arrêté (%s), image recopiée", why);
+        dropShared();
+        renderer->setExternalImage(nullptr, 0, 0, false);
+        vulkan::stopSharing();
+        shareOk = false;
+        return false;
+    };
+    if (!clientBuffer || !createImage) return fail("fonctions EGL absentes");
+    const int slot = nextSlot;
+    // Tampon encore lu par l'affichage d'avant : lecture terminée avant que Vulkan le remplisse.
+    if (shareFences[slot]) {
+        glClientWaitSync(shareFences[slot], GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000);
+        glDeleteSync(shareFences[slot]);
+        shareFences[slot] = nullptr;
+    }
+    vulkan::SharedFrame frame;
+    if (!vulkan::shareFrame(width, height, slot, frame)) return fail("copie impossible");
+    if (frame.generation != shareGeneration) {
+        // Tampons recréés (première image, ou taille changée) : EGLImage refaites.
+        dropShared();
+        const EGLint attributes[] = {EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE};
+        for (int i = 0; i < 2; i++) {
+            EGLClientBuffer buffer = clientBuffer(vulkan::sharedBuffer(i));
+            shareImages[i] = buffer ? createImage(shareDisplay, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID, buffer, attributes) : EGL_NO_IMAGE_KHR;
+            if (shareImages[i] == EGL_NO_IMAGE_KHR) return fail("EGLImage impossible");
+        }
+        shareGeneration = frame.generation;
+    }
+    if (!renderer->setExternalImage(shareImages[slot], width, height, frame.bgra)) return fail("texture refusée");
+    shownSlot = slot;
+    nextSlot = 1 - slot;
+    return true;
+}
+
+void Video::dropShared() {
+    static auto destroyImage = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
+    const bool context = eglGetCurrentContext() != EGL_NO_CONTEXT;
+    for (int i = 0; i < 2; i++) {
+        if (shareFences[i] && context) glDeleteSync(shareFences[i]);
+        shareFences[i] = nullptr;
+        if (shareImages[i] != EGL_NO_IMAGE_KHR && destroyImage) destroyImage(shareDisplay, shareImages[i]);
+        shareImages[i] = EGL_NO_IMAGE_KHR;
+    }
+    shareGeneration = 0;
+    shownSlot = -1;
 }
 
 void Video::updateScreenSize(unsigned width, unsigned height) {

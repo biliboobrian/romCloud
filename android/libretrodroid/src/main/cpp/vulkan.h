@@ -12,6 +12,8 @@
 
 #include "libretro.h"
 
+struct AHardwareBuffer;
+
 namespace libretrodroid {
 
 namespace vulkan {
@@ -31,6 +33,27 @@ bool created();
  * (format XRGB8888 de libretro), [pitch] octets par ligne. Faux sans image ou format illisible.
  */
 bool readFrame(unsigned width, unsigned height, const uint8_t*& pixels, size_t& pitch);
+/**
+ * Image partagée avec OpenGL ES (sans recopie par le processeur) : tampon [buffer] (un des deux,
+ * à lire comme texture), taille, [generation] (change quand les tampons sont recréés : EGLImage à
+ * refaire), [bgra] : rouge et bleu échangés dans l'image.
+ */
+struct SharedFrame {
+  AHardwareBuffer* buffer = nullptr;
+  unsigned width = 0, height = 0, generation = 0;
+  bool bgra = false;
+};
+/** Partage possible : extensions de partage activées sur le périphérique. */
+bool interopSupported();
+/** Tampon partagé n° [slot] (0 ou 1), nul avant la première image. */
+AHardwareBuffer* sharedBuffer(int slot);
+/**
+ * Image du cœur copiée dans le tampon [slot] sur la carte graphique, copie terminée au retour ;
+ * faux : partage impossible (recopie par [readFrame]).
+ */
+bool shareFrame(unsigned width, unsigned height, int slot, SharedFrame& out);
+/** Fin du partage (retour à la recopie) : tampons libérés. */
+void stopSharing();
 /** Fin du périphérique et de l'instance (après retro_deinit). */
 void destroy();
 

@@ -96,6 +96,11 @@ class Video {
   void draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool overlayChanged);
   void allocateHwFramebuffer();
   bool preparePostTarget(int width, int height);
+  // Cœurs Vulkan : image partagée avec OpenGL (sans recopie), sinon recopiée (vulkan::readFrame).
+  void setupInterop();
+  bool showShared(unsigned width, unsigned height);
+  void releaseShared();
+  void dropShared();
 
   SDL_Window* window_ = nullptr;
   SDL_GLContext context_ = nullptr;
@@ -110,6 +115,11 @@ class Video {
   float params_[4] = {1.0f, 0.0f, 0.0f, 0.0f};
   unsigned frameTexture_ = 0, overlayTexture_ = 0;
   int overlayTextureWidth_ = 0, overlayTextureHeight_ = 0;  // taille de la surimpression envoyée
+  // Image partagée avec Vulkan : texture sur sa mémoire, sémaphores « prête » et « rendue » ;
+  // [releaseOwed_] : image tenue par OpenGL, à rendre à Vulkan avant la copie suivante.
+  bool interopTried_ = false, interopOk_ = false, sharedActive_ = false, releaseOwed_ = false, sharedBgra_ = false;
+  unsigned sharedTexture_ = 0, sharedMemory_ = 0, readySemaphore_ = 0, releasedSemaphore_ = 0;
+  int sharedWidth_ = 0, sharedHeight_ = 0;
   int textureWidth_ = 0, textureHeight_ = 0;
   unsigned fbo_ = 0, fboTexture_ = 0, fboDepth_ = 0;
   // Image intermédiaire de FSR (agrandissement, puis netteté à l'écran).
