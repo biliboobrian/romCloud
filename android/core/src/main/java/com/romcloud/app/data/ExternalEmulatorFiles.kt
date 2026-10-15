@@ -13,13 +13,25 @@ import java.util.zip.ZipOutputStream
  * sélecteur (le dossier des BIOS, souvent dans Android/media, y est difficile à atteindre ou masqué).
  * Switch (Eden, Citron…) : clés, et firmware en .zip, seul format accepté par Eden (un firmware
  * envoyé en dossier de fichiers .nca est recompressé).
+ * Pilote graphique Turnip (puces Adreno) des systèmes dont les émulateurs en chargent un (Eden,
+ * Dolphin, Vita3K, aPS3e), à installer depuis leur gestionnaire de pilotes ; retiré si l'option
+ * des pilotes est désactivée.
  */
 object ExternalEmulatorFiles {
 
-    /** Dossier affiché à l'utilisateur pour un système, ou null s'il n'y a rien à recopier. */
-    fun folderName(system: GameSystem): String? = if (isSwitch(system)) "RomCloud/Switch" else null
+    /** Système -> dossier public (Téléchargements/RomCloud/<dossier>). */
+    private val FOLDERS = mapOf("switch" to "Switch", "gc" to "GameCube", "wii" to "Wii", "vita" to "PS Vita", "ps3" to "PS3")
 
-    private fun isSwitch(system: GameSystem) = system.id == "switch" || system.shortname == "switch"
+    /** Pilote dans le dossier des BIOS (chemin du serveur) et nom de sa copie. */
+    private const val DRIVER_PATH = "drivers/turnip.zip"
+    internal const val DRIVER_NAME = "Turnip (Adreno).zip"
+
+    private fun folderKey(system: GameSystem) = listOf(system.id, system.shortname).firstOrNull { it in FOLDERS }
+
+    /** Dossier affiché à l'utilisateur pour un système, ou null s'il n'y a rien à recopier. */
+    fun folderName(system: GameSystem): String? = folderKey(system)?.let { "RomCloud/${FOLDERS.getValue(it)}" }
+
+    private fun isSwitch(system: GameSystem) = folderKey(system) == "switch"
 
     /** Dossier public de destination (Téléchargements/RomCloud/<système>). */
     fun targetDir(system: GameSystem): File? = folderName(system)?.let {
@@ -27,15 +39,21 @@ object ExternalEmulatorFiles {
     }
 
     /**
-     * Recopie les fichiers du système présents dans [biosDir] (s'ils ont changé) ; renvoie les
-     * fichiers disponibles dans le dossier public. Sans accès au stockage : liste vide.
+     * Recopie les fichiers du système présents dans [biosDir] (s'ils ont changé), pilote graphique
+     * compris si [drivers] ; renvoie les fichiers disponibles dans le dossier public. Sans accès au
+     * stockage : liste vide.
      */
-    fun export(context: Context, system: GameSystem, biosDir: File): List<File> {
+    fun export(context: Context, system: GameSystem, biosDir: File, drivers: Boolean): List<File> {
         val target = targetDir(system) ?: return emptyList()
-        val source = File(biosDir, "switch")
-        if (!source.isDirectory) return emptyList()
         val written = mutableListOf<File>()
         runCatching {
+            val driver = File(biosDir, DRIVER_PATH)
+            val copy = File(target, DRIVER_NAME)
+            if (drivers && driver.isFile) copyIfNewer(driver, copy)?.let(written::add)
+            else if (!drivers) copy.delete()
+        }
+        val source = File(biosDir, "switch")
+        if (isSwitch(system) && source.isDirectory) runCatching {
             for (name in listOf("prod.keys", "title.keys")) {
                 val from = File(source, name)
                 if (from.isFile) copyIfNewer(from, File(target, name))?.let(written::add)

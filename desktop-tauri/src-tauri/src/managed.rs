@@ -1,10 +1,12 @@
 // Émulateurs gérés par RomCloud dans le moteur intégré, pour les consoles sans cœur libretro :
-// PlayStation 3 (RPCS3), PlayStation 4 (shadPS4) et Wii U (Cemu). Dernière version Windows téléchargée depuis GitHub au
+// PlayStation 3 (RPCS3), PlayStation 4 (shadPS4), PlayStation 5 (KytyPS5) et Wii U (Cemu). Dernière version Windows téléchargée depuis GitHub au
 // premier lancement dans %APPDATA%\RomCloud\<émulateur> (l'émulateur y garde aussi sa configuration
 // et les sauvegardes), fichiers système pris dans le dossier des BIOS, jeu lancé en plein écran.
 //  - RPCS3 : firmware installé depuis PS3UPDAT.PUP, mises à jour et DLC du jeu (.pkg) installés une
 //    fois, licences RAP du serveur écrites dans dev_hdd0 (jeux et DLC PSN), jeu = ISO, EBOOT.BIN ou dossier du disque ;
 //  - shadPS4 : jeu = dossier décrypté du jeu (CUSAxxxxx) en .zip, lancé par son eboot.bin ;
+//  - KytyPS5 (expérimental) : jeu = dossier décrypté du jeu (PPSAxxxxx, avec eboot.bin et
+//    sce_sys/param.json) en .zip, ou archive .zar ; correctifs des processeurs AMD activés sur ceux-ci ;
 //  - Cemu : mode portable (dossier « portable »), keys.txt copié pour les jeux chiffrés (.wud, .wux),
 //    jeu = .wua, .wud, .wux, .rpx ou dossier code/content/meta.
 use crate::error::{AppError, Result};
@@ -18,6 +20,7 @@ pub struct App {
     pub core: &'static str,
     pub name: &'static str,
     systems: &'static [&'static str],
+    /// Dernière version publiée, ou liste des versions (tableau : la plus récente qui a une archive Windows).
     releases: &'static str,
     /// Fins possibles du nom de l'archive Windows publiée (minuscules), par ordre de préférence ; ou
     /// partie du nom d'une archive .zip / .7z dont la fin change à chaque version (« win64-sdl »).
@@ -63,7 +66,35 @@ const SHADPS4: App = App {
     logs: &["user/log/shad_log.txt"],
 };
 
-pub static APPS: &[App] = &[RPCS3, SHADPS4, CEMU];
+const KYTYPS5: App = App {
+    core: "kytyps5",
+    name: "KytyPS5",
+    systems: &["ps5"],
+    // Versions publiées plusieurs fois par jour, pas toujours avec l'archive Windows : la liste est lue.
+    releases: "https://api.github.com/repos/KytyPS5/KytyPS5/releases?per_page=20",
+    // « KytyPS5-2026-10-12-df5b9b9-Windows-x64.zip ».
+    assets: &["-windows-x64.zip"],
+    exe: "kyty_emulator.exe",
+    args: &["--fullscreen", "--game", "{file}"],
+    logs: &[],
+};
+
+pub static APPS: &[App] = &[RPCS3, SHADPS4, KYTYPS5, CEMU];
+
+/// Processeur AMD : KytyPS5 a besoin de ses correctifs d'instructions (« --amd-cpu »).
+fn amd_cpu() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        // Fabricant du processeur (CPUID 0) : « AuthenticAMD ».
+        let r = std::arch::x86_64::__cpuid(0);
+        let vendor: Vec<u8> = [r.ebx, r.edx, r.ecx].iter().flat_map(|v| v.to_le_bytes()).collect();
+        vendor == b"AuthenticAMD"
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        false
+    }
+}
 
 const FIRMWARE: &str = "PS3UPDAT.PUP";
 /// Code de sortie de Windows quand une DLL manque (Visual C++ Redistributable absent).
@@ -100,7 +131,11 @@ impl App {
 
     /// Arguments de l'émulateur pour le jeu [game].
     pub fn args(&self, game: &str) -> Vec<String> {
-        catalog::build_args(self.args, game)
+        let mut args = catalog::build_args(self.args, game);
+        if self.core == "kytyps5" && amd_cpu() {
+            args.insert(0, "--amd-cpu".into());
+        }
+        args
     }
 
     /// Mise à jour au prochain lancement : seul l'exécutable est supprimé, configuration et sauvegardes restent.
@@ -108,8 +143,11 @@ impl App {
         let _ = std::fs::remove_file(self.exe());
     }
 
-    /// Archive Windows de la dernière version : URL.
+    /// Archive Windows de la dernière version (ou de la plus récente qui en a une, pour une liste) : URL.
     fn release_asset(&self, release: &Value) -> Option<String> {
+        if let Some(list) = release.as_array() {
+            return list.iter().find_map(|r| self.release_asset(r));
+        }
         let assets = release.get("assets")?.as_array()?;
         let name = |a: &Value| a.get("name").and_then(Value::as_str).unwrap_or("").to_lowercase();
         let archive = |n: &str| n.ends_with(".zip") || n.ends_with(".7z");
@@ -188,6 +226,8 @@ impl App {
             "rpcs3" => disc_folder(&dir, 3).or_else(|| find_file(&dir, 2, &[".iso"])),
             // Dossier du jeu PS4 (CUSAxxxxx) : son eboot.bin.
             "shadps4" => find_named(&dir, "eboot.bin", 3),
+            // Dossier du jeu PS5 (PPSAxxxxx) : celui qui contient eboot.bin (et sce_sys).
+            "kytyps5" => find_named(&dir, "eboot.bin", 3).and_then(|eboot| eboot.parent().map(Path::to_path_buf)),
             _ => rpx_file(&dir, 3).or_else(|| find_file(&dir, 2, WIIU_FILES)),
         };
         let game = game.ok_or_else(|| AppError::new("errors.zipNoGame", json!({ "name": self.name, "file": file })))?;
@@ -510,6 +550,32 @@ mod tests {
         assert_eq!(std::fs::read_dir(&exdata).unwrap().count(), 2);
         // Jeu sans identifiant de contenu (ISO d'un disque) : rien d'écrit.
         assert_eq!(content_id(&dir.join("Demon's Souls.iso")), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn kytyps5_version_avec_archive_windows_et_dossier_du_jeu() {
+        // Liste des versions : la plus récente sans archive Windows est sautée.
+        let releases = json!([
+            { "tag_name": "b", "assets": [{ "name": "KytyPS5-b-macOS-x86_64.zip", "browser_download_url": "https://x/mac" }] },
+            { "tag_name": "a", "assets": [
+                { "name": "KytyPS5-a-Linux-x86_64.tar.gz", "browser_download_url": "https://x/linux" },
+                { "name": "KytyPS5-a-Windows-x64.zip", "browser_download_url": "https://x/win" }
+            ] }
+        ]);
+        assert_eq!(KYTYPS5.release_asset(&releases).as_deref(), Some("https://x/win"));
+        assert_eq!(KYTYPS5.release_asset(&json!([])), None);
+        assert_eq!(for_system(&json!({ "id": "ps5" })).map(|a| a.core), Some("kytyps5"));
+        let args = KYTYPS5.args(r"D:\Jeux\PPSA01234");
+        assert_eq!(&args[args.len() - 3..], ["--fullscreen", "--game", r"D:\Jeux\PPSA01234"]);
+        assert_eq!(args.len() == 4, amd_cpu());
+
+        // Dossier du jeu décompressé : celui qui contient eboot.bin (et sce_sys).
+        let dir = temp_dir("kyty");
+        let game = dir.join("Astro Bot").join("PPSA01234");
+        std::fs::create_dir_all(game.join("sce_sys")).unwrap();
+        std::fs::write(game.join("eboot.bin"), "elf").unwrap();
+        assert_eq!(find_named(&dir, "eboot.bin", 3).and_then(|e| e.parent().map(Path::to_path_buf)), Some(game));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -82,3 +82,13 @@ test('catalogue RomCloud : PS4 importée, proposée sous Windows seulement', asy
   assert.ok(!ids('android').includes('ps4'));
   assert.ok(ids('windows').includes('ps4'));
 });
+
+test('catalogue RomCloud : PS5 importée, proposée sous Windows seulement (KytyPS5)', async () => {
+  const { importDaijishouPlatform } = await import('../src/systems.js');
+  const ps5 = await importDaijishouPlatform({ filename: 'SonyPlayStation5.json' });
+  assert.equal(ps5.id, 'ps5');
+  assert.equal(ps5.source, 'romcloud');
+  assert.deepEqual(ps5.platforms, ['windows']);
+  assert.ok(!ids('android').includes('ps5'));
+  assert.ok(ids('windows').includes('ps5'));
+});

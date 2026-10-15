@@ -76,14 +76,21 @@ data class GameSystem(
     }
 }
 
-/** BIOS d'un système sur le serveur ; [path] est relatif au dossier BIOS (« dc/dc_boot.bin »). */
+/**
+ * BIOS d'un système sur le serveur ; [path] est relatif au dossier BIOS (« dc/dc_boot.bin »).
+ * [version] : version d'un fichier récupéré sur Internet par le serveur (firmware, pilote).
+ */
 @Serializable
 data class BiosFile(
     val id: Long,
     val path: String,
     val size: Long,
     val md5: String? = null,
-)
+    val version: String? = null,
+) {
+    /** Pilote graphique (« drivers/turnip.zip ») : téléchargé seulement si l'option est active. */
+    val isDriver: Boolean get() = path.startsWith("drivers/")
+}
 
 @Serializable
 data class BiosList(val files: List<BiosFile> = emptyList())

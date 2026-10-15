@@ -62,6 +62,7 @@ export const DEFAULT_SYSTEM_COLORS = {
   ps2: '#0e1a4a',
   ps3: '#1a1a1e',
   ps4: '#0a1f3d',
+  ps5: '#1b2a4e',
   psp: '#1e1e2a',
   psx: '#2a2a33',
   satellaview: '#2e2a5c',

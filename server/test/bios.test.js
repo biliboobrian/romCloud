@@ -261,6 +261,25 @@ test('listes de mise à jour officielles : PS3 et PS Vita', () => {
   assert.deepEqual(systemFiles.parseVitaUpdateList(vita, 'systemdata'), { version: '01.000.010', url: 'http://x/sd/PSP2UPDAT.PUP?dest=eu', size: 56778752 });
 });
 
+test('pilote Turnip : dernière version avec l’archive de base, proposé aux émulateurs Android qui le chargent', async () => {
+  const releases = [
+    { tag_name: 'v840', assets: [{ name: 'Qualcomm_840_adpkg.zip', browser_download_url: 'https://x/q' }] },
+    { tag_name: 'v26.0.0-rc08', assets: [
+      { name: 'turnip_a8xx.zip', browser_download_url: 'https://x/a8' },
+      { name: 'Turnip_v26.0.0_R8_Gmem.zip', browser_download_url: 'https://x/gmem' },
+      { name: 'Turnip_v26.0.0_R8.zip', browser_download_url: 'https://x/r8', size: 3478359 },
+    ] },
+    { tag_name: 'v26.0.0-rc07', assets: [{ name: 'Turnip_v26.0.0_R7.zip', browser_download_url: 'https://x/r7' }] },
+  ];
+  assert.deepEqual(systemFiles.parseTurnipReleases(releases), { version: 'v26.0.0_R8', url: 'https://x/r8', size: 3478359 });
+  assert.equal(systemFiles.parseTurnipReleases([]), null);
+  for (const id of ['switch', 'gc', 'wii', 'vita', 'ps3']) {
+    const driver = systemFiles.systemFiles({ id }, 'fr').find((f) => f.kind === 'driver');
+    assert.deepEqual([driver?.path, driver?.source, driver?.required], ['drivers/turnip.zip', 'turnip', false], id);
+  }
+  assert.ok(!systemFiles.systemFiles({ id: 'snes' }).length);
+});
+
 test('clés et firmware de la Switch attendus, sans source Internet', async () => {
   createSystem({ id: 'switch', name: 'Nintendo Switch', players: [] });
   const state = await bios.systemBios('switch', { language: 'fr' });

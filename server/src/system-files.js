@@ -4,11 +4,23 @@
 // mise à jour officiels du constructeur, ou dépôt libre ; la dernière version y est cherchée.
 // Les clés et les BIOS sous droits d'auteur n'ont pas de source : ils doivent être extraits de sa
 // propre console et envoyés sur le serveur.
+// Pilotes graphiques (`kind: 'driver'`, dossier « drivers/ ») : pilote Vulkan libre Turnip pour les
+// puces Adreno (Snapdragon), que les émulateurs Android récents (Eden, Dolphin, Vita3K, aPS3e…)
+// installent eux-mêmes ; téléchargés par les applications Android seulement, si leur option est active.
 import { HttpError } from './http-error.js';
 
 const USER_AGENT = 'Mozilla/5.0 (RomCloud)';
 // Listes de Sony en HTTP : leur HTTPS utilise une autorité de certification propre à Sony, refusée
 // par Node ; les fichiers sont ensuite contrôlés par leur taille annoncée.
+
+/** Pilote Turnip (Adreno 6xx/7xx), pour les émulateurs Android qui chargent un pilote graphique. */
+const turnip = (emulators) => ({
+  path: 'drivers/turnip.zip', kind: 'driver', required: false, emulators, source: 'turnip',
+  description: {
+    fr: 'Pilote graphique Turnip pour les puces Adreno (Snapdragon), à installer depuis l’émulateur : souvent plus rapide et avec moins de défauts que le pilote d’origine',
+    en: 'Turnip graphics driver for Adreno GPUs (Snapdragon), to install from the emulator: often faster and with fewer glitches than the stock driver',
+  },
+});
 
 /**
  * Fichiers par système (identifiant ou nom court) : `kind` (bios, keys, firmware, data), `required`,
@@ -33,7 +45,10 @@ const FILES = {
         en: 'Console firmware (.zip of the .nca files, dumped from your Switch), to install from the emulator',
       },
     },
+    turnip(['Eden', 'Citron']),
   ],
+  gc: [turnip(['Dolphin'])],
+  wii: [turnip(['Dolphin'])],
   '3ds': [
     {
       path: '3ds/aes_keys.txt', kind: 'keys', required: false, emulators: ['Azahar'],
@@ -51,6 +66,7 @@ const FILES = {
       path: 'ps3/PS3UPDAT.PUP', kind: 'firmware', required: true, emulators: ['RPCS3', 'aPS3e'], source: 'sony-ps3',
       description: { fr: 'Firmware de la PS3 (installé automatiquement par RomCloud pour Windows)', en: 'PS3 firmware (installed automatically by RomCloud for Windows)' },
     },
+    turnip(['aPS3e']),
   ],
   vita: [
     {
@@ -61,6 +77,7 @@ const FILES = {
       path: 'vita/PSP2UPDAT.PUP', kind: 'firmware', required: false, emulators: ['Vita3K'], source: 'sony-vita-fonts',
       description: { fr: 'Polices de la PS Vita (paquet de données système), à installer depuis Vita3K', en: 'PS Vita fonts (system data package), to install from Vita3K' },
     },
+    turnip(['Vita3K']),
   ],
   xbox: [
     {
@@ -120,6 +137,22 @@ export function parseVitaUpdateList(xml, part) {
   return data && version ? { version, url: data.url, size: data.size } : null;
 }
 
+/**
+ * Versions du dépôt K11MCH1/AdrenoToolsDrivers : la plus récente qui a l'archive Turnip de base
+ * (« Turnip_v26.0.0_R8.zip », pas les variantes « _Gmem », « _Sysmem » ni « turnip_a8xx »), ni
+ * les pilotes Qualcomm propriétaires.
+ */
+export function parseTurnipReleases(releases) {
+  for (const release of Array.isArray(releases) ? releases : []) {
+    if (release.draft) continue;
+    for (const asset of release.assets || []) {
+      const m = /^Turnip_(v[\d.]+(?:_R\d+)?)\.zip$/i.exec(asset.name || '');
+      if (m && asset.browser_download_url) return { version: m[1], url: asset.browser_download_url, size: asset.size || null };
+    }
+  }
+  return null;
+}
+
 const VITA_LIST = 'http://fus01.psp2.update.playstation.net/update/psp2/list/eu/psp2-updatelist.xml';
 
 /** Sources sur Internet : nom, page d'information et dernière version ({ version, url }). */
@@ -138,6 +171,11 @@ export const SOURCES = {
     name: 'PlayStation (serveur de mise à jour officiel)',
     page: 'https://vita3k.org/quickstart.html',
     latest: async () => parseVitaUpdateList(await fetchText(VITA_LIST), 'systemdata'),
+  },
+  turnip: {
+    name: 'GitHub K11MCH1/AdrenoToolsDrivers (pilote Turnip de Mesa, MIT)',
+    page: 'https://github.com/K11MCH1/AdrenoToolsDrivers/releases',
+    latest: async () => parseTurnipReleases(JSON.parse(await fetchText('https://api.github.com/repos/K11MCH1/AdrenoToolsDrivers/releases?per_page=30'))),
   },
   'pcsx2-gameindex': {
     name: 'GitHub libretro/ps2 (base de jeux de PCSX2, GPL)',
