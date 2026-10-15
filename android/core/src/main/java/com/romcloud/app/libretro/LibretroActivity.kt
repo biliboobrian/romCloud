@@ -206,6 +206,8 @@ class LibretroActivity : ComponentActivity() {
     /** Invité arrivé (hôte) : notification affichée quelques secondes en haut de l'écran. */
     private var joinNotice by mutableStateOf<String?>(null)
     private var netplayWaiting by mutableStateOf(false)
+    // Partie synchronisée : l'autre joueur a mis la pause (menu ouvert, application en arrière-plan).
+    private var netplayRemotePaused by mutableStateOf(false)
     /** Partie proposée, en attente d'un invité (hôte). */
     private var netplayOpen by mutableStateOf(false)
 
@@ -552,6 +554,8 @@ class LibretroActivity : ComponentActivity() {
         stopPlayClock()
         captureFrame()
         menuOpen = true
+        // Pause annoncée à l'autre joueur avant de suspendre l'émulation.
+        Netplay.setPaused(true)
         retroView?.apply {
             audioEnabled = false
             onPause()
@@ -568,6 +572,7 @@ class LibretroActivity : ComponentActivity() {
         aspectPicker = false
         statesOpen = false
         pausedFrame = null
+        Netplay.setPaused(false)
         retroView?.apply {
             onResume()
             audioEnabled = true
@@ -579,12 +584,15 @@ class LibretroActivity : ComponentActivity() {
         super.onResume()
         // LibretroDroid relance l'émulation après onResume() : on la suspend de nouveau si le menu est ouvert.
         window.decorView.post { if (menuOpen) retroView?.onPause() }
+        Netplay.setPaused(menuOpen)
         startPlayClock()
     }
 
     override fun onPause() {
         super.onPause()
         stopPlayClock()
+        // Application en arrière-plan : pause annoncée à l'autre joueur.
+        if (!isFinishing) Netplay.setPaused(true)
         // L'émulation est déjà en pause ici (LibretroDroid suit le cycle de vie de l'activité).
         saveSram()
         if (isFinishing) {
@@ -710,6 +718,7 @@ class LibretroActivity : ComponentActivity() {
             while (true) {
                 val status = Netplay.status()
                 netplayWaiting = status.waiting && netplayPartner != null && !menuOpen
+                netplayRemotePaused = status.remotePaused && netplayPartner != null && link == null
                 if (status.state == Netplay.State.ENDED && netplayPartner != null && netplayHost == null) {
                     // Invité : l'hôte a quitté la partie, le jeu se ferme aussi (retour à l'application).
                     android.widget.Toast.makeText(this@LibretroActivity, getString(R.string.netplay_host_left, netplayPartner.orEmpty()), android.widget.Toast.LENGTH_LONG).show()
@@ -1237,6 +1246,7 @@ class LibretroActivity : ComponentActivity() {
             // Partie à plusieurs : proposée, en cours, ou en attente des touches de l'autre joueur.
             val netplayText = when {
                 phase != Phase.Running || menuOpen -> null
+                netplayRemotePaused -> null  // pause de l'autre joueur : affichée au centre
                 netplayWaiting -> stringResource(R.string.netplay_waiting, netplayPartner.orEmpty())
                 netplayPartner != null && link != null -> stringResource(R.string.link_started, netplayPartner.orEmpty())
                 netplayPartner != null -> stringResource(R.string.netplay_playing_with, netplayPartner.orEmpty())
@@ -1255,6 +1265,19 @@ class LibretroActivity : ComponentActivity() {
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = if (streamingTo != null) 36.dp else 8.dp),
                 ) {
                     Text(text, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                }
+            }
+            // Pause de l'autre joueur : le jeu attend sa reprise.
+            if (netplayRemotePaused && phase == Phase.Running && !menuOpen) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.7f),
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.align(Alignment.Center),
+                ) {
+                    Column(Modifier.padding(horizontal = 28.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.netplay_paused_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.netplay_remote_paused, netplayPartner.orEmpty()), style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
             joinNotice?.let { text ->

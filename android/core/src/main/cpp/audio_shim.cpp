@@ -101,7 +101,7 @@ static void apply_aspect();
 // Diffusion : copie de l'image du cœur (section « Diffusion »).
 static void tap_frame(const void *data, unsigned width, unsigned height, size_t pitch);
 // Jeu à plusieurs (section « Jeu à plusieurs ») : avant et après chaque image ; touches des joueurs.
-static void np_before_run();
+static bool np_before_run();
 static void np_after_run();
 static bool np_input(unsigned port, unsigned device, unsigned index, unsigned id, int16_t *value);
 // Liaison entre consoles : interface netpacket déclarée par le cœur (gpSP), gérée ici.
@@ -167,7 +167,8 @@ EXPORT void retro_set_audio_sample_batch(audio_sample_batch_t cb) {
 CORE_FN(void, retro_run, ())
 EXPORT void retro_run() {
     apply_aspect();
-    np_before_run();
+    // Jeu à plusieurs : image sautée si la pause est demandée ici pendant l'attente de l'autre joueur.
+    if (!np_before_run()) return;
     real_retro_run()();
     np_after_run();
     flush();
@@ -659,13 +660,13 @@ struct np_pad {
     uint16_t buttons;   // boutons RetroPad (bit = RETRO_DEVICE_ID_JOYPAD_*)
     int16_t analog[4];  // stick gauche x / y, stick droit x / y
 };
-enum { NP_MSG_INPUT = 1, NP_MSG_STATE = 2, NP_MSG_CHECK = 3, NP_MSG_RESYNC = 4, NP_MSG_BYE = 5, NP_MSG_PACKET = 6 };
+enum { NP_MSG_INPUT = 1, NP_MSG_STATE = 2, NP_MSG_CHECK = 3, NP_MSG_RESYNC = 4, NP_MSG_BYE = 5, NP_MSG_PACKET = 6, NP_MSG_PAUSE = 7 };
 enum { NP_MODE_INPUTS = 0, NP_MODE_PACKETS = 1 };
 enum { NP_OFF = 0, NP_STARTING = 1, NP_RUNNING = 2, NP_ENDED = 3 };
 const unsigned NP_RING = 256;      // images de touches gardées (retour en arrière compris)
 const unsigned NP_CHECK = 120;     // contrôle de l'état toutes les 2 s à 60 images/s
 const unsigned NP_CHECKS = 8;      // empreintes gardées
-const long NP_TIMEOUT_MS = 120000; // autre joueur muet : partie arrêtée (menu ouvert compris)
+const long NP_TIMEOUT_MS = 120000; // autre joueur muet : partie arrêtée (sauf s'il a mis la pause)
 const unsigned DEVICE_ANALOG = 5;
 
 static int np_state = NP_OFF;      // lu par l'application (atomique)
@@ -682,6 +683,10 @@ static bool np_in_frame = false;   // touches du réseau données au cœur (pend
 static bool np_waiting = false;    // en attente de l'autre joueur (atomique, affiché)
 static int np_desyncs = 0;         // différences d'état constatées (atomique)
 static bool np_stop = false;       // arrêt demandé par l'application (atomique)
+// Pause (menu, application en arrière-plan) : la mienne, annoncée à l'autre joueur, et la sienne (atomiques).
+static bool np_local_paused = false, np_remote_paused = false;
+// Envois depuis le fil de l'émulation et depuis l'application (pause) : un message à la fois.
+static pthread_mutex_t np_send_lock = PTHREAD_MUTEX_INITIALIZER;
 // Réception : octets en attente d'un message complet.
 static uint8_t *np_buffer = nullptr;
 static size_t np_buffer_length = 0, np_buffer_capacity = 0;
@@ -753,6 +758,7 @@ static void np_end() {
     np_fd = -1;
     np_in_frame = false;
     np_has_pending = false;
+    __atomic_store_n(&np_remote_paused, false, __ATOMIC_RELAXED);
     __atomic_store_n(&np_waiting, false, __ATOMIC_RELAXED);
     __atomic_store_n(&np_state, (int)NP_ENDED, __ATOMIC_RELEASE);
 }
@@ -774,7 +780,10 @@ static bool np_send(uint8_t type, const void *payload, size_t size, const void *
     uint8_t header[5];
     header[0] = type;
     np_put32(header + 1, (uint32_t)(size + extra_size));
-    return np_write(header, sizeof header) && (!size || np_write(payload, size)) && (!extra_size || np_write(extra, extra_size));
+    pthread_mutex_lock(&np_send_lock);
+    const bool ok = np_write(header, sizeof header) && (!size || np_write(payload, size)) && (!extra_size || np_write(extra, extra_size));
+    pthread_mutex_unlock(&np_send_lock);
+    return ok;
 }
 
 /** État du cœur sérialisé dans np_state_buffer ; renvoie sa taille (0 : impossible). */
@@ -859,6 +868,8 @@ static void np_message(uint8_t type, const uint8_t *p, uint32_t size) {
         np_resync = true;
     } else if (type == NP_MSG_PACKET && np_packets_active && np_packets.receive) {
         np_packets.receive(p, size, np_host ? 1 : 0);
+    } else if (type == NP_MSG_PAUSE && size >= 1) {
+        __atomic_store_n(&np_remote_paused, p[0] != 0, __ATOMIC_RELAXED);
     } else if (type == NP_MSG_BYE) {
         np_end();
     }
@@ -922,20 +933,31 @@ static void np_reset_rings() {
     np_frame = 0;
 }
 
-/** Attend (au plus NP_TIMEOUT_MS) que [ready] soit vrai ; faux si la partie est finie entre-temps. */
+enum np_wait_result { NP_READY, NP_SKIP, NP_LOST };
+
+/**
+ * Attend que [ready] soit vrai : au plus NP_TIMEOUT_MS sans nouvelle de l'autre joueur (attente
+ * illimitée pendant sa pause) ; [skippable] : abandonnée si la pause est demandée ici (l'image est
+ * sautée, le menu peut s'ouvrir). NP_LOST : partie finie entre-temps.
+ */
 template <typename Ready>
-static bool np_wait(Ready ready) {
-    if (ready()) return true;
+static np_wait_result np_wait(Ready ready, bool skippable = false) {
+    if (ready()) return NP_READY;
     long start = np_now_ms();
     __atomic_store_n(&np_waiting, true, __ATOMIC_RELAXED);
     while (!ready()) {
+        if (skippable && __atomic_load_n(&np_local_paused, __ATOMIC_ACQUIRE)) {
+            __atomic_store_n(&np_waiting, false, __ATOMIC_RELAXED);
+            return NP_SKIP;
+        }
+        if (__atomic_load_n(&np_remote_paused, __ATOMIC_RELAXED)) start = np_now_ms();
         if (!np_pump(50) || np_now_ms() - start > NP_TIMEOUT_MS || __atomic_load_n(&np_stop, __ATOMIC_ACQUIRE)) {
             np_end();
-            return false;
+            return NP_LOST;
         }
     }
     __atomic_store_n(&np_waiting, false, __ATOMIC_RELAXED);
-    return true;
+    return NP_READY;
 }
 
 // --- Liaison entre consoles (mode « paquets ») ---
@@ -984,18 +1006,19 @@ static void np_packets_frame(int state) {
     if (np_packets.poll) np_packets.poll();
 }
 
-static void np_before_run() {
+/** Avant chaque image ; faux : image sautée (pause demandée ici pendant l'attente de l'autre joueur). */
+static bool np_before_run() {
     int state = __atomic_load_n(&np_state, __ATOMIC_ACQUIRE);
     if (np_packets_active && state != NP_RUNNING) np_packets_stopped();
-    if (state == NP_OFF || state == NP_ENDED) return;
+    if (state == NP_OFF || state == NP_ENDED) return true;
     if (__atomic_load_n(&np_stop, __ATOMIC_ACQUIRE)) {
         np_end();
         np_packets_stopped();
-        return;
+        return true;
     }
     if (np_mode == NP_MODE_PACKETS) {
         np_packets_frame(state);
-        return;
+        return true;
     }
     if (state == NP_STARTING) {
         // Départ : état de l'hôte copié chez l'invité, puis image 0 des deux côtés. Tampons remis à
@@ -1004,10 +1027,10 @@ static void np_before_run() {
         if (np_host) {
             if (!np_send_state(0)) {
                 np_end();
-                return;
+                return true;
             }
         } else {
-            if (!np_wait([] { return np_has_pending; })) return;
+            if (np_wait([] { return np_has_pending; }) != NP_READY) return true;
             real_retro_unserialize()(np_pending, np_pending_size);
             np_has_pending = false;
         }
@@ -1015,14 +1038,14 @@ static void np_before_run() {
     }
     if (!np_pump(0)) {
         np_end();
-        return;
+        return true;
     }
     // Hôte : état demandé par l'invité, pris avant cette image.
     if (np_host && np_resync) {
         np_resync = false;
         if (!np_send_state(np_frame)) {
             np_end();
-            return;
+            return true;
         }
     }
     // Invité : état de l'hôte chargé à son image (retour en arrière si elle est passée).
@@ -1047,17 +1070,20 @@ static void np_before_run() {
             }
             if (!np_send(NP_MSG_INPUT, message, sizeof message)) {
                 np_end();
-                return;
+                return true;
             }
         }
         np_sent = target + 1;
     }
     // Touches de l'autre joueur pour cette image : attendues.
     const unsigned slot = np_frame % NP_RING;
-    if (!np_wait([slot] { return np_remote_frame[slot] == np_frame + 1; })) return;
+    const np_wait_result waited = np_wait([slot] { return np_remote_frame[slot] == np_frame + 1; }, true);
+    if (waited == NP_SKIP) return false;
+    if (waited == NP_LOST) return true;
     np_current[np_local_port] = np_local[slot];
     np_current[np_remote_port] = np_remote[slot];
     np_in_frame = true;
+    return true;
 }
 
 static void np_after_run() {
@@ -1119,7 +1145,25 @@ NP_FN(void, nativeStart)(JNIEnv *, jobject, jint fd, jboolean host, jint localPo
     np_resync = false;
     __atomic_store_n(&np_desyncs, 0, __ATOMIC_RELAXED);
     __atomic_store_n(&np_stop, false, __ATOMIC_RELAXED);
+    __atomic_store_n(&np_remote_paused, false, __ATOMIC_RELAXED);
     __atomic_store_n(&np_state, (int)NP_STARTING, __ATOMIC_RELEASE);
+    // Pause demandée avant le départ (menu déjà ouvert) : annoncée dès la connexion.
+    if (__atomic_load_n(&np_local_paused, __ATOMIC_ACQUIRE) && np_mode == NP_MODE_INPUTS) {
+        const uint8_t paused = 1;
+        np_send(NP_MSG_PAUSE, &paused, 1);
+    }
+}
+
+/**
+ * Pause de ce joueur (menu ouvert, application en arrière-plan) : annoncée à l'autre joueur, qui
+ * l'affiche ; demandée avant de suspendre l'émulation (l'attente de ses touches est abandonnée).
+ */
+NP_FN(void, nativeSetPaused)(JNIEnv *, jobject, jboolean paused) {
+    if (__atomic_exchange_n(&np_local_paused, (bool)paused, __ATOMIC_ACQ_REL) == (bool)paused) return;
+    const int state = __atomic_load_n(&np_state, __ATOMIC_ACQUIRE);
+    if (np_fd < 0 || np_mode != NP_MODE_INPUTS || (state != NP_STARTING && state != NP_RUNNING)) return;
+    const uint8_t value = paused ? 1 : 0;
+    np_send(NP_MSG_PAUSE, &value, 1);
 }
 
 /** Arrêt demandé (fin de partie, activité fermée) : attente interrompue, pris en compte à la prochaine image. */
@@ -1129,13 +1173,14 @@ NP_FN(void, nativeStop)(JNIEnv *, jobject) {
     if (fd >= 0) shutdown(fd, SHUT_RDWR);
 }
 
-/** [état (0 aucune, 1 départ, 2 en cours, 3 terminée), attente de l'autre joueur (1), différences d'état, image]. */
+/** [état (0 aucune, 1 départ, 2 en cours, 3 terminée), attente de l'autre joueur (1), différences d'état, image, pause de l'autre joueur (1)]. */
 NP_FN(void, nativeStatus)(JNIEnv *env, jobject, jintArray out) {
-    jint values[4] = {
+    jint values[5] = {
         __atomic_load_n(&np_state, __ATOMIC_ACQUIRE),
         __atomic_load_n(&np_waiting, __ATOMIC_RELAXED) ? 1 : 0,
         __atomic_load_n(&np_desyncs, __ATOMIC_RELAXED),
         (jint)np_frame,
+        __atomic_load_n(&np_remote_paused, __ATOMIC_RELAXED) ? 1 : 0,
     };
-    env->SetIntArrayRegion(out, 0, 4, values);
+    env->SetIntArrayRegion(out, 0, 5, values);
 }

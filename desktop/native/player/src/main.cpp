@@ -627,7 +627,10 @@ void Player::present() {
   std::string banner, requester;
   const bool request = netplay_.requestPending(requester);
   const std::string linked = netplay_.linked();
-  if (netplay_.waiting()) banner = trName("netplay_waiting", netplay_.partner());
+  // Pause de l'autre joueur : affichée au centre (à la place du bandeau d'attente).
+  const bool remotePaused = netplay_.remotePaused();
+  if (remotePaused) banner.clear();
+  else if (netplay_.waiting()) banner = trName("netplay_waiting", netplay_.partner());
   else if (netplay_.playing()) banner = trName(netplay_.isLink() ? "link_playing" : "netplay_playing", netplay_.partner());
   else if (!linked.empty()) banner = trName("link_playing", linked);
   else if (netplay_.open()) banner = menu_.tr("netplay_open");
@@ -643,6 +646,15 @@ void Player::present() {
       int w = Canvas::measure(text, 1) + 28, x = (overlay_.width() - w) / 2, y = banner.empty() ? 10 : 36;
       overlay_.roundRect((float)x, (float)y, (float)w, 24, 6, rgba(40, 34, 90, 230));
       overlay_.text(x + 14, y + 8, text, 1, rgba(245, 245, 255));
+    }
+    if (remotePaused && !request) {
+      std::string title = menu_.tr("netplay_paused_title");
+      std::string text = Canvas::fit(trName("netplay_remote_paused", netplay_.partner()), 1, overlay_.width() - 80);
+      int w = std::max(Canvas::measure(title, 3), Canvas::measure(text, 1)) + 56;
+      int x = (overlay_.width() - w) / 2, y = overlay_.height() / 2 - 40;
+      overlay_.roundRect((float)x, (float)y, (float)w, 80, 8, rgba(0, 0, 0, 190));
+      overlay_.text(x + (w - Canvas::measure(title, 3)) / 2, y + 16, title, 3, rgba(245, 245, 255));
+      overlay_.text(x + (w - Canvas::measure(text, 1)) / 2, y + 56, text, 1, rgba(210, 210, 230));
     }
     if (request) {
       std::string title = Canvas::fit(trName(netplay_.isLink() ? "link_request" : "netplay_request", requester), 2, overlay_.width() - 80);
@@ -663,7 +675,7 @@ void Player::present() {
     if (showToast && !toast_.empty()) drawToast();  // fin de la configuration d'une manette
     if (request) drawNetplay();
     video_.present(overlay_.data(), overlay_.width(), overlay_.height());
-  } else if ((showToast && !toast_.empty()) || !banner.empty() || request || showNotice) {
+  } else if ((showToast && !toast_.empty()) || !banner.empty() || request || showNotice || remotePaused) {
     overlay_.clear();
     if (showToast && !toast_.empty()) drawToast();
     drawNetplay();
@@ -799,6 +811,8 @@ int Player::run() {
   const double startTime = (double)SDL_GetPerformanceCounter() / freq;
   long frames = 0;
   while (handleEvents()) {
+    // Partie synchronisée : pause (menu ouvert) annoncée à l'autre joueur.
+    netplay_.setPaused(menu_.isOpen());
     if (testSeconds > 0 && (double)SDL_GetPerformanceCounter() / freq - startTime > testSeconds) {
       logf("Essai : %ld images en %.1f s (%.2f images/s, cœur %.2f)", frames, testSeconds, frames / testSeconds, g.av.timing.fps);
       // Dernière image du jeu enregistrée (--screenshot) : vérifie l'affichage dans la boucle réelle.
