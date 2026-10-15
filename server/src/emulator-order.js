@@ -10,8 +10,11 @@
 // Pour afficher l'ordre par défaut dans l'administration, ce module reprend les tables des
 // applications : CoreRanking.kt / LibretroPlayers.kt (Android), cores.rs, managed.rs et
 // catalog.rs (Windows). À mettre à jour avec elles.
+import { coreOf, playersFor } from './extra-cores.js';
 import { HttpError } from './http-error.js';
 import { PLATFORMS } from './systems.js';
+
+export { coreOf };
 
 const NES = ['mesen', 'nestopia', 'fceumm', 'bnes', 'quicknes'];
 const GAME_BOY = ['sameboy', 'gambatte', 'mgba', 'mesen-s', 'gearboy', 'tgbdual', 'vbam', 'DoubleCherryGB', 'skyemu'];
@@ -98,49 +101,6 @@ const WINDOWS_EMULATORS = [
   { id: 'scummvm', name: 'ScummVM', systems: ['scummvm'] },
 ];
 
-/** Découpe une ligne de commande en arguments (guillemets gérés), comme les applications. */
-function tokenize(input) {
-  const tokens = [];
-  let current = '';
-  let quote = null;
-  let has = false;
-  for (const c of String(input || '')) {
-    if (quote) {
-      if (c === quote) quote = null;
-      else current += c;
-    } else if (c === '"' || c === "'") {
-      quote = c;
-      has = true;
-    } else if (/\s/.test(c)) {
-      if (has) tokens.push(current);
-      current = '';
-      has = false;
-    } else {
-      current += c;
-      has = true;
-    }
-  }
-  if (has) tokens.push(current);
-  return tokens;
-}
-
-/** Cœur libretro d'un modèle RetroArch (extra LIBRETRO) : « snes9x », chemin .so compris ; null sinon. */
-export function coreOf(player) {
-  const tokens = tokenize(player?.amStartArguments);
-  for (let i = 0; i + 2 < tokens.length; i++) {
-    if ((tokens[i] === '-e' || tokens[i] === '--es') && tokens[i + 1] === 'LIBRETRO') {
-      const core = tokens[i + 2]
-        .split(/[\\/]/)
-        .pop()
-        .replace(/\.so$/, '')
-        .replace(/_android$/, '')
-        .replace(/_libretro$/, '');
-      return core || null;
-    }
-  }
-  return null;
-}
-
 const systemKeys = (system) => [system.shortname, system.id].filter(Boolean).map((k) => String(k).toLowerCase());
 const rankKey = (system) => String(system.shortname || system.id || '').toLowerCase();
 
@@ -162,9 +122,9 @@ function uniquePlayers(players) {
 }
 
 /** Émulateurs de l'application Android (LibretroPlayers.addTo), dans leur ordre par défaut. */
-function androidEmulators(system) {
-  const players = uniquePlayers(system.players || []);
-  const cores = [...new Set(players.map(coreOf).filter((c) => c && /^[A-Za-z0-9_]+$/.test(c)))];
+function androidEmulators(system, platform) {
+  const players = uniquePlayers(playersFor(system, platform));
+  const cores = [...new Set(players.map(coreOf).filter((c) => c && /^[A-Za-z0-9_-]+$/.test(c)))];
   const ranked = rankCores(system, cores, ANDROID_UNAVAILABLE);
   const builtIn = new Set(ranked.filter((c) => !ANDROID_UNAVAILABLE.includes(c)));
   return [
@@ -180,7 +140,7 @@ function windowsEmulators(system) {
   const keys = systemKeys(system);
   const forSystem = (e) => e.systems.some((s) => keys.includes(s));
   const cores = [];
-  for (const player of system.players || []) {
+  for (const player of playersFor(system, 'windows')) {
     let core = coreOf(player);
     if (!core) continue;
     // Cœurs GLES (Android) : équivalent sans suffixe sous Windows ; MAME (arcade) s'y appelle « mame ».
@@ -199,10 +159,12 @@ function windowsEmulators(system) {
   return list;
 }
 
-/** Émulateurs proposés par chaque application pour ce système, dans l'ordre par défaut de l'application. */
+/**
+ * Émulateurs proposés par chaque application pour ce système (cœurs ajoutés par RomCloud compris),
+ * dans l'ordre par défaut de l'application.
+ */
 export function emulatorCandidates(system) {
-  const android = androidEmulators(system);
-  return { android, androidtv: android, windows: windowsEmulators(system) };
+  return { android: androidEmulators(system, 'android'), androidtv: androidEmulators(system, 'androidtv'), windows: windowsEmulators(system) };
 }
 
 /**

@@ -1,0 +1,32 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Enterprise 64/128",
+    "uniqueId": "enterprise",
+    "shortname": "enterprise",
+    "description": "Ordinateurs Enterprise (1985). Disquettes, cassettes et programmes.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "enterprise - RetroArch 64 - ep128emu_core",
+      "uniqueId": "enterprise.ra64.ep128emu_core",
+      "description": "Supported extensions: img, dsk, tap, dtf, com, trn, 128, bas, cas, cdt, tzx, wav, tvcwav.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:img|dsk|tap|dtf|com|trn|128|bas|cas|cdt|tzx|wav|tvcwav)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO ep128emu_core\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}
