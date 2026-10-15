@@ -19,6 +19,10 @@
 #include "../../libretro-common/include/libretro.h"
 #include "es3utils.h"
 
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <GLES2/gl2ext.h>
+
 namespace libretrodroid {
 
 ImageRendererES3::ImageRendererES3() {
@@ -78,6 +82,31 @@ void ImageRendererES3::applyGLSwizzle(int r, int g, int b, int a) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, g);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, b);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, a);
+}
+
+bool ImageRendererES3::setExternalImage(void* image, unsigned width, unsigned height, bool swapRedBlue) {
+    // Partage arrêté : stockage de la texture recréé à la prochaine image (plus lié au tampon).
+    if (!image) {
+        isDirty = true;
+        return true;
+    }
+    static auto targetTexture = reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(eglGetProcAddress("glEGLImageTargetTexture2DOES"));
+    if (!targetTexture) return false;
+    if (lastFrameSize.first != width || lastFrameSize.second != height || isDirty) {
+        initializeTextures(width, height);
+    }
+    glBindTexture(GL_TEXTURE_2D, currentTexture);
+    while (glGetError() != GL_NO_ERROR) {}
+    targetTexture(GL_TEXTURE_2D, static_cast<GLeglImageOES>(image));
+    const bool ok = glGetError() == GL_NO_ERROR;
+    if (swapRedBlue) {
+        applyGLSwizzle(GL_BLUE, GL_GREEN, GL_RED, GL_ALPHA);
+    } else {
+        applyGLSwizzle(GL_RED, GL_GREEN, GL_BLUE, GL_ALPHA);
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
+    Renderer::onNewFrame(nullptr, width, height, 0);
+    return ok;
 }
 
 uintptr_t ImageRendererES3::getTexture() {

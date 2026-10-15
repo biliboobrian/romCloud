@@ -2,6 +2,9 @@
 
 #include <windows.h>
 
+// Image et sémaphores partagés avec OpenGL (handles Windows) : vulkan_win32.h.
+#define VK_USE_PLATFORM_WIN32_KHR
+
 #include <algorithm>
 #include <cstring>
 #include <mutex>
@@ -26,7 +29,9 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = nullptr;
   X(vkQueueSubmit) X(vkCreateFence) X(vkDestroyFence) X(vkWaitForFences) X(vkResetFences) X(vkCreateBuffer) \
   X(vkDestroyBuffer) X(vkGetBufferMemoryRequirements) X(vkAllocateMemory) X(vkFreeMemory)                   \
   X(vkBindBufferMemory) X(vkMapMemory) X(vkUnmapMemory) X(vkInvalidateMappedMemoryRanges) X(vkCreateImage)  \
-  X(vkDestroyImage) X(vkGetImageMemoryRequirements) X(vkBindImageMemory)
+  X(vkDestroyImage) X(vkGetImageMemoryRequirements) X(vkBindImageMemory) X(vkCmdCopyImage)                 \
+  X(vkEnumerateDeviceExtensionProperties) X(vkGetPhysicalDeviceProperties2) X(vkCreateSemaphore)            \
+  X(vkDestroySemaphore) X(vkGetMemoryWin32HandleKHR) X(vkGetSemaphoreWin32HandleKHR)
 #define DECLARE(name) PFN_##name name = nullptr;
 VK_FUNCTIONS(DECLARE)
 #undef DECLARE
@@ -68,6 +73,22 @@ uint32_t blitWidth = 0, blitHeight = 0;
 VkFormat blitFormat = VK_FORMAT_UNDEFINED;
 VkFormat unreadable = VK_FORMAT_UNDEFINED;  // format déjà signalé illisible (journal une fois)
 
+// Partage avec OpenGL (sans recopie par le processeur) : extensions du périphérique, image partagée
+// (mémoire exportée), sémaphores « image prête » (Vulkan -> OpenGL) et « image rendue » (OpenGL ->
+// Vulkan), travail en cours (attendu avant la copie suivante ou quand le cœur réutilise son image).
+const char* const kInteropExtensions[] = {VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME, VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME};
+bool interopDevice = false;
+VkImage sharedImage = VK_NULL_HANDLE;
+VkDeviceMemory sharedMemory = VK_NULL_HANDLE;
+VkDeviceSize sharedSize = 0;
+uint32_t sharedWidth = 0, sharedHeight = 0;
+unsigned sharedGeneration = 0;
+VkSemaphore readySemaphore = VK_NULL_HANDLE, releasedSemaphore = VK_NULL_HANDLE;
+bool semaphoresExported = false;
+bool releasedPending = false;  // « image rendue » signalé par OpenGL, à attendre avant la copie
+bool sharedUsed = false;       // image déjà passée à OpenGL (propriété à reprendre)
+bool workPending = false;      // copie envoyée, attente sur [fence] pas encore faite
+
 bool loadLoader() {
   if (vkGetInstanceProcAddr) return true;
   if (!loader) loader = LoadLibraryW(L"vulkan-1.dll");
@@ -104,6 +125,24 @@ bool hasInstanceExtension(const char* name) {
   return std::any_of(list.begin(), list.end(), [&](const VkExtensionProperties& e) { return strcmp(e.extensionName, name) == 0; });
 }
 
+/** Extensions de partage avec OpenGL que la carte propose (Vulkan 1.1 minimum), vide sinon. */
+std::vector<const char*> interopExtensions(VkPhysicalDevice physical) {
+  if (!physical || !vkEnumerateDeviceExtensionProperties) return {};
+  VkPhysicalDeviceProperties props;
+  vkGetPhysicalDeviceProperties(physical, &props);
+  if (props.apiVersion < VK_API_VERSION_1_1) return {};
+  uint32_t count = 0;
+  vkEnumerateDeviceExtensionProperties(physical, nullptr, &count, nullptr);
+  std::vector<VkExtensionProperties> list(count);
+  vkEnumerateDeviceExtensionProperties(physical, nullptr, &count, list.data());
+  std::vector<const char*> wanted;
+  for (const char* name : kInteropExtensions) {
+    if (std::none_of(list.begin(), list.end(), [&](const VkExtensionProperties& e) { return strcmp(e.extensionName, name) == 0; })) return {};
+    wanted.push_back(name);
+  }
+  return wanted;
+}
+
 /** Instance créée par le cœur (create_instance) avec les mêmes réglages que celle du moteur. */
 VkInstance createInstanceWrapper(void*, const VkInstanceCreateInfo* info) {
   VkInstance created = VK_NULL_HANDLE;
@@ -111,8 +150,24 @@ VkInstance createInstanceWrapper(void*, const VkInstanceCreateInfo* info) {
   return created;
 }
 
+/** Périphérique créé par le cœur (create_device2) : extensions de partage avec OpenGL ajoutées si possible. */
 VkDevice createDeviceWrapper(VkPhysicalDevice physical, void*, const VkDeviceCreateInfo* info) {
   VkDevice created = VK_NULL_HANDLE;
+  std::vector<const char*> extensions(info->ppEnabledExtensionNames, info->ppEnabledExtensionNames + info->enabledExtensionCount);
+  const std::vector<const char*> interop = interopExtensions(physical);
+  for (const char* name : interop) {
+    if (std::none_of(extensions.begin(), extensions.end(), [&](const char* e) { return strcmp(e, name) == 0; })) extensions.push_back(name);
+  }
+  if (!interop.empty()) {
+    VkDeviceCreateInfo extended = *info;
+    extended.enabledExtensionCount = (uint32_t)extensions.size();
+    extended.ppEnabledExtensionNames = extensions.data();
+    if (vkCreateDevice(physical, &extended, nullptr, &created) == VK_SUCCESS) {
+      interopDevice = true;
+      return created;
+    }
+  }
+  interopDevice = false;
   if (vkCreateDevice(physical, info, nullptr, &created) != VK_SUCCESS) return VK_NULL_HANDLE;
   return created;
 }
@@ -189,7 +244,14 @@ bool createDefaultDevice() {
   info.queueCreateInfoCount = 1;
   info.pQueueCreateInfos = &queueInfo;
   info.pEnabledFeatures = &features;
-  if (vkCreateDevice(gpu, &info, nullptr, &device) != VK_SUCCESS) return false;
+  const std::vector<const char*> interop = interopExtensions(gpu);
+  info.enabledExtensionCount = (uint32_t)interop.size();
+  info.ppEnabledExtensionNames = interop.data();
+  interopDevice = !interop.empty() && vkCreateDevice(gpu, &info, nullptr, &device) == VK_SUCCESS;
+  if (!interopDevice) {
+    info.enabledExtensionCount = 0;
+    if (vkCreateDevice(gpu, &info, nullptr, &device) != VK_SUCCESS) return false;
+  }
   family = index;
   vkGetDeviceQueue(device, family, 0, &queue);
   return true;
@@ -205,8 +267,13 @@ bool createCoreDevice() {
     // Carte proposée refusée : le cœur choisit lui-même.
     if (!ok) ok = negotiation->create_device2(&context, instance, VK_NULL_HANDLE, VK_NULL_HANDLE, vkGetInstanceProcAddr, createDeviceWrapper, nullptr);
   } else if (negotiation->create_device) {
+    // Extensions de partage avec OpenGL demandées au cœur (sinon : sans elles).
     VkPhysicalDeviceFeatures none{};
-    ok = negotiation->create_device(&context, instance, gpu, VK_NULL_HANDLE, vkGetInstanceProcAddr, nullptr, 0, nullptr, 0, &none);
+    std::vector<const char*> interop = interopExtensions(gpu);
+    ok = !interop.empty() && negotiation->create_device(&context, instance, gpu, VK_NULL_HANDLE, vkGetInstanceProcAddr, interop.data(),
+                                                         (unsigned)interop.size(), nullptr, 0, &none);
+    interopDevice = ok;
+    if (!ok) ok = negotiation->create_device(&context, instance, gpu, VK_NULL_HANDLE, vkGetInstanceProcAddr, nullptr, 0, nullptr, 0, &none);
   }
   if (!ok || !context.device) return false;
   coreDevice = true;
@@ -315,6 +382,8 @@ void barrier(VkImage target, const VkImageSubresourceRange& range, VkImageLayout
   vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &b);
 }
 
+#include "vulkan_share.inc"
+
 // --- Interface donnée au cœur (libretro_vulkan.h) ---
 
 void setImage(void*, const retro_vulkan_image* next, uint32_t count, const VkSemaphore* semaphores, uint32_t srcFamily) {
@@ -334,7 +403,14 @@ uint32_t getSyncIndexMask(void*) { return 1; }
 void setCommandBuffers(void*, uint32_t count, const VkCommandBuffer* commands) {
   coreCommands.assign(commands, commands + count);
 }
-void waitSyncIndex(void*) {}
+/** Le cœur va réutiliser son image : copie précédente terminée. */
+void waitPendingWork() {
+  if (!workPending) return;
+  vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+  vkResetFences(device, 1, &fence);
+  workPending = false;
+}
+void waitSyncIndex(void*) { waitPendingWork(); }
 void lockQueue(void*) { queueLock.lock(); }
 void unlockQueue(void*) { queueLock.unlock(); }
 void setSignalSemaphore(void*, VkSemaphore semaphore) { signal = semaphore; }
@@ -417,6 +493,7 @@ const retro_hw_render_interface* hwInterface() {
 
 bool readFrame(unsigned width, unsigned height, const uint8_t*& pixels, size_t& pitch, bool& bgra) {
   if (!device || !hasImage || !width || !height) return false;
+  waitPendingWork();
   const VkImage source = image.create_info.image;
   const VkFormat format = image.create_info.format;
   const VkImageLayout layout = image.image_layout;
@@ -524,9 +601,155 @@ bool readFrame(unsigned width, unsigned height, const uint8_t*& pixels, size_t& 
   return true;
 }
 
+bool interopSupported(const uint8_t uuid[16]) {
+  if (!device || !interopDevice || !vkGetPhysicalDeviceProperties2 || !vkGetMemoryWin32HandleKHR || !vkGetSemaphoreWin32HandleKHR) return false;
+  // Même carte graphique pour Vulkan et OpenGL (sinon la mémoire ne peut pas être partagée).
+  VkPhysicalDeviceIDProperties id{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+  VkPhysicalDeviceProperties2 props{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+  props.pNext = &id;
+  vkGetPhysicalDeviceProperties2(gpu, &props);
+  return memcmp(id.deviceUUID, uuid, VK_UUID_SIZE) == 0;
+}
+
+bool shareFrame(unsigned width, unsigned height, SharedFrame& out) {
+  out = {};
+  if (!device || !interopDevice || !hasImage || !width || !height) return false;
+  waitPendingWork();
+  if (!readySemaphore) {
+    readySemaphore = exportableSemaphore();
+    releasedSemaphore = exportableSemaphore();
+    if (!readySemaphore || !releasedSemaphore) return false;
+  }
+  const unsigned generation = sharedGeneration;
+  if (!ensureShared(width, height)) return false;
+  if (generation != sharedGeneration) {
+    // Nouvelle image (première, ou taille changée) : mémoire à importer par OpenGL.
+    VkMemoryGetWin32HandleInfoKHR info{VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR};
+    info.memory = sharedMemory;
+    info.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+    HANDLE handle = nullptr;
+    if (vkGetMemoryWin32HandleKHR(device, &info, &handle) != VK_SUCCESS) return false;
+    out.memory = handle;
+    out.memorySize = sharedSize;
+    releasedPending = false;  // ancienne image abandonnée : rien à attendre
+  }
+  if (!semaphoresExported) {
+    out.ready = semaphoreHandle(readySemaphore);
+    out.released = semaphoreHandle(releasedSemaphore);
+    if (!out.ready || !out.released) return false;
+    semaphoresExported = true;
+  }
+  out.width = sharedWidth;  // taille de l'image partagée (l'image du jeu en occupe le coin haut gauche)
+  out.height = sharedHeight;
+  out.generation = sharedGeneration;
+
+  const VkImage source = image.create_info.image;
+  const VkFormat format = image.create_info.format;
+  const VkImageLayout layout = image.image_layout;
+  // 32 bits RVBA ou BVRA : octets copiés tels quels ([bgra] : rouge et bleu échangés à l'affichage) ;
+  // autres formats : convertis par une copie à la même taille (blit).
+  const bool raw = isBgra8(format) || format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_R8G8B8A8_SRGB;
+  if (!raw) {
+    VkFormatProperties props;
+    vkGetPhysicalDeviceFormatProperties(gpu, format, &props);
+    if (!(props.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT)) return false;
+  }
+  out.bgra = isBgra8(format);
+  VkImageSubresourceRange range = image.create_info.subresourceRange;
+  range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  range.levelCount = 1;
+  range.layerCount = 1;
+  const VkImageSubresourceLayers layers{VK_IMAGE_ASPECT_COLOR_BIT, range.baseMipLevel, range.baseArrayLayer, 1};
+  const VkImageSubresourceRange whole{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+  const bool transfer = imageFamily != VK_QUEUE_FAMILY_IGNORED && imageFamily != family && !waits.empty();
+  const uint32_t srcFamily = transfer ? imageFamily : VK_QUEUE_FAMILY_IGNORED, dstFamily = transfer ? family : VK_QUEUE_FAMILY_IGNORED;
+  const VkImageLayout restore = layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_IMAGE_LAYOUT_GENERAL : layout;
+
+  std::unique_lock<std::mutex> lock(queueLock);
+  vkResetCommandBuffer(cmd, 0);
+  VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+  begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  vkBeginCommandBuffer(cmd, &begin);
+  barrier(source, range, layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, srcFamily, dstFamily);
+  // Image partagée reprise à OpenGL (contenu remplacé : ancien état ignoré).
+  barrier(sharedImage, whole, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
+          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, sharedUsed ? VK_QUEUE_FAMILY_EXTERNAL : VK_QUEUE_FAMILY_IGNORED,
+          sharedUsed ? family : VK_QUEUE_FAMILY_IGNORED);
+  if (raw) {
+    VkImageCopy copy{};
+    copy.srcSubresource = layers;
+    copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.extent = {width, height, 1};
+    vkCmdCopyImage(cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, sharedImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+  } else {
+    VkImageBlit blit{};
+    blit.srcSubresource = layers;
+    blit.srcOffsets[1] = {(int32_t)width, (int32_t)height, 1};
+    blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.dstOffsets[1] = {(int32_t)width, (int32_t)height, 1};
+    vkCmdBlitImage(cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, sharedImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+                   VK_FILTER_NEAREST);
+  }
+  barrier(source, range, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, restore, VK_ACCESS_TRANSFER_READ_BIT,
+          VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+  // Image partagée donnée à OpenGL, prête à être lue par ses shaders.
+  barrier(sharedImage, whole, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, 0,
+          VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, family, VK_QUEUE_FAMILY_EXTERNAL);
+  vkEndCommandBuffer(cmd);
+
+  std::vector<VkSemaphore> waitList = waits;
+  if (releasedPending) waitList.push_back(releasedSemaphore);
+  std::vector<VkPipelineStageFlags> stages(waitList.size(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+  std::vector<VkCommandBuffer> commands = coreCommands;
+  commands.push_back(cmd);
+  std::vector<VkSemaphore> signals{readySemaphore};
+  if (signal) signals.push_back(signal);
+  VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+  submit.waitSemaphoreCount = (uint32_t)waitList.size();
+  submit.pWaitSemaphores = waitList.data();
+  submit.pWaitDstStageMask = stages.data();
+  submit.commandBufferCount = (uint32_t)commands.size();
+  submit.pCommandBuffers = commands.data();
+  submit.signalSemaphoreCount = (uint32_t)signals.size();
+  submit.pSignalSemaphores = signals.data();
+  const VkResult result = vkQueueSubmit(queue, 1, &submit, fence);
+  lock.unlock();
+  waits.clear();
+  coreCommands.clear();
+  signal = VK_NULL_HANDLE;
+  imageFamily = VK_QUEUE_FAMILY_IGNORED;
+  releasedPending = false;
+  if (result != VK_SUCCESS) {
+    logf("Vulkan : envoi de la copie partagée refusé (%d)", (int)result);
+    return false;
+  }
+  // Pas d'attente ici : la copie se fait pendant que le moteur continue (attendue à l'image
+  // suivante, ou quand le cœur réutilise son image).
+  workPending = true;
+  sharedUsed = true;
+  return true;
+}
+
+void sharedReleased() { releasedPending = true; }
+
+void stopSharing() {
+  if (!device) return;
+  vkDeviceWaitIdle(device);
+  if (workPending) vkResetFences(device, 1, &fence);
+  workPending = false;
+  freeShared();
+  freeSemaphores();
+}
+
 void destroy() {
   if (device) {
     vkDeviceWaitIdle(device);
+    freeShared();
+    freeSemaphores();
+    workPending = false;
     freeStaging();
     freeBlit();
     if (fence) vkDestroyFence(device, fence, nullptr);

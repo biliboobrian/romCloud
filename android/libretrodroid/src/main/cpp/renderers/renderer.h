@@ -45,6 +45,11 @@ public:
     virtual bool rendersInVideoCallback() = 0;
     virtual void setShaders(ShaderManager::Chain shaders) = 0;
     virtual PassData getPassData(unsigned int layer) = 0;
+    /**
+     * RomCloud : image partagée par Vulkan (EGLImage d'un AHardwareBuffer) affichée telle quelle, sans
+     * envoi de pixels ; [image] nulle : partage arrêté (texture à recréer). Faux si non pris en charge.
+     */
+    virtual bool setExternalImage(void* image, unsigned width, unsigned height, bool swapRedBlue) { return false; }
 
     virtual ~Renderer() = default;
 

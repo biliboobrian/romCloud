@@ -1,5 +1,7 @@
 #include "video.h"
 
+#include <windows.h>
+
 #include <SDL3/SDL_opengl.h>
 
 #include <algorithm>
@@ -79,6 +81,45 @@ GL_OPTIONAL_FUNCTIONS(DECLARE)
 #ifndef GL_SAMPLER_BINDING
 #define GL_SAMPLER_BINDING 0x8919
 #endif
+#ifndef GL_TEXTURE_SWIZZLE_R
+#define GL_TEXTURE_SWIZZLE_R 0x8E42
+#define GL_TEXTURE_SWIZZLE_B 0x8E44
+#endif
+
+// Image des cœurs Vulkan partagée avec OpenGL (GL_EXT_memory_object_win32, GL_EXT_semaphore_win32) :
+// constantes et fonctions, lues seulement si le pilote les propose.
+namespace {
+constexpr GLenum kDedicatedMemoryObject = 0x9581, kNumDeviceUuids = 0x9596, kDeviceUuid = 0x9597;
+constexpr GLenum kHandleOpaqueWin32 = 0x9587, kLayoutShaderReadOnly = 0x9591;
+typedef void(APIENTRY* PfnCreateMemoryObjects)(GLsizei, GLuint*);
+typedef void(APIENTRY* PfnDeleteMemoryObjects)(GLsizei, const GLuint*);
+typedef void(APIENTRY* PfnMemoryObjectParameteriv)(GLuint, GLenum, const GLint*);
+typedef void(APIENTRY* PfnImportMemoryWin32Handle)(GLuint, GLuint64, GLenum, void*);
+typedef void(APIENTRY* PfnTexStorageMem2D)(GLenum, GLsizei, GLenum, GLsizei, GLsizei, GLuint, GLuint64);
+typedef void(APIENTRY* PfnGenSemaphores)(GLsizei, GLuint*);
+typedef void(APIENTRY* PfnDeleteSemaphores)(GLsizei, const GLuint*);
+typedef void(APIENTRY* PfnImportSemaphoreWin32Handle)(GLuint, GLenum, void*);
+typedef void(APIENTRY* PfnWaitSemaphore)(GLuint, GLuint, const GLuint*, GLuint, const GLuint*, const GLenum*);
+typedef void(APIENTRY* PfnSignalSemaphore)(GLuint, GLuint, const GLuint*, GLuint, const GLuint*, const GLenum*);
+typedef void(APIENTRY* PfnGetUnsignedBytei)(GLenum, GLuint, GLubyte*);
+PfnCreateMemoryObjects glCreateMemoryObjects = nullptr;
+PfnDeleteMemoryObjects glDeleteMemoryObjects = nullptr;
+PfnMemoryObjectParameteriv glMemoryObjectParameteriv = nullptr;
+PfnImportMemoryWin32Handle glImportMemoryWin32Handle = nullptr;
+PfnTexStorageMem2D glTexStorageMem2D = nullptr;
+PfnGenSemaphores glGenSemaphores = nullptr;
+PfnDeleteSemaphores glDeleteSemaphores = nullptr;
+PfnImportSemaphoreWin32Handle glImportSemaphoreWin32Handle = nullptr;
+PfnWaitSemaphore glWaitSemaphore = nullptr;
+PfnSignalSemaphore glSignalSemaphore = nullptr;
+PfnGetUnsignedBytei glGetUnsignedBytei = nullptr;
+
+template <typename T>
+bool loadGl(T& out, const char* name) {
+  out = reinterpret_cast<T>(SDL_GL_GetProcAddress(name));
+  return out != nullptr;
+}
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // État OpenGL du cœur
@@ -280,7 +321,10 @@ void Video::destroyCoreContext() {
 }
 
 void Video::destroy() {
-  if (g.vulkan) vulkan::destroy();
+  if (g.vulkan) {
+    dropShared();
+    vulkan::destroy();
+  }
   if (context_) SDL_GL_DestroyContext(context_);
   if (window_) SDL_DestroyWindow(window_);
   context_ = nullptr;
@@ -311,10 +355,12 @@ SDL_Surface* Video::captureFrame() {
     p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
     flip = g.hw.bottom_left_origin;
   } else {
-    std::vector<uint8_t> full((size_t)textureWidth_ * textureHeight_ * 4);
-    glBindTexture(GL_TEXTURE_2D, frameTexture_);
-    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, full.data());
-    for (int y = 0; y < h; y++) memcpy(&pixels[(size_t)y * w * 4], &full[(size_t)y * textureWidth_ * 4], (size_t)w * 4);
+    const int texWidth = sharedActive_ ? sharedWidth_ : textureWidth_, texHeight = sharedActive_ ? sharedHeight_ : textureHeight_;
+    std::vector<uint8_t> full((size_t)texWidth * texHeight * 4);
+    glBindTexture(GL_TEXTURE_2D, sharedActive_ ? sharedTexture_ : frameTexture_);
+    // Rouge et bleu échangés dans l'image partagée : la lecture ne tient pas compte de l'inversion.
+    glGetTexImage(GL_TEXTURE_2D, 0, sharedActive_ && sharedBgra_ ? GL_BGRA : GL_RGBA, GL_UNSIGNED_BYTE, full.data());
+    for (int y = 0; y < h; y++) memcpy(&pixels[(size_t)y * w * 4], &full[(size_t)y * texWidth * 4], (size_t)w * 4);
     flip = false;
   }
   if (flip) {
@@ -709,7 +755,14 @@ void Video::onFrame(const void* data, unsigned width, unsigned height, size_t pi
   frameHeight_ = height;
   hasFrame_ = true;
   if (data == RETRO_HW_FRAME_BUFFER_VALID && g.vulkan) {
-    // Cœur Vulkan : image recopiée, puis affichée comme celle d'un cœur logiciel.
+    // Cœur Vulkan : image partagée avec OpenGL si possible (sans passer par le processeur), sinon
+    // recopiée en mémoire ; affichée comme celle d'un cœur logiciel.
+    if (!interopTried_) setupInterop();
+    if (interopOk_ && showShared(width, height)) {
+      frameIsHw_ = false;
+      return;
+    }
+    sharedActive_ = false;
     const uint8_t* pixels;
     size_t vkPitch;
     bool bgra;
@@ -759,6 +812,127 @@ void Video::onFrame(const void* data, unsigned width, unsigned height, size_t pi
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)width, (GLsizei)height, format, type, data);
   }
   glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Image des cœurs Vulkan partagée avec OpenGL
+// ---------------------------------------------------------------------------
+
+/** Partage possible : extensions du pilote OpenGL et même carte graphique que Vulkan. */
+void Video::setupInterop() {
+  interopTried_ = true;
+  const bool extensions = SDL_GL_ExtensionSupported("GL_EXT_memory_object") && SDL_GL_ExtensionSupported("GL_EXT_memory_object_win32") &&
+                          SDL_GL_ExtensionSupported("GL_EXT_semaphore") && SDL_GL_ExtensionSupported("GL_EXT_semaphore_win32");
+  const bool functions = extensions && loadGl(glCreateMemoryObjects, "glCreateMemoryObjectsEXT") &&
+                         loadGl(glDeleteMemoryObjects, "glDeleteMemoryObjectsEXT") &&
+                         loadGl(glMemoryObjectParameteriv, "glMemoryObjectParameterivEXT") &&
+                         loadGl(glImportMemoryWin32Handle, "glImportMemoryWin32HandleEXT") && loadGl(glTexStorageMem2D, "glTexStorageMem2DEXT") &&
+                         loadGl(glGenSemaphores, "glGenSemaphoresEXT") && loadGl(glDeleteSemaphores, "glDeleteSemaphoresEXT") &&
+                         loadGl(glImportSemaphoreWin32Handle, "glImportSemaphoreWin32HandleEXT") &&
+                         loadGl(glWaitSemaphore, "glWaitSemaphoreEXT") && loadGl(glSignalSemaphore, "glSignalSemaphoreEXT") &&
+                         loadGl(glGetUnsignedBytei, "glGetUnsignedBytei_vEXT");
+  bool sameGpu = false;
+  if (functions) {
+    GLint count = 0;
+    glGetIntegerv(kNumDeviceUuids, &count);
+    for (GLint i = 0; i < count && !sameGpu; i++) {
+      GLubyte uuid[16] = {};
+      glGetUnsignedBytei(kDeviceUuid, (GLuint)i, uuid);
+      sameGpu = vulkan::interopSupported(uuid);
+    }
+  }
+  interopOk_ = sameGpu;
+  logf("Vulkan : image %s", interopOk_ ? "partagée avec OpenGL (sans recopie)"
+                           : !extensions ? "recopiée (pilote OpenGL sans partage avec Vulkan)"
+                           : !functions  ? "recopiée (fonctions de partage absentes)"
+                                         : "recopiée (Vulkan et OpenGL sur deux cartes, ou extensions Vulkan absentes)");
+}
+
+/** Image précédente rendue à Vulkan (OpenGL a fini de la lire). */
+void Video::releaseShared() {
+  if (!releaseOwed_) return;
+  const GLenum layout = kLayoutShaderReadOnly;
+  glSignalSemaphore(releasedSemaphore_, 0, nullptr, 1, &sharedTexture_, &layout);
+  glFlush();
+  vulkan::sharedReleased();
+  releaseOwed_ = false;
+}
+
+void Video::dropShared() {
+  if (sharedTexture_) glDeleteTextures(1, &sharedTexture_);
+  if (sharedMemory_ && glDeleteMemoryObjects) glDeleteMemoryObjects(1, &sharedMemory_);
+  if (readySemaphore_ && glDeleteSemaphores) glDeleteSemaphores(1, &readySemaphore_);
+  if (releasedSemaphore_ && glDeleteSemaphores) glDeleteSemaphores(1, &releasedSemaphore_);
+  sharedTexture_ = sharedMemory_ = readySemaphore_ = releasedSemaphore_ = 0;
+  sharedActive_ = releaseOwed_ = false;
+  sharedWidth_ = sharedHeight_ = 0;
+}
+
+/** Image du cœur copiée par Vulkan dans l'image partagée, puis attendue par OpenGL ; faux : recopie. */
+bool Video::showShared(unsigned width, unsigned height) {
+  releaseShared();
+  vulkan::SharedFrame frame;
+  auto fail = [&](const char* why) {
+    for (void* handle : {frame.memory, frame.ready, frame.released}) {
+      if (handle) CloseHandle(handle);
+    }
+    logf("Vulkan : partage avec OpenGL arrêté (%s), image recopiée", why);
+    dropShared();
+    vulkan::stopSharing();
+    interopOk_ = false;
+    return false;
+  };
+  if (!vulkan::shareFrame(width, height, frame)) return fail("copie impossible");
+  while (glGetError() != GL_NO_ERROR) {
+  }
+  if (frame.ready) {
+    glGenSemaphores(1, &readySemaphore_);
+    glGenSemaphores(1, &releasedSemaphore_);
+    glImportSemaphoreWin32Handle(readySemaphore_, kHandleOpaqueWin32, frame.ready);
+    glImportSemaphoreWin32Handle(releasedSemaphore_, kHandleOpaqueWin32, frame.released);
+    // Pilote OpenGL à fil séparé (NVIDIA) : import réellement fait avant de fermer les handles.
+    glFinish();
+    CloseHandle(frame.ready);
+    CloseHandle(frame.released);
+    frame.ready = frame.released = nullptr;
+  }
+  if (frame.memory) {
+    // Nouvelle image (première, ou taille changée) : mémoire importée, texture créée dessus.
+    if (sharedTexture_) glDeleteTextures(1, &sharedTexture_);
+    if (sharedMemory_) glDeleteMemoryObjects(1, &sharedMemory_);
+    glCreateMemoryObjects(1, &sharedMemory_);
+    const GLint dedicated = GL_TRUE;
+    glMemoryObjectParameteriv(sharedMemory_, kDedicatedMemoryObject, &dedicated);
+    glImportMemoryWin32Handle(sharedMemory_, frame.memorySize, kHandleOpaqueWin32, frame.memory);
+    glFinish();
+    CloseHandle(frame.memory);
+    frame.memory = nullptr;
+    glGenTextures(1, &sharedTexture_);
+    glBindTexture(GL_TEXTURE_2D, sharedTexture_);
+    glTexStorageMem2D(GL_TEXTURE_2D, 1, GL_RGBA8, (GLsizei)frame.width, (GLsizei)frame.height, sharedMemory_, 0);
+    if (const GLenum error = glGetError(); error != GL_NO_ERROR) {
+      logf("Vulkan : image partagée %ux%u refusée par OpenGL (0x%x)", frame.width, frame.height, (unsigned)error);
+      return fail("import refusé par OpenGL");
+    }
+    sharedWidth_ = (int)frame.width;
+    sharedHeight_ = (int)frame.height;
+    sharedBgra_ = !frame.bgra;  // forcé à l'appel suivant
+  }
+  if (frame.bgra != sharedBgra_) {
+    glBindTexture(GL_TEXTURE_2D, sharedTexture_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, frame.bgra ? GL_BLUE : GL_RED);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, frame.bgra ? GL_RED : GL_BLUE);
+    sharedBgra_ = frame.bgra;
+  }
+  const GLenum layout = kLayoutShaderReadOnly;
+  glWaitSemaphore(readySemaphore_, 0, nullptr, 1, &sharedTexture_, &layout);
+  if (const GLenum error = glGetError(); error != GL_NO_ERROR) {
+    logf("Vulkan : erreur OpenGL 0x%x pendant le partage", (unsigned)error);
+    return fail("import refusé par OpenGL");
+  }
+  releaseOwed_ = true;
+  sharedActive_ = true;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -842,11 +1016,11 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
       vTop = bottomLeft ? v1 : 0.0f;
       vBottom = bottomLeft ? 0.0f : v1;
     } else {
-      glBindTexture(GL_TEXTURE_2D, frameTexture_);
-      texW = (float)textureWidth_;
-      texH = (float)textureHeight_;
-      u1 = (float)frameWidth_ / textureWidth_;
-      v1 = (float)frameHeight_ / textureHeight_;
+      glBindTexture(GL_TEXTURE_2D, sharedActive_ ? sharedTexture_ : frameTexture_);
+      texW = (float)(sharedActive_ ? sharedWidth_ : textureWidth_);
+      texH = (float)(sharedActive_ ? sharedHeight_ : textureHeight_);
+      u1 = (float)frameWidth_ / texW;
+      v1 = (float)frameHeight_ / texH;
       vTop = 0.0f;
       vBottom = v1;
     }

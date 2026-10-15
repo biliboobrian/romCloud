@@ -46,6 +46,8 @@ public:
 
     PassData getPassData(unsigned int layer) override;
 
+    bool setExternalImage(void* image, unsigned width, unsigned height, bool swapRedBlue) override;
+
 private:
     void initializeTextures(unsigned int width, unsigned int height);
     void applyGLSwizzle(int r, int g, int b, int a);

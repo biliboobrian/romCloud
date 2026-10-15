@@ -1,12 +1,15 @@
 #include "vulkan.h"
 
 #include <dlfcn.h>
+#include <android/hardware_buffer.h>
 
 #include <algorithm>
 #include <cstring>
 #include <mutex>
 #include <vector>
 
+// AHardwareBuffer partagés avec OpenGL ES : vulkan_android.h.
+#define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
 #include "libretro_vulkan.h"
 #include "log.h"
@@ -30,7 +33,8 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = nullptr;
   X(vkQueueSubmit) X(vkCreateFence) X(vkDestroyFence) X(vkWaitForFences) X(vkResetFences) X(vkCreateBuffer) \
   X(vkDestroyBuffer) X(vkGetBufferMemoryRequirements) X(vkAllocateMemory) X(vkFreeMemory)                   \
   X(vkBindBufferMemory) X(vkMapMemory) X(vkUnmapMemory) X(vkInvalidateMappedMemoryRanges) X(vkCreateImage)  \
-  X(vkDestroyImage) X(vkGetImageMemoryRequirements) X(vkBindImageMemory)
+  X(vkDestroyImage) X(vkGetImageMemoryRequirements) X(vkBindImageMemory) X(vkCmdCopyImage)                 \
+  X(vkEnumerateDeviceExtensionProperties) X(vkGetAndroidHardwareBufferPropertiesANDROID)
 #define DECLARE(name) PFN_##name name = nullptr;
 VK_FUNCTIONS(DECLARE)
 #undef DECLARE
@@ -73,6 +77,12 @@ VkFormat blitFormat = VK_FORMAT_UNDEFINED;
 VkFormat unreadable = VK_FORMAT_UNDEFINED;  // format déjà signalé illisible (journal une fois)
 std::vector<uint8_t> frameCopy;  // dernière image, en mémoire ordinaire (donnée à OpenGL ES)
 
+// Partage avec OpenGL ES (sans recopie par le processeur) : extensions du périphérique.
+const char* const kInteropExtensions[] = {VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
+                                          VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME};
+constexpr int kSharedSlots = 2;
+bool interopDevice = false;
+
 bool loadLoader() {
   if (vkGetInstanceProcAddr) return true;
   if (!loader) loader = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
@@ -109,6 +119,8 @@ bool hasInstanceExtension(const char* name) {
   return std::any_of(list.begin(), list.end(), [&](const VkExtensionProperties& e) { return strcmp(e.extensionName, name) == 0; });
 }
 
+#include "vulkan_share.inc"
+
 /** Instance créée par le cœur (create_instance) avec les mêmes réglages que celle du moteur. */
 VkInstance createInstanceWrapper(void*, const VkInstanceCreateInfo* info) {
   VkInstance created = VK_NULL_HANDLE;
@@ -116,8 +128,24 @@ VkInstance createInstanceWrapper(void*, const VkInstanceCreateInfo* info) {
   return created;
 }
 
+/** Périphérique créé par le cœur (create_device2) : extensions de partage avec OpenGL ES ajoutées si possible. */
 VkDevice createDeviceWrapper(VkPhysicalDevice physical, void*, const VkDeviceCreateInfo* info) {
   VkDevice created = VK_NULL_HANDLE;
+  std::vector<const char*> extensions(info->ppEnabledExtensionNames, info->ppEnabledExtensionNames + info->enabledExtensionCount);
+  const std::vector<const char*> interop = interopExtensions(physical);
+  for (const char* name : interop) {
+    if (std::none_of(extensions.begin(), extensions.end(), [&](const char* e) { return strcmp(e, name) == 0; })) extensions.push_back(name);
+  }
+  if (!interop.empty()) {
+    VkDeviceCreateInfo extended = *info;
+    extended.enabledExtensionCount = (uint32_t)extensions.size();
+    extended.ppEnabledExtensionNames = extensions.data();
+    if (vkCreateDevice(physical, &extended, nullptr, &created) == VK_SUCCESS) {
+      interopDevice = true;
+      return created;
+    }
+  }
+  interopDevice = false;
   if (vkCreateDevice(physical, info, nullptr, &created) != VK_SUCCESS) return VK_NULL_HANDLE;
   return created;
 }
@@ -194,7 +222,14 @@ bool createDefaultDevice() {
   info.queueCreateInfoCount = 1;
   info.pQueueCreateInfos = &queueInfo;
   info.pEnabledFeatures = &features;
-  if (vkCreateDevice(gpu, &info, nullptr, &device) != VK_SUCCESS) return false;
+  const std::vector<const char*> interop = interopExtensions(gpu);
+  info.enabledExtensionCount = (uint32_t)interop.size();
+  info.ppEnabledExtensionNames = interop.data();
+  interopDevice = !interop.empty() && vkCreateDevice(gpu, &info, nullptr, &device) == VK_SUCCESS;
+  if (!interopDevice) {
+    info.enabledExtensionCount = 0;
+    if (vkCreateDevice(gpu, &info, nullptr, &device) != VK_SUCCESS) return false;
+  }
   family = index;
   vkGetDeviceQueue(device, family, 0, &queue);
   return true;
@@ -210,8 +245,13 @@ bool createCoreDevice() {
     // Carte proposée refusée : le cœur choisit lui-même.
     if (!ok) ok = negotiation->create_device2(&context, instance, VK_NULL_HANDLE, VK_NULL_HANDLE, vkGetInstanceProcAddr, createDeviceWrapper, nullptr);
   } else if (negotiation->create_device) {
+    // Extensions de partage avec OpenGL ES demandées au cœur (sinon : sans elles).
     VkPhysicalDeviceFeatures none{};
-    ok = negotiation->create_device(&context, instance, gpu, VK_NULL_HANDLE, vkGetInstanceProcAddr, nullptr, 0, nullptr, 0, &none);
+    std::vector<const char*> interop = interopExtensions(gpu);
+    ok = !interop.empty() && negotiation->create_device(&context, instance, gpu, VK_NULL_HANDLE, vkGetInstanceProcAddr, interop.data(),
+                                                         (unsigned)interop.size(), nullptr, 0, &none);
+    interopDevice = ok;
+    if (!ok) ok = negotiation->create_device(&context, instance, gpu, VK_NULL_HANDLE, vkGetInstanceProcAddr, nullptr, 0, nullptr, 0, &none);
   }
   if (!ok || !context.device) return false;
   coreDevice = true;
@@ -536,9 +576,115 @@ bool readFrame(unsigned width, unsigned height, const uint8_t*& pixels, size_t& 
   return true;
 }
 
+bool interopSupported() { return device && interopDevice && vkGetAndroidHardwareBufferPropertiesANDROID; }
+
+AHardwareBuffer* sharedBuffer(int slot) { return slot >= 0 && slot < kSharedSlots ? slots[slot].buffer : nullptr; }
+
+bool shareFrame(unsigned width, unsigned height, int slotIndex, SharedFrame& out) {
+  out = {};
+  if (!interopSupported() || !hasImage || !width || !height || slotIndex < 0 || slotIndex >= kSharedSlots) return false;
+  if (!ensureSlots(width, height)) return false;
+  SharedSlot& slot = slots[slotIndex];
+  const VkImage source = image.create_info.image;
+  const VkFormat format = image.create_info.format;
+  const VkImageLayout layout = image.image_layout;
+  // 32 bits RVBA ou BVRA : octets copiés tels quels ([bgra] : rouge et bleu échangés à l'affichage) ;
+  // autres formats : convertis par une copie à la même taille (blit).
+  const bool raw = isBgra8(format) || format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_R8G8B8A8_SRGB;
+  if (!raw) {
+    VkFormatProperties props;
+    vkGetPhysicalDeviceFormatProperties(gpu, format, &props);
+    if (!(props.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT)) return false;
+  }
+  VkImageSubresourceRange range = image.create_info.subresourceRange;
+  range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  range.levelCount = 1;
+  range.layerCount = 1;
+  const VkImageSubresourceLayers layers{VK_IMAGE_ASPECT_COLOR_BIT, range.baseMipLevel, range.baseArrayLayer, 1};
+  const VkImageSubresourceRange whole{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+  const bool transfer = imageFamily != VK_QUEUE_FAMILY_IGNORED && imageFamily != family && !waits.empty();
+  const uint32_t srcFamily = transfer ? imageFamily : VK_QUEUE_FAMILY_IGNORED, dstFamily = transfer ? family : VK_QUEUE_FAMILY_IGNORED;
+  const VkImageLayout restore = layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_IMAGE_LAYOUT_GENERAL : layout;
+
+  std::unique_lock<std::mutex> lock(queueLock);
+  vkResetCommandBuffer(cmd, 0);
+  VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+  begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  vkBeginCommandBuffer(cmd, &begin);
+  barrier(source, range, layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, srcFamily, dstFamily);
+  // Tampon repris à OpenGL ES (contenu remplacé : ancien état ignoré).
+  barrier(slot.image, whole, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
+          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, slot.used ? VK_QUEUE_FAMILY_FOREIGN_EXT : VK_QUEUE_FAMILY_IGNORED,
+          slot.used ? family : VK_QUEUE_FAMILY_IGNORED);
+  if (raw) {
+    VkImageCopy copy{};
+    copy.srcSubresource = layers;
+    copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.extent = {width, height, 1};
+    vkCmdCopyImage(cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+  } else {
+    VkImageBlit blit{};
+    blit.srcSubresource = layers;
+    blit.srcOffsets[1] = {(int32_t)width, (int32_t)height, 1};
+    blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.dstOffsets[1] = {(int32_t)width, (int32_t)height, 1};
+    vkCmdBlitImage(cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+                   VK_FILTER_NEAREST);
+  }
+  barrier(source, range, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, restore, VK_ACCESS_TRANSFER_READ_BIT,
+          VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+  // Tampon donné à OpenGL ES (file étrangère).
+  barrier(slot.image, whole, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_TRANSFER_WRITE_BIT, 0,
+          VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, family, VK_QUEUE_FAMILY_FOREIGN_EXT);
+  vkEndCommandBuffer(cmd);
+
+  std::vector<VkCommandBuffer> commands = coreCommands;
+  commands.push_back(cmd);
+  std::vector<VkPipelineStageFlags> stages(waits.size(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+  VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+  submit.waitSemaphoreCount = (uint32_t)waits.size();
+  submit.pWaitSemaphores = waits.data();
+  submit.pWaitDstStageMask = stages.data();
+  submit.commandBufferCount = (uint32_t)commands.size();
+  submit.pCommandBuffers = commands.data();
+  submit.signalSemaphoreCount = signal ? 1 : 0;
+  submit.pSignalSemaphores = &signal;
+  const VkResult result = vkQueueSubmit(queue, 1, &submit, fence);
+  lock.unlock();
+  waits.clear();
+  coreCommands.clear();
+  signal = VK_NULL_HANDLE;
+  imageFamily = VK_QUEUE_FAMILY_IGNORED;
+  if (result != VK_SUCCESS) {
+    logf("Vulkan : envoi de la copie partagée refusé (%d)", (int)result);
+    return false;
+  }
+  // Copie terminée avant qu'OpenGL ES lise le tampon (pas de synchronisation entre les deux API ici).
+  vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+  vkResetFences(device, 1, &fence);
+  slot.used = true;
+  out.buffer = slot.buffer;
+  out.width = width;
+  out.height = height;
+  out.generation = sharedGeneration;
+  out.bgra = isBgra8(format);
+  return true;
+}
+
+void stopSharing() {
+  if (!device) return;
+  vkDeviceWaitIdle(device);
+  freeSlots();
+  interopDevice = false;
+}
+
 void destroy() {
   if (device) {
     vkDeviceWaitIdle(device);
+    freeSlots();
     freeStaging();
     freeBlit();
     if (fence) vkDestroyFence(device, fence, nullptr);

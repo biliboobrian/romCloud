@@ -18,7 +18,9 @@
 #ifndef LIBRETRODROID_VIDEO_H
 #define LIBRETRODROID_VIDEO_H
 
-#include <GLES2/gl2.h>
+#include <GLES3/gl3.h>
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <optional>
 #include <array>
 
@@ -96,6 +98,10 @@ private:
 
     void initializeRenderer(RenderingOptions renderingOptions);
 
+    // RomCloud : image des cœurs Vulkan partagée par deux AHardwareBuffer (EGLImage), sans recopie.
+    bool showShared(unsigned width, unsigned height);
+    void dropShared();
+
 private:
     ShaderManager::Config requestedShaderConfig = ShaderManager::Config {
         ShaderManager::Type::SHADER_DEFAULT
@@ -112,6 +118,20 @@ private:
     VideoLayout videoLayout;
 
     Renderer* renderer;
+
+    // Image partagée : EGLImage de chaque tampon, barrière après l'affichage de chacun (Vulkan ne le
+    // réécrit qu'une fois la lecture finie), tampon rempli ensuite, tampon affiché.
+    bool shareTried = false;
+    bool shareOk = false;
+    EGLDisplay shareDisplay = EGL_NO_DISPLAY;
+    EGLImageKHR shareImages[2] = {EGL_NO_IMAGE_KHR, EGL_NO_IMAGE_KHR};
+    GLsync shareFences[2] = {nullptr, nullptr};
+    unsigned shareGeneration = 0;
+    int nextSlot = 0;
+    int shownSlot = -1;
+
+public:
+    ~Video() { dropShared(); }
 };
 
 }
