@@ -2,8 +2,9 @@
 // catalogue les attendent, avant leur lancement : clés de la Switch pour Eden (et eden-cli) et
 // Ryujinx (mode portable reconnu à son dossier « user » ou « portable » à côté de l'exécutable).
 // eden-cli lit sa propre configuration (sdl2-config.ini), que l'interface d'Eden ne modifie pas :
-// les manettes d'eden.exe (section [Controls] de qt-config.ini) y sont recopiées avant le lancement
-// (l'option -c d'eden-cli, qui chargerait un autre fichier, le fait planter dans Eden v0.2.1).
+// les réglages d'eden.exe (sections de qt-config.ini : manettes, système avec région et langue,
+// rendu, son…, sauf [UI] propre à l'interface) y sont recopiés avant le lancement (l'option -c
+// d'eden-cli, qui chargerait un autre fichier, le fait planter dans Eden v0.2.1).
 use crate::{paths, settings};
 use std::path::{Path, PathBuf};
 
@@ -59,32 +60,52 @@ fn ini_section(text: &str, name: &str) -> Option<(usize, usize)> {
     start.map(|s| (s, text.len()))
 }
 
-/// [sdl] avec la section [Controls] de [qt] à la place de la sienne (ajoutée si absente).
-fn with_qt_controls(qt: &str, sdl: &str) -> Option<String> {
-    let (qs, qe) = ini_section(qt, "Controls")?;
-    let mut controls = qt[qs..qe].to_string();
-    if !controls.ends_with('\n') {
-        controls.push_str(if qt.contains("\r\n") { "\r\n" } else { "\n" });
+/// Noms des sections d'un fichier INI, dans l'ordre.
+fn ini_sections(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with('[') && l.ends_with(']'))
+        .map(|l| l[1..l.len() - 1].to_string())
+        .collect()
+}
+
+/// Sections de qt-config.ini propres à l'interface d'Eden, non recopiées pour eden-cli.
+const QT_ONLY_SECTIONS: &[&str] = &["UI"];
+
+/// [sdl] avec chaque section de [qt] (sauf celles de l'interface) à la place de la sienne (ajoutée
+/// si absente) ; sections propres à [sdl] gardées ; rien si [qt] n'a aucune section à recopier.
+fn with_qt_settings(qt: &str, sdl: &str) -> Option<String> {
+    let eol = if qt.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut out = sdl.to_string();
+    let mut copied = false;
+    for name in ini_sections(qt).iter().filter(|n| !QT_ONLY_SECTIONS.contains(&n.as_str())) {
+        let Some((qs, qe)) = ini_section(qt, name) else { continue };
+        let mut section = qt[qs..qe].to_string();
+        if !section.ends_with('\n') {
+            section.push_str(eol);
+        }
+        out = match ini_section(&out, name) {
+            Some((ss, se)) => format!("{}{}{}", &out[..ss], section, &out[se..]),
+            None if out.is_empty() || out.ends_with('\n') => format!("{out}{section}"),
+            None => format!("{out}{eol}{section}"),
+        };
+        copied = true;
     }
-    Some(match ini_section(sdl, "Controls") {
-        Some((ss, se)) => format!("{}{}{}", &sdl[..ss], controls, &sdl[se..]),
-        None if sdl.is_empty() || sdl.ends_with('\n') => format!("{sdl}{controls}"),
-        None => format!("{sdl}\n{controls}"),
-    })
+    copied.then_some(out)
 }
 
 /**
- * eden-cli : manettes d'eden.exe (section [Controls] de qt-config.ini) recopiées dans sa propre
+ * eden-cli : réglages d'eden.exe (sections de qt-config.ini sauf [UI]) recopiés dans sa propre
  * configuration (sdl2-config.ini, dont l'original est gardé une fois en .romcloud.bak) ; renvoie
  * vrai si le fichier a changé.
  */
-fn sync_eden_cli_controls(exe: &Path, appdata: &Path) -> bool {
+fn sync_eden_cli_settings(exe: &Path, appdata: &Path) -> bool {
     let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     let config = eden_dir(&exe_dir, appdata).join("config");
     let Ok(qt) = std::fs::read_to_string(config.join("qt-config.ini")) else { return false };
     let sdl_path = config.join("sdl2-config.ini");
     let sdl = std::fs::read_to_string(&sdl_path).unwrap_or_default();
-    let Some(updated) = with_qt_controls(&qt, &sdl) else { return false };
+    let Some(updated) = with_qt_settings(&qt, &sdl) else { return false };
     if updated == sdl {
         return false;
     }
@@ -106,10 +127,10 @@ pub fn prepare(emulator: &str, exe: &str, args: Vec<String>) -> Vec<String> {
             eprintln!("[emulator_files] {} -> {}", paths::file_name(&from), to.display());
         }
     }
-    // Eden lancé avec eden-cli (jeux) : manettes d'eden.exe recopiées.
+    // Eden lancé avec eden-cli (jeux) : réglages d'eden.exe recopiés.
     let cli = emulator == "eden" && paths::file_name(Path::new(exe)).to_lowercase().starts_with("eden-cli");
-    if cli && sync_eden_cli_controls(Path::new(exe), &appdata) {
-        eprintln!("[emulator_files] manettes d'eden.exe -> sdl2-config.ini");
+    if cli && sync_eden_cli_settings(Path::new(exe), &appdata) {
+        eprintln!("[emulator_files] réglages d'eden.exe -> sdl2-config.ini");
     }
     args
 }
@@ -159,22 +180,26 @@ mod tests {
     fn eden_cli_installe() {
         let exe = PathBuf::from(std::env::var("ROMCLOUD_EDEN_CLI").unwrap());
         let appdata = PathBuf::from(std::env::var("APPDATA").unwrap());
-        println!("sdl2-config.ini modifié : {}", sync_eden_cli_controls(&exe, &appdata));
+        println!("sdl2-config.ini modifié : {}", sync_eden_cli_settings(&exe, &appdata));
     }
 
     #[test]
-    fn manettes_d_eden_recopiees_pour_eden_cli() {
-        let qt = "[UI]\r\ntheme=dark\r\n[Controls]\r\nplayer_0_button_a=\"engine:sdl,button:1\"\r\n[Core]\r\nuse_multi_core=true\r\n";
-        let sdl = "[Controls]\r\nplayer_0_button_a=\"engine:keyboard,code:4\"\r\n[Renderer]\r\nbackend=1\r\n";
-        let updated = with_qt_controls(qt, sdl).unwrap();
-        assert_eq!(updated, "[Controls]\r\nplayer_0_button_a=\"engine:sdl,button:1\"\r\n[Renderer]\r\nbackend=1\r\n");
-        assert_eq!(with_qt_controls(qt, &updated).unwrap(), updated); // déjà à jour
-        // Section absente, ou en fin de fichier.
+    fn reglages_d_eden_recopies_pour_eden_cli() {
+        let qt = "[UI]\r\ntheme=dark\r\n[Controls]\r\nplayer_0_button_a=\"engine:sdl,button:1\"\r\n[System]\r\nregion_index=2\r\nlanguage_index=2\r\n";
+        let sdl = "[Controls]\r\nplayer_0_button_a=\"engine:keyboard,code:4\"\r\n[Renderer]\r\nbackend=1\r\n[System]\r\nregion_index=1\r\nlanguage_index=1\r\n";
+        let updated = with_qt_settings(qt, sdl).unwrap();
         assert_eq!(
-            with_qt_controls(qt, "[Renderer]\nbackend=1").unwrap(),
-            "[Renderer]\nbackend=1\n[Controls]\r\nplayer_0_button_a=\"engine:sdl,button:1\"\r\n"
+            updated,
+            "[Controls]\r\nplayer_0_button_a=\"engine:sdl,button:1\"\r\n[Renderer]\r\nbackend=1\r\n[System]\r\nregion_index=2\r\nlanguage_index=2\r\n"
         );
-        assert!(with_qt_controls("[UI]\n", sdl).is_none());
+        assert!(!updated.contains("[UI]")); // section de l'interface non recopiée
+        assert_eq!(with_qt_settings(qt, &updated).unwrap(), updated); // déjà à jour
+        // Sections absentes, ou fichier sans fin de ligne.
+        assert_eq!(
+            with_qt_settings(qt, "[Renderer]\nbackend=1").unwrap(),
+            "[Renderer]\nbackend=1\r\n[Controls]\r\nplayer_0_button_a=\"engine:sdl,button:1\"\r\n[System]\r\nregion_index=2\r\nlanguage_index=2\r\n"
+        );
+        assert!(with_qt_settings("[UI]\n", sdl).is_none());
 
         // Fichiers réels : sauvegarde de l'original, une seule fois.
         let root = std::env::temp_dir().join(format!("romcloud-edencli-{}", std::process::id()));
@@ -183,10 +208,11 @@ mod tests {
         std::fs::write(config.join("qt-config.ini"), qt).unwrap();
         std::fs::write(config.join("sdl2-config.ini"), sdl).unwrap();
         let exe = root.join("Eden").join("eden-cli.exe");
-        assert!(sync_eden_cli_controls(&exe, &root.join("appdata")));
-        assert!(!sync_eden_cli_controls(&exe, &root.join("appdata")));
+        assert!(sync_eden_cli_settings(&exe, &root.join("appdata")));
+        assert!(!sync_eden_cli_settings(&exe, &root.join("appdata")));
         assert_eq!(std::fs::read_to_string(config.join("sdl2-config.ini.romcloud.bak")).unwrap(), sdl);
         assert!(std::fs::read_to_string(config.join("sdl2-config.ini")).unwrap().contains("engine:sdl"));
+        assert!(std::fs::read_to_string(config.join("sdl2-config.ini")).unwrap().contains("region_index=2"));
         let _ = std::fs::remove_dir_all(&root);
     }
 }
