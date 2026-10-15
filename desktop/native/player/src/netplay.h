@@ -7,7 +7,8 @@
 //    UTF-8 modifié) ; l'hôte accepte ou refuse (réponse JSON).
 //  - Partie : état de l'hôte copié chez l'invité, puis messages type (1 octet), longueur (4 octets,
 //    gros-boutiste), contenu : touches de chaque image (pour l'image f + délai), empreinte de l'état
-//    toutes les 120 images, demande d'état (écart constaté), fin.
+//    toutes les 120 images, demande d'état (écart constaté), pause (menu ouvert : affichée chez
+//    l'autre joueur, sans limite d'attente), fin.
 //  - Liaison entre consoles (câble, adaptateur sans fil, ad hoc) : chaque appareil émule sa console,
 //    avec son jeu. Paquets du cœur (interface netpacket, gpSP) transmis tels quels ; ou connexion
 //    ouverte par le cœur lui-même (Gambatte, PPSSPP : options imposées au lancement), la demande
@@ -98,6 +99,10 @@ class Netplay {
   bool packets() const { return config_.packets; }
   /** Jeu synchronisé en cours (états échangés entre appareils). */
   bool synchronized() const { return playing() && config_.link.empty(); }
+  /** Pause de ce joueur (menu ouvert), annoncée à l'autre joueur quand elle change. */
+  void setPaused(bool paused);
+  /** Partie synchronisée : l'autre joueur a mis la pause. */
+  bool remotePaused() const { return synchronized() && remotePaused_; }
 
  private:
   enum class State { Off, Starting, Running };
@@ -153,6 +158,7 @@ class Netplay {
   bool host_ = false;
   bool leaving_ = false;   // fin demandée ici (menu « Quitter la partie à plusieurs »)
   bool hostLeft_ = false;  // invité : partie terminée par l'hôte
+  bool localPaused_ = false, remotePaused_ = false;  // pause de ce joueur (annoncée), de l'autre
   unsigned localPort_ = 0, remotePort_ = 1, delay_ = 3;
   std::string partner_;
   uint32_t frame_ = 0, sent_ = 0;

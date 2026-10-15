@@ -605,6 +605,8 @@
     <string name="netplay_unreachable">Could not reach %1$s (%2$s).</string>
     <string name="netplay_ended">Game with %1$s ended: you keep playing alone.</string>
     <string name="netplay_waiting">Waiting for %1$s…</string>
+    <string name="netplay_paused_title">Paused</string>
+    <string name="netplay_remote_paused">%1$s paused the game</string>
     <string name="netplay_playing_with">Together with %1$s</string>
     <string name="netplay_request_title">Play together?</string>
     <string name="netplay_request_text">%1$s wants to join your game as player 2.</string>

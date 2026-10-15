@@ -596,6 +596,8 @@
     <string name="netplay_unreachable">Impossible de joindre %1$s (%2$s).</string>
     <string name="netplay_ended">Partie avec %1$s terminée : vous continuez seul.</string>
     <string name="netplay_waiting">En attente de %1$s…</string>
+    <string name="netplay_paused_title">Pause</string>
+    <string name="netplay_remote_paused">%1$s a mis le jeu en pause</string>
     <string name="netplay_playing_with">À deux avec %1$s</string>
     <string name="netplay_request_title">Jouer à plusieurs ?</string>
     <string name="netplay_request_text">%1$s veut rejoindre votre partie en joueur 2.</string>

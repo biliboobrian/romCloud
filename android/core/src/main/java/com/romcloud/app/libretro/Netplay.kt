@@ -8,8 +8,11 @@ package com.romcloud.app.libretro
 object Netplay {
     enum class State { OFF, STARTING, RUNNING, ENDED }
 
-    /** [waiting] : en attente des touches de l'autre joueur ; [desyncs] : états différents constatés (recalés). */
-    data class Status(val state: State, val waiting: Boolean, val desyncs: Int, val frame: Int)
+    /**
+     * [waiting] : en attente des touches de l'autre joueur ; [desyncs] : états différents constatés
+     * (recalés) ; [remotePaused] : l'autre joueur a mis la pause.
+     */
+    data class Status(val state: State, val waiting: Boolean, val desyncs: Int, val frame: Int, val remotePaused: Boolean = false)
 
     private val loaded get() = CoreShim.load()
 
@@ -27,14 +30,23 @@ object Netplay {
         if (loaded) nativeStop()
     }
 
+    /**
+     * Pause de ce joueur (menu ouvert, application en arrière-plan), annoncée à l'autre joueur ; à
+     * demander avant de suspendre l'émulation.
+     */
+    fun setPaused(paused: Boolean) {
+        if (loaded) nativeSetPaused(paused)
+    }
+
     fun status(): Status {
         if (!loaded) return Status(State.OFF, false, 0, 0)
-        val values = IntArray(4)
+        val values = IntArray(5)
         nativeStatus(values)
-        return Status(State.entries.getOrElse(values[0]) { State.OFF }, values[1] != 0, values[2], values[3])
+        return Status(State.entries.getOrElse(values[0]) { State.OFF }, values[1] != 0, values[2], values[3], values[4] != 0)
     }
 
     private external fun nativeStart(fd: Int, host: Boolean, localPort: Int, delay: Int, packets: Boolean)
     private external fun nativeStop()
+    private external fun nativeSetPaused(paused: Boolean)
     private external fun nativeStatus(out: IntArray)
 }

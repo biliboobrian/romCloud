@@ -19,7 +19,7 @@ constexpr int kDiscoveryPort = 47321;
 constexpr int kVersion = 1;
 constexpr uint64_t kTimeoutMs = 120000;
 constexpr int kDelay = 3, kMaxDelay = 15;  // images de délai : réseau local, au plus (Internet)  // autre joueur muet : partie arrêtée (menu ouvert compris)
-enum : uint8_t { kInput = 1, kState = 2, kCheck = 3, kResync = 4, kBye = 5, kPacket = 6 };
+enum : uint8_t { kInput = 1, kState = 2, kCheck = 3, kResync = 4, kBye = 5, kPacket = 6, kPause = 7 };
 
 void put32(uint8_t* p, uint32_t v) {
   p[0] = (uint8_t)(v >> 24);
@@ -570,6 +570,12 @@ void Netplay::begin(SOCKET socket, bool host, int delay) {
   state_ = State::Starting;
   busy_ = true;
   desyncs_ = 0;
+  remotePaused_ = false;
+  // Menu déjà ouvert au départ : pause annoncée dès la connexion.
+  if (localPaused_ && config_.link.empty()) {
+    const uint8_t paused = 1;
+    sendMessage(kPause, &paused, 1);
+  }
   logf("Netplay : %s avec %s (%s, délai %u images)", config_.packets ? "liaison" : "partie", partner_.c_str(), host ? "hôte" : "invité", delay_);
   message(config_.link.empty() ? "netplay_started" : "link_started", partner_);
 }
@@ -589,7 +595,16 @@ void Netplay::end(bool notify) {
   state_ = State::Off;
   inFrame_ = false;
   waiting_ = false;
+  remotePaused_ = false;
   busy_ = !linked().empty();
+}
+
+void Netplay::setPaused(bool paused) {
+  if (paused == localPaused_) return;
+  localPaused_ = paused;
+  if (!synchronized() || socket_ == INVALID_SOCKET) return;
+  const uint8_t value = paused ? 1 : 0;
+  if (!sendMessage(kPause, &value, 1)) end(true);
 }
 
 void Netplay::resetRings() {
@@ -673,6 +688,8 @@ void Netplay::onMessage(uint8_t type, const uint8_t* p, uint32_t size) {
   } else if (type == kPacket && packetsActive_ && g.netpacket.receive) {
     packetsIn_++;
     g.netpacket.receive(p, size, host_ ? 1 : 0);
+  } else if (type == kPause && size >= 1) {
+    remotePaused_ = p[0] != 0;
   } else if (type == kBye) {
     end(true);
   }
@@ -774,7 +791,8 @@ Netplay::Frame Netplay::prepare(const LocalInput& local) {
     return Frame::Solo;
   };
   auto wait = [&] {
-    if (!waiting_) {
+    // Pause de l'autre joueur : attente sans limite.
+    if (!waiting_ || remotePaused_) {
       waiting_ = true;
       waitSince_ = nowMs();
     } else if (nowMs() - waitSince_ > kTimeoutMs) {

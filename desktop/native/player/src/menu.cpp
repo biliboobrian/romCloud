@@ -137,6 +137,8 @@ static const struct {
     // Jeu à plusieurs en réseau local ({name} : l'autre joueur).
     {"netplay_open", "Proposé sur le réseau local : en attente d'un joueur…", "Offered on the local network: waiting for a player…"},
     {"netplay_waiting", "En attente de {name}…", "Waiting for {name}…"},
+    {"netplay_paused_title", "Pause", "Paused"},
+    {"netplay_remote_paused", "{name} a mis le jeu en pause", "{name} paused the game"},
     {"netplay_playing", "À deux avec {name}", "Together with {name}"},
     {"netplay_request", "{name} veut rejoindre votre partie en joueur 2", "{name} wants to join your game as player 2"},
     {"netplay_joined", "{name} a rejoint votre partie", "{name} joined your game"},
