@@ -27,6 +27,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -56,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.romcloud.app.I18n
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.netplay.Lobby
@@ -344,6 +346,7 @@ fun LobbyContent(app: RomCloudApp, onChooseGame: () -> Unit, onMessage: (String)
         }
     }
     val (system, game) = loaded
+    val downloads by app.downloader.states.collectAsStateWithLifecycle()
     var confirmDissolve by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     fun act(block: suspend () -> String?) {
@@ -410,6 +413,17 @@ fun LobbyContent(app: RomCloudApp, onChooseGame: () -> Unit, onMessage: (String)
                         OutlinedButton(onClick = { confirmDissolve = true }) { Text(stringResource(R.string.lobby_dissolve), color = MaterialTheme.colorScheme.error) }
                     } else {
                         OutlinedButton(onClick = { act { app.lobbies.leave(); null } }) { Text(stringResource(R.string.lobby_leave)) }
+                    }
+                }
+                // Jeu du lobby pas encore sur l'appareil : progression de son téléchargement.
+                val running = game?.let { downloads[it.id] } as? DownloadState.Running
+                if (running != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        LinearProgressIndicator(progress = { running.progress }, drawStopIndicator = {}, modifier = Modifier.fillMaxWidth())
+                        Text(
+                            stringResource(R.string.tv_downloading_percent, (running.progress * 100).toInt()),
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }

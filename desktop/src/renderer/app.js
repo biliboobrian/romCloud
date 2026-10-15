@@ -1597,6 +1597,7 @@
               ? `<button class="btn danger" id="lobbyDissolveBtn">${icon('close', 18)} ${esc(t('lobby.dissolve'))}</button>`
               : `<button class="btn" id="lobbyLeaveBtn">${icon('back', 18)} ${esc(t('lobby.leave'))}</button>`}
           </div>
+          ${game ? `<div class="lobby-download hidden" data-lobby-download="${game.id}"><div class="progress update-progress"><div></div></div><p class="muted"></p></div>` : ''}
         </div>
       </div>
       <h3>${esc(t('lobby.members', { n: lobby.members.length }))}</h3>
@@ -1606,6 +1607,7 @@
         <span class="tag${m.status === 'playing' ? ' playing' : ''}">${esc(t(m.status === 'playing' ? 'lobby.statusPlaying' : 'lobby.statusWaiting'))}</span>
       </div>`).join('')}</div>
     </div>`;
+    if (game) patchLobbyDownload(game.id);
     $('#lobbyMode')?.addEventListener('change', (e) => call(rc.lobby.update, lobby.id, { mode: e.target.value }).then(refreshLobbies).catch((err) => toast(err.message, { type: 'error' })));
     $('#lobbyChooseBtn')?.addEventListener('click', () => go({ name: 'systems' }));
     $('#lobbyPlayBtn')?.addEventListener('click', () => playLobby(lobby, system, game));
@@ -1630,6 +1632,19 @@
         },
       ],
     }));
+  }
+
+  /** Page du lobby : progression du téléchargement de son jeu (absent de l'appareil). */
+  function patchLobbyDownload(gameId) {
+    const el = $(`[data-lobby-download="${gameId}"]`);
+    if (!el) return;
+    const d = S.downloads[gameId];
+    const running = d?.status === 'running';
+    el.classList.toggle('hidden', !running);
+    if (!running) return;
+    const pct = Math.round((d.total ? d.bytes / d.total : 0) * 100);
+    $('.progress > div', el).style.width = `${pct}%`;
+    $('p', el).textContent = t('lobby.downloadProgress', { pct });
   }
 
   /**
@@ -2556,6 +2571,7 @@
       toast(t('download.failed', { title: event.title, error: errorText(event.error) }), { type: 'error' });
     }
     patchGame(gameId);
+    patchLobbyDownload(gameId);
   });
 
   // Touches du clavier (moteur intégré) : un bouton par bouton de manette ; clic, puis touche.

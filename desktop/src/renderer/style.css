@@ -369,6 +369,8 @@ body.pad-nav .list-row:focus { outline: none; background: var(--surface); box-sh
 .lobby .lobby-game h2 { margin: 0 0 6px; }
 .lobby .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .lobby .lobby-mode select { margin-left: 6px; }
+.lobby .lobby-download { margin-top: 14px; max-width: 420px; }
+.lobby .lobby-download p { margin: 0; }
 .lobby-members { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
 .lobby-members .crown { width: 20px; color: #ffcc00; display: flex; }
 .lobby-members .tag.playing { background: var(--accent); color: #fff; }
