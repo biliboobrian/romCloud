@@ -40,6 +40,8 @@ jobs:
       # Publication uniquement hors pull request et si les identifiants Docker Hub sont définis.
       PUSH: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
       IMAGE: ${{ secrets.DOCKERHUB_USERNAME || 'romcloud' }}/romcloud-server
+      # Pas de compte rendu de compilation en artefact (quota de stockage partagé avec les APK).
+      DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v7
 
