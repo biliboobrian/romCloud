@@ -127,7 +127,7 @@ Utilisation à la télécommande :
 
     | Émulateur | Systèmes | Lancement |
     |---|---|---|
-    | Eden | Switch | indiqué par son **dossier** (`eden.exe` et `eden-cli.exe`) : jeux lancés avec `eden-cli -f -g {file}`, manettes d’`eden.exe` recopiées (section `[Controls]` de `qt-config.ini` dans `sdl2-config.ini`, original gardé en `.romcloud.bak`) ; *Ouvrir Eden* lance `eden.exe` |
+    | Eden | Switch | indiqué par son **dossier** (`eden.exe` et `eden-cli.exe`) : jeux lancés avec `eden-cli -f -g {file}`, réglages d’`eden.exe` recopiés (toutes les sections de `qt-config.ini` sauf `[UI]` : manettes, système avec région et langue, rendu, son… dans `sdl2-config.ini`, original gardé en `.romcloud.bak`) ; *Ouvrir Eden* lance `eden.exe` |
     | Ryujinx | Switch | `--fullscreen {file}` |
     | RPCS3 | PlayStation 3 (aussi géré par le moteur intégré) | `--no-gui {file}` |
     | Cemu | Wii U (aussi géré par le moteur intégré) | `-f -g {file}` |
