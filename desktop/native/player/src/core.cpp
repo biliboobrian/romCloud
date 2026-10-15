@@ -14,6 +14,7 @@
 #include "netplay.h"
 #include "util.h"
 #include "video.h"
+#include "vulkan.h"
 
 Session g;
 
@@ -231,7 +232,18 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
 
     case RETRO_ENVIRONMENT_SET_HW_RENDER: {
       auto* hw = static_cast<retro_hw_render_callback*>(data);
-      // OpenGL de bureau seulement (ni Vulkan, ni Direct3D, ni OpenGL ES).
+      // OpenGL de bureau, ou Vulkan si le pilote le permet (ni Direct3D, ni OpenGL ES) : sinon le
+      // cœur essaie un autre rendu (OpenGL, logiciel).
+      if (hw->context_type == RETRO_HW_CONTEXT_VULKAN) {
+        if (!vulkan::available()) {
+          logf("Rendu Vulkan demandé, pilote Vulkan absent");
+          return false;
+        }
+        g.hw = *hw;
+        g.hwRender = true;
+        g.vulkan = true;
+        return true;
+      }
       if (hw->context_type != RETRO_HW_CONTEXT_OPENGL && hw->context_type != RETRO_HW_CONTEXT_OPENGL_CORE) {
         logf("Rendu matériel %d non pris en charge", (int)hw->context_type);
         return false;
@@ -240,6 +252,28 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
       hw->get_proc_address = Video::procAddress;
       g.hw = *hw;
       g.hwRender = true;
+      g.vulkan = false;
+      return true;
+    }
+
+    // Vulkan : interface du rendu (après création du périphérique) et négociation du périphérique.
+    case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE: {
+      const retro_hw_render_interface* hwInterface = g.vulkan ? vulkan::hwInterface() : nullptr;
+      if (!hwInterface) return false;
+      *static_cast<const retro_hw_render_interface**>(data) = hwInterface;
+      return true;
+    }
+
+    case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT: {
+      auto* query = static_cast<retro_hw_render_context_negotiation_interface*>(data);
+      query->interface_version = query->interface_type == RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN ? 2 : 0;
+      return true;
+    }
+
+    case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE: {
+      const auto* negotiation = static_cast<const retro_hw_render_context_negotiation_interface*>(data);
+      if (!negotiation || negotiation->interface_type != RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN) return false;
+      vulkan::setNegotiation(negotiation);
       return true;
     }
 
