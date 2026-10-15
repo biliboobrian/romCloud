@@ -105,13 +105,13 @@ bool hasInstanceExtension(const char* name) {
 }
 
 /** Instance créée par le cœur (create_instance) avec les mêmes réglages que celle du moteur. */
-VkInstance VKAPI_PTR createInstanceWrapper(void*, const VkInstanceCreateInfo* info) {
+VkInstance createInstanceWrapper(void*, const VkInstanceCreateInfo* info) {
   VkInstance created = VK_NULL_HANDLE;
   if (vkCreateInstance(info, nullptr, &created) != VK_SUCCESS) return VK_NULL_HANDLE;
   return created;
 }
 
-VkDevice VKAPI_PTR createDeviceWrapper(VkPhysicalDevice physical, void*, const VkDeviceCreateInfo* info) {
+VkDevice createDeviceWrapper(VkPhysicalDevice physical, void*, const VkDeviceCreateInfo* info) {
   VkDevice created = VK_NULL_HANDLE;
   if (vkCreateDevice(physical, info, nullptr, &created) != VK_SUCCESS) return VK_NULL_HANDLE;
   return created;
@@ -317,7 +317,7 @@ void barrier(VkImage target, const VkImageSubresourceRange& range, VkImageLayout
 
 // --- Interface donnée au cœur (libretro_vulkan.h) ---
 
-void VKAPI_PTR setImage(void*, const retro_vulkan_image* next, uint32_t count, const VkSemaphore* semaphores, uint32_t srcFamily) {
+void setImage(void*, const retro_vulkan_image* next, uint32_t count, const VkSemaphore* semaphores, uint32_t srcFamily) {
   if (!next) {
     hasImage = false;
     return;
@@ -329,15 +329,15 @@ void VKAPI_PTR setImage(void*, const retro_vulkan_image* next, uint32_t count, c
 }
 
 // Une seule série de ressources : chaque image est attendue jusqu'au bout (copie lue aussitôt).
-uint32_t VKAPI_PTR getSyncIndex(void*) { return 0; }
-uint32_t VKAPI_PTR getSyncIndexMask(void*) { return 1; }
-void VKAPI_PTR setCommandBuffers(void*, uint32_t count, const VkCommandBuffer* commands) {
+uint32_t getSyncIndex(void*) { return 0; }
+uint32_t getSyncIndexMask(void*) { return 1; }
+void setCommandBuffers(void*, uint32_t count, const VkCommandBuffer* commands) {
   coreCommands.assign(commands, commands + count);
 }
-void VKAPI_PTR waitSyncIndex(void*) {}
-void VKAPI_PTR lockQueue(void*) { queueLock.lock(); }
-void VKAPI_PTR unlockQueue(void*) { queueLock.unlock(); }
-void VKAPI_PTR setSignalSemaphore(void*, VkSemaphore semaphore) { signal = semaphore; }
+void waitSyncIndex(void*) {}
+void lockQueue(void*) { queueLock.lock(); }
+void unlockQueue(void*) { queueLock.unlock(); }
+void setSignalSemaphore(void*, VkSemaphore semaphore) { signal = semaphore; }
 
 bool isRgba8(VkFormat f) { return f == VK_FORMAT_R8G8B8A8_UNORM || f == VK_FORMAT_R8G8B8A8_SRGB; }
 bool isBgra8(VkFormat f) { return f == VK_FORMAT_B8G8R8A8_UNORM || f == VK_FORMAT_B8G8R8A8_SRGB; }
@@ -444,7 +444,7 @@ bool readFrame(unsigned width, unsigned height, const uint8_t*& pixels, size_t& 
   const uint32_t srcFamily = transfer ? imageFamily : VK_QUEUE_FAMILY_IGNORED, dstFamily = transfer ? family : VK_QUEUE_FAMILY_IGNORED;
   const VkImageLayout restore = layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_IMAGE_LAYOUT_GENERAL : layout;
 
-  std::lock_guard<std::mutex> lock(queueLock);
+  std::unique_lock<std::mutex> lock(queueLock);
   vkResetCommandBuffer(cmd, 0);
   VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
   begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -500,6 +500,8 @@ bool readFrame(unsigned width, unsigned height, const uint8_t*& pixels, size_t& 
   submit.signalSemaphoreCount = signal ? 1 : 0;
   submit.pSignalSemaphores = &signal;
   const VkResult result = vkQueueSubmit(queue, 1, &submit, fence);
+  // File libérée avant l'attente : le cœur peut envoyer depuis un autre fil le travail attendu.
+  lock.unlock();
   waits.clear();
   coreCommands.clear();
   signal = VK_NULL_HANDLE;

@@ -13,14 +13,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // LibretroDroid (émulateur intégré utilisant les cœurs libretro).
-        maven("https://jitpack.io") {
-            content { includeGroup("com.github.Swordfish90") }
-        }
     }
 }
 
 rootProject.name = "RomCloud"
+// Moteur intégré (LibretroDroid repris dans le projet, rendu Vulkan ajouté).
+include(":libretrodroid")
 include(":core")
 include(":app")
 include(":tv")

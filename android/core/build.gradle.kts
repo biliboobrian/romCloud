@@ -13,7 +13,7 @@ android {
     defaultConfig {
         minSdk = 26
         consumerProguardFiles("consumer-rules.pro")
-        // Mêmes architectures que LibretroDroid.
+        // Mêmes architectures que le moteur intégré (:libretrodroid).
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
         // Adaptateur en C++ sans bibliothèque standard : rien d'autre à embarquer.
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=none" } }
@@ -43,6 +43,6 @@ dependencies {
     api(libs.kotlinx.serialization.json)
     api(libs.okhttp)
     api(libs.coil.compose)
-    implementation(libs.libretrodroid)
+    implementation(project(":libretrodroid"))
     testImplementation(libs.junit)
 }

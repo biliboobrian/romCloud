@@ -223,6 +223,7 @@ struct retro_hw_render_callback {
     void (*context_destroy)();
     bool debug_context;
 };
+const int HW_CONTEXT_VULKAN = 6;
 const unsigned SET_ROTATION = 1, SET_PIXEL_FORMAT = 10, SET_HW_RENDER = 14, SET_SYSTEM_AV_INFO = 32, SET_GEOMETRY = 37;
 // Format des pixels (RETRO_PIXEL_FORMAT_*) et rotation (quarts de tour antihoraires) demandés par le cœur.
 const int PIXEL_0RGB1555 = 0, PIXEL_XRGB8888 = 1;
@@ -332,7 +333,8 @@ static bool on_environment(unsigned cmd, void *data) {
     if (!handled || !data) return handled;
     if (cmd == SET_HW_RENDER) {
         auto *hw = static_cast<retro_hw_render_callback *>(data);
-        frontend_framebuffer = hw->get_current_framebuffer;
+        // Vulkan : pas de framebuffer OpenGL ES (image recopiée par le moteur), la diffusion copie l'écran.
+        frontend_framebuffer = hw->context_type == HW_CONTEXT_VULKAN ? nullptr : hw->get_current_framebuffer;
         bottom_left_origin = hw->bottom_left_origin;
     } else if (cmd == SET_PIXEL_FORMAT) {
         __atomic_store_n(&pixel_format, *static_cast<const int *>(data), __ATOMIC_RELAXED);
