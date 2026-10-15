@@ -1,0 +1,34 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Thomson MO/TO",
+    "uniqueId": "thomson",
+    "shortname": "thomson",
+    "description": "Ordinateurs Thomson MO5, MO6, TO7, TO8, TO9 (disquettes .fd / .sap, cassettes .k7, cartouches .m7 / .m5).",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [
+      "LIBRETRO:Thomson - MOTO"
+    ],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "thomson - RetroArch 64 - theodore",
+      "uniqueId": "thomson.ra64.theodore",
+      "description": "Supported extensions: fd, sap, k7, m7, m5, rom.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:fd|sap|k7|m7|m5|rom)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO theodore\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

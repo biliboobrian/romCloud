@@ -1,0 +1,32 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Arcade (circuits discrets)",
+    "uniqueId": "dice",
+    "shortname": "dice",
+    "description": "Jeux d'arcade sans processeur (Pong, Breakout…) émulés par DICE.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "dice - RetroArch 64 - dice",
+      "uniqueId": "dice.ra64.dice",
+      "description": "Supported extensions: zip, dmy, k1, a1, 6c, c6, d2, s1, f4, a4, 1da, da1, c4, 4c, 4d, d7, d4.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:zip|dmy|k1|a1|6c|c6|d2|s1|f4|a4|1da|da1|c4|4c|4d|d7|d4)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO dice\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

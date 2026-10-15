@@ -1,0 +1,32 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Apple Macintosh",
+    "uniqueId": "macintosh",
+    "shortname": "macintosh",
+    "description": "Macintosh 68k (Mac Plus à Mac II). Disquettes et disques (.dsk, .img, .hvf).",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "macintosh - RetroArch 64 - minivmac",
+      "uniqueId": "macintosh.ra64.minivmac",
+      "description": "Supported extensions: dsk, img, zip, hvf, cmd.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:dsk|img|zip|hvf|cmd)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO minivmac\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

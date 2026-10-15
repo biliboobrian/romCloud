@@ -1,0 +1,52 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "IBM PC",
+    "uniqueId": "pc",
+    "shortname": "pc",
+    "description": "PC compatibles IBM (disques .img, .iso, .qcow2) : VirtualXT, PCem (Windows), QEMU.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "pc - RetroArch 64 - virtualxt",
+      "uniqueId": "pc.ra64.virtualxt",
+      "description": "Supported extensions: img, zip.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:img|zip)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO virtualxt\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "pc - RetroArch 64 - pcem",
+      "uniqueId": "pc.ra64.pcem",
+      "description": "Supported extensions: exe, com, bat, conf.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:exe|com|bat|conf)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO pcem\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "pc - RetroArch 64 - qemu",
+      "uniqueId": "pc.ra64.qemu",
+      "description": "Supported extensions: qemu_cmd_line, iso, img, qcow, qcow2.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:qemu_cmd_line|iso|img|qcow|qcow2)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO qemu\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Musiques de jeux",
+    "uniqueId": "gamemusic",
+    "shortname": "gamemusic",
+    "description": "Musiques extraites des jeux (.nsf, .spc, .vgm, .gbs, .hes…).",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "gamemusic - RetroArch 64 - gme",
+      "uniqueId": "gamemusic.ra64.gme",
+      "description": "Supported extensions: ay, gbs, gym, hes, kss, nsf, nsfe, sap, spc, vgm, vgz, zip.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:ay|gbs|gym|hes|kss|nsf|nsfe|sap|spc|vgm|vgz|zip)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO gme\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

@@ -14,6 +14,293 @@
       "platformShortname": "ps4",
       "platformUniqueId": "ps4",
       "revisionNumber": 1
+    },
+    {
+      "filename": "Commodore128.json",
+      "platformName": "Commodore 128",
+      "platformShortname": "c128",
+      "platformUniqueId": "c128",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "CommodoreCBMII.json",
+      "platformName": "Commodore CBM-II",
+      "platformShortname": "cbm2",
+      "platformUniqueId": "cbm2",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "AppleMacintosh.json",
+      "platformName": "Apple Macintosh",
+      "platformShortname": "macintosh",
+      "platformUniqueId": "macintosh",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "ThomsonMOTO.json",
+      "platformName": "Thomson MO/TO",
+      "platformShortname": "thomson",
+      "platformUniqueId": "thomson",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Enterprise64128.json",
+      "platformName": "Enterprise 64/128",
+      "platformShortname": "enterprise",
+      "platformUniqueId": "enterprise",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "EpochSuperCassetteVision.json",
+      "platformName": "Epoch Super Cassette Vision",
+      "platformShortname": "scv",
+      "platformUniqueId": "scv",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "EpochCassetteVision.json",
+      "platformName": "Epoch Cassette Vision",
+      "platformShortname": "cassettevision",
+      "platformUniqueId": "cassettevision",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "BandaiPlaydia.json",
+      "platformName": "Bandai Playdia",
+      "platformShortname": "playdia",
+      "platformUniqueId": "playdia",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "SonyPocketStation.json",
+      "platformName": "Sony PocketStation",
+      "platformShortname": "pocketstation",
+      "platformUniqueId": "pocketstation",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "BandaiTamagotchi.json",
+      "platformName": "Bandai Tamagotchi",
+      "platformShortname": "tamagotchi",
+      "platformUniqueId": "tamagotchi",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "VMLabsNUON.json",
+      "platformName": "VM Labs NUON",
+      "platformShortname": "nuon",
+      "platformUniqueId": "nuon",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Laserdisc.json",
+      "platformName": "Laserdisc",
+      "platformShortname": "laserdisc",
+      "platformUniqueId": "laserdisc",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Arcadecircuitsdiscrets.json",
+      "platformName": "Arcade (circuits discrets)",
+      "platformShortname": "dice",
+      "platformUniqueId": "dice",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Galaksija.json",
+      "platformName": "Galaksija",
+      "platformShortname": "galaksija",
+      "platformUniqueId": "galaksija",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "PhilipsP2000T.json",
+      "platformName": "Philips P2000T",
+      "platformShortname": "p2000t",
+      "platformUniqueId": "p2000t",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "TexasInstrumentsTI83.json",
+      "platformName": "Texas Instruments TI-83",
+      "platformShortname": "ti83",
+      "platformUniqueId": "ti83",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "IBMPC.json",
+      "platformName": "IBM PC",
+      "platformShortname": "pc",
+      "platformUniqueId": "pc",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "InfocomZMachine.json",
+      "platformName": "Infocom Z-Machine",
+      "platformShortname": "zmachine",
+      "platformUniqueId": "zmachine",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "ElektronikaBK.json",
+      "platformName": "Elektronika BK",
+      "platformShortname": "bk",
+      "platformUniqueId": "bk",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "BBK.json",
+      "platformName": "BBK",
+      "platformShortname": "bbk",
+      "platformUniqueId": "bbk",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Wenquxing.json",
+      "platformName": "Wenquxing",
+      "platformShortname": "wqx",
+      "platformUniqueId": "wqx",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "GAM4980.json",
+      "platformName": "GAM4980",
+      "platformShortname": "gam4980",
+      "platformUniqueId": "gam4980",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "DingooA320.json",
+      "platformName": "Dingoo A320",
+      "platformShortname": "dingoo",
+      "platformUniqueId": "dingoo",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "SPMP8000.json",
+      "platformName": "SPMP8000",
+      "platformShortname": "spmp8000",
+      "platformUniqueId": "spmp8000",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Native32.json",
+      "platformName": "Native32",
+      "platformShortname": "native32",
+      "platformUniqueId": "native32",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Nicai.json",
+      "platformName": "Nicai",
+      "platformShortname": "nicai",
+      "platformUniqueId": "nicai",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "OberonRISC.json",
+      "platformName": "Oberon RISC",
+      "platformShortname": "oberon",
+      "platformUniqueId": "oberon",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "VaporSpec.json",
+      "platformName": "VaporSpec",
+      "platformShortname": "vaporspec",
+      "platformUniqueId": "vaporspec",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "SegaDreamcastVMU.json",
+      "platformName": "Sega Dreamcast VMU",
+      "platformShortname": "vmu",
+      "platformUniqueId": "vmu",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Wolfenstein3D.json",
+      "platformName": "Wolfenstein 3D",
+      "platformShortname": "wolf3d",
+      "platformUniqueId": "wolf3d",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Doom3.json",
+      "platformName": "Doom 3",
+      "platformShortname": "doom3",
+      "platformUniqueId": "doom3",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "QuakeIIIArena.json",
+      "platformName": "Quake III Arena",
+      "platformShortname": "quake3",
+      "platformUniqueId": "quake3",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "TombRaider.json",
+      "platformName": "Tomb Raider",
+      "platformShortname": "tombraider",
+      "platformUniqueId": "tombraider",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "JumpnBump.json",
+      "platformName": "Jump 'n Bump",
+      "platformShortname": "jumpnbump",
+      "platformUniqueId": "jumpnbump",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "SuperBrosWar.json",
+      "platformName": "Super Bros War",
+      "platformShortname": "superbroswar",
+      "platformUniqueId": "superbroswar",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Lutro.json",
+      "platformName": "Lutro",
+      "platformShortname": "lutro",
+      "platformUniqueId": "lutro",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "ChaiLove.json",
+      "platformName": "ChaiLove",
+      "platformShortname": "chailove",
+      "platformUniqueId": "chailove",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "MicroW8.json",
+      "platformName": "MicroW8",
+      "platformShortname": "microw8",
+      "platformUniqueId": "microw8",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Vircon32.json",
+      "platformName": "Vircon32",
+      "platformShortname": "vircon32",
+      "platformUniqueId": "vircon32",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "KaraokCDG.json",
+      "platformName": "Karaoké (CD+G)",
+      "platformShortname": "karaoke",
+      "platformUniqueId": "karaoke",
+      "revisionNumber": 1
+    },
+    {
+      "filename": "Musiquesdejeux.json",
+      "platformName": "Musiques de jeux",
+      "platformShortname": "gamemusic",
+      "platformUniqueId": "gamemusic",
+      "revisionNumber": 1
     }
   ]
 }

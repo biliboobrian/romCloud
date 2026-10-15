@@ -1,0 +1,42 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Laserdisc",
+    "uniqueId": "laserdisc",
+    "shortname": "laserdisc",
+    "description": "Jeux d'arcade sur Laserdisc (Dragon's Lair, Space Ace…) : Daphne (.zip), DirkSimple (.ogv).",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "laserdisc - RetroArch 64 - daphne",
+      "uniqueId": "laserdisc.ra64.daphne",
+      "description": "Supported extensions: zip.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:zip)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO daphne\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "laserdisc - RetroArch 64 - dirksimple",
+      "uniqueId": "laserdisc.ra64.dirksimple",
+      "description": "Supported extensions: ogv, dirksimple.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:ogv|dirksimple)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO dirksimple\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Quake III Arena",
+    "uniqueId": "quake3",
+    "shortname": "quake3",
+    "description": "Moteur vitaQuake 3 : fichiers du jeu (.pk3). Windows seulement.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "quake3 - RetroArch 64 - vitaquake3",
+      "uniqueId": "quake3.ra64.vitaquake3",
+      "description": "Supported extensions: pk3.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:pk3)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO vitaquake3\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ],
+  "romcloud": {
+    "platforms": [
+      "windows"
+    ]
+  }
+}

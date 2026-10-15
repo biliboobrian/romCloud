@@ -1,0 +1,34 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Epoch Super Cassette Vision",
+    "uniqueId": "scv",
+    "shortname": "scv",
+    "description": "Console Epoch / Yeno (1984). Cartouches (.bin, .rom, .cart).",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [
+      "LIBRETRO:Epoch - Super Cassette Vision"
+    ],
+    "boxArtAspectRatioId": 0,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 1,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "scv - RetroArch 64 - emuscv",
+      "uniqueId": "scv.ra64.emuscv",
+      "description": "Supported extensions: cart, bin, rom, 0, zip.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:cart|bin|rom|0|zip)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO emuscv\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}
