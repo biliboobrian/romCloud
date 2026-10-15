@@ -71,10 +71,11 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
 
     /**
      * Fichiers du dossier des BIOS que les émulateurs externes importent eux-mêmes (clés et
-     * firmware de la Switch pour Eden) recopiés dans Téléchargements/RomCloud ; renvoie ceux disponibles.
+     * firmware de la Switch pour Eden, pilote graphique) recopiés dans Téléchargements/RomCloud ;
+     * renvoie ceux disponibles.
      */
     fun exportForEmulators(system: GameSystem): List<File> =
-        ExternalEmulatorFiles.export(context, system, File(settings.config.value.biosDir))
+        ExternalEmulatorFiles.export(context, system, File(settings.config.value.biosDir), settings.gpuDrivers)
 
     /** BIOS absents de l'appareil (ou de taille différente). */
     fun missingBios(files: List<BiosFile>): List<BiosFile> =

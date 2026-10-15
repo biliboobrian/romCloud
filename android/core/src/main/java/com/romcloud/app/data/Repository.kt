@@ -31,6 +31,7 @@ class Repository(
     private val cacheDir: File,
     private val hideUnidentified: () -> Boolean = { false },
     private val gameOrder: () -> GameOrder = { GameOrder.NAME },
+    private val gpuDrivers: () -> Boolean = { false },
 ) {
 
     private val systemsMemory = ConcurrentHashMap<String, GameSystem>()
@@ -131,14 +132,18 @@ class Repository(
         return loaded.copy(data = sortGames(games, gameOrder()))
     }
 
-    /** BIOS du système sur le serveur (liste vide sans appel réseau si le système n'en a pas). */
+    /**
+     * BIOS du système sur le serveur (liste vide sans appel réseau si le système n'en a pas) ;
+     * pilotes graphiques seulement si leur option est active.
+     */
     suspend fun bios(system: GameSystem): List<BiosFile> {
         if (system.biosCount == 0) return emptyList()
-        return runCatching {
+        val files = runCatching {
             loadWithCache("bios-${safeName(system.id)}.json", { api.biosRaw(system.id) }) {
                 api.json.decodeFromString(BiosList.serializer(), it).files
             }.data
         }.getOrDefault(emptyList())
+        return if (gpuDrivers()) files else files.filterNot { it.isDriver }
     }
 
     /** APK d'émulateurs du serveur (dernière liste connue hors ligne, liste vide en cas d'erreur). */

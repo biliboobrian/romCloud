@@ -115,7 +115,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         I18n.init(this)
         settings = Settings(this)
         api = ApiClient(settings, if (packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) "androidtv" else "android")
-        repository = Repository(api, filesDir, { settings.hideUnidentified }, { settings.gameOrder })
+        repository = Repository(api, filesDir, { settings.hideUnidentified }, { settings.gameOrder }, { settings.gpuDrivers })
         library = LocalLibrary(this, settings)
         downloader = Downloader(this, api, library, appScope)
         launcher = GameLauncher(this, settings)

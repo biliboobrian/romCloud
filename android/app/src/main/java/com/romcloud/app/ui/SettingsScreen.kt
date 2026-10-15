@@ -187,6 +187,21 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                     app.settings.autoUploadStates = it
                 })
             }
+            var gpuDrivers by remember { mutableStateOf(app.settings.gpuDrivers) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_gpu_drivers), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        stringResource(R.string.settings_gpu_drivers_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = gpuDrivers, onCheckedChange = {
+                    gpuDrivers = it
+                    app.settings.gpuDrivers = it
+                })
+            }
             var gameOrder by remember { mutableStateOf(app.settings.gameOrder) }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.order_games), style = MaterialTheme.typography.bodyLarge)

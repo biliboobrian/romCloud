@@ -171,6 +171,16 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        var gpuDrivers by remember { mutableStateOf(app.settings.gpuDrivers) }
+        FilterChip(selected = gpuDrivers, onClick = {
+            gpuDrivers = !gpuDrivers
+            app.settings.gpuDrivers = gpuDrivers
+        }) { Text(stringResource(if (gpuDrivers) R.string.settings_gpu_drivers_on else R.string.settings_gpu_drivers)) }
+        Text(
+            stringResource(R.string.settings_gpu_drivers_hint),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(stringResource(R.string.order_games), style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
             GameOrder.entries.forEach { order ->

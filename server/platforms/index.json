@@ -16,6 +16,13 @@
       "revisionNumber": 1
     },
     {
+      "filename": "SonyPlayStation5.json",
+      "platformName": "Sony PlayStation 5",
+      "platformShortname": "ps5",
+      "platformUniqueId": "ps5",
+      "revisionNumber": 1
+    },
+    {
       "filename": "Commodore128.json",
       "platformName": "Commodore 128",
       "platformShortname": "c128",

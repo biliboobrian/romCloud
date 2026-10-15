@@ -218,7 +218,18 @@ pub async fn bios(system: &Value) -> Vec<Value> {
     }
     let id = system.get("id").and_then(Value::as_str).unwrap_or("");
     match load_with_cache(&format!("bios-{}.json", safe_name(id)), &format!("/api/systems/{}/bios?catalog=0", urlencoding::encode(id))).await {
-        Ok((data, _)) => data.get("files").and_then(Value::as_array).cloned().unwrap_or_default(),
+        // Pilotes graphiques (« drivers/ ») : pour les émulateurs Android seulement.
+        Ok((data, _)) => data
+            .get("files")
+            .and_then(Value::as_array)
+            .map(|files| {
+                files
+                    .iter()
+                    .filter(|f| !f.get("path").and_then(Value::as_str).unwrap_or("").starts_with("drivers/"))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default(),
         Err(_) => vec![],
     }
 }

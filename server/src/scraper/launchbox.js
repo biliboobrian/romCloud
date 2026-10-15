@@ -88,6 +88,7 @@ export const LAUNCHBOX_PLATFORMS = {
   ps2: ['Sony Playstation 2'],
   ps3: ['Sony Playstation 3'],
   ps4: ['Sony Playstation 4'],
+  ps5: ['Sony Playstation 5'],
   psp: ['Sony PSP'],
   pspminis: ['Sony PSP Minis'],
   psx: ['Sony Playstation'],

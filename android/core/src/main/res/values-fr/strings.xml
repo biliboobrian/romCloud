@@ -644,6 +644,9 @@
     <string name="states_downloading">Téléchargement de l’état…</string>
     <string name="settings_auto_upload_states">Envoyer les états en ligne automatiquement</string>
     <string name="settings_auto_upload_states_hint">Avec un profil connecté : chaque état sauvegardé dans l’émulateur intégré est envoyé sur votre profil, avec cet appareil et sa date. Sinon, envoyez-les depuis l’historique des états.</string>
+    <string name="settings_gpu_drivers">Télécharger les pilotes graphiques</string>
+    <string name="settings_gpu_drivers_on">Pilotes graphiques téléchargés</string>
+    <string name="settings_gpu_drivers_hint">Pilote Turnip pour les puces Adreno (Snapdragon), quand le serveur le propose (Switch, GameCube, Wii, PS Vita, PS3) : téléchargé avec les BIOS et recopié dans Téléchargements/RomCloud/&lt;système&gt;, à installer depuis le gestionnaire de pilotes de l’émulateur (Eden, Dolphin, Vita3K, aPS3e). Activé par défaut sur les appareils Snapdragon.</string>
     <string name="settings_auto_upload_states_on">États envoyés en ligne automatiquement</string>
     <string name="emulator_files_hint">Pour Eden : %2$s dans Téléchargements › %1$s. Dans Eden, installez les clés et le firmware depuis ses paramètres, en choisissant ces fichiers.</string>
     <string name="report_default_title">Rapport de problème</string>

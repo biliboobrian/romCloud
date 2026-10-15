@@ -1,6 +1,7 @@
 package com.romcloud.app.data
 
 import android.content.Context
+import android.os.Build
 import android.os.Environment
 import androidx.annotation.StringRes
 import com.romcloud.app.AppLanguage
@@ -133,6 +134,15 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("autoUploadStates", true)
         set(value) = prefs.edit().putBoolean("autoUploadStates", value).apply()
 
+    /**
+     * Pilotes graphiques du serveur (Turnip, puces Adreno) téléchargés avec les BIOS et recopiés
+     * pour les émulateurs qui les installent eux-mêmes (Eden, Dolphin, Vita3K…). Par défaut sur les
+     * appareils Snapdragon, seuls à pouvoir s'en servir.
+     */
+    var gpuDrivers: Boolean
+        get() = prefs.getBoolean("gpuDrivers", isSnapdragon())
+        set(value) = prefs.edit().putBoolean("gpuDrivers", value).apply()
+
     /** Affichage des jeux en cartes (jaquettes) plutôt qu'en liste. */
     var gamesAsGrid: Boolean
         get() = prefs.getBoolean(KEY_GAMES_GRID, false)
@@ -147,6 +157,13 @@ class Settings(context: Context) {
 
         @Suppress("DEPRECATION")
         private val storage: File get() = Environment.getExternalStorageDirectory()
+
+        /** Puce Qualcomm Snapdragon (carte graphique Adreno) : fabricant de la puce, sinon matériel « qcom ». */
+        fun isSnapdragon(): Boolean {
+            val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MANUFACTURER else ""
+            return soc.equals("QTI", ignoreCase = true) || soc.contains("qualcomm", ignoreCase = true) ||
+                Build.HARDWARE.startsWith("qcom", ignoreCase = true)
+        }
 
         fun defaultRomsDir(): String = File(storage, "RomCloud").absolutePath
 
