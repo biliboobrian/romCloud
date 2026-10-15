@@ -19,6 +19,11 @@ package com.swordfish.libretrodroid
 
 import android.app.ActivityManager
 import android.content.Context
+import android.hardware.display.DisplayManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.Surface
 import android.graphics.PointF
 import android.graphics.RectF
 import android.opengl.GLSurfaceView
@@ -116,11 +121,42 @@ class GLRetroView(
 
     @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
     fun onDestroy() = catchExceptions {
+        displayManager.unregisterDisplayListener(displayListener)
         LibretroDroid.destroy()
         lifecycle = null
     }
 
     private fun getDeviceLanguage() = Locale.getDefault().language
+
+    // RomCloud : écran calé sur la fréquence du jeu (Android 11+ : 60 Hz pour un jeu à 60 images/s sur
+    // un écran à 90 ou 120 Hz), puis synchronisation du moteur sur l'écran quand sa fréquence change.
+    private val displayManager by lazy { context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager }
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {}
+        override fun onDisplayRemoved(displayId: Int) {}
+        override fun onDisplayChanged(displayId: Int) {
+            val current = display ?: return
+            if (displayId != current.displayId) return
+            val rate = current.refreshRate
+            queueEvent { LibretroDroid.onRefreshRateChanged(rate) }
+        }
+    }
+
+    private fun matchFrameRate() {
+        displayManager.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val frameRate = LibretroDroid.getContentFrameRate()
+        val surface = holder.surface
+        if (frameRate <= 0f || surface == null || !surface.isValid) return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                surface.setFrameRate(frameRate, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE, Surface.CHANGE_FRAME_RATE_ALWAYS)
+            } else {
+                surface.setFrameRate(frameRate, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE)
+            }
+        }
+    }
 
     private fun getDefaultRefreshRate(): Float {
         return (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.refreshRate
@@ -357,6 +393,7 @@ class GLRetroView(
 
         KtUtils.runOnUIThread {
             lifecycle?.addObserver(RenderLifecycleObserver())
+            matchFrameRate()
         }
     }
 

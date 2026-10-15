@@ -434,6 +434,8 @@ void LibretroDroid::destroy() {
     core = nullptr;
     rumble = nullptr;
     fpsSync = nullptr;
+    performanceHint.close();
+    contentFrameRate = 0;
     audio = nullptr;
 
     Environment::getInstance().deinitialize();
@@ -462,6 +464,9 @@ void LibretroDroid::step() {
 
     LOGD("Stepping into retro_run()");
 
+    // RomCloud : durée du travail de l'image signalée au système (indice de performance).
+    performanceHint.begin(contentFrameRate);
+
     unsigned frames = 1;
     if (fpsSync) {
         unsigned requestedFrames = fpsSync->advanceFrames();
@@ -476,6 +481,8 @@ void LibretroDroid::step() {
     if (video && !video->rendersInVideoCallback()) {
         video->renderFrame();
     }
+
+    performanceHint.end();
 
     if (fpsSync) {
         fpsSync->wait();
@@ -502,6 +509,12 @@ void LibretroDroid::step() {
 
         video->updateRotation(Environment::getInstance().getScreenRotation());
     }
+}
+
+void LibretroDroid::onRefreshRateChanged(float refreshRate) {
+    std::lock_guard<std::mutex> lock(coreLock);
+    screenRefreshRate = refreshRate;
+    if (fpsSync) fpsSync->updateScreenRefreshRate(refreshRate);
 }
 
 float LibretroDroid::getAspectRatio() {
@@ -620,6 +633,7 @@ void LibretroDroid::afterGameLoad() {
     core->retro_get_system_av_info(&system_av_info);
 
     fpsSync = std::make_unique<FPSSync>(system_av_info.timing.fps, screenRefreshRate);
+    contentFrameRate = (float) system_av_info.timing.fps;
 
     double inputSampleRate = system_av_info.timing.sample_rate * fpsSync->getTimeStretchFactor();
 

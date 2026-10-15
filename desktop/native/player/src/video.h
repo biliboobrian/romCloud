@@ -61,8 +61,11 @@ class Video {
   uintptr_t currentFramebuffer() const { return fbo_; }
   static retro_proc_address_t procAddress(const char* sym);
 
-  /** Dessine la dernière image (et la surimpression RGBA si fournie) puis l'affiche. */
-  void present(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool swap = true);
+  /**
+   * Dessine la dernière image (et la surimpression RGBA si fournie) puis l'affiche ; [overlayChanged]
+   * faux : surimpression identique à la précédente, pas renvoyée à la carte graphique.
+   */
+  void present(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool swap = true, bool overlayChanged = true);
   /** Enregistre l'image affichée dans la fenêtre (mode d'essai, avant l'échange des tampons). */
   bool saveWindow(const std::string& path);
   /** Taille maximale de l'image changée (SET_SYSTEM_AV_INFO / SET_GEOMETRY). */
@@ -90,7 +93,7 @@ class Video {
   bool loadFunctions();
   bool createProgram();
   /** Dessin de [present], état OpenGL du cœur gardé autour. */
-  void draw(const uint8_t* overlay, int overlayWidth, int overlayHeight);
+  void draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool overlayChanged);
   void allocateHwFramebuffer();
   bool preparePostTarget(int width, int height);
 
@@ -106,6 +109,7 @@ class Video {
   int uniformParams_ = -1, uniformRect_ = -1;
   float params_[4] = {1.0f, 0.0f, 0.0f, 0.0f};
   unsigned frameTexture_ = 0, overlayTexture_ = 0;
+  int overlayTextureWidth_ = 0, overlayTextureHeight_ = 0;  // taille de la surimpression envoyée
   int textureWidth_ = 0, textureHeight_ = 0;
   unsigned fbo_ = 0, fboTexture_ = 0, fboDepth_ = 0;
   // Image intermédiaire de FSR (agrandissement, puis netteté à l'écran).

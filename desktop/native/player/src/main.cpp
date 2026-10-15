@@ -49,6 +49,14 @@
 #include "util.h"
 #include "video.h"
 
+
+// PC portables à deux cartes graphiques (NVIDIA Optimus, AMD PowerXpress) : le moteur demande la
+// carte dédiée, sans quoi le pilote le lance sur la puce intégrée (beaucoup moins rapide).
+extern "C" {
+__declspec(dllexport) unsigned long NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+
 namespace {
 
 struct Args {
@@ -225,6 +233,7 @@ class Player {
   std::string toast_;
   Uint64 toastUntil_ = 0;
   std::string notice_;  // notification en haut de l'écran (invité arrivé)
+  std::string overlayKey_;  // contenu de la surimpression déjà envoyée (vide : à redessiner)
   Uint64 noticeUntil_ = 0;
   double nextFrame_ = 0;
 };
@@ -674,13 +683,24 @@ void Player::present() {
     else menu_.render(overlay_, menuState());
     if (showToast && !toast_.empty()) drawToast();  // fin de la configuration d'une manette
     if (request) drawNetplay();
+    overlayKey_.clear();  // menu dessiné dans la surimpression : à refaire ensuite
     video_.present(overlay_.data(), overlay_.width(), overlay_.height());
   } else if ((showToast && !toast_.empty()) || !banner.empty() || request || showNotice || remotePaused) {
-    overlay_.clear();
-    if (showToast && !toast_.empty()) drawToast();
-    drawNetplay();
-    video_.present(overlay_.data(), overlay_.width(), overlay_.height());
+    // Surimpression redessinée et renvoyée à la carte graphique seulement si elle a changé (bandeau
+    // du jeu à plusieurs affiché pendant toute la partie : sinon refaite à chaque image).
+    std::string key = std::to_string(overlay_.width()) + "x" + std::to_string(overlay_.height()) + '' +
+                      (showToast ? toast_ : std::string()) + '' + banner + '' + (showNotice ? notice_ : std::string()) +
+                      '' + (request ? requester : std::string()) + '' + (remotePaused ? netplay_.partner() : std::string());
+    const bool changed = key != overlayKey_;
+    if (changed) {
+      overlay_.clear();
+      if (showToast && !toast_.empty()) drawToast();
+      drawNetplay();
+      overlayKey_ = std::move(key);
+    }
+    video_.present(overlay_.data(), overlay_.width(), overlay_.height(), true, changed);
   } else {
+    overlayKey_.clear();
     video_.present(nullptr, 0, 0);
   }
 }

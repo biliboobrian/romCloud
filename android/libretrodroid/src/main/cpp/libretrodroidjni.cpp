@@ -531,6 +531,22 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_pause(
     }
 }
 
+// RomCloud : images par seconde du jeu (fréquence de l'écran calée dessus) et fréquence changée.
+JNIEXPORT jfloat JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_getContentFrameRate(
+    JNIEnv* env,
+    jclass obj
+) {
+    return LibretroDroid::getInstance().getContentFrameRate();
+}
+
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_onRefreshRateChanged(
+    JNIEnv* env,
+    jclass obj,
+    jfloat refreshRate
+) {
+    LibretroDroid::getInstance().onRefreshRateChanged(refreshRate);
+}
+
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_step(
     JNIEnv* env,
     jclass obj,

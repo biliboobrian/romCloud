@@ -46,6 +46,7 @@
 #include "renderers/es2/imagerendereres2.h"
 #include "renderers/es3/imagerendereres3.h"
 #include "utils/rect.h"
+#include "perfhint.h"
 
 namespace libretrodroid {
 
@@ -110,6 +111,11 @@ public:
     void refreshAspectRatio();
     float getAspectRatio();
 
+    /** RomCloud : images par seconde du jeu (0 avant son chargement). */
+    float getContentFrameRate() const { return contentFrameRate; }
+    /** RomCloud : fréquence de l'écran changée (calée sur le jeu). */
+    void onRefreshRateChanged(float refreshRate);
+
     bool requiresVideoRefresh() const;
     void clearRequiresVideoRefresh();
 
@@ -169,6 +175,8 @@ private:
     Rect viewportRect = Rect(0.0F, 0.0F, 1.0F, 1.0F);
     unsigned int viewportAlignment = V_ALIGN_CENTER;
     float screenRefreshRate = 60.0;
+    float contentFrameRate = 0;
+    PerformanceHint performanceHint;
     int openglESVersion = 2;
     bool skipDuplicateFrames = false;
     bool immersiveModeEnabled = false;

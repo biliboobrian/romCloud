@@ -98,6 +98,9 @@ public class LibretroDroid {
     public static native void loadGameFromBytes(byte[] gameFileBytes);
     public static native void loadGameFromVirtualFiles(List<DetachedVirtualFile> virtualFiles);
     public static native void resume();
+    // RomCloud : images par seconde du jeu (0 avant son chargement) et fréquence de l'écran changée.
+    public static native float getContentFrameRate();
+    public static native void onRefreshRateChanged(float refreshRate);
 
     public static native void onSurfaceCreated();
     public static native void onSurfaceChanged(int width, int height);
