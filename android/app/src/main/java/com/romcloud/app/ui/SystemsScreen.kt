@@ -3,6 +3,7 @@ package com.romcloud.app.ui
 import com.romcloud.app.data.MediaUrl
 import com.romcloud.app.data.MediaSize
 import android.app.Activity
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -41,11 +43,13 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +64,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -142,62 +147,107 @@ fun SystemsScreen(
     }
     val usage by viewModel.usage.collectAsStateWithLifecycle()
 
+    // Boutons de la barre du haut, rangés différemment en portrait (deux lignes) et en paysage.
+    val netplayButton: @Composable () -> Unit = {
+        if (account.signedIn && !searching) {
+            IconButton(onClick = { showNetplay = true }) {
+                val open = lobbyState.lobbies.size
+                BadgedBox(badge = { if (open > 0) Badge { Text("$open") } }) {
+                    Icon(Icons.Filled.Groups, stringResource(R.string.netplay_title), tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+    val searchButton: @Composable () -> Unit = {
+        IconButton(onClick = {
+            if (searching) viewModel.setQuery("")
+            searching = !searching
+        }) {
+            Icon(
+                if (searching) Icons.Filled.Close else Icons.Filled.Search,
+                stringResource(if (searching) R.string.clear_search else R.string.search_all_title),
+            )
+        }
+    }
+    val refreshButton: @Composable () -> Unit = {
+        IconButton(onClick = viewModel::refresh) { Icon(Icons.Filled.Refresh, stringResource(R.string.action_refresh)) }
+    }
+    // Profil du joueur (coloré une fois connecté), à côté des paramètres.
+    val profileButton: @Composable () -> Unit = {
+        IconButton(onClick = onOpenProfile) {
+            Icon(
+                Icons.Filled.AccountCircle,
+                stringResource(R.string.profile_button),
+                tint = if (isSignedIn()) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+            )
+        }
+    }
+    val settingsButton: @Composable () -> Unit = {
+        IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.action_settings)) }
+    }
+    val portrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                windowInsets = topBarInsets,
-                title = {
-                    if (searching) {
-                        TextField(
-                            value = search.query,
-                            onValueChange = viewModel::setQuery,
-                            placeholder = { Text(stringResource(R.string.search_all_hint)) },
-                            singleLine = true,
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                            ),
-                            modifier = Modifier.fillMaxWidth().focusRequester(searchFocus),
-                        )
-                        LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
-                    } else {
-                        DiskBar(usage)
-                    }
-                },
-                actions = {
-                    OfflineBadge(Modifier.padding(horizontal = 4.dp))
-                    if (account.signedIn && !searching) {
-                        IconButton(onClick = { showNetplay = true }) {
-                            val open = lobbyState.lobbies.size
-                            BadgedBox(badge = { if (open > 0) Badge { Text("$open") } }) {
-                                Icon(Icons.Filled.Groups, stringResource(R.string.netplay_title), tint = MaterialTheme.colorScheme.primary)
-                            }
+            if (portrait && !searching) {
+                // Portrait : barre de l'espace, jeu à plusieurs, profil et paramètres ; puis espace
+                // restant, recherche, actualisation et diffusion ; fond gris foncé.
+                Surface(color = HeaderGray, contentColor = Color.White) {
+                    Column(Modifier.fillMaxWidth().windowInsetsPadding(topBarInsets).padding(start = 16.dp, end = 4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) { DiskTrack(usage, Modifier.fillMaxWidth(0.6f)) }
+                            netplayButton()
+                            profileButton()
+                            settingsButton()
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) { DiskFree(usage, Color.White.copy(alpha = 0.7f)) }
+                            OfflineBadge(Modifier.padding(horizontal = 4.dp))
+                            searchButton()
+                            refreshButton()
+                            CastButton()
                         }
                     }
-                    IconButton(onClick = {
-                        if (searching) viewModel.setQuery("")
-                        searching = !searching
-                    }) {
-                        Icon(
-                            if (searching) Icons.Filled.Close else Icons.Filled.Search,
-                            stringResource(if (searching) R.string.clear_search else R.string.search_all_title),
-                        )
-                    }
-                    if (!searching) {
-                        IconButton(onClick = viewModel::refresh) { Icon(Icons.Filled.Refresh, stringResource(R.string.action_refresh)) }
-                        CastButton()
-                        // Profil du joueur (coloré une fois connecté), à côté des paramètres.
-                        IconButton(onClick = onOpenProfile) {
-                            Icon(
-                                Icons.Filled.AccountCircle,
-                                stringResource(R.string.profile_button),
-                                tint = if (isSignedIn()) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                }
+            } else {
+                TopAppBar(
+                    windowInsets = topBarInsets,
+                    colors = if (portrait) TopAppBarDefaults.topAppBarColors(
+                        containerColor = HeaderGray,
+                        titleContentColor = Color.White,
+                        actionIconContentColor = Color.White,
+                    ) else TopAppBarDefaults.topAppBarColors(),
+                    title = {
+                        if (searching) {
+                            TextField(
+                                value = search.query,
+                                onValueChange = viewModel::setQuery,
+                                placeholder = { Text(stringResource(R.string.search_all_hint)) },
+                                singleLine = true,
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                ),
+                                modifier = Modifier.fillMaxWidth().focusRequester(searchFocus),
                             )
+                            LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
+                        } else {
+                            DiskBar(usage)
                         }
-                        IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.action_settings)) }
-                    }
-                },
-            )
+                    },
+                    actions = {
+                        OfflineBadge(Modifier.padding(horizontal = 4.dp))
+                        netplayButton()
+                        searchButton()
+                        if (!searching) {
+                            refreshButton()
+                            CastButton()
+                            profileButton()
+                            settingsButton()
+                        }
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
@@ -292,22 +342,38 @@ private fun SystemCard(system: GameSystem, imageUrl: String?, localSize: Long, o
 @Composable
 private fun DiskBar(usage: StorageUsage) {
     if (!usage.known) return
-    val color = if (usage.low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        LinearProgressIndicator(
-            progress = { usage.usedFraction },
-            color = color,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            drawStopIndicator = {},
-            modifier = Modifier.width(72.dp).height(6.dp),
-        )
-        Text(
-            stringResource(R.string.storage_free, formatSize(usage.free)),
-            style = MaterialTheme.typography.labelSmall,
-            color = if (usage.low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        DiskTrack(usage, Modifier.width(72.dp))
+        DiskFree(usage)
     }
 }
+
+/** Barre de l'espace occupé (rouge s'il en reste peu). */
+@Composable
+private fun DiskTrack(usage: StorageUsage, modifier: Modifier = Modifier) {
+    if (!usage.known) return
+    LinearProgressIndicator(
+        progress = { usage.usedFraction },
+        color = if (usage.low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        drawStopIndicator = {},
+        modifier = modifier.height(6.dp),
+    )
+}
+
+/** Espace restant (rouge s'il en reste peu). */
+@Composable
+private fun DiskFree(usage: StorageUsage, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    if (!usage.known) return
+    Text(
+        stringResource(R.string.storage_free, formatSize(usage.free)),
+        style = MaterialTheme.typography.labelSmall,
+        color = if (usage.low) MaterialTheme.colorScheme.error else color,
+    )
+}
+
+/** Fond de la barre du haut en portrait. */
+private val HeaderGray = Color(0xFF2B2B2E)
 
 /** Résultats de la recherche globale : cartes de jeux avec le logo de leur console. */
 @Composable
