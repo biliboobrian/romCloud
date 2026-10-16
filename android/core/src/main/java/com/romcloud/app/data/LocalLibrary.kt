@@ -47,6 +47,10 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         return playlist
     }
 
+    /** Fichier du disque [disk] du jeu (0 pour le premier). */
+    fun discFile(system: GameSystem, game: Game, disk: Int): File =
+        discNames(game).getOrNull(disk)?.let { File(systemDir(system), it) } ?: fileFor(system, game)
+
     /** Systèmes dont le dossier contient au moins un fichier de jeu (seuls affichés hors ligne). */
     fun systemsWithGames(systems: List<GameSystem>): Set<String> =
         systems.filter { system ->
@@ -109,12 +113,15 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
  * Elle porte le nom du premier disque : sauvegardes et états du jeu gardent leur nom.
  */
 fun playlistText(game: Game): String? {
-    val discs = game.parts.filter { it.kind == "disc" }.sortedBy { it.index ?: Int.MAX_VALUE }
-    if (discs.isEmpty()) return null
-    val names = listOf(game.fileName) + discs.map { it.fileName }
+    val names = discNames(game)
+    if (names.size < 2) return null
     if (names.any { it.substringAfterLast('.', "").lowercase() in setOf("zip", "7z") }) return null
     return names.joinToString("\n", postfix = "\n")
 }
+
+/** Fichiers des disques du jeu, du premier au dernier (le seul fichier principal pour un jeu d'un disque). */
+fun discNames(game: Game): List<String> =
+    listOf(game.fileName) + game.parts.filter { it.kind == "disc" }.sortedBy { it.index ?: Int.MAX_VALUE }.map { it.fileName }
 
 /** Taille des fichiers d'un dossier, sous-dossiers compris (0 s'il n'existe pas). */
 fun dirSize(dir: File): Long =

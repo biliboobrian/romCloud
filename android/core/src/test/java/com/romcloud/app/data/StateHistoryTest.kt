@@ -32,6 +32,31 @@ class StateHistoryTest {
     }
 
     @Test
+    fun `reprise par disque, dernier etat de chaque disque garde`() {
+        val dir = tmp.newFolder("mednafen_psx_hw", "FF7.history")
+        val history = StateHistory(dir, "mednafen_psx_hw")
+        val quick = File(tmp.root, "FF7.state")
+        val old = history.add(byteArrayOf(1), null, "Pixel 8", "android", createdAt = 1000) // sans disque : le premier
+        val second = history.add(byteArrayOf(2), null, "Pixel 8", "android", createdAt = 2000, disk = 1)
+        assertEquals(history.stateFile(old.id), history.resumePoint(quick, 0)?.first)
+        assertEquals(history.stateFile(second.id), history.resumePoint(quick, 1)?.first)
+        assertEquals(null, history.resumePoint(quick, 2))
+        assertEquals(1, history.diskOf(history.stateFile(second.id), quick))
+        assertEquals(null, history.diskOf(history.stateFile(old.id), quick))
+        // État de reprise écrit avec un état du disque 3 : reprise du disque 3, disque 2 inchangé.
+        quick.writeBytes(byteArrayOf(3, 3))
+        quick.setLastModified(5000)
+        history.add(byteArrayOf(3, 3), null, "Pixel 8", "android", createdAt = 5000, disk = 2)
+        assertEquals(2, history.diskOf(quick, quick))
+        assertEquals(quick, history.resumePoint(quick, 2)?.first)
+        assertEquals(history.stateFile(second.id), history.resumePoint(quick, 1)?.first)
+        // Dix états plus récents du disque 3 : le dernier du disque 2 reste.
+        repeat(10) { history.add(byteArrayOf(it.toByte()), null, "Pixel 8", "android", createdAt = 6000L + it, disk = 2) }
+        assertTrue(history.list().any { it.id == second.id })
+        assertFalse(history.list().any { it.id == old.id })
+    }
+
+    @Test
     fun `etat de reprise ajoute une seule fois a l'historique`() {
         val legacy = tmp.newFile("Zelda.state").apply { writeBytes(byteArrayOf(9)) }
         val history = StateHistory(File(tmp.root, "Zelda.history"), "snes9x")

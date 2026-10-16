@@ -356,6 +356,9 @@
     <string name="libretro_aspect_16_9" translatable="false">16:9</string>
     <string name="libretro_aspect_stretch">stretched</string>
     <string name="libretro_aspect_next_launch">The new aspect ratio will apply the next time the game is started.</string>
+    <string name="libretro_menu_disk">Disc: %1$d / %2$d</string>
+    <string name="libretro_disk_title">Disc in the drive</string>
+    <string name="libretro_disk_inserted">Disc %1$d inserted</string>
     <string name="libretro_menu_runahead">Run-ahead: %1$s</string>
     <string name="libretro_runahead_title">Run-ahead (faster response to the buttons)</string>
     <string name="libretro_runahead_off">off</string>
@@ -470,6 +473,7 @@
     <string name="storage_on_device">On this device: %1$s</string>
     <string name="storage_free">%1$s free</string>
     <string name="storage_free_of">%1$s free out of %2$s</string>
+    <string name="disc_resume">Saved game to resume on this disc</string>
     <string name="parts_disc">Disc %1$s</string>
     <string name="parts_update">Update</string>
     <string name="parts_dlcs">%1$d DLC</string>

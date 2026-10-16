@@ -85,6 +85,8 @@ import com.romcloud.app.data.starsText
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.FilterChip
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -221,6 +223,23 @@ fun GameDetailScreen(
                     }
                     if (state.downloaded) {
                         Text(stringResource(R.string.available_on_device), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
+                        // Jeu en plusieurs disques : disque de départ (icône : partie à reprendre sur ce disque).
+                        if (state.discCount > 0) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                repeat(state.discCount) { d ->
+                                    FilterChip(
+                                        selected = d == state.disc,
+                                        onClick = { viewModel.selectDisc(d) },
+                                        label = { Text(stringResource(R.string.parts_disc, (d + 1).toString())) },
+                                        leadingIcon = if (state.discResume.getOrElse(d) { false }) {
+                                            { Icon(Icons.Filled.History, stringResource(R.string.disc_resume), Modifier.size(18.dp)) }
+                                        } else {
+                                            null
+                                        },
+                                    )
+                                }
+                            }
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             val play = { resume: Boolean ->
                                 viewModel.play(activity, resume)?.let { scope.launch { snackbar.showSnackbar(it) } }

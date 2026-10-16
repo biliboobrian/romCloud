@@ -267,6 +267,10 @@ class LibretroActivity : ComponentActivity() {
     /** Run-ahead du système (images d'avance), changé depuis le menu ; [runAheadPicker] : liste affichée. */
     private var runAhead by mutableStateOf(0)
     private var runAheadPicker by mutableStateOf(false)
+    /** Jeu en plusieurs disques : nombre de disques et disque inséré (lus à l'ouverture du menu) ; [diskPicker] : liste affichée. */
+    private var diskCount by mutableStateOf(0)
+    private var disk by mutableStateOf(0)
+    private var diskPicker by mutableStateOf(false)
     /** Cœur chargé par l'adaptateur natif ([CoreShim]) : format d'image modifiable en cours de partie. */
     private var throughShim = false
     /** Disposition de la manette tactile propre à la console. */
@@ -282,6 +286,8 @@ class LibretroActivity : ComponentActivity() {
     }
     /** État de l'historique choisi dans la fiche du jeu, chargé dès la première image. */
     private val startState by lazy { intent.getStringExtra(EXTRA_STATE)?.let(::File) }
+    /** Jeu en plusieurs disques : disque inséré au démarrage (choisi dans la fiche, ou celui de l'état repris). */
+    private val startDisk by lazy { intent.getIntExtra(EXTRA_DISK, 0).takeIf { it > 0 } }
     /** Profil connecté : états envoyés en ligne dès leur sauvegarde (réglage de l'appareil). */
     private val autoUploadStates by lazy { intent.getBooleanExtra(EXTRA_AUTO_UPLOAD_STATES, true) }
     private val platform get() = if (isTv) "androidtv" else "android"
@@ -344,6 +350,7 @@ class LibretroActivity : ComponentActivity() {
                 imageOpen -> closeImage()
                 aspectPicker -> aspectPicker = false
                 runAheadPicker -> runAheadPicker = false
+                diskPicker -> diskPicker = false
                 statesOpen -> statesOpen = false
                 editing != null -> editing = null
                 options != null -> options = null
@@ -488,6 +495,7 @@ class LibretroActivity : ComponentActivity() {
                     selectControllers(view)
                     // Invité : l'état de l'hôte remplace la partie reprise.
                     if (netplayLaunch?.host != false) {
+                        startDisk?.let(::insertDisk)
                         val chosen = startState
                         if (chosen != null) loadStateAtStart(chosen) else if (resume) loadStateAtStart(stateFile)
                     }
@@ -574,6 +582,21 @@ class LibretroActivity : ComponentActivity() {
             audioEnabled = false
             onPause()
         }
+        diskCount = retroView?.let { view -> runCatching { view.getAvailableDisks(false) }.getOrDefault(0) } ?: 0
+        disk = currentDisk() ?: 0
+    }
+
+    /** Disque inséré (jeu en plusieurs disques, 0 pour le premier), null sinon. */
+    private fun currentDisk(): Int? {
+        val view = retroView ?: return null
+        return runCatching { if (view.getAvailableDisks(false) >= 2) view.getCurrentDisk(false) else null }.getOrNull()
+    }
+
+    /** Insère le disque [index] s'il existe et n'est pas déjà dans le lecteur. */
+    private fun insertDisk(index: Int) {
+        val view = retroView ?: return
+        val current = currentDisk() ?: return
+        if (index != current && index in 0 until view.getAvailableDisks(false)) runCatching { view.changeDisk(index, false) }
     }
 
     private fun closeMenu() {
@@ -584,6 +607,7 @@ class LibretroActivity : ComponentActivity() {
         imageOpen = false
         aspectPicker = false
         runAheadPicker = false
+        diskPicker = false
         statesOpen = false
         pausedFrame = null
         Netplay.setPaused(false)
@@ -949,6 +973,8 @@ class LibretroActivity : ComponentActivity() {
                 toast = e.message ?: getString(R.string.libretro_state_error)
                 return@launch
             }
+            // État fait sur un autre disque : celui-ci remis d'abord dans le lecteur.
+            state.disk?.let(::insertDisk)
             loadStateFile(file)
             closeMenu()
         }
@@ -970,7 +996,7 @@ class LibretroActivity : ComponentActivity() {
      */
     private fun addToHistory(bytes: ByteArray, sendNow: Boolean) {
         runCatching {
-            val entry = history.add(bytes, pausedFrame, account.deviceName, platform)
+            val entry = history.add(bytes, pausedFrame, account.deviceName, platform, disk = currentDisk())
             if (autoUploadStates && account.state.value.signedIn) account.queueStateUpload(gameId, history, entry.id, sendNow)
         }.onFailure { account.reportError("states:$core", it.message ?: "history", rom.name) }
     }
@@ -1229,6 +1255,8 @@ class LibretroActivity : ComponentActivity() {
                         AspectPicker()
                     } else if (menuOpen && runAheadPicker) {
                         RunAheadPicker()
+                    } else if (menuOpen && diskPicker) {
+                        DiskPicker()
                     } else if (menuOpen && statesOpen) {
                         StateHistoryList(
                             controller = historyController,
@@ -1364,6 +1392,7 @@ class LibretroActivity : ComponentActivity() {
                         add(stringResource(R.string.libretro_menu_load_state) to ::openStates)
                         add(stringResource(R.string.libretro_menu_reset) to ::reset)
                         add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
+                        if (diskCount >= 2) add(stringResource(R.string.libretro_menu_disk, disk + 1, diskCount) to { diskPicker = true })
                     }
                     add(stringResource(R.string.libretro_menu_filter, videoFilter.title) to ::openImage)
                     add(stringResource(R.string.libretro_menu_aspect, stringResource(aspectRatio.label)) to { aspectPicker = true })
@@ -1890,6 +1919,22 @@ class LibretroActivity : ComponentActivity() {
         }
     }
 
+    /** Disque à mettre dans le lecteur (jeu en plusieurs disques). */
+    @Composable
+    private fun DiskPicker() {
+        ChoicePicker(
+            stringResource(R.string.libretro_disk_title),
+            (0 until diskCount).toList(),
+            disk,
+            label = { stringResource(R.string.parts_disc, (it + 1).toString()) },
+        ) { index ->
+            insertDisk(index)
+            disk = currentDisk() ?: index
+            toast = getString(R.string.libretro_disk_inserted, disk + 1)
+            closeMenu()
+        }
+    }
+
     @Composable
     private fun runAheadLabel(frames: Int): String =
         if (frames == 0) stringResource(R.string.libretro_runahead_off) else pluralStringResource(R.plurals.libretro_runahead_frames, frames, frames)
@@ -1982,6 +2027,7 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_NETPLAY = "netplay"
         private const val EXTRA_STATE = "state"
         private const val EXTRA_AUTO_UPLOAD_STATES = "autoUploadStates"
+        private const val EXTRA_DISK = "disk"
         private const val TOAST_MS = 2000L
         /** État chargé au lancement : essais espacés de [START_STATE_RETRY_MS] (environ 3 s en tout). */
         private const val START_STATE_ATTEMPTS = 15
@@ -2007,7 +2053,8 @@ class LibretroActivity : ComponentActivity() {
          * [resume] : reprend la partie à son état sauvegardé ;
          * [stream] : TV du profil sur laquelle diffuser le jeu ; [streamMode] : image diffusée ;
          * [state] : état de l'historique chargé au lancement ; [autoUploadStates] : états envoyés en ligne
-         * (réglage lu par l'application : ce processus garde ses préférences en mémoire).
+         * (réglage lu par l'application : ce processus garde ses préférences en mémoire) ; [disk] : jeu en
+         * plusieurs disques, disque inséré au démarrage (0 pour le premier).
          */
         fun intent(
             context: Context,
@@ -2022,6 +2069,7 @@ class LibretroActivity : ComponentActivity() {
             netplay: NetplayLaunch? = null,
             state: File? = null,
             autoUploadStates: Boolean = true,
+            disk: Int = 0,
         ): Intent =
             Intent(context, LibretroActivity::class.java)
                 .putExtra(EXTRA_SYSTEM, systemId)
@@ -2035,5 +2083,6 @@ class LibretroActivity : ComponentActivity() {
                 .putExtra(EXTRA_NETPLAY, netplay?.let { NetplayProtocol.json.encodeToString(NetplayLaunch.serializer(), it) })
                 .putExtra(EXTRA_STATE, state?.absolutePath)
                 .putExtra(EXTRA_AUTO_UPLOAD_STATES, autoUploadStates)
+                .putExtra(EXTRA_DISK, disk)
     }
 }
