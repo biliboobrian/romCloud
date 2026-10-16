@@ -32,10 +32,15 @@ struct MenuState {
   int runAhead = 0;   // images calculées en avance (run-ahead), 0 : sans
 };
 
-/** Réglage du filtre affiché dans l'écran « Réglages du filtre » (valeur montrée en pourcentage). */
+/**
+ * Réglage du filtre affiché dans l'écran « Réglages du filtre » : valeur montrée en pourcentage, en
+ * nombre entier ([integer]) ou par le nom du choix ([choices], 0 au premier).
+ */
 struct FilterRow {
   std::string label;
   float value, def, min, max, step;
+  bool integer = false;
+  std::vector<std::string> choices;
 };
 
 class Menu {

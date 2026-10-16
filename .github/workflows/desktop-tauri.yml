@@ -20,6 +20,7 @@ on:
       - "desktop-tauri/**"
       - "desktop/src/renderer/**"
       - "desktop/native/**"
+      - "android/libretrodroid/src/main/cpp/shadermanager.*"
       - "desktop/test/**"
       - ".github/workflows/desktop-tauri.yml"
   pull_request:
@@ -27,6 +28,7 @@ on:
       - "desktop-tauri/**"
       - "desktop/src/renderer/**"
       - "desktop/native/**"
+      - "android/libretrodroid/src/main/cpp/shadermanager.*"
       - "desktop/test/**"
       - ".github/workflows/desktop-tauri.yml"
   workflow_dispatch:

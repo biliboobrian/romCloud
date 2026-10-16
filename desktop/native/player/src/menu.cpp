@@ -38,6 +38,11 @@ static const struct {
     {"filter_lcd", "LCD", "LCD"},
     {"filter_xbr", "xBR", "xBR"},
     {"filter_fsr", "FSR", "FSR"},
+    {"filter_cut", "CUT", "CUT"},
+    {"filter_cut2", "CUT2", "CUT2"},
+    {"filter_cut3", "CUT3", "CUT3"},
+    {"filter_handheld", "GBA / GBC", "GBA / GBC"},
+    {"filter_dotmatrix", "Game Boy", "Game Boy"},
     {"aspect", "Format", "Aspect"},
     {"aspect_core", "auto", "auto"},
     {"aspect_4_3", "4:3", "4:3"},
@@ -94,6 +99,11 @@ static const struct {
     {"fd_lcd", "Écran de console portable : grille.", "Handheld console screen: grid."},
     {"fd_xbr", "Contours redessinés en diagonale (niveau 1).", "Edges redrawn diagonally (level 1)."},
     {"fd_fsr", "AMD FidelityFX Super Resolution 1 (jeux en 3D).", "AMD FidelityFX Super Resolution 1 (3D games)."},
+    {"fd_cut", "Lissage des contours en une passe (LibretroDroid), doux.", "One-pass edge smoothing (LibretroDroid), soft."},
+    {"fd_cut2", "Lissage des contours en deux passes, proche d'un dessin.", "Two-pass edge smoothing, close to a drawing."},
+    {"fd_cut3", "Lissage des contours en trois passes (celui de Lemuroid).", "Three-pass edge smoothing (Lemuroid's)."},
+    {"fd_handheld", "Écran de GBA / GBC : couleurs d'origine, grille, rémanence.", "GBA / GBC screen: original colors, grid, ghosting."},
+    {"fd_dotmatrix", "Game Boy : palette verte, matrice de points, rémanence.", "Game Boy: green palette, dot matrix, ghosting."},
     {"fp_softness", "Largeur de la transition", "Transition width"},
     {"fp_scanlines", "Lignes de balayage", "Scanlines"},
     {"fp_glow", "Éclat des lignes", "Scanline glow"},
@@ -108,6 +118,31 @@ static const struct {
     {"fp_threshold", "Seuil des couleurs", "Color threshold"},
     {"fp_strength", "Force", "Strength"},
     {"fp_edge_softness", "Douceur des contours", "Edge softness"},
+    {"fp_ghosting", "Rémanence", "Ghosting"},
+    {"fp_screen_colors", "Couleurs de l'écran", "Screen colors"},
+    {"fp_screen", "Écran", "Screen"},
+    {"fc_gba", "GBA", "GBA"},
+    {"fc_gbc", "GBC", "GBC"},
+    {"fp_palette", "Palette", "Palette"},
+    {"fc_dmg", "Game Boy", "Game Boy"},
+    {"fc_pocket", "Pocket", "Pocket"},
+    {"fc_game_colors", "Couleurs du jeu", "Game colors"},
+    {"fp_dots", "Points", "Dots"},
+    {"fp_dot_gap", "Espace entre les points", "Dot gap"},
+    {"fp_dynamic_blend", "Mélange dynamique", "Dynamic blend"},
+    {"fp_blend_min_contrast", "Contraste min. du mélange", "Blend min. contrast"},
+    {"fp_blend_max_contrast", "Contraste max. du mélange", "Blend max. contrast"},
+    {"fp_blend_min_sharpness", "Netteté min. du mélange", "Blend min. sharpness"},
+    {"fp_blend_max_sharpness", "Netteté max. du mélange", "Blend max. sharpness"},
+    {"fp_static_sharpness", "Netteté fixe", "Static sharpness"},
+    {"fp_fast_luma", "Luminance rapide", "Fast luma"},
+    {"fp_edge_min_value", "Seuil des contours", "Edge threshold"},
+    {"fp_edge_min_contrast", "Contraste des contours", "Edge contrast"},
+    {"fp_soft_edges", "Renfort des contours doux", "Soft edge sharpening"},
+    {"fp_soft_edges_amount", "Force du renfort", "Sharpening amount"},
+    {"fp_hard_edges_error", "Tolérance des contours nets", "Hard edge tolerance"},
+    {"fp_hard_edges_distance", "Distance de recherche", "Search distance"},
+    {"fp_dedither", "Lissage du tramage", "Dither smoothing"},
     {"fp_brightness", "Luminosité", "Brightness"},
     {"fp_contrast", "Contraste", "Contrast"},
     {"fp_saturation", "Saturation", "Saturation"},
@@ -369,15 +404,23 @@ MenuAction Menu::handleFilterSettings(Nav nav) {
   return MenuAction::None;
 }
 
-/** Ligne d'un réglage : libellé, barre de la valeur entre ses bornes, valeur en pourcentage. */
+/**
+ * Ligne d'un réglage : libellé, barre de la valeur entre ses bornes, valeur en pourcentage, en nombre
+ * entier ou nom du choix.
+ */
 static void renderFilterRow(Canvas& c, int x, int y, int width, const FilterRow& row, bool sel) {
-  const int barWidth = std::min(220, width / 4), barX = x + width - barWidth - 56;
+  std::string value = std::to_string((int)std::lround(row.value * 100)) + " %";
+  const int index = (int)std::lround(row.value - row.min);
+  if (!row.choices.empty() && index >= 0 && index < (int)row.choices.size()) value = row.choices[(size_t)index];
+  else if (row.integer) value = std::to_string((int)std::lround(row.value));
+  const int valueWidth = std::max(46, Canvas::measure(value, 1));
+  const int barWidth = std::min(220, width / 4), barX = x + width - barWidth - valueWidth - 10;
   const uint32_t color = sel ? rgba(255, 255, 255) : kText;
   c.text(x + 8, y, Canvas::fit(row.label, 1, barX - x - 16), 1, color);
   const float t = row.max > row.min ? (row.value - row.min) / (row.max - row.min) : 0.0f;
   c.fill(barX, y + 2, barWidth, 4, rgba(255, 255, 255, 50));
   c.fill(barX, y + 2, (int)(barWidth * t), 4, kText);
-  c.text(barX + barWidth + 10, y, std::to_string((int)std::lround(row.value * 100)) + " %", 1, color);
+  c.text(barX + barWidth + 10, y, value, 1, color);
 }
 
 void Menu::renderFilterSettings(Canvas& c) const {

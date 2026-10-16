@@ -16,13 +16,15 @@
  * Shader d'image (pixels de la console agrandis à l'écran) : Nearest (pixels bruts), Sharp Bilinear
  * (pixels nets, transition lissée sur un pixel de l'écran : ni flou ni pixels inégaux), Bicubic,
  * Bilinear, Scale2x (EPX : contours du pixel art arrondis), CRT (lignes de balayage, masque RGB),
- * LCD (grille), xBR, FSR. Le rang sert de numéro de mode au shader (u_mode) ; CrtMask : ancien
- * « CRT+ », lu comme CRT (masque réglable dans CRT).
+ * LCD (grille), xBR, FSR, CUT, CUT2 et CUT3 (ceux de LibretroDroid, comme sous Android), écran de
+ * GBA / GBC (couleurs corrigées, grille, rémanence), Game Boy (matrice de points, palette verte,
+ * rémanence). Le rang sert de numéro de mode au shader (u_mode) ; CrtMask : ancien « CRT+ », lu
+ * comme CRT (masque réglable dans CRT).
  */
-enum class Filter { Pixels, Sharp, Soft, Smooth, Epx, Crt, CrtMask, Lcd, Xbr, Fsr };
-constexpr int kFilterCount = 10;
+enum class Filter { Pixels, Sharp, Soft, Smooth, Epx, Crt, CrtMask, Lcd, Xbr, Fsr, Cut, Cut2, Cut3, Handheld, DotMatrix };
+constexpr int kFilterCount = 15;
 /** Shaders proposés dans la liste du menu. */
-constexpr int kFilterListCount = 9;
+constexpr int kFilterListCount = 14;
 /** Shader de rang [index] dans la liste du menu (lissages, agrandisseurs, écrans) et rang inverse. */
 Filter filterAt(int index);
 int filterIndex(Filter filter);
@@ -33,19 +35,32 @@ const char* filterDescription(Filter filter);
 const char* filterId(Filter filter);
 Filter filterFromId(const std::string& id);
 
+/** Valeur d'un réglage affichée en pourcentage, en nombre entier ou par son nom (choix, oui / non). */
+enum class ParamFormat { Percent, Integer, Choice };
+
 /**
- * Réglage d'un filtre : identifiant mémorisé pour le système (« romcloud_<filtre>_<réglage> »), clé du
- * libellé, composante du shader (0 à 7 : u_params et u_params2 ; 8 à 11 : couleurs, u_color), valeur
- * par défaut, bornes et pas.
+ * Réglage d'un filtre : identifiant mémorisé pour le système (« romcloud_<filtre>_<réglage> », sauf
+ * le lissage du tramage : « romcloud_dedither », commun aux filtres), clé du libellé, composante du
+ * shader (0 à 7 : u_params et u_params2 ; 8 à 11 : couleurs, u_color ; 12 : rémanence, 13 : lissage
+ * du tramage, passe préalable ; 14 à 24 : réglages de CUT, CUT2 et CUT3), valeur par défaut, bornes,
+ * pas, affichage et noms des choix (clés séparées par « | », 0 au premier).
  */
 struct FilterParam {
   const char* id;
   const char* label;
   int slot;
   float def, min, max, step;
+  ParamFormat format = ParamFormat::Percent;
+  const char* choices = nullptr;
 };
-constexpr int kFilterSlots = 12;
-/** Réglages du filtre : les siens, puis luminosité, contraste, saturation et gamma (tous les filtres). */
+constexpr int kFilterSlots = 25;
+constexpr int kGhostSlot = 12;
+constexpr int kDeditherSlot = 13;
+constexpr int kCutSlot = 14;
+/**
+ * Réglages du filtre : les siens, puis luminosité, contraste, saturation, gamma et lissage du tramage
+ * (tous les filtres).
+ */
 std::vector<FilterParam> filterParams(Filter filter);
 
 /** Format de l'image : celui du cœur, 4:3, 16:9, ou étiré sur toute la fenêtre (ordre du menu). */
@@ -86,10 +101,16 @@ class Video {
 
   void toggleFullscreen();
   bool fullscreen() const { return fullscreen_; }
-  void setFilter(Filter filter) { filter_ = filter; }
+  void setFilter(Filter filter) {
+    filter_ = filter;
+    prepDirty_ = true;
+  }
   /** Valeur d'un réglage du filtre (composante [slot] de u_params, u_params2 ou u_color). */
   void setFilterParam(int slot, float value) {
-    if (slot >= 0 && slot < kFilterSlots) params_[slot] = value;
+    if (slot >= 0 && slot < kFilterSlots && params_[slot] != value) {
+      params_[slot] = value;
+      prepDirty_ = true;
+    }
   }
   Filter filter() const { return filter_; }
   void setAspect(Aspect aspect) { aspect_ = aspect; }
@@ -121,6 +142,18 @@ class Video {
   bool showShared(unsigned width, unsigned height);
   void releaseShared();
   void dropShared();
+  /**
+   * Passe préalable à la taille du jeu (lissage du tramage, rémanence des écrans LCD, image exacte
+   * pour CUT) : image du cœur [source] (coordonnées u1, vTop, vBottom dans une texture de texW x texH)
+   * recopiée dans prepTexture_[prepOut_], refaite seulement pour une nouvelle image ou des réglages
+   * changés ; faux si l'image intermédiaire n'a pas pu être créée.
+   */
+  bool runPrep(unsigned source, float u1, float vTop, float vBottom, float texW, float texH);
+  /** Programmes des passes de CUT (shaders de LibretroDroid adaptés à OpenGL), recréés si les réglages changent. */
+  bool prepareCut();
+  /** Passes de CUT : intermédiaires à la taille du jeu, la dernière dans le rectangle [quad] de l'écran. */
+  void drawCut(const void* quad, float screenDensity);
+  void deleteCut();
 
   SDL_Window* window_ = nullptr;
   SDL_GLContext context_ = nullptr;
@@ -135,6 +168,24 @@ class Video {
   int uniformTexture_ = -1, uniformAlpha_ = -1, uniformMode_ = -1, uniformSize_ = -1, uniformScale_ = -1;
   int uniformParams_ = -1, uniformParams2_ = -1, uniformColor_ = -1, uniformRect_ = -1;
   float params_[kFilterSlots] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  // Passe préalable : programme, deux images à la taille du jeu (l'une garde l'image précédente pour
+  // la rémanence), image de sortie, image du cœur déjà traitée ([frameSerial_] : images reçues).
+  unsigned prepProgram_ = 0;
+  int prepUniformSrc_ = -1, prepUniformHist_ = -1, prepUniformRect_ = -1, prepUniformSize_ = -1, prepUniformParams_ = -1;
+  unsigned prepFbo_[2] = {0, 0}, prepTexture_[2] = {0, 0};
+  int prepWidth_ = 0, prepHeight_ = 0, prepOut_ = 0;
+  bool prepOk_ = false, prepDirty_ = true;
+  int prepFrames_ = 0;  // images traitées depuis la création des images (rémanence)
+  unsigned long long frameSerial_ = 0, prepSerial_ = 0;
+  // CUT : programmes des passes (uniformes de LibretroDroid), images intermédiaires, réglages compilés.
+  struct CutPass {
+    unsigned program = 0;
+    int texture = -1, previous = -1, size = -1, density = -1;
+  };
+  std::vector<CutPass> cutPasses_;
+  std::vector<unsigned> cutFbo_, cutTexture_;
+  int cutWidth_ = 0, cutHeight_ = 0;
+  std::string cutKey_;
   unsigned frameTexture_ = 0, overlayTexture_ = 0;
   int overlayTextureWidth_ = 0, overlayTextureHeight_ = 0;  // taille de la surimpression envoyée
   // Image partagée avec Vulkan : texture sur sa mémoire, sémaphores « prête » et « rendue » ;
