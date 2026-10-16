@@ -87,6 +87,7 @@ export const SCREENSCRAPER_SYSTEM_IDS = {
   wiiware: 16,
   ws: 45,
   wsc: 46,
+  windows: 138,
   x1: 220,
   x68000: 79,
   xbox: 32,
