@@ -14,6 +14,17 @@ void logf(const char* fmt, ...) {
   fflush(stderr);
 }
 
+void raiseGamePriority() {
+  SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+  // avrt.dll chargée à la demande (pas de bibliothèque de plus à l'édition des liens).
+  using SetTask = HANDLE(WINAPI*)(LPCWSTR, LPDWORD);
+  HMODULE avrt = LoadLibraryW(L"avrt.dll");
+  auto setTask = avrt ? (SetTask)(void*)GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW") : nullptr;
+  DWORD index = 0;
+  const bool mmcss = setTask && setTask(L"Games", &index);
+  logf("Priorité : processus au-dessus de la normale, fil de l'émulation %s", mmcss ? "déclaré « jeu » (MMCSS)" : "sans MMCSS");
+}
+
 std::wstring widen(const std::string& utf8) {
   if (utf8.empty()) return {};
   int n = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), nullptr, 0);

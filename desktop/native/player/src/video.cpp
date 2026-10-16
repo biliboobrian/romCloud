@@ -91,6 +91,8 @@ GL_OPTIONAL_FUNCTIONS(DECLARE)
 namespace {
 constexpr GLenum kDedicatedMemoryObject = 0x9581, kNumDeviceUuids = 0x9596, kDeviceUuid = 0x9597;
 constexpr GLenum kHandleOpaqueWin32 = 0x9587, kLayoutShaderReadOnly = 0x9591;
+// Format interne 16 bits 5-6-5 (OpenGL 4.1, GL_ARB_ES2_compatibility).
+constexpr GLint kRgb565 = 0x8D62;
 typedef void(APIENTRY* PfnCreateMemoryObjects)(GLsizei, GLuint*);
 typedef void(APIENTRY* PfnDeleteMemoryObjects)(GLsizei, const GLuint*);
 typedef void(APIENTRY* PfnMemoryObjectParameteriv)(GLuint, GLenum, const GLint*);
@@ -300,6 +302,7 @@ bool Video::create(const std::string& title, bool fullscreen, bool hidden, std::
   }
   glGenTextures(1, &frameTexture_);
   glGenTextures(1, &overlayTexture_);
+  rgb565_ = SDL_GL_ExtensionSupported("GL_ARB_ES2_compatibility");
   if (g.vulkan) {
     // Cœur Vulkan : périphérique créé avant son context_reset, image affichée par OpenGL.
     if (!vulkan::create(error)) return false;
@@ -843,10 +846,11 @@ void Video::onFrame(const void* data, unsigned width, unsigned height, size_t pi
     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
     const GLenum format = bgra ? GL_BGRA : GL_RGBA;
-    if ((int)width != textureWidth_ || (int)height != textureHeight_) {
+    if ((int)width != textureWidth_ || (int)height != textureHeight_ || textureFormat_ != GL_RGBA8) {
       textureWidth_ = (int)width;
       textureHeight_ = (int)height;
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, (GLsizei)width, (GLsizei)height, 0, format, GL_UNSIGNED_BYTE, pixels);
+      textureFormat_ = GL_RGBA8;
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)width, (GLsizei)height, 0, format, GL_UNSIGNED_BYTE, pixels);
     } else {
       glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)width, (GLsizei)height, format, GL_UNSIGNED_BYTE, pixels);
     }
@@ -861,21 +865,30 @@ void Video::onFrame(const void* data, unsigned width, unsigned height, size_t pi
   // Le cœur a pu laisser un tampon de pixels ou un alignement : on les neutralise.
   p_glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
   glBindTexture(GL_TEXTURE_2D, frameTexture_);
+  // Format interne identique à celui du cœur : copie directe, sans conversion par le pilote
+  // (alpha ignoré à l'affichage et dans les captures).
   GLenum format, type;
+  GLint internal;
   int bytes;
   switch (g.pixelFormat) {
-    case RETRO_PIXEL_FORMAT_XRGB8888: format = GL_BGRA; type = GL_UNSIGNED_INT_8_8_8_8_REV; bytes = 4; break;
-    case RETRO_PIXEL_FORMAT_RGB565: format = GL_RGB; type = GL_UNSIGNED_SHORT_5_6_5; bytes = 2; break;
-    default: format = GL_BGRA; type = GL_UNSIGNED_SHORT_1_5_5_5_REV; bytes = 2; break;
+    case RETRO_PIXEL_FORMAT_XRGB8888: format = GL_BGRA; type = GL_UNSIGNED_INT_8_8_8_8_REV; internal = GL_RGBA8; bytes = 4; break;
+    case RETRO_PIXEL_FORMAT_RGB565:
+      format = GL_RGB;
+      type = GL_UNSIGNED_SHORT_5_6_5;
+      internal = rgb565_ ? kRgb565 : GL_RGB8;
+      bytes = 2;
+      break;
+    default: format = GL_BGRA; type = GL_UNSIGNED_SHORT_1_5_5_5_REV; internal = GL_RGB5_A1; bytes = 2; break;
   }
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
   glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(pitch / bytes));
   glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
   glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-  if ((int)width != textureWidth_ || (int)height != textureHeight_) {
+  if ((int)width != textureWidth_ || (int)height != textureHeight_ || textureFormat_ != internal) {
     textureWidth_ = (int)width;
     textureHeight_ = (int)height;
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, (GLsizei)width, (GLsizei)height, 0, format, type, data);
+    textureFormat_ = internal;
+    glTexImage2D(GL_TEXTURE_2D, 0, internal, (GLsizei)width, (GLsizei)height, 0, format, type, data);
   } else {
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)width, (GLsizei)height, format, type, data);
   }

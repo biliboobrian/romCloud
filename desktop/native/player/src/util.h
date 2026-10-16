@@ -7,6 +7,12 @@
 
 void logf(const char* fmt, ...);
 
+/**
+ * Fil appelant déclaré « jeu » à Windows (MMCSS, tâche « Games ») et processus en priorité
+ * au-dessus de la normale : moins d'images en retard quand d'autres programmes travaillent.
+ */
+void raiseGamePriority();
+
 std::wstring widen(const std::string& utf8);
 std::string narrow(const std::wstring& wide);
 

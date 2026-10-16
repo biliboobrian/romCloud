@@ -39,10 +39,16 @@ public:
     void updateScreenRefreshRate(double screenRefreshRate);
 private:
 
+    /** RomCloud : rafraîchissements de l'écran par image du jeu (2 : jeu à 60 images/s sur 120 Hz…). */
+    static unsigned computeInterval(double contentRefreshRate, double screenRefreshRate);
+
     double screenRefreshRate;
     double contentRefreshRate;
     bool useVSync;
-    const double FPS_TOLERANCE = 5;
+    unsigned vsyncInterval = 1;
+    unsigned vsyncCount = 0;
+    /** RomCloud : part récente des images en retard (saut d'images seulement si le retard dure). */
+    double lateRatio = 0;
 
     const TimePoint MIN_TIME = TimePoint::min();
     void start();
