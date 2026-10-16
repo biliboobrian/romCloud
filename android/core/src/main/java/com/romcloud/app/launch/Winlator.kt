@@ -25,8 +25,8 @@ object Winlator {
         "com.ludashi.benchmark" to "com.winlator.cmod.XServerDisplayActivity",
     )
 
-    /** Winlator officielle (lancement depuis une autre application impossible). */
-    const val OFFICIAL = "com.winlator"
+    /** Nom affiché de l'application proposée à l'installation. */
+    const val CMOD_NAME = "Winlator Cmod"
 
     /** Lecteur du dossier des ROMs dans le conteneur, quand il n'est pas dans Téléchargements. */
     const val ROMS_DRIVE = 'R'
@@ -78,13 +78,13 @@ object Winlator {
 
     /**
      * Lance l'exécutable [exe] (dans le dossier du jeu [gameDir]) avec Winlator ; renvoie un conseil à
-     * afficher (lecteur des ROMs à ajouter dans le conteneur), ou null. Lève LaunchException si
-     * Winlator Cmod manque.
+     * afficher (lecteur des ROMs à ajouter dans le conteneur), ou null. Winlator Cmod absent (ou
+     * seulement la version officielle, qui ne peut pas être lancée ainsi) : MissingEmulatorException,
+     * qui propose son APK (Release GitHub, absent du Play Store).
      */
     fun launch(activityContext: Context, title: String, gameDir: File, exe: String, romsRoot: File): String? {
-        val (pkg, activity) = installed(activityContext) ?: throw LaunchException(
-            I18n.get(if (isInstalled(activityContext, OFFICIAL)) R.string.winlator_official else R.string.winlator_missing),
-        )
+        val (pkg, activity) = installed(activityContext)
+            ?: throw MissingEmulatorException(MissingEmulator(APPS.first().first, CMOD_NAME))
         val target = File(gameDir, exe)
         if (!target.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, target.absolutePath))
         @Suppress("DEPRECATION")

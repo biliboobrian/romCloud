@@ -50,6 +50,15 @@ class EmulatorReleasesTest {
     }
 
     @Test
+    fun `Winlator Cmod, APK de GitHub hors Play Store`() {
+        assertEquals("Winlator-Cmod-v13.1.1.apk", pick("com.winlator.cmod", 34, "cmod-hotfix-checklist-08-07-2025.png", "Winlator-Cmod-v13.1.1.apk"))
+        assertEquals(false, EmulatorReleases.SOURCES.getValue("com.winlator.cmod").playStore)
+        assertEquals("13.1", EmulatorReleases.versionOf("cmod_v13.1"))
+        assertEquals("0.0.3", EmulatorReleases.versionOf("v0.0.3"))
+        assertEquals("2122.1", EmulatorReleases.versionOf("2122.1"))
+    }
+
+    @Test
     fun `site du gestionnaire de versions`() {
         assertEquals("git.eden-emu.dev", EmulatorReleases.SOURCES.getValue("dev.eden.eden_emulator").host)
         assertEquals("github.com", EmulatorReleases.SOURCES.getValue("com.flycast.emulator").host)

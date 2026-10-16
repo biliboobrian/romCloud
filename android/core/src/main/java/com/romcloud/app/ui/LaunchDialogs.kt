@@ -48,6 +48,7 @@ import com.romcloud.core.R
 import com.romcloud.app.data.AppUpdater
 import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.EmulatorApk
+import com.romcloud.app.data.EmulatorReleases
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.libretro.CrashReport
 import com.romcloud.app.libretro.CrashReports
@@ -154,14 +155,17 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
             },
             confirmButton = {
                 Row {
-                    TextButton(onClick = {
-                        app.missingEmulator.value = null
-                        try {
-                            app.launcher.openStore(activity, emulator.packageName)
-                        } catch (e: LaunchException) {
-                            scope.launch { snackbar.showSnackbar(e.message ?: unavailable) }
-                        }
-                    }) { Text(stringResource(R.string.action_open_play_store)) }
+                    // Application absente du Play Store (Winlator) : seulement son APK.
+                    if (EmulatorReleases.SOURCES[emulator.packageName]?.playStore != false) {
+                        TextButton(onClick = {
+                            app.missingEmulator.value = null
+                            try {
+                                app.launcher.openStore(activity, emulator.packageName)
+                            } catch (e: LaunchException) {
+                                scope.launch { snackbar.showSnackbar(e.message ?: unavailable) }
+                            }
+                        }) { Text(stringResource(R.string.action_open_play_store)) }
+                    }
                     found?.let { download ->
                         TextButton(onClick = {
                             app.missingEmulator.value = null

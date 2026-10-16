@@ -143,6 +143,10 @@ private fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem, 
         val hint = Winlator.launch(activity, game.title, library.fileFor(system, game), exe, File(settings.config.value.romsDir))
         account.startExternalSession(game.id)
         hint?.takeIf { !settings.winlatorDriveHintShown }?.also { settings.winlatorDriveHintShown = true }
+    } catch (e: MissingEmulatorException) {
+        // Winlator Cmod absent : son APK proposé (Release GitHub).
+        missingEmulator.value = e.emulator
+        null
     } catch (e: LaunchException) {
         account.reportError("launch:${system.id}", e.message ?: "launch", game.fileName)
         e.message
