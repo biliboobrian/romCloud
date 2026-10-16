@@ -8,7 +8,7 @@ process.env.DATA_DIR = path.join(os.tmpdir(), `romcloud-groups-test-${process.pi
 
 const { db } = await import('../src/db.js');
 const { autoGroups, parsePkgHeader, partInfo, setGroup } = await import('../src/groups.js');
-const { createSystem, systemDir, requireSystem } = await import('../src/systems.js');
+const { createSystem, listSystems, systemDir, requireSystem } = await import('../src/systems.js');
 const { deleteGame, listGames, scanSystem, searchGames } = await import('../src/library.js');
 
 test('parties reconnues dans les noms de fichiers', () => {
@@ -131,6 +131,9 @@ test('scan, liste, recherche, rattachement manuel et suppression', () => {
   games = listGames('psx');
   assert.deepEqual(games.map((g) => g.fileName), ['Lunar (USA) (Disc 1).chd', 'Tekken (USA).chd']);
   assert.deepEqual(games[0].parts.map((p) => p.kind), ['disc', 'dlc']);
+  // Nombre de jeux du système : les parties ne comptent pas, la taille comprend tous les fichiers.
+  assert.deepEqual([requireSystem('psx').gameCount, requireSystem('psx').totalSize], [2, 42]);
+  assert.equal(listSystems().find((s) => s.id === 'psx').gameCount, 2);
 
   // Détaché à la main : reste un jeu même si son nom ressemble à un disque.
   const disc2 = games[0].parts[0];
