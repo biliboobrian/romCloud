@@ -52,6 +52,8 @@ add_executable(romcloud-player WIN32
   src/util.cpp
   src/volumekeys.cpp
   src/font8x8.c
+  # Shaders CUT, CUT2 et CUT3 : sources de LibretroDroid (Android), partagées.
+  ../../../android/libretrodroid/src/main/cpp/shadermanager.cpp
 )
 target_include_directories(romcloud-player PRIVATE third_party src)
 target_link_libraries(romcloud-player PRIVATE SDL3::SDL3-static Vulkan::Headers opengl32 ws2_32 iphlpapi)

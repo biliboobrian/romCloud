@@ -7,11 +7,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <regex>
 #include <vector>
 
 #include "core.h"
 #include "util.h"
 #include "vulkan.h"
+// Shaders CUT, CUT2 et CUT3 : mêmes sources que LibretroDroid (Android).
+#include "../../../../android/libretrodroid/src/main/cpp/shadermanager.h"
 
 // ---------------------------------------------------------------------------
 // Fonctions OpenGL (chargées à l'exécution : opengl32.dll n'exporte que l'OpenGL 1.1)
@@ -481,6 +484,13 @@ void Video::onGeometryChanged() {
 // Shaders
 // ---------------------------------------------------------------------------
 
+// Sommet du rectangle dessiné : position (coordonnées normalisées) et coordonnées de texture.
+namespace {
+struct Vertex {
+  float x, y, u, v;
+};
+}  // namespace
+
 static const char* kVertex150 =
     "#version 150\n"
     "in vec2 a_pos; in vec2 a_uv; out vec2 v_uv;\n"
@@ -492,7 +502,10 @@ static const char* kVertex150 =
 // Catmull-Rom par défaut), 3 bilinéaire, 4 EPX / Scale2x, 5 cathodique, 6 cathodique + masque RGB
 // (grille d'ouverture), 7 LCD, 8 xBR (niveau 1 : angles des contours redessinés en diagonale),
 // 9 FSR 1 EASU (agrandissement suivant la direction des contours, d'après AMD FidelityFX Super
-// Resolution 1), 10 FSR 1 RCAS (netteté adaptée au contraste, seconde passe sur l'image agrandie).
+// Resolution 1), 13 écran de GBA / GBC (couleurs de l'écran d'origine d'après « gba-color » et
+// « gbc-color » de Pokefan531, grille), 14 Game Boy (palette verte ou de la Game Boy Pocket, matrice
+// de points), 20 FSR 1 RCAS (netteté adaptée au contraste, seconde passe sur l'image agrandie).
+// CUT, CUT2 et CUT3 : programmes à part (prepareCut).
 // Réglages (filterParams) : u_params, u_params2 ; couleurs de tous les filtres (u_color : luminosité,
 // contraste, saturation, gamma), appliquées à l'image finale (pas à la première passe de FSR).
 #define FILTER_EXTRA \
@@ -583,6 +596,37 @@ static const char* kVertex150 =
   "  vec3 mx = max(max(f, g), max(j, k));\n" \
   "  return vec4(clamp(aC / aW, mn, mx), 1.0);\n" \
   "}\n" \
+  "vec3 handheld(vec3 c, vec2 texel) {\n" \
+  "  mat3 gba = mat3(0.82, 0.125, 0.195, 0.24, 0.665, 0.075, -0.06, 0.21, 0.73);\n" \
+  "  mat3 gbc = mat3(0.78824, 0.025, 0.12039, 0.12157, 0.72941, 0.12157, 0.0, 0.275, 0.82);\n" \
+  "  vec3 lin = pow(clamp(c, 0.0, 1.0), vec3(2.2)) * 0.94;\n" \
+  "  vec3 screen = pow(clamp((u_params.z < 0.5 ? gba : gbc) * lin, 0.0, 1.0), vec3(1.0 / 2.2));\n" \
+  "  c = mix(c, screen, u_params.x);\n" \
+  "  if (min(u_scale.x, u_scale.y) >= 3.0) {\n" \
+  "    vec2 line = step(vec2(1.0) - 1.0 / u_scale, fract(texel));\n" \
+  "    c *= 1.0 - u_params.y * max(line.x, line.y);\n" \
+  "  }\n" \
+  "  return c;\n" \
+  "}\n" \
+  "vec3 dotMatrix(vec3 c, vec2 texel) {\n" \
+  "  float l = dot(c, vec3(0.299, 0.587, 0.114));\n" \
+  "  vec3 light = vec3(0.92);\n" \
+  "  if (u_params.x < 0.5) {\n" \
+  "    vec3 c0 = vec3(0.059, 0.22, 0.059), c1 = vec3(0.188, 0.384, 0.188);\n" \
+  "    vec3 c2 = vec3(0.545, 0.675, 0.059), c3 = vec3(0.608, 0.737, 0.059);\n" \
+  "    float t = l * 3.0;\n" \
+  "    c = t < 1.0 ? mix(c0, c1, t) : t < 2.0 ? mix(c1, c2, t - 1.0) : mix(c2, c3, t - 2.0);\n" \
+  "    light = vec3(0.64, 0.76, 0.09);\n" \
+  "  } else if (u_params.x < 1.5) {\n" \
+  "    c = mix(vec3(0.1, 0.1, 0.09), vec3(0.77, 0.79, 0.71), l);\n" \
+  "    light = vec3(0.8, 0.82, 0.74);\n" \
+  "  }\n" \
+  "  if (min(u_scale.x, u_scale.y) >= 2.0) {\n" \
+  "    vec2 gap = step(vec2(1.0) - u_params.z / u_scale, fract(texel));\n" \
+  "    c = mix(c, light, u_params.y * max(gap.x, gap.y));\n" \
+  "  }\n" \
+  "  return c;\n" \
+  "}\n" \
   "vec4 rcas(sampler2D tex, vec2 uv) {\n" \
   "  vec2 px = 1.0 / u_size;\n" \
   "  vec3 b = TEX(tex, uv - vec2(0.0, px.y)).rgb, d = TEX(tex, uv - vec2(px.x, 0.0)).rgb, e = TEX(tex, uv).rgb;\n" \
@@ -628,7 +672,7 @@ static const char* kVertex150 =
   "  if (u_mode == 0 || u_mode == 3) return TEX(tex, uv);\n"                             \
   "  if (u_mode == 8) return xbr(tex, uv);\n"                                            \
   "  if (u_mode == 9) return easu(tex, uv);\n"                                           \
-  "  if (u_mode == 10) return rcas(tex, uv);\n"                                          \
+  "  if (u_mode == 20) return rcas(tex, uv);\n"                                          \
   "  vec2 texel = uv * u_size;\n"                                                        \
   "  if (u_mode == 2) {\n"                                                               \
   "    vec2 base = floor(texel - 0.5) + 0.5;\n"                                          \
@@ -655,7 +699,7 @@ static const char* kVertex150 =
   "  }\n"                                                                                \
   "  vec2 centerDist = fract(texel) - 0.5;\n"                                            \
   "  vec4 c = TEX(tex, uv);\n"                                                           \
-  "  if (u_mode != 7) {\n"                                                               \
+  "  if (u_mode != 7 && u_mode < 13) {\n"                                                \
   "    float width = u_mode == 1 ? u_params.x : crt ? u_params.w : 1.0;\n"               \
   "    vec2 range = max(vec2(0.0), 0.5 - 0.5 * width / u_scale);\n"                      \
   "    vec2 f = (centerDist - clamp(centerDist, -range, range)) * u_scale / width + 0.5;\n" \
@@ -674,6 +718,8 @@ static const char* kVertex150 =
   "    vec2 line = step(vec2(1.0) - u_params.y / u_scale, fract(texel));\n"              \
   "    c.rgb *= 1.0 - u_params.x * max(line.x, line.y);\n"                               \
   "  }\n"                                                                                \
+  "  if (u_mode == 13) c.rgb = handheld(c.rgb, texel);\n"                                \
+  "  if (u_mode == 14) c.rgb = dotMatrix(c.rgb, texel);\n"                               \
   "  return c;\n"                                                                        \
   "}\n"
 
@@ -694,6 +740,45 @@ static const char* kFragment120 =
     "varying vec2 v_uv; uniform sampler2D u_tex; uniform float u_alpha;\n"
     "void main() { vec4 c = filtered(u_tex, v_uv); gl_FragColor = vec4(u_mode == 9 ? c.rgb : grade(c.rgb), mix(1.0, c.a, u_alpha)); }\n";
 
+// Passe préalable, à la taille du jeu (image de sortie : haut de l'image en v = 0, comme celle du
+// cœur). u_rect : coordonnées de l'image du cœur dans sa texture (largeur, v du haut, v du bas),
+// u_size : taille de cette texture ; u_params : rémanence (part de l'image précédente, u_hist),
+// lissage du tramage. Tramage : deux couleurs qui alternent sur cinq pixels (colonnes de la Mega
+// Drive, lignes, damier), motif continué au-dessus et en dessous (ou de part et d'autre) : pixel
+// mêlé à ses voisins, comme sur un téléviseur de l'époque ; traits fins et textes laissés nets.
+#define PREP_FUNCTION \
+  "uniform vec4 u_rect; uniform vec2 u_size; uniform vec4 u_params;\n" \
+  "vec3 px(sampler2D tex, vec2 base, vec2 d) { return TEX(tex, (base + d + 0.5) / u_size).rgb; }\n" \
+  "bool same(vec3 a, vec3 b) { return dot(abs(a - b), vec3(1.0)) < 0.06; }\n" \
+  "vec3 prep(sampler2D src, sampler2D hist, vec2 uv) {\n" \
+  "  vec2 suv = vec2(uv.x * u_rect.x, mix(u_rect.y, u_rect.z, uv.y));\n" \
+  "  vec2 base = floor(suv * u_size);\n" \
+  "  vec3 c = px(src, base, vec2(0.0));\n" \
+  "  if (u_params.y > 0.0) {\n" \
+  "    vec3 l = px(src, base, vec2(-1.0, 0.0)), r = px(src, base, vec2(1.0, 0.0));\n" \
+  "    vec3 u = px(src, base, vec2(0.0, -1.0)), d = px(src, base, vec2(0.0, 1.0));\n" \
+  "    bool run = same(l, r) && !same(c, l) && same(px(src, base, vec2(-2.0, 0.0)), c) && same(px(src, base, vec2(2.0, 0.0)), c);\n" \
+  "    bool h = run && (same(u, c) || same(u, l)) && (same(d, c) || same(d, l));\n" \
+  "    run = same(u, d) && !same(c, u) && same(px(src, base, vec2(0.0, -2.0)), c) && same(px(src, base, vec2(0.0, 2.0)), c);\n" \
+  "    bool v = run && (same(l, c) || same(l, u)) && (same(r, c) || same(r, u));\n" \
+  "    vec3 o = h && v ? (l + r + u + d) * 0.25 : h ? (l + r) * 0.5 : v ? (u + d) * 0.5 : c;\n" \
+  "    c = mix(c, (c + o) * 0.5, u_params.y);\n" \
+  "  }\n" \
+  "  return mix(c, TEX(hist, uv).rgb, u_params.x);\n" \
+  "}\n"
+static const char* kPrep150 =
+    "#version 150\n"
+    "#define TEX texture\n"
+    PREP_FUNCTION
+    "in vec2 v_uv; uniform sampler2D u_src; uniform sampler2D u_hist; out vec4 o_color;\n"
+    "void main() { o_color = vec4(prep(u_src, u_hist, v_uv), 1.0); }\n";
+static const char* kPrep120 =
+    "#version 120\n"
+    "#define TEX texture2D\n"
+    PREP_FUNCTION
+    "varying vec2 v_uv; uniform sampler2D u_src; uniform sampler2D u_hist;\n"
+    "void main() { gl_FragColor = vec4(prep(u_src, u_hist, v_uv), 1.0); }\n";
+
 std::vector<FilterParam> filterParams(Filter filter) {
   // CRT : lignes de balayage (et leur éclat), masque RGB, courbure, transition des pixels, coins assombris.
   const FilterParam scanlines{"scanlines", "fp_scanlines", 0, 0.45f, 0.0f, 0.9f, 0.05f};
@@ -701,6 +786,17 @@ std::vector<FilterParam> filterParams(Filter filter) {
   const FilterParam crtSoftness{"softness", "fp_softness", 3, 1.0f, 0.5f, 4.0f, 0.25f};
   const FilterParam vignette{"vignette", "fp_vignette", 4, 0.0f, 0.0f, 1.0f, 0.05f};
   const FilterParam glow{"glow", "fp_glow", 5, 0.22f, 0.0f, 0.6f, 0.02f};
+  // Écrans LCD : rémanence (image précédente mêlée à la nouvelle, passe préalable).
+  auto ghost = [](float def) { return FilterParam{"ghosting", "fp_ghosting", kGhostSlot, def, 0.0f, 0.9f, 0.05f}; };
+  // CUT, CUT2 et CUT3 : réglages de LibretroDroid (valeurs de VideoFilters.kt sous Android), donnés
+  // au shader par leurs #define (cutDefine).
+  auto cut = [](int index, const char* id, const char* label, float def, float min = 0.0f, float max = 1.0f, float step = 0.05f) {
+    return FilterParam{id, label, kCutSlot + index, def, min, max, step};
+  };
+  const FilterParam dynamicBlend{"dynamic_blend", "fp_dynamic_blend", kCutSlot, 1.0f, 0.0f, 1.0f, 1.0f, ParamFormat::Choice, "no|yes"};
+  auto fastLuma = [](bool def) {
+    return FilterParam{"fast_luma", "fp_fast_luma", kCutSlot + 6, def ? 1.0f : 0.0f, 0.0f, 1.0f, 1.0f, ParamFormat::Choice, "no|yes"};
+  };
   std::vector<FilterParam> list;
   switch (filter) {
     case Filter::Sharp: list = {{"softness", "fp_softness", 0, 1.0f, 0.5f, 4.0f, 0.25f}}; break;
@@ -710,23 +806,51 @@ std::vector<FilterParam> filterParams(Filter filter) {
     case Filter::Fsr: list = {{"sharpness", "fp_sharpness", 0, 1.0f, 0.0f, 2.0f, 0.1f}}; break;
     case Filter::Crt:
     case Filter::CrtMask: list = {scanlines, glow, {"mask", "fp_mask", 1, 0.0f, 0.0f, 0.6f, 0.05f}, curvature, crtSoftness, vignette}; break;
-    case Filter::Lcd: list = {{"grid", "fp_grid", 0, 0.35f, 0.0f, 0.9f, 0.05f}, {"grid_width", "fp_grid_width", 1, 1.0f, 0.5f, 3.0f, 0.25f}}; break;
+    case Filter::Lcd: list = {{"grid", "fp_grid", 0, 0.35f, 0.0f, 0.9f, 0.05f}, {"grid_width", "fp_grid_width", 1, 1.0f, 0.5f, 3.0f, 0.25f}, ghost(0.0f)}; break;
+    case Filter::Handheld:
+      list = {{"colors", "fp_screen_colors", 0, 1.0f, 0.0f, 1.0f, 0.05f},
+              {"profile", "fp_screen", 2, 0.0f, 0.0f, 1.0f, 1.0f, ParamFormat::Choice, "fc_gba|fc_gbc"},
+              {"grid", "fp_grid", 1, 0.15f, 0.0f, 0.9f, 0.05f}, ghost(0.25f)};
+      break;
+    case Filter::DotMatrix:
+      list = {{"palette", "fp_palette", 0, 0.0f, 0.0f, 2.0f, 1.0f, ParamFormat::Choice, "fc_dmg|fc_pocket|fc_game_colors"},
+              {"dots", "fp_dots", 1, 0.5f, 0.0f, 1.0f, 0.05f}, {"dot_gap", "fp_dot_gap", 2, 1.0f, 0.5f, 3.0f, 0.25f}, ghost(0.45f)};
+      break;
+    case Filter::Cut:
+      list = {dynamicBlend, cut(1, "blend_min_contrast", "fp_blend_min_contrast", 0.0f), cut(2, "blend_max_contrast", "fp_blend_max_contrast", 1.0f),
+              cut(3, "blend_min_sharpness", "fp_blend_min_sharpness", 0.0f), cut(4, "blend_max_sharpness", "fp_blend_max_sharpness", 1.0f),
+              cut(5, "static_sharpness", "fp_static_sharpness", 0.5f), fastLuma(true),
+              cut(7, "edge_min_value", "fp_edge_min_value", 0.05f, 0.0f, 1.0f, 0.01f), cut(8, "edge_min_contrast", "fp_edge_min_contrast", 2.0f, 1.0f, 5.0f, 0.1f)};
+      break;
+    case Filter::Cut2:
+    case Filter::Cut3:
+      list = {dynamicBlend, cut(1, "blend_min_contrast", "fp_blend_min_contrast", 0.0f), cut(2, "blend_max_contrast", "fp_blend_max_contrast", 0.5f),
+              cut(3, "blend_min_sharpness", "fp_blend_min_sharpness", 0.0f), cut(4, "blend_max_sharpness", "fp_blend_max_sharpness", 0.75f),
+              cut(5, "static_sharpness", "fp_static_sharpness", 0.75f), fastLuma(false),
+              {"soft_edges", "fp_soft_edges", kCutSlot + 7, 1.0f, 0.0f, 1.0f, 1.0f, ParamFormat::Choice, "no|yes"},
+              cut(8, "soft_edges_amount", "fp_soft_edges_amount", 1.0f, 0.0f, 2.0f, 0.1f), cut(9, "hard_edges_error", "fp_hard_edges_error", 0.25f)};
+      if (filter == Filter::Cut3) list.push_back({"hard_edges_distance", "fp_hard_edges_distance", kCutSlot + 10, 4.0f, 1.0f, 8.0f, 1.0f, ParamFormat::Integer});
+      break;
     default: break;
   }
   // Couleurs, communes à tous les filtres (mémorisées pour chacun).
   list.insert(list.end(), {{"brightness", "fp_brightness", 8, 1.0f, 0.5f, 1.5f, 0.05f},
                            {"contrast", "fp_contrast", 9, 1.0f, 0.5f, 1.5f, 0.05f},
                            {"saturation", "fp_saturation", 10, 1.0f, 0.0f, 2.0f, 0.05f},
-                           {"gamma", "fp_gamma", 11, 1.0f, 0.5f, 2.0f, 0.05f}});
+                           {"gamma", "fp_gamma", 11, 1.0f, 0.5f, 2.0f, 0.05f},
+                           {"dedither", "fp_dedither", kDeditherSlot, 0.0f, 0.0f, 1.0f, 0.05f}});
   return list;
 }
 
-static const char* kFilterIds[kFilterCount] = {"pixels", "sharp", "soft", "smooth", "epx", "crt", "crtmask", "lcd", "xbr", "fsr"};
+static const char* kFilterIds[kFilterCount] = {"pixels", "sharp", "soft", "smooth", "epx", "crt", "crtmask", "lcd",
+                                               "xbr", "fsr", "cut", "cut2", "cut3", "handheld", "dotmatrix"};
 static const char* kFilterLabels[kFilterCount] = {"filter_pixels", "filter_sharp", "filter_soft", "filter_smooth", "filter_epx",
-                                                  "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr"};
-// Ordre du menu : lissages, agrandisseurs (Scale2x, xBR, FSR), puis imitations d'écrans.
+                                                  "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr",
+                                                  "filter_cut", "filter_cut2", "filter_cut3", "filter_handheld", "filter_dotmatrix"};
+// Ordre du menu : lissages, agrandisseurs (Scale2x, xBR, CUT, FSR), puis imitations d'écrans.
 static const Filter kFilterOrder[kFilterListCount] = {Filter::Pixels, Filter::Sharp, Filter::Soft, Filter::Smooth, Filter::Epx,
-                                                      Filter::Xbr, Filter::Fsr, Filter::Crt, Filter::Lcd};
+                                                      Filter::Xbr, Filter::Cut, Filter::Cut2, Filter::Cut3, Filter::Fsr,
+                                                      Filter::Crt, Filter::Lcd, Filter::Handheld, Filter::DotMatrix};
 
 Filter filterAt(int index) { return kFilterOrder[std::clamp(index, 0, kFilterListCount - 1)]; }
 
@@ -741,8 +865,8 @@ int filterIndex(Filter filter) {
 const char* filterLabel(Filter filter) { return kFilterLabels[(int)filter]; }
 
 const char* filterDescription(Filter filter) {
-  static const char* keys[kFilterCount] = {"fd_pixels", "fd_sharp", "fd_soft", "fd_smooth", "fd_epx",
-                                           "fd_crt", "fd_crtmask", "fd_lcd", "fd_xbr", "fd_fsr"};
+  static const char* keys[kFilterCount] = {"fd_pixels", "fd_sharp", "fd_soft", "fd_smooth", "fd_epx", "fd_crt", "fd_crtmask", "fd_lcd",
+                                           "fd_xbr", "fd_fsr", "fd_cut", "fd_cut2", "fd_cut3", "fd_handheld", "fd_dotmatrix"};
   return keys[(int)filter];
 }
 
@@ -783,6 +907,30 @@ static GLuint compile(GLenum type, const char* source) {
   return shader;
 }
 
+/** Programme de deux shaders, attributs [attributes] aux emplacements 0 et 1 ; 0 en cas d'erreur. */
+static GLuint link(const char* vertex, const char* fragment, std::initializer_list<const char*> attributes) {
+  GLuint vs = compile(GL_VERTEX_SHADER, vertex);
+  GLuint fs = compile(GL_FRAGMENT_SHADER, fragment);
+  GLuint program = p_glCreateProgram();
+  p_glAttachShader(program, vs);
+  p_glAttachShader(program, fs);
+  GLuint location = 0;
+  for (const char* name : attributes) p_glBindAttribLocation(program, location++, name);
+  p_glLinkProgram(program);
+  p_glDeleteShader(vs);
+  p_glDeleteShader(fs);
+  GLint ok = 0;
+  p_glGetProgramiv(program, GL_LINK_STATUS, &ok);
+  if (!ok) {
+    char log[1024];
+    p_glGetProgramInfoLog(program, sizeof(log), nullptr, log);
+    logf("Programme : %s", log);
+    p_glDeleteProgram(program);
+    return 0;
+  }
+  return program;
+}
+
 bool Video::createProgram() {
   GLuint vs = compile(GL_VERTEX_SHADER, coreProfile_ ? kVertex150 : kVertex120);
   GLuint fs = compile(GL_FRAGMENT_SHADER, coreProfile_ ? kFragment150 : kFragment120);
@@ -813,7 +961,236 @@ bool Video::createProgram() {
   uniformRect_ = p_glGetUniformLocation(program_, "u_rect");
   if (p_glGenVertexArrays) p_glGenVertexArrays(1, &vao_);
   p_glGenBuffers(1, &vbo_);
+  // Passe préalable : facultative (sans elle, ni lissage du tramage, ni rémanence, ni CUT).
+  prepProgram_ = link(coreProfile_ ? kVertex150 : kVertex120, coreProfile_ ? kPrep150 : kPrep120, {"a_pos", "a_uv"});
+  if (prepProgram_) {
+    prepUniformSrc_ = p_glGetUniformLocation(prepProgram_, "u_src");
+    prepUniformHist_ = p_glGetUniformLocation(prepProgram_, "u_hist");
+    prepUniformRect_ = p_glGetUniformLocation(prepProgram_, "u_rect");
+    prepUniformSize_ = p_glGetUniformLocation(prepProgram_, "u_size");
+    prepUniformParams_ = p_glGetUniformLocation(prepProgram_, "u_params");
+  }
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Passe préalable (tramage, rémanence) et CUT
+// ---------------------------------------------------------------------------
+
+/** Texture RGBA8 à la taille donnée et son framebuffer, filtrage au plus proche ; faux si incomplet. */
+static bool makeTarget(unsigned& fbo, unsigned& texture, int width, int height) {
+  if (!fbo) {
+    p_glGenFramebuffers(1, &fbo);
+    glGenTextures(1, &texture);
+  }
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  p_glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  p_glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+  const bool ok = p_glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+  glClearColor(0, 0, 0, 1);
+  glClear(GL_COLOR_BUFFER_BIT);
+  p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  return ok;
+}
+
+bool Video::runPrep(unsigned source, float u1, float vTop, float vBottom, float texW, float texH) {
+  if (!prepProgram_) return false;
+  const int width = (int)frameWidth_, height = (int)frameHeight_;
+  if (width != prepWidth_ || height != prepHeight_) {
+    prepWidth_ = width;
+    prepHeight_ = height;
+    prepOk_ = makeTarget(prepFbo_[0], prepTexture_[0], width, height) && makeTarget(prepFbo_[1], prepTexture_[1], width, height);
+    if (!prepOk_) logf("Passe préalable incomplète (%dx%d)", width, height);
+    prepFrames_ = 0;
+    prepDirty_ = true;
+  }
+  if (!prepOk_) return false;
+  if (!prepDirty_ && prepSerial_ == frameSerial_) return true;  // image déjà traitée (redessinée)
+  // Rémanence : seulement pour une nouvelle image (pas en changeant un réglage, image figée).
+  const bool newFrame = prepSerial_ != frameSerial_;
+  const float ghost = filter_ == Filter::Lcd || filter_ == Filter::Handheld || filter_ == Filter::DotMatrix ? params_[kGhostSlot] : 0.0f;
+  const int out = newFrame ? 1 - prepOut_ : prepOut_;
+  const int history = 1 - out;
+  p_glBindFramebuffer(GL_FRAMEBUFFER, prepFbo_[out]);
+  glViewport(0, 0, width, height);
+  p_glUseProgram(prepProgram_);
+  p_glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, prepTexture_[history]);
+  p_glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, source);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  p_glUniform1i(prepUniformSrc_, 0);
+  p_glUniform1i(prepUniformHist_, 1);
+  p_glUniform4f(prepUniformRect_, u1, vTop, vBottom, 0.0f);
+  p_glUniform2f(prepUniformSize_, texW, texH);
+  // Image précédente dans [history] : après une image traitée (nouvelle image), après deux (réglage
+  // changé, image figée : refaite à sa place, depuis l'image d'avant).
+  const bool hasHistory = prepFrames_ >= (newFrame ? 1 : 2);
+  p_glUniform4f(prepUniformParams_, hasHistory ? ghost : 0.0f, params_[kDeditherSlot], 0.0f, 0.0f);
+  const Vertex full[4] = {{-1, 1, 0, 1}, {-1, -1, 0, 0}, {1, 1, 1, 1}, {1, -1, 1, 0}};
+  p_glBufferData(GL_ARRAY_BUFFER, sizeof(full), full, GL_STREAM_DRAW);
+  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  p_glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  p_glActiveTexture(GL_TEXTURE0);
+  p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  prepOut_ = out;
+  prepSerial_ = frameSerial_;
+  if (newFrame) prepFrames_++;
+  prepDirty_ = false;
+  return true;
+}
+
+/** Nom du #define de LibretroDroid d'un réglage de CUT ; entier : interrupteur ou distance. */
+static const char* cutDefine(const std::string& id, bool& integer) {
+  static const struct {
+    const char* id;
+    const char* define;
+    bool integer;
+  } kDefines[] = {
+      {"dynamic_blend", "USE_DYNAMIC_BLEND", true},
+      {"blend_min_contrast", "BLEND_MIN_CONTRAST_EDGE", false},
+      {"blend_max_contrast", "BLEND_MAX_CONTRAST_EDGE", false},
+      {"blend_min_sharpness", "BLEND_MIN_SHARPNESS", false},
+      {"blend_max_sharpness", "BLEND_MAX_SHARPNESS", false},
+      {"static_sharpness", "STATIC_BLEND_SHARPNESS", false},
+      {"fast_luma", "EDGE_USE_FAST_LUMA", true},
+      {"edge_min_value", "EDGE_MIN_VALUE", false},
+      {"edge_min_contrast", "EDGE_MIN_CONTRAST", false},
+      {"soft_edges", "SOFT_EDGES_SHARPENING", true},
+      {"soft_edges_amount", "SOFT_EDGES_SHARPENING_AMOUNT", false},
+      {"hard_edges_error", "HARD_EDGES_SEARCH_MAX_ERROR", false},
+      {"hard_edges_distance", "HARD_EDGES_SEARCH_MAX_DISTANCE", true},
+  };
+  for (const auto& d : kDefines) {
+    if (id == d.id) {
+      integer = d.integer;
+      return d.define;
+    }
+  }
+  return nullptr;
+}
+
+/**
+ * Shader de LibretroDroid (GLSL ES 1.0) adapté à OpenGL : sans précisions (lowp…), uniforme
+ * « texture » renommée (fonction de GLSL 1.50), entrées, sorties et texture2D de GLSL 1.50 en
+ * profil core.
+ */
+static std::string desktopShader(const std::string& source, bool fragment, bool core) {
+  std::string body = std::regex_replace(source, std::regex(R"(^[ \t]*precision[^;]*;)", std::regex::multiline), "");
+  body = std::regex_replace(body, std::regex(R"(\btexture\b)"), "rc_texture");
+  std::string head = core ? "#version 150\n" : "#version 120\n";
+  head += "#define lowp\n#define mediump\n#define highp\n";
+  if (core && fragment) head += "#define varying in\n#define texture2D texture\nout vec4 rc_FragColor;\n#define gl_FragColor rc_FragColor\n";
+  if (core && !fragment) head += "#define attribute in\n#define varying out\n";
+  return head + body;
+}
+
+bool Video::prepareCut() {
+  // Réglages donnés au shader par des #define : programmes recréés quand ils changent.
+  std::unordered_map<std::string, std::string> defines;
+  std::string key = filterId(filter_);
+  for (const auto& p : filterParams(filter_)) {
+    bool integer = false;
+    const char* define = p.slot >= kCutSlot ? cutDefine(p.id, integer) : nullptr;
+    if (!define) continue;
+    char value[32];
+    if (integer) snprintf(value, sizeof(value), "%d", (int)std::lround(params_[p.slot]));
+    else snprintf(value, sizeof(value), "%.4f", params_[p.slot]);
+    defines[define] = value;
+    key += std::string("|") + define + "=" + value;
+  }
+  // Couleurs de l'image finale, ajoutées au dernier passage par LibretroDroid.
+  static const char* kColors[] = {"RC_BRIGHTNESS", "RC_CONTRAST", "RC_SATURATION", "RC_GAMMA"};
+  for (int i = 0; i < 4; i++) {
+    char value[32];
+    snprintf(value, sizeof(value), "%.4f", params_[8 + i]);
+    defines[kColors[i]] = value;
+    key += std::string("|") + kColors[i] + "=" + value;
+  }
+  if (key == cutKey_) return !cutPasses_.empty();
+  deleteCut();
+  cutKey_ = key;
+  using libretrodroid::ShaderManager;
+  const ShaderManager::Type type = filter_ == Filter::Cut    ? ShaderManager::Type::SHADER_UPSCALE_CUT
+                                   : filter_ == Filter::Cut2 ? ShaderManager::Type::SHADER_UPSCALE_CUT2
+                                                             : ShaderManager::Type::SHADER_UPSCALE_CUT3;
+  const ShaderManager::Chain chain = ShaderManager::getShader({type, defines});
+  for (const auto& pass : chain.passes) {
+    CutPass cut;
+    cut.program = link(desktopShader(pass.vertex, false, coreProfile_).c_str(), desktopShader(pass.fragment, true, coreProfile_).c_str(),
+                       {"vPosition", "vCoordinate"});
+    if (!cut.program) {
+      logf("Shader %s : passe %d non compilée", filterId(filter_), (int)cutPasses_.size());
+      deleteCut();
+      return false;
+    }
+    cut.texture = p_glGetUniformLocation(cut.program, "rc_texture");
+    cut.previous = p_glGetUniformLocation(cut.program, "previousPass");
+    cut.size = p_glGetUniformLocation(cut.program, "textureSize");
+    cut.density = p_glGetUniformLocation(cut.program, "screenDensity");
+    cutPasses_.push_back(cut);
+  }
+  return !cutPasses_.empty();
+}
+
+void Video::deleteCut() {
+  for (const auto& pass : cutPasses_) p_glDeleteProgram(pass.program);
+  cutPasses_.clear();
+  cutKey_.clear();
+}
+
+void Video::drawCut(const void* screenQuad, float screenDensity) {
+  const int width = (int)frameWidth_, height = (int)frameHeight_;
+  // Passes intermédiaires à la taille du jeu (comme LibretroDroid).
+  const size_t intermediate = cutPasses_.size() - 1;
+  if (cutFbo_.size() != intermediate || width != cutWidth_ || height != cutHeight_) {
+    for (size_t i = 0; i < cutFbo_.size(); i++) {
+      p_glDeleteFramebuffers(1, &cutFbo_[i]);
+      glDeleteTextures(1, &cutTexture_[i]);
+    }
+    cutFbo_.assign(intermediate, 0);
+    cutTexture_.assign(intermediate, 0);
+    for (size_t i = 0; i < intermediate; i++) makeTarget(cutFbo_[i], cutTexture_[i], width, height);
+    cutWidth_ = width;
+    cutHeight_ = height;
+  }
+  int winW, winH;
+  SDL_GetWindowSizeInPixels(window_, &winW, &winH);
+  const Vertex full[4] = {{-1, 1, 0, 1}, {-1, -1, 0, 0}, {1, 1, 1, 1}, {1, -1, 1, 0}};
+  for (size_t i = 0; i < cutPasses_.size(); i++) {
+    const CutPass& pass = cutPasses_[i];
+    const bool last = i + 1 == cutPasses_.size();
+    p_glBindFramebuffer(GL_FRAMEBUFFER, last ? 0 : cutFbo_[i]);
+    if (last) glViewport(0, 0, winW, winH);
+    else glViewport(0, 0, width, height);
+    p_glUseProgram(pass.program);
+    p_glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, prepTexture_[prepOut_]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    p_glUniform1i(pass.texture, 0);
+    if (pass.previous >= 0 && i > 0) {
+      p_glActiveTexture(GL_TEXTURE1);
+      glBindTexture(GL_TEXTURE_2D, cutTexture_[i - 1]);
+      p_glUniform1i(pass.previous, 1);
+      p_glActiveTexture(GL_TEXTURE0);
+    }
+    p_glUniform2f(pass.size, (float)width, (float)height);
+    p_glUniform1f(pass.density, screenDensity);
+    p_glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * 4, last ? screenQuad : full, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  }
+  p_glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  p_glActiveTexture(GL_TEXTURE0);
+  p_glUseProgram(program_);
 }
 
 // ---------------------------------------------------------------------------
@@ -825,6 +1202,7 @@ void Video::onFrame(const void* data, unsigned width, unsigned height, size_t pi
   frameWidth_ = width;
   frameHeight_ = height;
   hasFrame_ = true;
+  frameSerial_++;
   if (data == RETRO_HW_FRAME_BUFFER_VALID && g.vulkan) {
     // Cœur Vulkan : image partagée avec OpenGL si possible (sans passer par le processeur), sinon
     // recopiée en mémoire ; affichée comme celle d'un cœur logiciel.
@@ -1020,12 +1398,6 @@ bool Video::showShared(unsigned width, unsigned height) {
 // Affichage
 // ---------------------------------------------------------------------------
 
-namespace {
-struct Vertex {
-  float x, y, u, v;
-};
-}  // namespace
-
 void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool swap, bool overlayChanged) {
   // Rétabli avant l'échange des tampons (fin de la portée).
   {
@@ -1087,8 +1459,9 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
 
     float u1, v1, vTop, vBottom;
     float texW, texH;
+    unsigned source;
     if (frameIsHw_) {
-      glBindTexture(GL_TEXTURE_2D, fboTexture_);
+      source = fboTexture_;
       texW = (float)fboWidth_;
       texH = (float)fboHeight_;
       u1 = (float)frameWidth_ / fboWidth_;
@@ -1097,7 +1470,7 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
       vTop = bottomLeft ? v1 : 0.0f;
       vBottom = bottomLeft ? 0.0f : v1;
     } else {
-      glBindTexture(GL_TEXTURE_2D, sharedActive_ ? sharedTexture_ : frameTexture_);
+      source = sharedActive_ ? sharedTexture_ : frameTexture_;
       texW = (float)(sharedActive_ ? sharedWidth_ : textureWidth_);
       texH = (float)(sharedActive_ ? sharedHeight_ : textureHeight_);
       u1 = (float)frameWidth_ / texW;
@@ -1105,6 +1478,24 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
       vTop = 0.0f;
       vBottom = v1;
     }
+    // Passe préalable (lissage du tramage, rémanence, CUT) : image à la taille exacte du jeu, haut en
+    // v = 0, à la place de celle du cœur.
+    const bool cut = filter_ == Filter::Cut || filter_ == Filter::Cut2 || filter_ == Filter::Cut3;
+    const bool lcd = filter_ == Filter::Lcd || filter_ == Filter::Handheld || filter_ == Filter::DotMatrix;
+    bool prepared = false;
+    if ((cut || params_[kDeditherSlot] > 0.0f || (lcd && params_[kGhostSlot] > 0.0f)) &&
+        runPrep(source, u1, vTop, vBottom, texW, texH)) {
+      prepared = true;
+      source = prepTexture_[prepOut_];
+      texW = (float)frameWidth_;
+      texH = (float)frameHeight_;
+      u1 = 1.0f;
+      vTop = 0.0f;
+      vBottom = 1.0f;
+      p_glUseProgram(program_);
+      glViewport(0, 0, winW, winH);
+    }
+    glBindTexture(GL_TEXTURE_2D, source);
     // Pixels de l'écran par pixel de l'image (axes de l'image échangés par un quart de tour).
     float scaleX = ((g.rotation & 1) ? h : w) / frameWidth_, scaleY = ((g.rotation & 1) ? w : h) / frameHeight_;
     p_glUniform1i(uniformMode_, (int)filter_);
@@ -1117,7 +1508,7 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
     p_glUniform4f(uniformRect_, (winW - w) / 2.0f, (winH - h) / 2.0f, w, h);
     // Échantillons au centre des pixels (bicubique, EPX, LCD, pixels nets) : filtrage au plus proche.
     bool nearest = filter_ == Filter::Pixels || filter_ == Filter::Soft || filter_ == Filter::Epx || filter_ == Filter::Lcd ||
-                   filter_ == Filter::Xbr || filter_ == Filter::Fsr;
+                   filter_ == Filter::Xbr || filter_ == Filter::Fsr || filter_ == Filter::Handheld || filter_ == Filter::DotMatrix;
     GLint filter = nearest ? GL_NEAREST : GL_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
@@ -1137,7 +1528,10 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
     Vertex quad[4] = {corner(0), corner(3), corner(1), corner(2)};
     p_glUniform1f(uniformAlpha_, 0.0f);
     int outW = (int)(w + 0.5f), outH = (int)(h + 0.5f);
-    if (filter_ == Filter::Fsr && preparePostTarget(outW, outH)) {
+    if (cut && prepared && prepareCut()) {
+      // CUT, CUT2, CUT3 : passes de LibretroDroid, la dernière dans le rectangle de l'image.
+      drawCut(quad, std::min(scaleX, scaleY));
+    } else if (filter_ == Filter::Fsr && preparePostTarget(outW, outH)) {
       // FSR 1 : agrandissement (EASU) dans une image à la taille de l'affichage, puis netteté (RCAS)
       // en la dessinant à l'écran.
       p_glBindFramebuffer(GL_FRAMEBUFFER, postFbo_);
@@ -1149,7 +1543,7 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
       p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
       glViewport(0, 0, winW, winH);
       glBindTexture(GL_TEXTURE_2D, postTexture_);
-      p_glUniform1i(uniformMode_, 10);
+      p_glUniform1i(uniformMode_, 20);
       p_glUniform2f(uniformSize_, (float)outW, (float)outH);
       // Image rendue de bas en haut (origine OpenGL) : haut de l'écran = v 1.
       Vertex out[4] = {{-x1, y1, 0, 1}, {-x1, -y1, 0, 0}, {x1, y1, 1, 1}, {x1, -y1, 1, 0}};

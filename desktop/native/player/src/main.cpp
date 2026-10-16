@@ -186,8 +186,12 @@ class Player {
   void startPadConfig() {
     padConfig_ = std::make_unique<PadConfig>(args_.buttons, args_.padStyle, [this](const char* key) { return menu_.tr(key); });
   }
-  /** Clé mémorisée (options du système) d'un réglage du filtre choisi. */
+  /**
+   * Clé mémorisée (options du système) d'un réglage du filtre choisi ; lissage du tramage commun à
+   * tous les filtres (gardé en changeant de filtre).
+   */
   std::string filterParamKey(const FilterParam& p) const {
+    if (p.slot == kDeditherSlot) return "romcloud_dedither";
     return std::string("romcloud_") + filterId(video_.filter()) + "_" + p.id;
   }
   float filterParamValue(const FilterParam& p) const {
@@ -201,7 +205,17 @@ class Player {
   /** Réglages du filtre choisi, affichés dans l'écran « Image ». */
   std::vector<FilterRow> filterRows() const {
     std::vector<FilterRow> rows;
-    for (const auto& p : filterParams(video_.filter())) rows.push_back({menu_.tr(p.label), filterParamValue(p), p.def, p.min, p.max, p.step});
+    for (const auto& p : filterParams(video_.filter())) {
+      FilterRow row{menu_.tr(p.label), filterParamValue(p), p.def, p.min, p.max, p.step};
+      row.integer = p.format == ParamFormat::Integer;
+      // Noms des choix : clés séparées par « | ».
+      for (std::string keys = p.choices ? p.choices : ""; !keys.empty();) {
+        const size_t bar = keys.find('|');
+        row.choices.push_back(menu_.tr(keys.substr(0, bar).c_str()));
+        keys = bar == std::string::npos ? std::string() : keys.substr(bar + 1);
+      }
+      rows.push_back(std::move(row));
+    }
     return rows;
   }
   void startPlayers() {
