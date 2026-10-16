@@ -422,7 +422,7 @@ const dict = {
     'bios.fetched': '{path}: version {version} downloaded',
     'bios.updates': '{n} update(s) available on the Internet',
 
-    'jobs.title': 'Scraping jobs',
+    'jobs.title': 'Jobs',
     'jobs.none': 'No recent job.',
     'jobs.queued': 'Queued',
     'jobs.running': 'Running',
@@ -430,6 +430,7 @@ const dict = {
     'jobs.cancelled': 'Cancelled',
     'jobs.failed': 'Interrupted',
     'jobs.progress': '{done}/{total} — {ok} found, {notFound} not found, {failed} error(s)',
+    'jobs.convertProgress': '{percent} % (extraction, then check)',
     'jobs.cancel': 'Cancel',
     'scrape.onlyMissing': 'Scrape only the games not scraped yet?\n\nOK = only the missing ones, Cancel = re-scrape everything.',
     'scrape.started': 'Scraping started ({n} game(s))',
@@ -855,7 +856,7 @@ const dict = {
     'bios.fetched': '{path} : version {version} téléchargée',
     'bios.updates': '{n} mise(s) à jour disponible(s) sur Internet',
 
-    'jobs.title': 'Tâches de scraping',
+    'jobs.title': 'Tâches',
     'jobs.none': 'Aucune tâche récente.',
     'jobs.queued': 'En attente',
     'jobs.running': 'En cours',
@@ -863,6 +864,7 @@ const dict = {
     'jobs.cancelled': 'Annulé',
     'jobs.failed': 'Interrompu',
     'jobs.progress': '{done}/{total} — {ok} trouvé(s), {notFound} introuvable(s), {failed} erreur(s)',
+    'jobs.convertProgress': '{percent} % (extraction, puis vérification)',
     'jobs.cancel': 'Annuler',
     'scrape.onlyMissing': 'Scraper uniquement les jeux pas encore scrapés ?\n\nOK = seulement les manquants, Annuler = tout re-scraper.',
     'scrape.started': 'Scraping lancé ({n} jeu(x))',

@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
 import { compareParts, groupSystem } from './groups.js';
+import { queuePs4Conversions } from './ps4-convert.js';
 import { fileNameDetails, mergeDetails, parseStoredDetails } from './scraper/details.js';
 import { stars } from './scraper/rating.js';
 import { contentIdLabel } from './scraper/serial.js';
@@ -321,6 +322,8 @@ export function scanSystem(systemId) {
   });
   // Disques, mises à jour et DLC rattachés à leur jeu.
   groupSystem(systemId);
+  // Paquets PS4 convertis en .zip du dossier du jeu, en tâche de fond.
+  queuePs4Conversions(systemId);
   return result;
 }
 

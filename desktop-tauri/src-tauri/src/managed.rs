@@ -4,7 +4,9 @@
 // et les sauvegardes), fichiers système pris dans le dossier des BIOS, jeu lancé en plein écran.
 //  - RPCS3 : firmware installé depuis PS3UPDAT.PUP, mises à jour et DLC du jeu (.pkg) installés une
 //    fois, licences RAP du serveur écrites dans dev_hdd0 (jeux et DLC PSN), jeu = ISO, EBOOT.BIN ou dossier du disque ;
-//  - shadPS4 : jeu = dossier décrypté du jeu (CUSAxxxxx) en .zip, lancé par son eboot.bin ;
+//  - shadPS4 : jeu = dossier décrypté du jeu (CUSAxxxxx) en .zip, lancé par son eboot.bin ; mises à
+//    jour (.zip du dossier CUSAxxxxx-UPDATE, paquets convertis par le serveur) décompressées à côté ;
+//    modules système du firmware (« ps4\sys_modules » du dossier des BIOS) copiés pour l'émulateur ;
 //  - KytyPS5 (expérimental) : jeu = dossier décrypté du jeu (PPSAxxxxx, avec eboot.bin et
 //    sce_sys/param.json) en .zip, ou archive .zar ; correctifs des processeurs AMD activés sur ceux-ci ;
 //  - Cemu : mode portable (dossier « portable »), keys.txt copié pour les jeux chiffrés (.wud, .wux),
@@ -200,18 +202,23 @@ impl App {
         Ok(self.exe())
     }
 
-    /// Fichiers système de la console (firmware de la PS3, mode portable et clés de Cemu).
+    /// Fichiers système de la console (firmware de la PS3, mode portable et clés de Cemu, modules de la PS4).
     async fn ensure_system(&self, exe: &Path) -> Result<()> {
         match self.core {
             "rpcs3" => ensure_firmware(&self.root(), exe).await,
             "cemu" => cemu_setup(&self.root()),
+            "shadps4" => shadps4_modules(),
             _ => Ok(()),
         }
     }
 
     /// Jeu passé à l'émulateur : pour un .zip, décompressé une fois pour toutes (<émulateur>\games\<jeu>),
-    /// sinon le fichier tel quel.
-    fn prepare_game(&self, file: &str) -> Result<String> {
+    /// sinon le fichier tel quel ; PS4 : mises à jour [extras] décompressées à côté du jeu.
+    fn prepare_game(&self, file: &str, extras: &[PathBuf]) -> Result<String> {
+        // Paquet PS4 pas encore converti par le serveur : shadPS4 ne le lit pas (il plante au lancement).
+        if self.core == "shadps4" && paths::extension(file) == ".pkg" {
+            return Err(AppError::new("errors.ps4Pkg", json!({ "file": paths::file_name(Path::new(file)) })));
+        }
         if paths::extension(file) != ".zip" {
             return Ok(file.to_string());
         }
@@ -224,8 +231,11 @@ impl App {
         }
         let game = match self.core {
             "rpcs3" => disc_folder(&dir, 3).or_else(|| find_file(&dir, 2, &[".iso"])),
-            // Dossier du jeu PS4 (CUSAxxxxx) : son eboot.bin.
-            "shadps4" => find_named(&dir, "eboot.bin", 3),
+            // Dossier du jeu PS4 (CUSAxxxxx) : son eboot.bin, pas celui de la mise à jour.
+            "shadps4" => {
+                ps4_updates(&dir, extras)?;
+                find_eboot(&dir, 3)
+            }
             // Dossier du jeu PS5 (PPSAxxxxx) : celui qui contient eboot.bin (et sce_sys).
             "kytyps5" => find_named(&dir, "eboot.bin", 3).and_then(|eboot| eboot.parent().map(Path::to_path_buf)),
             _ => rpx_file(&dir, 3).or_else(|| find_file(&dir, 2, WIIU_FILES)),
@@ -279,6 +289,84 @@ fn find_named(dir: &Path, name: &str, depth: u32) -> Option<PathBuf> {
         return None;
     }
     entries.iter().filter(|p| p.is_dir()).find_map(|p| find_named(p, name, depth - 1))
+}
+
+/// Dossier d'une mise à jour PS4 (« CUSA00900-UPDATE », « CUSA00900-patch »), que shadPS4 cherche à côté du jeu.
+fn is_ps4_update_dir(path: &Path) -> bool {
+    let name = paths::file_name(path).to_lowercase();
+    name.ends_with("-update") || name.ends_with("-patch")
+}
+
+/// eboot.bin du jeu PS4 décompressé dans [dir], hors des dossiers de mise à jour.
+fn find_eboot(dir: &Path, depth: u32) -> Option<PathBuf> {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).collect();
+    entries.sort();
+    if let Some(file) = entries.iter().find(|p| p.is_file() && paths::file_name(p).eq_ignore_ascii_case("eboot.bin")) {
+        return Some(file.clone());
+    }
+    if depth == 0 {
+        return None;
+    }
+    entries.iter().filter(|p| p.is_dir() && !is_ps4_update_dir(p)).find_map(|p| find_eboot(p, depth - 1))
+}
+
+/// Mises à jour PS4 (.zip du dossier CUSAxxxxx-UPDATE) décompressées dans [dir], à côté du dossier du
+/// jeu ; refaites quand la liste des mises à jour change (nom et taille dans .romcloud-updates).
+fn ps4_updates(dir: &Path, extras: &[PathBuf]) -> Result<()> {
+    let zips: Vec<&PathBuf> = extras.iter().filter(|p| paths::extension(&p.to_string_lossy()) == ".zip").collect();
+    let marker = dir.join(".romcloud-updates");
+    let wanted: String = zips.iter().map(|p| format!("{}\n", pkg_line(p))).collect();
+    if std::fs::read_to_string(&marker).unwrap_or_default() == wanted {
+        return Ok(());
+    }
+    let _ = std::fs::remove_file(&marker);
+    for entry in std::fs::read_dir(dir)?.flatten() {
+        if entry.path().is_dir() && is_ps4_update_dir(&entry.path()) {
+            std::fs::remove_dir_all(entry.path())?;
+        }
+    }
+    for zip in zips {
+        zip::ZipArchive::new(std::fs::File::open(zip)?)?.extract(dir)?;
+    }
+    std::fs::write(&marker, wanted)?;
+    Ok(())
+}
+
+/// Dossier des données de shadPS4 (%APPDATA%\shadPS4 : pas de dossier « user » à côté de l'exécutable).
+fn shadps4_user_dir() -> Option<PathBuf> {
+    std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("shadPS4"))
+}
+
+/// Modules système du firmware PS4 (.sprx, .prx) du dossier des BIOS (« ps4\sys_modules », sinon
+/// « ps4 ») copiés dans sys_modules de shadPS4 quand ils sont nouveaux ou plus récents : plusieurs
+/// jeux en ont besoin (libSceLibcInternal, libSceNgs2…).
+fn shadps4_modules() -> Result<()> {
+    let bios = settings::bios_dir().join("ps4");
+    let Some(user) = shadps4_user_dir() else { return Ok(()) };
+    copy_modules(&[bios.join("sys_modules"), bios], &user.join("sys_modules"))
+}
+
+/// Modules du premier dossier de [sources] qui en contient, copiés dans [target].
+fn copy_modules(sources: &[PathBuf], target: &Path) -> Result<()> {
+    let Some(files) = sources.iter().find_map(|dir| {
+        let files: Vec<PathBuf> = std::fs::read_dir(dir)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_file() && matches!(paths::extension(&p.to_string_lossy()).as_str(), ".sprx" | ".prx"))
+            .collect();
+        (!files.is_empty()).then_some(files)
+    }) else {
+        return Ok(());
+    };
+    std::fs::create_dir_all(target)?;
+    for source in files {
+        let copy = target.join(paths::file_name(&source));
+        if paths::mtime_ms(&copy).unwrap_or(0.0) < paths::mtime_ms(&source).unwrap_or(0.0) {
+            std::fs::copy(&source, &copy)?;
+        }
+    }
+    Ok(())
 }
 
 /// Premier fichier (ordre alphabétique) de [dir] ou de ses sous-dossiers ayant l'une des [extensions].
@@ -475,8 +563,8 @@ pub async fn launch(app: &'static App, game: &Value, file: &str, extras: &[PathB
         exe
     };
     let target = {
-        let file = file.to_string();
-        tokio::task::spawn_blocking(move || app.prepare_game(&file)).await.map_err(|e| AppError::msg(e.to_string()))??
+        let (file, extras) = (file.to_string(), extras.to_vec());
+        tokio::task::spawn_blocking(move || app.prepare_game(&file, &extras)).await.map_err(|e| AppError::msg(e.to_string()))??
     };
     let mut child = tokio::process::Command::new(&exe)
         .args(app.args(&target))
@@ -594,6 +682,54 @@ mod tests {
         std::fs::create_dir_all(game.join("sce_sys")).unwrap();
         std::fs::write(game.join("EBOOT.BIN"), "elf").unwrap();
         assert_eq!(find_named(&dir, "eboot.bin", 3), Some(game.join("EBOOT.BIN")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Archive .zip de test : fichiers [(nom, contenu)].
+    fn write_zip(path: &Path, files: &[(&str, &str)]) {
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        for (name, data) in files {
+            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut zip, data.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn shadps4_mise_a_jour_a_cote_du_jeu() {
+        let dir = temp_dir("ps4upd");
+        let game = dir.join("Stray");
+        std::fs::create_dir_all(game.join("CUSA24899")).unwrap();
+        std::fs::write(game.join("CUSA24899").join("eboot.bin"), "elf").unwrap();
+        let update = dir.join("Stray UPD1.03.zip");
+        write_zip(&update, &[("CUSA24899-UPDATE/eboot.bin", "maj"), ("CUSA24899-UPDATE/sce_sys/param.sfo", "sfo")]);
+        // Le dossier de la mise à jour n'est jamais pris pour le jeu.
+        ps4_updates(&game, &[update.clone()]).unwrap();
+        assert_eq!(std::fs::read_to_string(game.join("CUSA24899-UPDATE").join("eboot.bin")).unwrap(), "maj");
+        assert_eq!(find_eboot(&game, 3), Some(game.join("CUSA24899").join("eboot.bin")));
+        // Nouvelle mise à jour : l'ancienne est remplacée ; sans mise à jour, supprimée.
+        write_zip(&update, &[("CUSA24899-UPDATE/eboot.bin", "maj 1.04")]);
+        ps4_updates(&game, &[update.clone()]).unwrap();
+        assert_eq!(std::fs::read_to_string(game.join("CUSA24899-UPDATE").join("eboot.bin")).unwrap(), "maj 1.04");
+        assert!(!game.join("CUSA24899-UPDATE").join("sce_sys").exists());
+        ps4_updates(&game, &[]).unwrap();
+        assert!(!game.join("CUSA24899-UPDATE").exists());
+        // Paquet pas encore converti : refusé avant le lancement.
+        assert!(SHADPS4.prepare_game(r"D:\Jeux\ps4\Stray.pkg", &[]).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn modules_systeme_ps4_copies() {
+        let dir = temp_dir("ps4mod");
+        let bios = dir.join("bios").join("ps4");
+        std::fs::create_dir_all(bios.join("sys_modules")).unwrap();
+        std::fs::write(bios.join("sys_modules").join("libSceLibcInternal.sprx"), "sprx").unwrap();
+        std::fs::write(bios.join("sys_modules").join("lisezmoi.txt"), "txt").unwrap();
+        let target = dir.join("shadPS4").join("sys_modules");
+        copy_modules(&[bios.join("sys_modules"), bios.clone()], &target).unwrap();
+        assert!(target.join("libSceLibcInternal.sprx").is_file());
+        assert!(!target.join("lisezmoi.txt").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
