@@ -114,3 +114,25 @@ test('titres comparés sans accents ; ancienne base LaunchBox mise à jour sur p
   check.close();
   fs.rmSync(file, { force: true });
 });
+
+test('base LaunchBox refaite quand une plateforme a été ajoutée (Windows)', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const fs = await import('node:fs');
+  const { LAUNCHBOX_PLATFORMS, missingPlatforms } = await import('../src/scraper/launchbox.js');
+  const all = [...new Set(Object.values(LAUNCHBOX_PLATFORMS).flat())];
+  const file = path.join(os.tmpdir(), `romcloud-launchbox-platforms-${process.pid}.db`);
+  fs.rmSync(file, { force: true });
+  // Base d'une version précédente (sans liste) : un jeu par plateforme, sauf Windows.
+  const db = new DatabaseSync(file);
+  db.exec('CREATE TABLE games (id INTEGER PRIMARY KEY, platform TEXT NOT NULL, data TEXT NOT NULL)');
+  all.filter((p) => p !== 'Windows').forEach((p, i) => db.prepare('INSERT INTO games VALUES (?, ?, ?)').run(i + 1, p, '{}'));
+  db.close();
+  assert.deepEqual(missingPlatforms(file), ['Windows']);
+  // Base importée avec la liste des plateformes : rien ne manque, même sans jeu.
+  const db2 = new DatabaseSync(file);
+  db2.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  db2.prepare("INSERT INTO meta VALUES ('platforms', ?)").run(JSON.stringify(all));
+  db2.close();
+  assert.deepEqual(missingPlatforms(file), []);
+  fs.rmSync(file, { force: true });
+});

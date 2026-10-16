@@ -119,6 +119,7 @@ export const LAUNCHBOX_PLATFORMS = {
   wiiware: ['Nintendo Wii'],
   ws: ['WonderSwan'],
   wsc: ['WonderSwan Color'],
+  windows: ['Windows'],
   x1: ['Sharp X1'],
   x68000: ['Sharp X68000'],
   xbox: ['Microsoft Xbox'],
@@ -228,6 +229,9 @@ export async function importExport(zipFile) {
     db.exec('COMMIT');
     db.exec('CREATE INDEX names_norm ON names(norm); CREATE INDEX images_id ON images(id);');
     db.exec(`PRAGMA user_version = ${NORM_VERSION}`);
+    // Plateformes importées : une plateforme ajoutée ensuite (LAUNCHBOX_PLATFORMS) fait refaire l'import.
+    db.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+    db.prepare("INSERT INTO meta (key, value) VALUES ('platforms', ?)").run(JSON.stringify([...KNOWN_PLATFORMS]));
   } catch (err) {
     db.exec('ROLLBACK');
     db.close();
@@ -241,6 +245,8 @@ export async function importExport(zipFile) {
 
 let database = null;
 let refreshing = null;
+// Plateformes de la base vérifiées : pas de nouvelle lecture avant le prochain import.
+let platformsChecked = false;
 
 function closeDb() {
   database?.close();
@@ -249,9 +255,39 @@ function closeDb() {
 
 const isFresh = (file) => fs.existsSync(file) && Date.now() - fs.statSync(file).mtimeMs < REFRESH_MS;
 
+/**
+ * Plateformes de LAUNCHBOX_PLATFORMS absentes de la base [file] (importée avant leur ajout) ; base
+ * d'une version précédente sans la liste : plateformes dont elle n'a aucun jeu.
+ */
+export function missingPlatforms(file) {
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    const hasMeta = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get();
+    const imported = hasMeta
+      ? JSON.parse(db.prepare("SELECT value FROM meta WHERE key = 'platforms'").get()?.value || '[]')
+      : db.prepare('SELECT DISTINCT platform FROM games').all().map((r) => r.platform);
+    return [...KNOWN_PLATFORMS].filter((p) => !imported.includes(p));
+  } finally {
+    db.close();
+  }
+}
+
+/** Base avec toutes les plateformes connues (vérifié une fois par lancement du serveur ou par import). */
+function hasAllPlatforms(file) {
+  if (platformsChecked) return true;
+  try {
+    const missing = missingPlatforms(file);
+    if (missing.length) console.log(`[launchbox] Nouvelles plateformes (${missing.join(', ')}) : base refaite`);
+    platformsChecked = !missing.length;
+  } catch {
+    platformsChecked = true; // base illisible : gardée, comme avant
+  }
+  return platformsChecked;
+}
+
 /** Télécharge et importe l'export s'il manque ou date de plus d'une semaine (un seul à la fois). */
 async function refresh() {
-  if (isFresh(dbFile)) return;
+  if (!refreshing && isFresh(dbFile) && hasAllPlatforms(dbFile)) return;
   refreshing ||= (async () => {
     fs.mkdirSync(dir, { recursive: true });
     const zipFile = path.join(dir, 'Metadata.zip');
@@ -263,6 +299,7 @@ async function refresh() {
     console.log('[launchbox] Import…');
     await importExport(zipFile);
     fs.rmSync(zipFile, { force: true });
+    platformsChecked = true;
     console.log('[launchbox] Base prête.');
   })().finally(() => {
     refreshing = null;
@@ -274,6 +311,7 @@ async function refresh() {
     if (!fs.existsSync(dbFile)) throw err;
     console.warn(`[launchbox] Mise à jour impossible : ${err.message}`);
     fs.utimesSync(dbFile, new Date(), new Date()); // pas de nouvel essai avant une semaine
+    platformsChecked = true;
   }
 }
 
