@@ -70,6 +70,10 @@ private:
     static const std::string crtShaderFragment;
     static const std::string lcdShaderFragment;
 
+    static const std::unordered_map<std::string, std::string> crtParams;
+    static const std::unordered_map<std::string, std::string> lcdParams;
+    static const std::unordered_map<std::string, std::string> sharpParams;
+
     static const std::unordered_map<std::string, std::string> cutUpscaleParams;
     static const std::string cutUpscaleVertex;
     static const std::string cutUpscaleFragment;
@@ -93,6 +97,9 @@ private:
         std::unordered_map<std::string, std::string> baseParams,
         std::unordered_map<std::string, std::string> customParams
     );
+
+    static Chain getBaseShader(const Config& config);
+    static void applyColors(Chain& chain, const std::unordered_map<std::string, std::string>& params);
 
 public:
     static Chain getShader(const Config& config);

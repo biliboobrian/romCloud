@@ -1,7 +1,7 @@
 // Menu du moteur (Échap, bouton central de la manette ou Start + Select) : reprendre, états de
 // sauvegarde, redémarrage, options du cœur (un onglet par type), touches du clavier,
 // configuration des manettes, joueurs des manettes, disque,
-// filtre et format d'image, plein écran, sauvegarder et quitter, quitter.
+// image (filtre et ses réglages), format d'image, plein écran, sauvegarder et quitter, quitter.
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -14,11 +14,11 @@
 
 enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext };
 
-enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, NextFilter, NextAspect, ConfigurePad, Players, FilterSettings, FilterParam, FilterDefaults, SoundSettings, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
+enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, ImageSettings, FilterChoice, NextAspect, ConfigurePad, Players, FilterParam, FilterDefaults, SoundSettings, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
 
 /** État affiché par le menu (fourni par la boucle principale). */
 struct MenuState {
-  int filter = 1;  // Filter (video.h) : lissage net par défaut
+  const char* filterLabel = "filter_sharp";  // clé du nom du filtre d'image (video.h)
   int aspect = 0;  // Aspect (video.h) : celui du cœur par défaut
   bool fullscreen = true;
   int diskIndex = -1;  // -1 : pas de changement de disque
@@ -28,7 +28,6 @@ struct MenuState {
   // ils ne changeraient que cet appareil), ou proposée.
   bool together = false;
   bool netplay = false;
-  bool filterSettings = false;  // le filtre choisi a des réglages
   int volume = 100;  // volume du son (%), commun à tous les émulateurs
 };
 
@@ -70,27 +69,30 @@ class Menu {
   void render(Canvas& canvas, const MenuState& state) const;
 
   /**
-   * Écran « Réglages du filtre » ([filter] : son nom), dessiné en bas pour garder le jeu visible :
+   * Écran « Image », panneau à droite pour garder le jeu visible : liste des filtres ([choices] : leurs
+   * noms, [chosen] : celui affiché ; A / Entrée : FilterChoice), puis les réglages du filtre ([rows]) :
    * gauche / droite changent la valeur choisie (FilterParam), « Valeurs par défaut » les rétablit
    * toutes (FilterDefaults).
    */
-  void openFilterSettings(std::string filter, std::vector<FilterRow> rows);
-  /** Même panneau pour le son (volume, commun à tous les émulateurs) : FilterParam / FilterDefaults. */
+  void openImageSettings(std::vector<std::pair<std::string, std::string>> choices, int chosen, std::vector<FilterRow> rows);
+  /** Filtre choisi par la dernière action FilterChoice (rang dans la liste). */
+  int filterChoice() const { return filterChoice_; }
+  /** Filtre affiché après FilterChoice, avec ses réglages. */
+  void setFilterRows(int chosen, std::vector<FilterRow> rows);
+  /** Panneau en bas pour le son (volume, commun à tous les émulateurs) : FilterParam / FilterDefaults. */
   void openSoundSettings(std::vector<FilterRow> rows);
   /** Panneau du son ouvert (sinon celui du filtre). */
   bool inSoundSettings() const { return open_ && screen_ == Screen::FilterSettings && sound_; }
   const std::vector<FilterRow>& filterRows() const { return filterRows_; }
   /** Réglage changé par la dernière action FilterParam. */
   int filterRowChanged() const { return filterChanged_; }
-  /** Écran des réglages du filtre affiché (surimpression réduite, jeu visible). */
-  bool inFilterSettings() const { return open_ && screen_ == Screen::FilterSettings; }
 
   /** Texte traduit (menu et messages du moteur). */
   std::string tr(const char* key) const;
 
  private:
   enum class Screen { Main, Options, Keys, States, FilterSettings };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, FilterSettings, Aspect, Fullscreen, Sound, LeaveNetplay, SaveQuit, Quit };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, Aspect, Fullscreen, Sound, LeaveNetplay, SaveQuit, Quit };
 
   std::vector<Item> items(const MenuState& state) const;
   int itemCount(const MenuState& state) const;
@@ -116,10 +118,13 @@ class Menu {
   int keySelected_ = 0;  // 0 : « Touches par défaut », puis keyRows_
   bool waitingKey_ = false;
   std::string keyMessage_;  // touche refusée
-  std::string filterName_;
-  bool sound_ = false;  // panneau des réglages : son plutôt que filtre
+  bool sound_ = false;  // panneau des réglages : son plutôt qu'image
+  std::vector<std::pair<std::string, std::string>> filterChoices_;  // nom, description des filtres (image)
+  int filterChosen_ = 0;
+  int filterChoice_ = 0;
   std::vector<FilterRow> filterRows_;
-  int filterSelected_ = 0;  // réglages, puis « Valeurs par défaut »
+  int filterSelected_ = 0;  // filtres, réglages, puis « Valeurs par défaut »
+  mutable int filterScroll_ = 0;
   int filterChanged_ = -1;
   std::vector<std::string> stateRows_;
   int stateSelected_ = 0;

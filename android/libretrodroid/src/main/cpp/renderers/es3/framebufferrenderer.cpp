@@ -87,7 +87,16 @@ bool FramebufferRenderer::rendersInVideoCallback() {
 void FramebufferRenderer::setShaders(ShaderManager::Chain shaders) {
     if (shaders != this->shaders) {
         this->shaders = shaders;
-        isDirty = true;
+        // RomCloud : passes du shader recréées aussitôt, image du cœur gardée (émulation figée
+        // pendant le réglage des shaders : dernière image redessinée avec le nouveau shader).
+        for (auto& i : *framebuffers) {
+            ES3Utils::deleteFramebuffer(std::move(i));
+        }
+        framebuffers = ES3Utils::buildShaderPasses(width, height, this->shaders);
+        glBindTexture(GL_TEXTURE_2D, framebuffer->texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, this->shaders.linearTexture ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, this->shaders.linearTexture ? GL_LINEAR : GL_NEAREST);
+        glBindTexture(GL_TEXTURE_2D, 0);
     }
 }
 

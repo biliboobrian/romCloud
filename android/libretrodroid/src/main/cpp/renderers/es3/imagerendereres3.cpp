@@ -160,7 +160,21 @@ bool ImageRendererES3::rendersInVideoCallback() {
 
 void ImageRendererES3::setShaders(ShaderManager::Chain newShaders) {
     this->shaders = newShaders;
-    this->isDirty = true;
+    // RomCloud : passes du shader recréées aussitôt à la taille de la dernière image (image gardée) :
+    // la dernière image est redessinée avec le nouveau shader même sans nouvelle image du cœur
+    // (émulation figée pendant le réglage des shaders).
+    if (lastFrameSize.first <= 0 || lastFrameSize.second <= 0) {
+        this->isDirty = true;
+        return;
+    }
+    for (auto& i : *framebuffers) {
+        ES3Utils::deleteFramebuffer(std::move(i));
+    }
+    framebuffers = ES3Utils::buildShaderPasses(lastFrameSize.first, lastFrameSize.second, shaders);
+    glBindTexture(GL_TEXTURE_2D, currentTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, shaders.linearTexture ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, shaders.linearTexture ? GL_LINEAR : GL_NEAREST);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 Renderer::PassData ImageRendererES3::getPassData(unsigned int layer) {

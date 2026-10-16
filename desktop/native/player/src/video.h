@@ -13,23 +13,30 @@
 #include "libretro.h"
 
 /**
- * Filtre d'image (pixels de la console agrandis à l'écran), dans l'ordre du menu : pixels nets,
- * lissage net (pixels nets, transition lissée sur un pixel de l'écran : ni flou ni pixels inégaux),
- * lissage doux (bicubique), lissage bilinéaire, EPX (Scale2x : contours du pixel art arrondis),
- * écran cathodique (lignes de balayage), écran cathodique avec masque RGB, écran LCD (grille).
- * Le rang sert de numéro de mode au shader (u_mode).
+ * Shader d'image (pixels de la console agrandis à l'écran) : Nearest (pixels bruts), Sharp Bilinear
+ * (pixels nets, transition lissée sur un pixel de l'écran : ni flou ni pixels inégaux), Bicubic,
+ * Bilinear, Scale2x (EPX : contours du pixel art arrondis), CRT (lignes de balayage, masque RGB),
+ * LCD (grille), xBR, FSR. Le rang sert de numéro de mode au shader (u_mode) ; CrtMask : ancien
+ * « CRT+ », lu comme CRT (masque réglable dans CRT).
  */
 enum class Filter { Pixels, Sharp, Soft, Smooth, Epx, Crt, CrtMask, Lcd, Xbr, Fsr };
 constexpr int kFilterCount = 10;
-/** Filtre suivant dans l'ordre du menu (lissages, agrandisseurs, écrans). */
-Filter nextFilter(Filter filter);
+/** Shaders proposés dans la liste du menu. */
+constexpr int kFilterListCount = 9;
+/** Shader de rang [index] dans la liste du menu (lissages, agrandisseurs, écrans) et rang inverse. */
+Filter filterAt(int index);
+int filterIndex(Filter filter);
+/** Clé du nom affiché (menu) et de la description du filtre. */
+const char* filterLabel(Filter filter);
+const char* filterDescription(Filter filter);
 /** Identifiant mémorisé dans les réglages (« sharp »…) et inverse (lissage net par défaut). */
 const char* filterId(Filter filter);
 Filter filterFromId(const std::string& id);
 
 /**
  * Réglage d'un filtre : identifiant mémorisé pour le système (« romcloud_<filtre>_<réglage> »), clé du
- * libellé, composante du shader (u_params), valeur par défaut, bornes et pas.
+ * libellé, composante du shader (0 à 7 : u_params et u_params2 ; 8 à 11 : couleurs, u_color), valeur
+ * par défaut, bornes et pas.
  */
 struct FilterParam {
   const char* id;
@@ -37,7 +44,8 @@ struct FilterParam {
   int slot;
   float def, min, max, step;
 };
-/** Réglages proposés pour le filtre (aucun : pixels, lissages, EPX, xBR). */
+constexpr int kFilterSlots = 12;
+/** Réglages du filtre : les siens, puis luminosité, contraste, saturation et gamma (tous les filtres). */
 std::vector<FilterParam> filterParams(Filter filter);
 
 /** Format de l'image : celui du cœur, 4:3, 16:9, ou étiré sur toute la fenêtre (ordre du menu). */
@@ -79,9 +87,9 @@ class Video {
   void toggleFullscreen();
   bool fullscreen() const { return fullscreen_; }
   void setFilter(Filter filter) { filter_ = filter; }
-  /** Valeur d'un réglage du filtre (composante [slot] de u_params). */
+  /** Valeur d'un réglage du filtre (composante [slot] de u_params, u_params2 ou u_color). */
   void setFilterParam(int slot, float value) {
-    if (slot >= 0 && slot < 4) params_[slot] = value;
+    if (slot >= 0 && slot < kFilterSlots) params_[slot] = value;
   }
   Filter filter() const { return filter_; }
   void setAspect(Aspect aspect) { aspect_ = aspect; }
@@ -111,8 +119,8 @@ class Video {
 
   unsigned program_ = 0, vao_ = 0, vbo_ = 0;
   int uniformTexture_ = -1, uniformAlpha_ = -1, uniformMode_ = -1, uniformSize_ = -1, uniformScale_ = -1;
-  int uniformParams_ = -1, uniformRect_ = -1;
-  float params_[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+  int uniformParams_ = -1, uniformParams2_ = -1, uniformColor_ = -1, uniformRect_ = -1;
+  float params_[kFilterSlots] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f};
   unsigned frameTexture_ = 0, overlayTexture_ = 0;
   int overlayTextureWidth_ = 0, overlayTextureHeight_ = 0;  // taille de la surimpression envoyée
   // Image partagée avec Vulkan : texture sur sa mémoire, sémaphores « prête » et « rendue » ;

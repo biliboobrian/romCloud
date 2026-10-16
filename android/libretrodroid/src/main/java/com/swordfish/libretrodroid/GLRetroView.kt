@@ -445,11 +445,40 @@ class GLRetroView(
     }
 
     private fun buildShader(config: ShaderConfig): GLRetroShader {
+        val shader = buildBaseShader(config)
+        // RomCloud : couleurs de l'image finale, avec les réglages du shader.
+        val colors = config.colors
+        return shader.copy(
+            params = shader.params + buildParams(
+                LibretroDroid.SHADER_PARAM_BRIGHTNESS to toParam(colors.brightness),
+                LibretroDroid.SHADER_PARAM_CONTRAST to toParam(colors.contrast),
+                LibretroDroid.SHADER_PARAM_SATURATION to toParam(colors.saturation),
+                LibretroDroid.SHADER_PARAM_GAMMA to toParam(colors.gamma),
+            )
+        )
+    }
+
+    private fun buildBaseShader(config: ShaderConfig): GLRetroShader {
         return when (config) {
             is ShaderConfig.Default -> GLRetroShader(LibretroDroid.SHADER_DEFAULT)
-            is ShaderConfig.CRT -> GLRetroShader(LibretroDroid.SHADER_CRT)
-            is ShaderConfig.LCD -> GLRetroShader(LibretroDroid.SHADER_LCD)
-            is ShaderConfig.Sharp -> GLRetroShader(LibretroDroid.SHADER_SHARP)
+            is ShaderConfig.CRT -> GLRetroShader(
+                LibretroDroid.SHADER_CRT,
+                buildParams(
+                    LibretroDroid.SHADER_CRT_PARAM_INTENSITY to toParam(config.intensity),
+                    LibretroDroid.SHADER_CRT_PARAM_BRIGHTBOOST to toParam(config.brightBoost),
+                )
+            )
+            is ShaderConfig.LCD -> GLRetroShader(
+                LibretroDroid.SHADER_LCD,
+                buildParams(
+                    LibretroDroid.SHADER_LCD_PARAM_INTENSITY to toParam(config.intensity),
+                    LibretroDroid.SHADER_LCD_PARAM_BRIGHTBOOST to toParam(config.brightBoost),
+                )
+            )
+            is ShaderConfig.Sharp -> GLRetroShader(
+                LibretroDroid.SHADER_SHARP,
+                buildParams(LibretroDroid.SHADER_SHARP_PARAM_WIDTH to toParam(config.width))
+            )
             is ShaderConfig.CUT -> GLRetroShader(
                 LibretroDroid.SHADER_UPSCALE_CUT,
                 buildParams(

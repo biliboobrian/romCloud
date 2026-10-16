@@ -17,12 +17,40 @@
 
 package com.swordfish.libretrodroid
 
+/** RomCloud : couleurs de l'image finale (1 = inchangée ; gamma : exposant inverse). */
+data class ShaderColors(
+    val brightness: Float = 1.0f,
+    val contrast: Float = 1.0f,
+    val saturation: Float = 1.0f,
+    val gamma: Float = 1.0f,
+)
+
 sealed interface ShaderConfig {
 
-    object Default : ShaderConfig
-    object CRT : ShaderConfig
-    object LCD : ShaderConfig
-    object Sharp : ShaderConfig
+    /** RomCloud : couleurs appliquées après le shader. */
+    val colors: ShaderColors
+
+    data class Default(override val colors: ShaderColors = ShaderColors()) : ShaderConfig
+
+    /** RomCloud : force des lignes de balayage et éclat de leur centre. */
+    data class CRT(
+        val intensity: Float = 0.30f,
+        val brightBoost: Float = 0.30f,
+        override val colors: ShaderColors = ShaderColors(),
+    ) : ShaderConfig
+
+    /** RomCloud : force de la grille et éclat du centre des pixels. */
+    data class LCD(
+        val intensity: Float = 0.25f,
+        val brightBoost: Float = 0.25f,
+        override val colors: ShaderColors = ShaderColors(),
+    ) : ShaderConfig
+
+    /** RomCloud : largeur de la transition entre pixels (en pixels de l'écran). */
+    data class Sharp(
+        val width: Float = 1.0f,
+        override val colors: ShaderColors = ShaderColors(),
+    ) : ShaderConfig
 
     data class CUT(
         val useDynamicBlend: Boolean = true,
@@ -34,6 +62,7 @@ sealed interface ShaderConfig {
         val edgeUseFastLuma: Boolean = true,
         val edgeMinValue: Float = 0.05f,
         val edgeMinContrast: Float = 2.00f,
+        override val colors: ShaderColors = ShaderColors(),
     ) : ShaderConfig
 
     data class CUT2(
@@ -47,6 +76,7 @@ sealed interface ShaderConfig {
         val softEdgesSharpening: Boolean = true,
         val softEdgesSharpeningAmount: Float = 1.0f,
         val hardEdgesSearchMaxError: Float = 0.25f,
+        override val colors: ShaderColors = ShaderColors(),
     ) : ShaderConfig
 
     data class CUT3(
@@ -61,5 +91,6 @@ sealed interface ShaderConfig {
         val softEdgesSharpeningAmount: Float = 1.0f,
         val hardEdgesSearchMaxError: Float = 0.25f,
         val hardEdgesSearchMaxDistance: Int = 4,
+        override val colors: ShaderColors = ShaderColors(),
     ) : ShaderConfig
 }

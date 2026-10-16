@@ -78,6 +78,8 @@ public:
     void updateShaderType(ShaderManager::Config shaderConfig);
 
     void renderFrame();
+    /** RomCloud : image redessinée même sans nouvelle image du cœur (émulation figée). */
+    void markDirty() { isDirty = true; }
 
     void onNewFrame(const void *data, unsigned width, unsigned height, size_t pitch);
 

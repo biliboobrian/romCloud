@@ -17,6 +17,9 @@
 
 #include "shadermanager.h"
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace libretrodroid {
 
 const std::string ShaderManager::defaultShaderVertex =
@@ -73,8 +76,8 @@ const std::string ShaderManager::crtShaderFragment =
     "varying HIGHP vec2 screenCoords;\n"
     "varying mediump float screenMaskStrength;\n"
     "\n"
-    "#define INTENSITY 0.30\n"
-    "#define BRIGHTBOOST 0.30\n"
+    "#define INTENSITY CRT_INTENSITY\n"
+    "#define BRIGHTBOOST CRT_BRIGHTBOOST\n"
     "\n"
     "void main() {\n"
     "  lowp vec3 texel = texture2D(texture, coords).rgb;\n"
@@ -104,8 +107,8 @@ const std::string ShaderManager::lcdShaderFragment =
     "varying HIGHP vec2 screenCoords;\n"
     "varying mediump float screenMaskStrength;\n"
     "\n"
-    "#define INTENSITY 0.25\n"
-    "#define BRIGHTBOOST 0.25\n"
+    "#define INTENSITY LCD_INTENSITY\n"
+    "#define BRIGHTBOOST LCD_BRIGHTBOOST\n"
     "\n"
     "void main() {\n"
     "  mediump vec2 threshold = vec2(1.0 / screenDensity);\n"
@@ -141,7 +144,7 @@ const std::string ShaderManager::defaultSharpFragment =
     "varying HIGHP vec2 screenCoords;\n"
     "\n"
     "void main() {\n"
-    "  mediump vec2 threshold = vec2(1.0 / screenDensity);\n"
+    "  mediump vec2 threshold = vec2(min(SHARP_WIDTH / screenDensity, 0.5));\n"
     "  mediump vec2 x = fract(screenCoords);\n"
     "  x = 0.5 * (smoothstep(vec2(0.0), threshold, x) + smoothstep(vec2(1.0) - threshold, vec2(1.0), x));\n"
     "  mediump vec2 sharpCoords = (floor(screenCoords) + x) / textureSize;\n"
@@ -149,6 +152,21 @@ const std::string ShaderManager::defaultSharpFragment =
     "  vec4 tex = texture2D(texture, sharpCoords);\n"
     "  gl_FragColor = vec4(tex.rgb, 1.0);\n"
     "}\n";
+
+// RomCloud : réglages par défaut des shaders simples (lignes et grille, transition du lissage net).
+const std::unordered_map<std::string, std::string> ShaderManager::crtParams = {
+    { "CRT_INTENSITY", "0.30" },
+    { "CRT_BRIGHTBOOST", "0.30" },
+};
+
+const std::unordered_map<std::string, std::string> ShaderManager::lcdParams = {
+    { "LCD_INTENSITY", "0.25" },
+    { "LCD_BRIGHTBOOST", "0.25" },
+};
+
+const std::unordered_map<std::string, std::string> ShaderManager::sharpParams = {
+    { "SHARP_WIDTH", "1.0" },
+};
 
 const std::unordered_map<std::string, std::string> ShaderManager::cutUpscaleParams = {
     { "USE_DYNAMIC_BLEND", "1" },
@@ -1528,21 +1546,59 @@ const std::string ShaderManager::cut3UpscalePass2Fragment =
     "}";
 
 ShaderManager::Chain ShaderManager::getShader(const ShaderManager::Config& config) {
+    Chain chain = getBaseShader(config);
+    applyColors(chain, config.params);
+    return chain;
+}
+
+void ShaderManager::applyColors(Chain& chain, const std::unordered_map<std::string, std::string>& params) {
+    // RomCloud : couleurs de l'image finale (luminosité, contraste, saturation, gamma), ajoutées au
+    // dernier shader quand elles changent quelque chose : son main() devient rcMain(), qui écrit dans
+    // rcColor, puis la couleur corrigée est écrite.
+    auto value = [&](const char* key) {
+        auto it = params.find(key);
+        return it == params.end() ? std::string("1.0") : it->second;
+    };
+    const std::string brightness = value("RC_BRIGHTNESS"), contrast = value("RC_CONTRAST");
+    const std::string saturation = value("RC_SATURATION"), gamma = value("RC_GAMMA");
+    auto neutral = [](const std::string& v) { return std::strtof(v.c_str(), nullptr) == 1.0f; };
+    if (chain.passes.empty() || (neutral(brightness) && neutral(contrast) && neutral(saturation) && neutral(gamma))) return;
+
+    std::string& fragment = chain.passes.back().fragment;
+    const std::string mainSignature = "void main()";
+    const size_t at = fragment.find(mainSignature);
+    if (at == std::string::npos) return;
+    fragment.replace(at, mainSignature.size(), "lowp vec4 rcColor;\nvoid rcMain()");
+    const std::string output = "gl_FragColor";
+    for (size_t pos = fragment.find(output); pos != std::string::npos; pos = fragment.find(output, pos))
+        fragment.replace(pos, output.size(), "rcColor");
+    fragment +=
+        "\n"
+        "void main() {\n"
+        "  rcMain();\n"
+        "  mediump vec3 c = pow(max(rcColor.rgb, vec3(0.0)), vec3(1.0 / " + gamma + "));\n"
+        "  c = ((c - 0.5) * " + contrast + " + 0.5) * " + brightness + ";\n"
+        "  mediump float l = dot(c, vec3(0.299, 0.587, 0.114));\n"
+        "  gl_FragColor = vec4(clamp(mix(vec3(l), c, " + saturation + "), 0.0, 1.0), 1.0);\n"
+        "}\n";
+}
+
+ShaderManager::Chain ShaderManager::getBaseShader(const ShaderManager::Config& config) {
     switch (config.type) {
     case Type::SHADER_DEFAULT: {
         return { { { defaultShaderVertex, defaultShaderFragment, true, 1.0 } }, true };
     }
 
     case Type::SHADER_CRT: {
-        return { { { defaultShaderVertex, crtShaderFragment, true, 1.0 } } , true };
+        return { { { defaultShaderVertex, buildDefines(crtParams, config.params) + crtShaderFragment, true, 1.0 } } , true };
     }
 
     case Type::SHADER_LCD: {
-        return { { {defaultShaderVertex, lcdShaderFragment, true, 1.0 } }, true };
+        return { { {defaultShaderVertex, buildDefines(lcdParams, config.params) + lcdShaderFragment, true, 1.0 } }, true };
     }
 
     case Type::SHADER_SHARP: {
-        return { { { defaultShaderVertex, defaultSharpFragment, true, 1.0 } }, true };
+        return { { { defaultShaderVertex, buildDefines(sharpParams, config.params) + defaultSharpFragment, true, 1.0 } }, true };
     }
 
     case Type::SHADER_UPSCALE_CUT: {

@@ -458,11 +458,13 @@ static const char* kVertex150 =
 // Filtre d'image (u_mode : rang dans Filter) ; u_size : taille de la texture en pixels, u_scale :
 // pixels de l'écran par pixel de l'image. Lissage net (et base de l'écran cathodique) d'après
 // « sharp-bilinear-simple » de libretro : chaque pixel reste net, seule sa bordure est lissée.
-// Modes (rang dans Filter) : 0 pixels, 1 lissage net, 2 doux (bicubique Catmull-Rom), 3 bilinéaire,
-// 4 EPX / Scale2x, 5 cathodique, 6 cathodique + masque RGB (grille d'ouverture), 7 LCD, 8 xBR
-// (niveau 1 : angles des contours redessinés en diagonale), 9 FSR 1 EASU (agrandissement suivant la
-// direction des contours, d'après AMD FidelityFX Super Resolution 1), 10 FSR 1 RCAS (netteté
-// adaptée au contraste, seconde passe sur l'image agrandie).
+// Modes (rang dans Filter) : 0 pixels, 1 lissage net, 2 doux (bicubique de Mitchell-Netravali,
+// Catmull-Rom par défaut), 3 bilinéaire, 4 EPX / Scale2x, 5 cathodique, 6 cathodique + masque RGB
+// (grille d'ouverture), 7 LCD, 8 xBR (niveau 1 : angles des contours redessinés en diagonale),
+// 9 FSR 1 EASU (agrandissement suivant la direction des contours, d'après AMD FidelityFX Super
+// Resolution 1), 10 FSR 1 RCAS (netteté adaptée au contraste, seconde passe sur l'image agrandie).
+// Réglages (filterParams) : u_params, u_params2 ; couleurs de tous les filtres (u_color : luminosité,
+// contraste, saturation, gamma), appliquées à l'image finale (pas à la première passe de FSR).
 #define FILTER_EXTRA \
   "float lum(vec3 c) { return c.g + 0.5 * (c.r + c.b); }\n" \
   "vec3 at(sampler2D tex, vec2 p) { return TEX(tex, (p + 0.5) / u_size).rgb; }\n" \
@@ -481,9 +483,9 @@ static const char* kVertex150 =
   "  float d2 = diff(H, D) + diff(H, I5) + diff(F, B) + diff(F, I4) + 4.0 * diff(E, I);\n" \
   "  if (d1 >= d2 || diff(E, F) < 0.004 || diff(E, H) < 0.004) return vec4(E, 1.0);\n" \
   "  vec3 edge = diff(E, F) <= diff(E, H) ? F : H;\n" \
-  "  float aa = 1.0 / max(min(u_scale.x, u_scale.y), 1.0);\n" \
+  "  float aa = max(u_params.y, 0.1) / max(min(u_scale.x, u_scale.y), 1.0);\n" \
   "  float t = dot(fp, s);\n" \
-  "  return vec4(mix(E, edge, smoothstep(0.5 - aa, 0.5 + aa, t)), 1.0);\n" \
+  "  return vec4(mix(E, edge, smoothstep(0.5 - aa, 0.5 + aa, t) * u_params.x), 1.0);\n" \
   "}\n" \
   "void easuSet(inout vec2 dir, inout float len, float w, float lA, float lB, float lC, float lD, float lE) {\n" \
   "  float lenX = max(abs(lD - lC), abs(lC - lB));\n" \
@@ -567,23 +569,31 @@ static const char* kVertex150 =
 
 #define FILTER_FUNCTION                                                                  \
   "uniform int u_mode; uniform vec2 u_size; uniform vec2 u_scale;\n"                     \
-  "uniform vec4 u_params; uniform vec4 u_rect;\n"                                         \
+  "uniform vec4 u_params; uniform vec4 u_params2; uniform vec4 u_color; uniform vec4 u_rect;\n" \
   FILTER_EXTRA                                                                           \
-  "float catmullRom(float x) {\n"                                                        \
+  "float cubic(float x) {\n"                                                             \
+  "  float B = u_params.x, C = u_params.y;\n"                                            \
   "  x = abs(x);\n"                                                                      \
-  "  if (x < 1.0) return (1.5 * x - 2.5) * x * x + 1.0;\n"                               \
-  "  if (x < 2.0) return ((-0.5 * x + 2.5) * x - 4.0) * x + 2.0;\n"                      \
+  "  if (x < 1.0) return ((12.0 - 9.0 * B - 6.0 * C) * x * x * x + (-18.0 + 12.0 * B + 6.0 * C) * x * x + (6.0 - 2.0 * B)) / 6.0;\n" \
+  "  if (x < 2.0) return ((-B - 6.0 * C) * x * x * x + (6.0 * B + 30.0 * C) * x * x + (-12.0 * B - 48.0 * C) * x + (8.0 * B + 24.0 * C)) / 6.0;\n" \
   "  return 0.0;\n"                                                                      \
   "}\n"                                                                                  \
-  "bool same(vec4 a, vec4 b) { return distance(a.rgb, b.rgb) < 0.02; }\n"                \
+  "bool same(vec4 a, vec4 b) { return distance(a.rgb, b.rgb) < u_params.x; }\n"          \
+  "vec3 grade(vec3 c) {\n"                                                               \
+  "  c = pow(max(c, vec3(0.0)), vec3(1.0 / u_color.w));\n"                               \
+  "  c = ((c - 0.5) * u_color.y + 0.5) * u_color.x;\n"                                   \
+  "  return clamp(mix(vec3(dot(c, vec3(0.299, 0.587, 0.114))), c, u_color.z), 0.0, 1.0);\n" \
+  "}\n"                                                                                  \
   "vec4 filtered(sampler2D tex, vec2 uv) {\n"                                            \
   "  vec2 du = dFdx(uv), dv = dFdy(uv);\n"                                               \
-  "  if ((u_mode == 5 || u_mode == 6) && u_params.z > 0.0) {\n"                          \
-  "    vec2 p = (gl_FragCoord.xy - u_rect.xy) / u_rect.zw * 2.0 - 1.0;\n"                \
+  "  bool crt = u_mode == 5 || u_mode == 6;\n"                                           \
+  "  vec2 p = (gl_FragCoord.xy - u_rect.xy) / u_rect.zw * 2.0 - 1.0;\n"                  \
+  "  if (crt && u_params.z > 0.0) {\n"                                                   \
   "    vec2 q = p * (1.0 + u_params.z * 0.2 * (p.yx * p.yx));\n"                         \
   "    if (abs(q.x) > 1.0 || abs(q.y) > 1.0) return vec4(0.0, 0.0, 0.0, 1.0);\n"         \
   "    vec2 d = (q - p) * 0.5 * u_rect.zw;\n"                                            \
   "    uv += du * d.x + dv * d.y;\n"                                                     \
+  "    p = q;\n"                                                                         \
   "  }\n"                                                                                \
   "  if (u_mode == 0 || u_mode == 3) return TEX(tex, uv);\n"                             \
   "  if (u_mode == 8) return xbr(tex, uv);\n"                                            \
@@ -595,7 +605,7 @@ static const char* kVertex150 =
   "    vec2 f = texel - base;\n"                                                         \
   "    vec4 sum = vec4(0.0);\n"                                                          \
   "    for (int j = -1; j <= 2; j++) for (int i = -1; i <= 2; i++) {\n"                  \
-  "      float w = catmullRom(f.x - float(i)) * catmullRom(f.y - float(j));\n"           \
+  "      float w = cubic(f.x - float(i)) * cubic(f.y - float(j));\n"                     \
   "      sum += TEX(tex, (base + vec2(float(i), float(j))) / u_size) * w;\n"             \
   "    }\n"                                                                              \
   "    return clamp(sum, 0.0, 1.0);\n"                                                   \
@@ -616,21 +626,22 @@ static const char* kVertex150 =
   "  vec2 centerDist = fract(texel) - 0.5;\n"                                            \
   "  vec4 c = TEX(tex, uv);\n"                                                           \
   "  if (u_mode != 7) {\n"                                                               \
-  "    float width = u_mode == 1 ? u_params.x : 1.0;\n"                                  \
+  "    float width = u_mode == 1 ? u_params.x : crt ? u_params.w : 1.0;\n"               \
   "    vec2 range = max(vec2(0.0), 0.5 - 0.5 * width / u_scale);\n"                      \
   "    vec2 f = (centerDist - clamp(centerDist, -range, range)) * u_scale / width + 0.5;\n" \
   "    c = TEX(tex, (floor(texel) + f) / u_size);\n"                                     \
   "  }\n"                                                                                \
-  "  if ((u_mode == 5 || u_mode == 6) && u_scale.y >= 2.0)\n"                            \
-  "    c.rgb *= mix(1.0 - u_params.x, 1.0 + 0.22 * u_params.x, sin(3.14159265 * fract(texel.y)));\n" \
-  "  if (u_mode == 6) {\n"                                                               \
+  "  if (crt && u_scale.y >= 2.0)\n"                                                     \
+  "    c.rgb *= mix(1.0 - u_params.x, 1.0 + u_params2.y * u_params.x, sin(3.14159265 * fract(texel.y)));\n" \
+  "  if (crt) c.rgb *= 1.0 - u_params2.x * 0.5 * dot(p, p);\n"                           \
+  "  if (crt && u_params.y > 0.0) {\n"                                                   \
   "    float m = mod(floor(gl_FragCoord.x), 3.0);\n"                                     \
   "    float o = 1.0 - u_params.y;\n"                                                    \
   "    vec3 mask = m < 1.0 ? vec3(1.0, o, o) : m < 2.0 ? vec3(o, 1.0, o) : vec3(o, o, 1.0);\n" \
   "    c.rgb = min(c.rgb * mask * (1.0 + u_params.y), vec3(1.0));\n"                     \
   "  }\n"                                                                                \
   "  if (u_mode == 7 && min(u_scale.x, u_scale.y) >= 3.0) {\n"                           \
-  "    vec2 line = step(vec2(1.0) - 1.0 / u_scale, fract(texel));\n"                     \
+  "    vec2 line = step(vec2(1.0) - u_params.y / u_scale, fract(texel));\n"              \
   "    c.rgb *= 1.0 - u_params.x * max(line.x, line.y);\n"                               \
   "  }\n"                                                                                \
   "  return c;\n"                                                                        \
@@ -641,7 +652,7 @@ static const char* kFragment150 =
     "#define TEX texture\n"
     FILTER_FUNCTION
     "in vec2 v_uv; uniform sampler2D u_tex; uniform float u_alpha; out vec4 o_color;\n"
-    "void main() { vec4 c = filtered(u_tex, v_uv); o_color = vec4(c.rgb, mix(1.0, c.a, u_alpha)); }\n";
+    "void main() { vec4 c = filtered(u_tex, v_uv); o_color = vec4(u_mode == 9 ? c.rgb : grade(c.rgb), mix(1.0, c.a, u_alpha)); }\n";
 static const char* kVertex120 =
     "#version 120\n"
     "attribute vec2 a_pos; attribute vec2 a_uv; varying vec2 v_uv;\n"
@@ -651,31 +662,58 @@ static const char* kFragment120 =
     "#define TEX texture2D\n"
     FILTER_FUNCTION
     "varying vec2 v_uv; uniform sampler2D u_tex; uniform float u_alpha;\n"
-    "void main() { vec4 c = filtered(u_tex, v_uv); gl_FragColor = vec4(c.rgb, mix(1.0, c.a, u_alpha)); }\n";
+    "void main() { vec4 c = filtered(u_tex, v_uv); gl_FragColor = vec4(u_mode == 9 ? c.rgb : grade(c.rgb), mix(1.0, c.a, u_alpha)); }\n";
 
 std::vector<FilterParam> filterParams(Filter filter) {
+  // CRT : lignes de balayage (et leur éclat), masque RGB, courbure, transition des pixels, coins assombris.
   const FilterParam scanlines{"scanlines", "fp_scanlines", 0, 0.45f, 0.0f, 0.9f, 0.05f};
   const FilterParam curvature{"curvature", "fp_curvature", 2, 0.0f, 0.0f, 1.0f, 0.1f};
+  const FilterParam crtSoftness{"softness", "fp_softness", 3, 1.0f, 0.5f, 4.0f, 0.25f};
+  const FilterParam vignette{"vignette", "fp_vignette", 4, 0.0f, 0.0f, 1.0f, 0.05f};
+  const FilterParam glow{"glow", "fp_glow", 5, 0.22f, 0.0f, 0.6f, 0.02f};
+  std::vector<FilterParam> list;
   switch (filter) {
-    case Filter::Sharp: return {{"softness", "fp_softness", 0, 1.0f, 0.5f, 4.0f, 0.25f}};
-    case Filter::Crt: return {scanlines, curvature};
-    case Filter::CrtMask: return {scanlines, {"mask", "fp_mask", 1, 0.3f, 0.0f, 0.6f, 0.05f}, curvature};
-    case Filter::Lcd: return {{"grid", "fp_grid", 0, 0.35f, 0.0f, 0.9f, 0.05f}};
-    case Filter::Fsr: return {{"sharpness", "fp_sharpness", 0, 1.0f, 0.0f, 2.0f, 0.1f}};
-    default: return {};
+    case Filter::Sharp: list = {{"softness", "fp_softness", 0, 1.0f, 0.5f, 4.0f, 0.25f}}; break;
+    case Filter::Soft: list = {{"blur", "fp_blur", 0, 0.0f, 0.0f, 1.0f, 0.05f}, {"ringing", "fp_ringing", 1, 0.5f, 0.0f, 1.0f, 0.05f}}; break;
+    case Filter::Epx: list = {{"threshold", "fp_threshold", 0, 0.02f, 0.0f, 0.3f, 0.01f}}; break;
+    case Filter::Xbr: list = {{"strength", "fp_strength", 0, 1.0f, 0.0f, 1.0f, 0.05f}, {"edge_softness", "fp_edge_softness", 1, 1.0f, 0.25f, 4.0f, 0.25f}}; break;
+    case Filter::Fsr: list = {{"sharpness", "fp_sharpness", 0, 1.0f, 0.0f, 2.0f, 0.1f}}; break;
+    case Filter::Crt:
+    case Filter::CrtMask: list = {scanlines, glow, {"mask", "fp_mask", 1, 0.0f, 0.0f, 0.6f, 0.05f}, curvature, crtSoftness, vignette}; break;
+    case Filter::Lcd: list = {{"grid", "fp_grid", 0, 0.35f, 0.0f, 0.9f, 0.05f}, {"grid_width", "fp_grid_width", 1, 1.0f, 0.5f, 3.0f, 0.25f}}; break;
+    default: break;
   }
+  // Couleurs, communes à tous les filtres (mémorisées pour chacun).
+  list.insert(list.end(), {{"brightness", "fp_brightness", 8, 1.0f, 0.5f, 1.5f, 0.05f},
+                           {"contrast", "fp_contrast", 9, 1.0f, 0.5f, 1.5f, 0.05f},
+                           {"saturation", "fp_saturation", 10, 1.0f, 0.0f, 2.0f, 0.05f},
+                           {"gamma", "fp_gamma", 11, 1.0f, 0.5f, 2.0f, 0.05f}});
+  return list;
 }
 
 static const char* kFilterIds[kFilterCount] = {"pixels", "sharp", "soft", "smooth", "epx", "crt", "crtmask", "lcd", "xbr", "fsr"};
-// Ordre du menu : lissages, agrandisseurs (EPX, xBR, FSR), puis imitations d'écrans.
-static const Filter kFilterOrder[kFilterCount] = {Filter::Pixels, Filter::Sharp, Filter::Soft, Filter::Smooth, Filter::Epx,
-                                                  Filter::Xbr, Filter::Fsr, Filter::Crt, Filter::CrtMask, Filter::Lcd};
+static const char* kFilterLabels[kFilterCount] = {"filter_pixels", "filter_sharp", "filter_soft", "filter_smooth", "filter_epx",
+                                                  "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr"};
+// Ordre du menu : lissages, agrandisseurs (Scale2x, xBR, FSR), puis imitations d'écrans.
+static const Filter kFilterOrder[kFilterListCount] = {Filter::Pixels, Filter::Sharp, Filter::Soft, Filter::Smooth, Filter::Epx,
+                                                      Filter::Xbr, Filter::Fsr, Filter::Crt, Filter::Lcd};
 
-Filter nextFilter(Filter filter) {
-  for (int i = 0; i < kFilterCount; i++) {
-    if (kFilterOrder[i] == filter) return kFilterOrder[(i + 1) % kFilterCount];
+Filter filterAt(int index) { return kFilterOrder[std::clamp(index, 0, kFilterListCount - 1)]; }
+
+int filterIndex(Filter filter) {
+  if (filter == Filter::CrtMask) filter = Filter::Crt;
+  for (int i = 0; i < kFilterListCount; i++) {
+    if (kFilterOrder[i] == filter) return i;
   }
-  return Filter::Sharp;
+  return 1;
+}
+
+const char* filterLabel(Filter filter) { return kFilterLabels[(int)filter]; }
+
+const char* filterDescription(Filter filter) {
+  static const char* keys[kFilterCount] = {"fd_pixels", "fd_sharp", "fd_soft", "fd_smooth", "fd_epx",
+                                           "fd_crt", "fd_crtmask", "fd_lcd", "fd_xbr", "fd_fsr"};
+  return keys[(int)filter];
 }
 
 const char* filterId(Filter filter) { return kFilterIds[(int)filter]; }
@@ -694,6 +732,7 @@ Aspect aspectFromId(const std::string& id) {
 }
 
 Filter filterFromId(const std::string& id) {
+  if (id == "crtmask") return Filter::Crt;  // ancien « CRT+ » : CRT, masque réglable
   for (int i = 0; i < kFilterCount; i++) {
     if (id == kFilterIds[i]) return (Filter)i;
   }
@@ -739,6 +778,8 @@ bool Video::createProgram() {
   uniformSize_ = p_glGetUniformLocation(program_, "u_size");
   uniformScale_ = p_glGetUniformLocation(program_, "u_scale");
   uniformParams_ = p_glGetUniformLocation(program_, "u_params");
+  uniformParams2_ = p_glGetUniformLocation(program_, "u_params2");
+  uniformColor_ = p_glGetUniformLocation(program_, "u_color");
   uniformRect_ = p_glGetUniformLocation(program_, "u_rect");
   if (p_glGenVertexArrays) p_glGenVertexArrays(1, &vao_);
   p_glGenBuffers(1, &vbo_);
@@ -1031,6 +1072,8 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
     p_glUniform2f(uniformScale_, scaleX, scaleY);
     // Réglages du filtre ; emplacement de l'image dans la fenêtre (pixels, origine en bas) : courbure.
     p_glUniform4f(uniformParams_, params_[0], params_[1], params_[2], params_[3]);
+    p_glUniform4f(uniformParams2_, params_[4], params_[5], params_[6], params_[7]);
+    p_glUniform4f(uniformColor_, params_[8], params_[9], params_[10], params_[11]);
     p_glUniform4f(uniformRect_, (winW - w) / 2.0f, (winH - h) / 2.0f, w, h);
     // Échantillons au centre des pixels (bicubique, EPX, LCD, pixels nets) : filtrage au plus proche.
     bool nearest = filter_ == Filter::Pixels || filter_ == Filter::Soft || filter_ == Filter::Epx || filter_ == Filter::Lcd ||
@@ -1105,7 +1148,8 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
     Vertex quad[4] = {{-x1, y1, 0, 0}, {-x1, -y1, 0, 1}, {x1, y1, 1, 0}, {x1, -y1, 1, 1}};
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    p_glUniform1i(uniformMode_, (int)Filter::Smooth);  // menu : sans effet
+    p_glUniform1i(uniformMode_, (int)Filter::Smooth);  // menu : sans effet, couleurs d'origine
+    p_glUniform4f(uniformColor_, 1.0f, 1.0f, 1.0f, 1.0f);
     p_glUniform1f(uniformAlpha_, 1.0f);
     drawQuad(quad);
     glDisable(GL_BLEND);
