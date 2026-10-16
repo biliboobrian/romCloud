@@ -58,6 +58,13 @@ export function exeCandidates(files) {
     .map((f) => f.path);
 }
 
+/** Désinstalleur probable du jeu (« unins000.exe », « uninstall.exe »…, le moins profond), ou null. */
+export function uninstallerOf(files) {
+  return exeCandidates(files)
+    .filter((p) => /(^|\/)unins[^/]*\.exe$/i.test(p))
+    .sort((a, b) => a.split('/').length - b.split('/').length)[0] ?? null;
+}
+
 /**
  * Chemin d'un fichier du jeu à partir de son chemin relatif (« Bin/Game.exe ») : refusé s'il sort du
  * dossier du jeu (« .. », chemin absolu).

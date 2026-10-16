@@ -54,8 +54,17 @@ fn folder_complete(system: &Value, game: &Value) -> bool {
 
 /// Exécutable d'un jeu en dossier sur le PC (None : aucun choisi sur le serveur).
 pub fn folder_exe(system: &Value, game: &Value) -> Option<PathBuf> {
-    let exe = s(game, "exe");
-    (!exe.is_empty()).then(|| exe.split('/').fold(file_for(system, game), |path, part| path.join(part)))
+    folder_path(system, game, s(game, "exe"))
+}
+
+/// Désinstalleur d'un jeu en dossier sur le PC (None : aucun choisi sur le serveur).
+pub fn folder_uninstaller(system: &Value, game: &Value) -> Option<PathBuf> {
+    folder_path(system, game, s(game, "uninstallExe"))
+}
+
+/// Fichier [rel] (« Bin/Game.exe ») du dossier du jeu ; None si vide.
+fn folder_path(system: &Value, game: &Value, rel: &str) -> Option<PathBuf> {
+    (!rel.is_empty()).then(|| rel.split('/').fold(file_for(system, game), |path, part| path.join(part)))
 }
 
 pub fn is_downloaded(system: &Value, game: &Value) -> bool {

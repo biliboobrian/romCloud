@@ -207,6 +207,9 @@ if (!gameColumns.includes('rap')) db.exec('ALTER TABLE games ADD COLUMN rap TEXT
 // Jeu en dossier : fichier = dossier du jeu ; exe : exécutable qui le lance (chemin dans le dossier).
 if (!gameColumns.includes('is_folder')) db.exec('ALTER TABLE games ADD COLUMN is_folder INTEGER NOT NULL DEFAULT 0');
 if (!gameColumns.includes('exe')) db.exec('ALTER TABLE games ADD COLUMN exe TEXT');
+// Désinstalleur du jeu en dossier, lancé par l'application Windows quand le jeu est supprimé du PC
+// (NULL : à deviner au scan ; '' : aucun, choisi dans la fiche).
+if (!gameColumns.includes('uninstall_exe')) db.exec('ALTER TABLE games ADD COLUMN uninstall_exe TEXT');
 // Captures d'écran 2 à 4 (« screenshot » : la première).
 for (const column of ['screenshot2', 'screenshot3', 'screenshot4']) {
   if (!gameColumns.includes(column)) db.exec(`ALTER TABLE games ADD COLUMN ${column} TEXT`);

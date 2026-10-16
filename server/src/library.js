@@ -10,7 +10,7 @@ import { queuePs4Conversions } from './ps4-convert.js';
 import { fileNameDetails, mergeDetails, parseStoredDetails } from './scraper/details.js';
 import { stars } from './scraper/rating.js';
 import { contentIdLabel } from './scraper/serial.js';
-import { exeCandidates, folderFiles, folderStats } from './folder-games.js';
+import { exeCandidates, folderFiles, folderStats, uninstallerOf } from './folder-games.js';
 import { listSystems, requireSystem, systemDir } from './systems.js';
 
 // Fichiers ignorés lors du scan : fichiers cachés, envois en cours, métadonnées diverses.
@@ -79,7 +79,8 @@ export function rowToGame(row, parts = []) {
     parentId: row.parent_id ?? null,
     partKind: row.part_kind ?? null,
     // Jeu en dossier (PC Windows) : fichiers listés par /games/:id/files, lancé par [exe].
-    ...(row.is_folder ? { folder: true, exe: row.exe ?? null } : {}),
+    // uninstallExe : désinstalleur lancé quand le jeu est supprimé du PC (null : aucun).
+    ...(row.is_folder ? { folder: true, exe: row.exe ?? null, uninstallExe: row.uninstall_exe || null } : {}),
     groupMode: row.group_mode ?? null,
     crc32: row.crc32,
     md5: row.md5,
@@ -184,6 +185,7 @@ const EDITABLE = {
   zrif: 'zrif',
   rap: 'rap',
   exe: 'exe',
+  uninstallExe: 'uninstall_exe',
 };
 
 /** Licence zRIF (base64, « KO5ifR1dQ+eHBl… ») sans espaces ni retours à la ligne ; null si vide. */
@@ -213,6 +215,8 @@ export function updateGame(id, input) {
     if (key === 'zrif') value = normalizeZrif(value);
     if (key === 'rap') value = normalizeRap(value);
     if (key === 'exe') value = validateExe(id, value);
+    // Désinstalleur : vide = aucun, gardé tel quel (pas deviné de nouveau au scan).
+    if (key === 'uninstallExe') value = input[key] === '' || input[key] === null ? '' : validateExe(id, value);
     if (key === 'title' && !value) throw new HttpError(400, 'errors.titleRequired');
     sets.push(`${column} = ?`);
     values.push(value);
@@ -349,11 +353,14 @@ export function scanSystem(systemId) {
     }
   });
   if (folders) {
-    // Exécutable de chaque jeu : deviné s'il n'a pas été choisi, ou s'il n'existe plus.
-    for (const row of db.prepare('SELECT id, file_name, exe FROM games WHERE system_id = ?').all(systemId)) {
-      const candidates = exeCandidates(folderFiles(path.join(dir, row.file_name)));
-      if (row.exe && candidates.includes(row.exe)) continue;
-      db.prepare('UPDATE games SET exe = ? WHERE id = ?').run(candidates[0] ?? null, row.id);
+    // Exécutable et désinstalleur de chaque jeu : devinés s'ils n'ont pas été choisis, ou s'ils
+    // n'existent plus (désinstalleur « aucun » choisi dans la fiche : gardé).
+    for (const row of db.prepare('SELECT id, file_name, exe, uninstall_exe FROM games WHERE system_id = ?').all(systemId)) {
+      const files = folderFiles(path.join(dir, row.file_name));
+      const candidates = exeCandidates(files);
+      if (!row.exe || !candidates.includes(row.exe)) db.prepare('UPDATE games SET exe = ? WHERE id = ?').run(candidates[0] ?? null, row.id);
+      if (row.uninstall_exe === '' || (row.uninstall_exe && candidates.includes(row.uninstall_exe))) continue;
+      db.prepare('UPDATE games SET uninstall_exe = ? WHERE id = ?').run(uninstallerOf(files), row.id);
     }
     return result;
   }
@@ -368,7 +375,12 @@ export function scanSystem(systemId) {
 export function gameFolderFiles(row) {
   if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
   const files = folderFiles(gameFilePath(row));
-  return { files: files.map(({ path: p, size }) => ({ path: p, size })), exes: exeCandidates(files), exe: row.exe ?? null };
+  return {
+    files: files.map(({ path: p, size }) => ({ path: p, size })),
+    exes: exeCandidates(files),
+    exe: row.exe ?? null,
+    uninstallExe: row.uninstall_exe || null,
+  };
 }
 
 /** Exécutable choisi pour un jeu en dossier : un .exe de son dossier (vide : aucun). */

@@ -734,6 +734,8 @@ function fillGameDialog(game, bust = '') {
   // Jeu en dossier (PC) : exécutable qui lance le jeu, parmi ceux du dossier.
   $('#gameExeField').classList.toggle('hidden', !game.folder);
   form.elements.exe.disabled = !game.folder;
+  $('#gameUninstallField').classList.toggle('hidden', !game.folder);
+  form.elements.uninstallExe.disabled = !game.folder;
   if (game.folder) fillGameExe(game);
   const statusText = {
     none: t('game.never'),
@@ -760,15 +762,23 @@ function fillGameDialog(game, bust = '') {
   renderGameParts(game);
 }
 
-/** Liste des exécutables du dossier du jeu (le plus probable en premier), celui choisi sélectionné. */
+/**
+ * Listes des exécutables du dossier du jeu (le plus probable en premier) pour le lancement et la
+ * désinstallation, ceux choisis sélectionnés.
+ */
 async function fillGameExe(game) {
-  const select = $('#gameForm').elements.exe;
-  select.innerHTML = `<option value="">${escapeHtml(t('game.exeNone'))}</option>`;
+  const { exe: select, uninstallExe: uninstall } = $('#gameForm').elements;
+  const none = `<option value="">${escapeHtml(t('game.exeNone'))}</option>`;
+  select.innerHTML = none;
+  uninstall.innerHTML = none;
   await guard(async () => {
-    const { files, exes, exe } = await api(`/games/${game.id}/files`);
+    const { files, exes, exe, uninstallExe } = await api(`/games/${game.id}/files`);
     if (state.editingGame?.id !== game.id) return;
-    select.innerHTML = `<option value="">${escapeHtml(t('game.exeNone'))}</option>${exes.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('')}`;
+    const options = exes.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+    select.innerHTML = none + options;
     select.value = exe ?? '';
+    uninstall.innerHTML = none + options;
+    uninstall.value = uninstallExe ?? '';
     $('#gameFile').textContent += ` — ${t('game.files', { n: files.length })}`;
   });
 }

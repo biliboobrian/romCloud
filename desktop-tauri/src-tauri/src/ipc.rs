@@ -57,9 +57,13 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "api:search" => api::search(&str_arg(a, 0)).await?,
         "library:downloaded" => json!(library::downloaded_ids(&list(a, 0), &list(a, 1))),
         "library:path" => json!(library::file_for(&arg(a, 0), &arg(a, 1)).to_string_lossy()),
+        // Jeu PC avec un désinstalleur : lancé, dossier effacé à la fin ; sinon fichiers supprimés.
         "library:remove" => {
-            library::remove(&arg(a, 0), &arg(a, 1));
-            Value::Null
+            let uninstalling = launcher::uninstall(&arg(a, 0), &arg(a, 1))?;
+            if !uninstalling {
+                library::remove(&arg(a, 0), &arg(a, 1));
+            }
+            json!({ "uninstalling": uninstalling })
         }
         "library:systemsWithGames" => json!(library::systems_with_games(&list(a, 0))),
         "library:usage" => library::usage(&list(a, 0)),

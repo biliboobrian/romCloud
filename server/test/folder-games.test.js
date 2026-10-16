@@ -51,6 +51,7 @@ test('système PC : un jeu par dossier, exécutable choisi, fichiers listés et 
     write(path.join(dir, 'Mr. Robot', 'Tools', 'Editor.exe'), 400);
     write(path.join(dir, 'Mr. Robot', 'data', 'level1.pak'), 1000);
     write(path.join(dir, 'Mr. Robot', 'desktop.ini'), 10);
+    write(path.join(dir, 'Mr. Robot', 'unins000.exe'), 50);
     fs.mkdirSync(path.join(dir, 'Vide'), { recursive: true });
     write(path.join(dir, 'fichier-isole.zip'), 50);
 
@@ -64,11 +65,12 @@ test('système PC : un jeu par dossier, exécutable choisi, fichiers listés et 
     assert.equal(game.title, 'Mr. Robot'); // pas d'« extension » retirée
     assert.equal(game.folder, true);
     assert.equal(game.exe, 'Game.exe');
-    assert.equal(game.size, 1500);
+    assert.equal(game.uninstallExe, 'unins000.exe'); // désinstalleur deviné
+    assert.equal(game.size, 1550);
 
     const listing = await (await fetch(`${base}/games/${game.id}/files`)).json();
-    assert.deepEqual(listing.files.map((f) => f.path), ['data/level1.pak', 'Game.exe', 'Tools/Editor.exe']);
-    assert.deepEqual(listing.exes, ['Game.exe', 'Tools/Editor.exe']);
+    assert.deepEqual(listing.files.map((f) => f.path), ['data/level1.pak', 'Game.exe', 'Tools/Editor.exe', 'unins000.exe']);
+    assert.deepEqual(listing.exes, ['Game.exe', 'Tools/Editor.exe', 'unins000.exe']);
 
     // Un fichier du dossier, avec reprise (Range) ; sans chemin ou hors du dossier : refusé.
     const part = await fetch(`${base}/games/${game.id}/file?path=${encodeURIComponent('data/level1.pak')}`, { headers: { Range: 'bytes=600-' } });
@@ -80,8 +82,12 @@ test('système PC : un jeu par dossier, exécutable choisi, fichiers listés et 
     // Exécutable choisi dans la fiche : gardé au scan suivant ; inconnu : refusé.
     assert.equal((await (await json(`/games/${game.id}`, { method: 'PUT', body: { exe: 'Tools/Editor.exe' } })).json()).exe, 'Tools/Editor.exe');
     assert.equal((await json(`/games/${game.id}`, { method: 'PUT', body: { exe: 'Absent.exe' } })).status, 400);
+    // Désinstalleur « aucun » choisi : pas deviné de nouveau au scan.
+    assert.equal((await (await json(`/games/${game.id}`, { method: 'PUT', body: { uninstallExe: '' } })).json()).uninstallExe, null);
     await fetch(`${base}/systems/windows/scan`, { method: 'POST' });
-    assert.equal((await (await fetch(`${base}/games/${game.id}`)).json()).exe, 'Tools/Editor.exe');
+    const rescanned = await (await fetch(`${base}/games/${game.id}`)).json();
+    assert.equal(rescanned.exe, 'Tools/Editor.exe');
+    assert.equal(rescanned.uninstallExe, null);
 
     // Jeux en dossiers coupés : fiches refaites à partir des fichiers.
     const off = await (await json('/systems/windows', { method: 'PUT', body: { folderGames: false } })).json();
