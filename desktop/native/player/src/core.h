@@ -59,6 +59,8 @@ struct Session {
 
   bool hasDiskControl = false;
   retro_disk_control_callback disk{};
+  // Interface étendue (SET_DISK_CONTROL_EXT_INTERFACE) : disque inséré au chargement du jeu.
+  retro_set_initial_image_t diskInitialImage = nullptr;
   // Types de manette proposés par le cœur pour chaque port (SET_CONTROLLER_INFO).
   std::vector<std::vector<unsigned>> controllerTypes;
 

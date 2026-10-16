@@ -131,15 +131,36 @@ fn playlist_path(main: &Path) -> PathBuf {
     main.with_extension("m3u")
 }
 
+/// Disques du jeu, du premier au dernier : le fichier principal puis ses disques par numéro (le seul
+/// fichier principal pour un jeu d'un disque).
+pub fn discs(game: &Value) -> Vec<Value> {
+    let mut discs: Vec<Value> = parts(game).into_iter().filter(|p| s(p, "kind") == "disc").collect();
+    discs.sort_by_key(|p| p.get("index").and_then(Value::as_u64).unwrap_or(u64::MAX));
+    std::iter::once(game.clone()).chain(discs).collect()
+}
+
+/**
+ * Le jeu ramené à son disque [disk] (0 pour le premier) : fichier de ce disque à la place du premier,
+ * sans les autres disques (émulateur qui ne lit pas la liste des disques, démarré sur ce disque).
+ */
+pub fn on_disc(game: &Value, disk: usize) -> Value {
+    let list = discs(game);
+    let Some(disc) = list.get(disk).filter(|_| disk > 0) else { return game.clone() };
+    let mut single = game.clone();
+    single["fileName"] = disc["fileName"].clone();
+    single["size"] = disc["size"].clone();
+    single["parts"] = json!(parts(game).into_iter().filter(|p| s(p, "kind") != "disc").collect::<Vec<_>>());
+    single
+}
+
 /// Contenu de la liste des disques : un nom de fichier par ligne, du premier au dernier disque ;
 /// None si le jeu n'a qu'un disque, ou si un disque est compressé (.zip, .7z : illisible dans une liste).
 pub fn playlist_text(game: &Value) -> Option<String> {
-    let mut discs: Vec<Value> = parts(game).into_iter().filter(|p| s(p, "kind") == "disc").collect();
-    if discs.is_empty() {
+    let discs = discs(game);
+    if discs.len() < 2 {
         return None;
     }
-    discs.sort_by_key(|p| p.get("index").and_then(Value::as_u64).unwrap_or(u64::MAX));
-    let names: Vec<String> = std::iter::once(game.clone()).chain(discs).map(|d| s(&d, "fileName").to_string()).collect();
+    let names: Vec<String> = discs.iter().map(|d| s(d, "fileName").to_string()).collect();
     if names.iter().any(|name| matches!(paths::extension(name).as_str(), ".zip" | ".7z")) {
         return None;
     }
@@ -182,6 +203,14 @@ mod tests {
         let zipped = json!({ "fileName": "A (Disc 1).zip", "parts": [{ "fileName": "A (Disc 2).zip", "kind": "disc", "index": 2 }] });
         assert_eq!(playlist_text(&zipped), None);
         assert_eq!(playlist_path(Path::new(r"D:\psx\FF7 (Disc 1).chd")), PathBuf::from(r"D:\psx\FF7 (Disc 1).m3u"));
+        // Démarrage sur le disque 2 : son fichier seul, la DLC gardée.
+        let second = on_disc(&game, 1);
+        assert_eq!(s(&second, "fileName"), "FF7 (Disc 2).chd");
+        assert_eq!(n(&second, "size"), 20);
+        assert_eq!(parts(&second).len(), 1);
+        assert_eq!(playlist_text(&second), None);
+        assert_eq!(on_disc(&game, 0), game);
+        assert_eq!(on_disc(&game, 7), game);
     }
 
     #[test]
