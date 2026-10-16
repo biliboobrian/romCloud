@@ -105,6 +105,8 @@ std::vector<HistoryEntry> StateHistory::read(const std::string& dir, bool online
     entry.device = jsonValue(json, "device");
     entry.createdAt = _strtoi64(jsonValue(json, "createdAt").c_str(), nullptr, 10);
     entry.pinned = jsonValue(json, "pinned") == "true";
+    const std::string disk = jsonValue(json, "disk");
+    if (!disk.empty()) entry.disk = atoi(disk.c_str());
     entry.online = online;
     entries.push_back(entry);
   } while (FindNextFileW(handle, &found));
@@ -124,7 +126,7 @@ std::vector<HistoryEntry> StateHistory::list() const {
   return entries;
 }
 
-bool StateHistory::add(const std::vector<uint8_t>& state, SDL_Surface* frame) {
+bool StateHistory::add(const std::vector<uint8_t>& state, SDL_Surface* frame, int disk) {
   if (!enabled() || state.empty()) return false;
   makeDirs(dir_);
   const std::string id = newId();
@@ -138,7 +140,8 @@ bool StateHistory::add(const std::vector<uint8_t>& state, SDL_Surface* frame) {
     }
   }
   std::string json = "{\"id\":" + jsonString(id) + ",\"core\":" + jsonString(core_) + ",\"createdAt\":" + std::to_string(nowMillis()) +
-                     ",\"device\":" + jsonString(device_) + ",\"platform\":\"windows\",\"pinned\":false,\"uploaded\":false}";
+                     ",\"device\":" + jsonString(device_) + ",\"platform\":\"windows\",\"pinned\":false,\"uploaded\":false" +
+                     (disk >= 0 ? ",\"disk\":" + std::to_string(disk) : std::string()) + "}";
   bool ok = writeFile(joinPath(dir_, id + ".json"), json.data(), json.size());
   prune();
   return ok;
@@ -148,8 +151,11 @@ void StateHistory::prune() const {
   int kept = 0;
   std::vector<HistoryEntry> own = read(dir_, false);
   std::sort(own.begin(), own.end(), [](const HistoryEntry& a, const HistoryEntry& b) { return a.createdAt > b.createdAt; });
+  std::vector<int> disks;  // disques dont l'état le plus récent est déjà gardé
   for (const auto& entry : own) {
-    if (entry.pinned || ++kept <= kLimit) continue;
+    const bool lastOfDisk = entry.disk >= 0 && std::find(disks.begin(), disks.end(), entry.disk) == disks.end();
+    if (lastOfDisk) disks.push_back(entry.disk);
+    if (entry.pinned || lastOfDisk || ++kept <= kLimit) continue;
     for (const char* ext : {".state", ".png", ".json"}) removeFile(joinPath(dir_, entry.id + ext));
   }
 }

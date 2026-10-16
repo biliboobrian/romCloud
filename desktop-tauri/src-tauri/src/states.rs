@@ -57,19 +57,10 @@ fn read_dir(dir: &Path) -> Vec<Value> {
  * [device] qui l'a fait. Renvoie vrai s'il a été ajouté.
  */
 pub fn record_quick(dir: &Path, quick: &Path, core: &str, device: &str, platform: &str) -> bool {
-    let (Some(size), Some(date)) = (crate::paths::size(quick), crate::paths::mtime_ms(quick)) else { return false };
-    if size == 0 {
+    if crate::paths::size(quick).unwrap_or(0) == 0 || same_in_history(dir, quick).is_some() {
         return false;
     }
-    let known = [dir.to_path_buf(), online_dir(dir)].iter().any(|d| {
-        read_dir(d).iter().any(|m| {
-            let file = d.join(format!("{}.state", m["id"].as_str().unwrap_or("")));
-            (m["createdAt"].as_f64().unwrap_or(0.0) - date).abs() <= 2000.0 && crate::paths::size(&file) == Some(size)
-        })
-    });
-    if known {
-        return false;
-    }
+    let Some(date) = crate::paths::mtime_ms(quick) else { return false };
     let b: [u8; 16] = rand::random();
     let h = hex::encode(b);
     let id = format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32]);
@@ -88,15 +79,44 @@ pub fn record_quick(dir: &Path, quick: &Path, core: &str, device: &str, platform
     ok
 }
 
+/// État de l'historique ([dir] ou « online ») identique à l'état de reprise [quick] (même taille, date à 2 s près).
+fn same_in_history(dir: &Path, quick: &Path) -> Option<Value> {
+    let (Some(size), Some(date)) = (crate::paths::size(quick), crate::paths::mtime_ms(quick)) else { return None };
+    [dir.to_path_buf(), online_dir(dir)].iter().find_map(|d| {
+        read_dir(d).into_iter().find(|m| {
+            let file = d.join(format!("{}.state", m["id"].as_str().unwrap_or("")));
+            (m["createdAt"].as_f64().unwrap_or(0.0) - date).abs() <= 2000.0 && crate::paths::size(&file) == Some(size)
+        })
+    })
+}
+
+/// Disque d'un état (jeu en plusieurs disques, 0 pour le premier), noté par le moteur intégré ; None
+/// s'il ne l'est pas (état d'une version précédente ou d'un autre appareil).
+fn meta_disk(meta: &Value) -> Option<usize> {
+    meta["disk"].as_u64().map(|d| d as usize)
+}
+
+/**
+ * Disque inséré quand l'état [file] a été fait : celui de ses informations (état de l'historique de
+ * [history]) ou de l'état de l'historique identique (état de reprise) ; None s'il n'est pas connu.
+ */
+pub fn disk_of(file: &Path, history: &Path) -> Option<usize> {
+    match read_json(&file.with_extension("json")) {
+        Some(meta) => meta_disk(&meta),
+        None => same_in_history(history, file).and_then(|m| meta_disk(&m)),
+    }
+}
+
 /**
  * État le plus récent de l'historique du jeu sur ce PC ([dir] et états des autres appareils déjà
- * téléchargés) : fichier et date (ms) ; None sans état.
+ * téléchargés) : fichier et date (ms) ; None sans état. [disk] : parmi les états faits sur ce
+ * disque (disque inconnu : le premier).
  */
-pub fn latest(dir: &Path) -> Option<(PathBuf, f64)> {
+fn latest_on(dir: &Path, disk: Option<usize>) -> Option<(PathBuf, f64)> {
     [dir.to_path_buf(), online_dir(dir)]
         .into_iter()
         .flat_map(|d| {
-            read_dir(&d).into_iter().filter_map(move |m| {
+            read_dir(&d).into_iter().filter(|m| disk.map_or(true, |k| meta_disk(m).unwrap_or(0) == k)).filter_map(move |m| {
                 let id = m["id"].as_str()?;
                 Some((d.join(format!("{id}.state")), m["createdAt"].as_f64().unwrap_or(0.0)))
             })
@@ -114,8 +134,17 @@ pub fn resume_file(quick: &Path, history: &Path) -> Option<PathBuf> {
 
 /// Comme [resume_file], avec la date de l'état (ms) : comparaison entre les cœurs du système.
 pub fn resume_point(quick: &Path, history: &Path) -> Option<(PathBuf, f64)> {
-    let quick_date = quick.is_file().then(|| crate::paths::mtime_ms(quick).unwrap_or(0.0));
-    match (quick_date, latest(history)) {
+    resume_point_on(quick, history, None)
+}
+
+/**
+ * Comme [resume_point], parmi les états faits sur le disque [disk] (jeu en plusieurs disques ;
+ * disque inconnu : le premier) ; None : tous les états.
+ */
+pub fn resume_point_on(quick: &Path, history: &Path, disk: Option<usize>) -> Option<(PathBuf, f64)> {
+    let on_disk = |k: usize| disk_of(quick, history).unwrap_or(0) == k;
+    let quick_date = (quick.is_file() && disk.map_or(true, on_disk)).then(|| crate::paths::mtime_ms(quick).unwrap_or(0.0));
+    match (quick_date, latest_on(history, disk)) {
         (Some(q), Some((file, date))) if date > q => Some((file, date)),
         (Some(q), _) => Some((quick.to_path_buf(), q)),
         (None, Some(point)) => Some(point),
@@ -150,7 +179,7 @@ pub fn merge(local: &[Value], remote: &[Value], cores: &[String]) -> Vec<Value> 
             let id = m["id"].as_str().unwrap_or("");
             let on = remote.iter().find(|s| s["id"] == id);
             json!({
-                "id": id, "core": m["core"], "createdAt": m["createdAt"], "device": m["device"], "platform": m["platform"],
+                "id": id, "core": m["core"], "createdAt": m["createdAt"], "device": m["device"], "platform": m["platform"], "disk": m["disk"],
                 "pinned": on.map(|s| s["pinned"].clone()).unwrap_or(m["pinned"].clone()).as_bool().unwrap_or(false),
                 "local": true, "online": on.is_some(), "canUpload": on.is_none(),
             })
@@ -472,6 +501,37 @@ mod tests {
         // État de l'historique plus récent que l'état de reprise : choisi.
         add(&history, "cccccccc", crate::paths::mtime_ms(&quick).unwrap() + 60_000.0);
         assert_eq!(resume_file(&quick, &history), Some(history.join("cccccccc.state")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reprise_par_disque() {
+        let dir = std::env::temp_dir().join(format!("romcloud-disk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let history = dir.join("Jeu.history");
+        let quick = dir.join("Jeu.state");
+        let add = |id: &str, at: f64, disk: Option<usize>, bytes: &[u8]| {
+            let mut meta = json!({ "id": id, "createdAt": at });
+            if let Some(d) = disk {
+                meta["disk"] = json!(d);
+            }
+            write_json(&history.join(format!("{id}.json")), &meta).unwrap();
+            std::fs::write(history.join(format!("{id}.state")), bytes).unwrap();
+        };
+        // Ancien état sans disque (le premier), puis un état du disque 2.
+        add("aaaaaaaa", 1000.0, None, b"a");
+        add("bbbbbbbb", 2000.0, Some(1), b"b");
+        assert_eq!(resume_point_on(&quick, &history, Some(0)).map(|p| p.0), Some(history.join("aaaaaaaa.state")));
+        assert_eq!(resume_point_on(&quick, &history, Some(1)).map(|p| p.0), Some(history.join("bbbbbbbb.state")));
+        assert_eq!(resume_point_on(&quick, &history, Some(2)), None);
+        assert_eq!(disk_of(&history.join("aaaaaaaa.state"), &history), None);
+        assert_eq!(disk_of(&history.join("bbbbbbbb.state"), &history), Some(1));
+        // État de reprise écrit avec un état du disque 3 (même taille, même date) : reprise du disque 3.
+        std::fs::write(&quick, b"qq").unwrap();
+        add("cccccccc", crate::paths::mtime_ms(&quick).unwrap(), Some(2), b"qq");
+        assert_eq!(disk_of(&quick, &history), Some(2));
+        assert_eq!(resume_point_on(&quick, &history, Some(2)).map(|p| p.0), Some(quick.clone()));
+        assert_eq!(resume_point_on(&quick, &history, Some(1)).map(|p| p.0), Some(history.join("bbbbbbbb.state")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -114,6 +114,7 @@
       play: call('launcher:play'),
       resumable: call('launcher:resumable'),
       resumeCore: call('launcher:resumeCore'),
+      resumeDiscs: call('launcher:resumeDiscs'),
       running: call('launcher:running'),
       onExited: on('game:exited'),
       resumableIds: call('launcher:resumableIds'),

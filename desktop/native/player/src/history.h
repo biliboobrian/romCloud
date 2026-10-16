@@ -2,7 +2,8 @@
 // Android : un fichier par état (« <id>.state »), sa miniature (« <id>.png », image du jeu) et ses
 // informations (« <id>.json » : date, appareil, épinglé, envoyé). Les états en ligne d'autres
 // appareils, téléchargés par RomCloud avant la partie, sont dans le sous-dossier « online »
-// (lecture seule ici). Les 10 états les plus récents de ce PC sont gardés, plus les épinglés.
+// (lecture seule ici). Les 10 états les plus récents de ce PC sont gardés, plus les épinglés et,
+// pour un jeu en plusieurs disques, le plus récent de chaque disque (reprise depuis la fiche du jeu).
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -18,6 +19,7 @@ struct HistoryEntry {
   int64_t createdAt = 0;  // ms depuis 1970
   bool pinned = false;
   bool online = false;  // état d'un autre appareil (sous-dossier « online »)
+  int disk = -1;  // disque inséré (jeu en plusieurs disques, 0 pour le premier), -1 : inconnu
 };
 
 class StateHistory {
@@ -30,8 +32,11 @@ class StateHistory {
   bool enabled() const { return !dir_.empty(); }
   /** États de ce PC et en ligne, du plus récent au plus ancien. */
   std::vector<HistoryEntry> list() const;
-  /** Ajoute un état et sa miniature ([frame] : image du jeu, peut être nulle). */
-  bool add(const std::vector<uint8_t>& state, SDL_Surface* frame);
+  /**
+   * Ajoute un état et sa miniature ([frame] : image du jeu, peut être nulle) ; [disk] : disque inséré
+   * (jeu en plusieurs disques), -1 sinon.
+   */
+  bool add(const std::vector<uint8_t>& state, SDL_Surface* frame, int disk);
 
   /** Valeur d'une clé d'un objet JSON simple (texte, nombre ou booléen), vide si absente. */
   static std::string jsonValue(const std::string& json, const std::string& key);

@@ -431,33 +431,50 @@ pub fn games_running() -> usize {
 /// Partie à reprendre : moteur intégré choisi et état de reprise ou de l'historique pour ce jeu, fait
 /// avec l'un des cœurs intégrés du système (pas forcément celui choisi).
 pub fn resumable(system: &Value, game: &Value) -> bool {
-    latest_resume(system, game).is_some()
+    latest_resume(system, game, None).is_some()
 }
 
 /// Cœur de la partie que « Reprendre » relance (null : aucune) ; un autre que celui choisi : l'interface
 /// propose d'abord d'en faire l'émulateur du système.
 pub fn resume_core(system: &Value, game: &Value) -> Option<String> {
-    latest_resume(system, game).map(|(core, _)| core)
+    latest_resume(system, game, None).map(|(core, ..)| core)
+}
+
+/**
+ * Jeu en plusieurs disques : { count, resume: partie à reprendre sur chaque disque (moteur intégré),
+ * latest: disque de la partie la plus récente (null : aucune) } ; null pour un jeu d'un disque.
+ */
+pub fn resume_discs(system: &Value, game: &Value) -> Value {
+    let count = library::discs(game).len();
+    if count < 2 {
+        return Value::Null;
+    }
+    let resume: Vec<bool> = (0..count).map(|disk| latest_resume(system, game, Some(disk)).is_some()).collect();
+    let latest = latest_resume(system, game, None).map(|(.., disk)| disk.unwrap_or(0).min(count - 1));
+    json!({ "count": count, "resume": resume, "latest": latest })
 }
 
 /**
  * Partie à reprendre la plus récente parmi les cœurs intégrés du système (état de reprise ou de
- * l'historique de chacun) : cœur et fichier de l'état. Un état fait avec Yabause se reprend avec
- * lui même si Beetle Saturn est choisi.
+ * l'historique de chacun) : cœur, fichier de l'état et disque inséré (jeu en plusieurs disques,
+ * None s'il n'est pas connu). Un état fait avec Yabause se reprend avec lui même si Beetle Saturn
+ * est choisi. [disk] : parmi les états faits sur ce disque (disque inconnu : le premier).
  */
-fn latest_resume(system: &Value, game: &Value) -> Option<(String, PathBuf)> {
+fn latest_resume(system: &Value, game: &Value, disk: Option<usize>) -> Option<(String, PathBuf, Option<usize>)> {
     let (list, file) = system_cores(system, game)?;
     list.into_iter()
         .filter_map(|core| {
-            let (path, date) = crate::states::resume_point(&builtin::state_path(&core, &file), &builtin::history_dir(&core, &file))?;
-            Some((core, path, date))
+            let history = builtin::history_dir(&core, &file);
+            let (path, date) = crate::states::resume_point_on(&builtin::state_path(&core, &file), &history, disk)?;
+            let found = crate::states::disk_of(&path, &history);
+            Some((core, path, found, date))
         })
         // Égalité : le cœur choisi (premier de la liste).
-        .fold(None::<(String, PathBuf, f64)>, |best, next| match best {
-            Some(b) if b.2 >= next.2 => Some(b),
+        .fold(None::<(String, PathBuf, Option<usize>, f64)>, |best, next| match best {
+            Some(b) if b.3 >= next.3 => Some(b),
             _ => Some(next),
         })
-        .map(|(core, path, _)| (core, path))
+        .map(|(core, path, found, _)| (core, path, found))
 }
 
 /// Jeux de [games] (même système) avec une partie à reprendre : identifiants.
@@ -621,13 +638,26 @@ async fn play_together(system: &Value, game: &Value, together: &Value) -> Result
     Ok(json!({ "manual": false }))
 }
 
-/// Lance le jeu (`resume` : reprend la partie sauvegardée, moteur intégré ; `netplay` : jeu à plusieurs).
+/**
+ * Lance le jeu (`resume` : reprend la partie sauvegardée, moteur intégré ; `netplay` : jeu à plusieurs ;
+ * `disk` : jeu en plusieurs disques démarré sur ce disque, 0 pour le premier, et repris depuis la
+ * dernière partie faite sur lui).
+ */
 pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value> {
     let resume = options.get("resume").and_then(Value::as_bool).unwrap_or(false);
     if let Some(together) = options.get("netplay").filter(|n| n.is_object()) {
         return play_together(system, game, together).await;
     }
-    match prepare(system, game)? {
+    let disk = options.get("disk").and_then(Value::as_u64).map(|d| d as usize).filter(|d| *d < library::discs(game).len());
+    let plan = prepare(system, game)?;
+    // Moteur intégré avec la liste des disques : disque inséré au démarrage (--disk). Sinon (autre
+    // émulateur, disques compressés) : fichier du disque choisi à la place du premier.
+    let player_discs = matches!(&plan, Plan::Builtin { core, file, .. } if managed::by_core(core).is_none() && paths::extension(file) == ".m3u");
+    let single = disk.filter(|d| *d > 0 && !player_discs).map(|d| library::on_disc(game, d));
+    let game = single.as_ref().unwrap_or(game);
+    let plan = if single.is_some() { prepare(system, game)? } else { plan };
+    let disk = disk.filter(|_| player_discs);
+    match plan {
         Plan::Builtin { core, file, .. } if managed::by_core(&core).is_some() => {
             managed::launch(managed::by_core(&core).unwrap(), game, &file, &library::extras(system, game)).await?;
             Ok(json!({ "manual": false }))
@@ -637,25 +667,40 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             let mut extra = Vec::new();
             // Cœur de l'état choisi, ou de la partie en ligne reprise (autre cœur intégré du système).
             let wanted = options.get("stateCore").or_else(|| options.get("resumeCore")).and_then(Value::as_str);
-            // Reprise sans cœur demandé : celui de la partie la plus récente (autre cœur intégré possible).
-            let latest = if resume && wanted.is_none() && options.get("state").is_none() { latest_resume(system, game) } else { None };
+            // Reprise sans cœur demandé : celui de la partie la plus récente (autre cœur intégré possible),
+            // sur le disque choisi.
+            let latest = if resume && wanted.is_none() && options.get("state").is_none() { latest_resume(system, game, disk) } else { None };
             let core = match &latest {
-                Some((latest_core, _)) => latest_core.clone(),
+                Some((latest_core, ..)) => latest_core.clone(),
                 None => chosen_core(system, game, wanted).unwrap_or(core),
             };
+            let history = builtin::history_dir(&core, &file);
+            // Disque inséré au démarrage : celui de l'état chargé s'il est connu, sinon celui choisi.
+            let mut start_disk = disk;
             if let Some(id) = options.get("state").and_then(Value::as_str) {
-                let path = crate::states::file_for(&game["id"], &builtin::history_dir(&core, &file), id).await?;
+                let path = crate::states::file_for(&game["id"], &history, id).await?;
+                start_disk = crate::states::disk_of(&path, &history);
                 extra = vec!["--state-file".to_string(), path.to_string_lossy().into_owned()];
             } else if resume {
                 // Reprise : état de l'historique s'il est plus récent que l'état de reprise (ou seul).
                 let quick = builtin::state_path(&core, &file);
                 let path = match latest {
-                    Some((_, path)) => Some(path),
-                    None => crate::states::resume_file(&quick, &builtin::history_dir(&core, &file)),
+                    Some((_, path, found)) => {
+                        start_disk = found.or(disk);
+                        Some(path)
+                    }
+                    None => {
+                        let path = crate::states::resume_point_on(&quick, &history, disk).map(|p| p.0);
+                        start_disk = path.as_ref().and_then(|p| crate::states::disk_of(p, &history)).or(disk);
+                        path
+                    }
                 };
                 if let Some(path) = path.filter(|p| *p != quick) {
                     extra = vec!["--state-file".to_string(), path.to_string_lossy().into_owned()];
                 }
+            }
+            if let Some(d) = start_disk.filter(|d| *d > 0) {
+                extra.extend(["--disk".to_string(), d.to_string()]);
             }
             builtin::launch(system, game, &file, &core, resume, extra, None).await?;
             Ok(json!({ "manual": false }))

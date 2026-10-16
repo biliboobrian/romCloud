@@ -1876,7 +1876,7 @@
         <div class="state-thumb">${icon('pad', 32)}<span class="state-download">${icon('cloud', 28)}</span></div>
         <div class="state-info">
           <strong>${esc(dateText(st.createdAt))}</strong>
-          <span class="muted">${esc(st.local ? t('states.thisPc') : st.device || t('states.otherDevice'))}${st.online ? ` · ${icon('cloud', 14)} ${esc(t('states.online'))}` : ''}${st.pinned ? ` · ${esc(t('states.pinned'))}` : ''}</span>
+          <span class="muted">${esc(st.local ? t('states.thisPc') : st.device || t('states.otherDevice'))}${st.online ? ` · ${icon('cloud', 14)} ${esc(t('states.online'))}` : ''}${st.pinned ? ` · ${esc(t('states.pinned'))}` : ''}${st.disk != null ? ` · ${esc(t('states.disc', { n: st.disk + 1 }))}` : ''}</span>
           ${(history.cores || []).length > 1 ? `<span class="muted small">${esc(t('states.core', { core: st.core }))}</span>` : ''}
           <span class="state-status muted small"></span>
           <div class="line">
@@ -2136,7 +2136,8 @@
       return;
     }
     const downloaded = new Set(await call(rc.library.downloaded, [system], [game]));
-    const [emu, localPath, missingBios, emulators, command, localResume, online, history, issues] = await Promise.all([
+    const multiDisc = downloaded.size > 0 && (game.parts || []).some((p) => p.kind === 'disc');
+    const [emu, localPath, missingBios, emulators, command, localResume, online, history, issues, discs] = await Promise.all([
       call(rc.launcher.options, system),
       call(rc.library.path, system, game),
       system.biosCount ? call(rc.bios.missing, system).catch(() => []) : [],
@@ -2147,12 +2148,19 @@
       // Historique des états (moteur intégré) : null pour un autre émulateur.
       rc.states && downloaded.size ? call(rc.states.list, system, game).catch(() => null) : null,
       gameIssues(system, game),
+      // Jeu en plusieurs disques : { count, resume (partie à reprendre sur chaque disque), latest }.
+      multiDisc ? call(rc.launcher.resumeDiscs, system, game).catch(() => null) : null,
     ]);
     const savedStates = history?.states?.length || 0;
     // Jeu à plusieurs : compatibilité de l'émulateur choisi (relue : il a pu changer).
     await refreshNetplaySystem(system, true);
     // Partie à reprendre : état sur ce PC ou sauvegarde en ligne (récupérée au lancement si plus récente).
-    const resumable = localResume || Boolean(online);
+    // Jeu en plusieurs disques : disque choisi (celui de la dernière partie par défaut), « Reprendre »
+    // reprend la dernière partie faite sur lui, « Jouer » démarre sur lui ; sauvegarde en ligne seule
+    // (disque inconnu) : reprise sur le premier.
+    let disc = discs ? Math.min(S.discChoice?.[game.id] ?? discs.latest ?? 0, discs.count - 1) : 0;
+    const resumableOn = (d) => (discs ? Boolean(discs.resume[d]) || (Boolean(online) && !localResume && d === 0) : localResume || Boolean(online));
+    let resumable = resumableOn(disc);
     if (S.route.name !== 'game' || S.route.gameId !== gameId) return;
     const st = statusOf(game, downloaded);
     const cover = mediaUrl(game, 'boxart', 'medium');
@@ -2194,7 +2202,7 @@
         : `<p class="muted">${esc(t('lobby.notNetwork'))}</p>`;
     } else if (st.kind === 'downloaded') {
       // Partie sauvegardée dans le moteur intégré : « Reprendre » d'abord, puis « Jouer » (nouvelle partie).
-      actions = `${joinBtns}${resumable ? `<button class="btn primary big" id="resumeBtn">${icon('play')} ${esc(t('action.resume'))}</button>` : ''}
+      actions = `${joinBtns}${resumable || discs ? `<button class="btn primary big" id="resumeBtn"${resumable ? '' : ' hidden'}>${icon('play')} ${esc(t('action.resume'))}</button>` : ''}
         ${issues.length
           // Émulateur externe à configurer : « Configurer » mène à l'encadré de l'émulateur au lieu de lancer le jeu.
           ? `<button class="btn primary big" id="configureBtn">${icon('gear')} ${esc(t('action.configure'))}</button>`
@@ -2221,6 +2229,7 @@
           ${st.kind === 'downloaded' ? `<div class="ok">${esc(t('detail.onPc'))}</div>` : ''}
           ${st.kind === 'failed' ? `<div class="error">${esc(t('status.failed', { error: st.error }))}</div>` : ''}
           ${st.kind === 'remote' ? `<div class="muted">${esc(t('detail.mustDownload'))}</div>` : ''}
+          ${discs && st.kind === 'downloaded' && !isLobbyHost() ? `<div class="line disc-choice">${Array.from({ length: discs.count }, (_, d) => `<button class="chip${d === disc ? ' selected' : ''}${discs.resume[d] ? ' has-resume' : ''}" data-disc="${d}"${discs.resume[d] ? ` title="${esc(t('parts.discResume'))}"` : ''}>${esc(t('parts.disc', { n: d + 1 }))}</button>`).join('')}</div>` : ''}
           <div class="actions">${actions}</div>
           ${system.biosCount && st.kind !== 'running' ? (missingBios.length
             ? `<div class="line"><span class="muted">${esc(t('bios.missing', { n: missingBios.length, size: biosSize(missingBios) }))}</span>${st.kind === 'downloaded' ? `<button class="btn ghost" id="biosBtn">${icon('cloud', 18)} ${esc(t('bios.download'))}</button>` : ''}</div>`
@@ -2246,8 +2255,25 @@
     </div>`;
 
     // Partie en ligne d'un autre cœur intégré : reprise avec lui.
-    $('#resumeBtn')?.addEventListener('click', () => playChecked(system, game, { resume: true, resumeCore: !localResume && online?.core ? online.core : undefined }));
-    $('#playBtn')?.addEventListener('click', () => playChecked(system, game));
+    const discOption = () => (discs ? { disk: disc } : {});
+    $('#resumeBtn')?.addEventListener('click', () => playChecked(system, game, { resume: true, resumeCore: !localResume && online?.core ? online.core : undefined, ...discOption() }));
+    $('#playBtn')?.addEventListener('click', () => playChecked(system, game, discOption()));
+    // Choix du disque : boutons « Reprendre » et « Jouer » mis à jour sans tout redessiner.
+    for (const btn of $$('[data-disc]', main)) {
+      btn.addEventListener('click', () => {
+        disc = Number(btn.dataset.disc);
+        S.discChoice = { ...S.discChoice, [game.id]: disc };
+        resumable = resumableOn(disc);
+        for (const other of $$('[data-disc]', main)) other.classList.toggle('selected', other === btn);
+        const resumeBtn = $('#resumeBtn');
+        if (resumeBtn) resumeBtn.hidden = !resumable;
+        const playBtn = $('#playBtn');
+        if (playBtn) {
+          playBtn.classList.toggle('primary', !resumable);
+          playBtn.innerHTML = `${icon(resumable ? 'refresh' : 'play')} ${esc(t('action.play'))}`;
+        }
+      });
+    }
     $('#configureBtn')?.addEventListener('click', () => $('#emuBox').scrollIntoView({ behavior: 'smooth', block: 'center' }));
     $('#statesBtn')?.addEventListener('click', () => showStates(system, game));
     for (const btn of $$('[data-shot]')) btn.addEventListener('click', () => showScreenshot(shots, Number(btn.dataset.shot)));

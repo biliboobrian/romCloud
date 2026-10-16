@@ -91,6 +91,7 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "launcher:play" => launcher::play(&arg(a, 0), &arg(a, 1), &arg(a, 2)).await?,
         "launcher:resumable" => json!(launcher::resumable(&arg(a, 0), &arg(a, 1))),
         "launcher:resumeCore" => json!(launcher::resume_core(&arg(a, 0), &arg(a, 1))),
+        "launcher:resumeDiscs" => launcher::resume_discs(&arg(a, 0), &arg(a, 1)),
         "launcher:resumableIds" => json!(launcher::resumable_ids(&arg(a, 0), &list(a, 1))),
         "launcher:check" => launcher::check(&arg(a, 0)),
         "launcher:resumableOnline" => launcher::resumable_online(&arg(a, 0), &arg(a, 1)).await,

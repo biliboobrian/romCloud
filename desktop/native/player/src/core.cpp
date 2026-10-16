@@ -126,8 +126,9 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
   // Les commandes qui lisent ou remplissent une structure exigent un pointeur ; certains cœurs
   // passent nullptr pour « aucun » (Genesis Plus GX : pas de changement de disque sur cartouche).
   if (!data) {
-    if (cmd == RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE) {
+    if (cmd == RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE || cmd == RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE) {
       g.hasDiskControl = false;
+      g.diskInitialImage = nullptr;
       return true;
     }
     if (cmd == RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE) {
@@ -311,6 +312,25 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
       g.disk = *static_cast<const retro_disk_control_callback*>(data);
       g.hasDiskControl = true;
       return true;
+
+    // Version 1 : interface étendue, pour choisir le disque inséré au démarrage (--disk).
+    case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION:
+      *static_cast<unsigned*>(data) = 1;
+      return true;
+
+    case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: {
+      const auto* ext = static_cast<const retro_disk_control_ext_callback*>(data);
+      g.disk.set_eject_state = ext->set_eject_state;
+      g.disk.get_eject_state = ext->get_eject_state;
+      g.disk.get_image_index = ext->get_image_index;
+      g.disk.set_image_index = ext->set_image_index;
+      g.disk.get_num_images = ext->get_num_images;
+      g.disk.replace_image_index = ext->replace_image_index;
+      g.disk.add_image_index = ext->add_image_index;
+      g.diskInitialImage = ext->set_initial_image;
+      g.hasDiskControl = true;
+      return true;
+    }
 
     case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK:
       g.frameTime = *static_cast<const retro_frame_time_callback*>(data);

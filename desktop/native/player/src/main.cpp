@@ -6,6 +6,7 @@
 //                   [--keys-file <touches du clavier>] [--buttons <boutons de la console>]
 //                   [--pad-style <manette de la console>]
 //                   [--history-dir <historique des états> --history-device <nom du PC>] [--state-file <état>]
+//                   [--disk <disque inséré au démarrage, 0 pour le premier>]
 //                   [--netplay-host | --netplay-join <adresse:port> --netplay-peer <nom de l'hôte>]
 //                   [--netplay-game <jeu (JSON)>] [--device-id <identifiant>] [--device-name <nom>]
 //                   [--netplay-link <gb|gba|psp> [--netplay-packets] [--netplay-multi]] [--linked <nom>]
@@ -19,7 +20,9 @@
 //
 // Historique des états (history.h) : chaque état sauvegardé y est ajouté avec sa miniature ;
 // « Charger l'état » liste ceux de ce PC et du profil en ligne ; --state-file : état chargé au
-// lancement (choisi dans la fiche du jeu).
+// lancement (choisi dans la fiche du jeu). Jeu en plusieurs disques (liste .m3u) : disque inséré au
+// démarrage (--disk, choisi dans la fiche), disque en cours noté avec chaque état et remis avant de
+// charger un état fait sur un autre disque.
 //
 // Fonctionnement calqué sur LibretroDroid : le cœur est chargé, le jeu démarré, puis une boucle
 // exécute retro_run au rythme de l'audio et affiche chaque image avec OpenGL. Codes de sortie :
@@ -68,6 +71,7 @@ struct Args {
   std::string padStyle;  // manette de la console dessinée dans la configuration (--pad-style)
   std::string historyDir, historyDevice;  // historique des états du jeu, nom du PC
   std::string stateFile;  // état de l'historique chargé au lancement
+  std::string disk;  // disque inséré au démarrage (jeu en plusieurs disques), 0 pour le premier
   bool windowed = false;
   bool resume = false;  // reprend la partie à l'état sauvegardé
   // Jeu à plusieurs : partie proposée, ou adresse de l'hôte (« 192.168.1.20:40123 ») et son nom ;
@@ -108,6 +112,7 @@ Args parseArgs(int argc, char** argv) {
       {"--netplay-link", &a.netplayLink}, {"--linked", &a.linked},
       {"--netplay-port", &a.netplayPort}, {"--netplay-delay", &a.netplayDelay},
       {"--history-dir", &a.historyDir}, {"--history-device", &a.historyDevice}, {"--state-file", &a.stateFile},
+      {"--disk", &a.disk},
   };
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
@@ -164,6 +169,10 @@ class Player {
   /** « Charger l'état » : historique des états (sinon l'état unique du jeu). */
   void openStates();
   void changeDisk(int direction);
+  /** Disque inséré (jeu en plusieurs disques), -1 sinon. */
+  int currentDisk() const;
+  /** Insère le disque [index] s'il existe et n'est pas déjà dans le lecteur. */
+  void insertDisk(int index);
   MenuState menuState() const;
   void openMenu();
   void closeMenu();
@@ -302,11 +311,19 @@ bool Player::loadGame(std::string& error) {
     game.data = romData_.data();
     game.size = romData_.size();
   }
+  // Disque choisi au démarrage : indiqué au cœur avant le chargement (interface étendue), sinon inséré
+  // juste après (avant la première image).
+  const int disk = args_.disk.empty() ? 0 : std::max(0, atoi(args_.disk.c_str()));
+  if (disk > 0 && g.diskInitialImage && !g.diskInitialImage((unsigned)disk, romPath_.c_str())) logf("Disque %d refusé au démarrage", disk + 1);
   if (!g.api.load_game(&game)) {
     error = menu_.tr("load_failed");
     // Raison donnée par le cœur (Azahar : « This ROM is encrypted… »).
     if (!g.message.empty()) error += "\n" + g.message;
     return false;
+  }
+  if (disk > 0) {
+    insertDisk(disk);
+    logf("Disque inséré au démarrage : %d / %d", currentDisk() + 1, g.hasDiskControl && g.disk.get_num_images ? (int)g.disk.get_num_images() : 1);
   }
   g.api.get_system_av_info(&g.av);
   selectControllers(Input::kPorts);
@@ -338,7 +355,7 @@ bool Player::saveState() {
   if (!g.api.serialize(buffer.data(), size) || !writeFile(statePath(), buffer.data(), size)) return false;
   // Historique : l'état et l'image affichée (miniature).
   SDL_Surface* frame = video_.captureFrame();
-  if (history_.enabled() && !history_.add(buffer, frame)) logf("Historique des états : ajout impossible");
+  if (history_.enabled() && !history_.add(buffer, frame, currentDisk())) logf("Historique des états : ajout impossible");
   if (frame) SDL_DestroySurface(frame);
   return true;
 }
@@ -361,6 +378,7 @@ void Player::openStates() {
   std::vector<std::string> rows;
   for (const auto& entry : shownStates_) {
     std::string row = formatStateDate(entry.createdAt, args_.lang) + "   " + (entry.online ? entry.device : menu_.tr("this_pc"));
+    if (entry.disk >= 0 && currentDisk() >= 0) row += "   " + menu_.tr("disk") + " " + std::to_string(entry.disk + 1);
     if (entry.pinned) row += " (" + menu_.tr("pinned") + ")";
     rows.push_back(row);
   }
@@ -372,6 +390,19 @@ void Player::changeDisk(int direction) {
   int count = (int)g.disk.get_num_images();
   if (count < 2) return;
   int index = ((int)g.disk.get_image_index() + direction + count) % count;
+  g.disk.set_eject_state(true);
+  g.disk.set_image_index((unsigned)index);
+  g.disk.set_eject_state(false);
+}
+
+int Player::currentDisk() const {
+  if (!g.hasDiskControl || !g.disk.get_num_images || !g.disk.get_image_index || g.disk.get_num_images() < 2) return -1;
+  return (int)g.disk.get_image_index();
+}
+
+void Player::insertDisk(int index) {
+  const int current = currentDisk();
+  if (current < 0 || index < 0 || index == current || index >= (int)g.disk.get_num_images()) return;
   g.disk.set_eject_state(true);
   g.disk.set_image_index((unsigned)index);
   g.disk.set_eject_state(false);
@@ -420,7 +451,11 @@ void Player::onMenuAction(MenuAction action) {
     case MenuAction::LoadState: openStates(); break;
     case MenuAction::LoadHistoryState: {
       size_t index = (size_t)menu_.stateSelected();
-      if (index < shownStates_.size()) toast(menu_.tr(loadStateFile(shownStates_[index].statePath) ? "state_loaded" : "state_error"));
+      if (index < shownStates_.size()) {
+        // État fait sur un autre disque : celui-ci remis d'abord dans le lecteur.
+        insertDisk(shownStates_[index].disk);
+        toast(menu_.tr(loadStateFile(shownStates_[index].statePath) ? "state_loaded" : "state_error"));
+      }
       closeMenu();
       break;
     }

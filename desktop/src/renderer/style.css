@@ -223,6 +223,10 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .detail h2 { font-size: 34px; }
 .detail .system-name { color: var(--accent); font-weight: 700; letter-spacing: 0.5px; font-size: 13px; }
 .detail .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+/* Jeu en plusieurs disques : disque de départ ; point : partie à reprendre sur ce disque. */
+.detail .disc-choice { gap: 8px; }
+.detail .actions .btn[hidden] { display: none; }
+.chip.has-resume::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--ok); vertical-align: middle; }
 .detail .ok { color: var(--ok); font-weight: 600; }
 .detail .line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .detail .error { color: var(--danger); }
