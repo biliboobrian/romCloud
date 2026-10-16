@@ -104,6 +104,7 @@ class Menu {
   int itemCount(const MenuState& state) const;
   Item itemAt(int index, const MenuState& state) const;
   std::string itemLabel(Item item, const MenuState& state) const;
+  std::string itemValue(Item item, const MenuState& state) const;
   void renderOptions(Canvas& canvas) const;
   void renderKeys(Canvas& canvas) const;
   void renderStates(Canvas& canvas) const;
@@ -117,6 +118,7 @@ class Menu {
   bool open_ = false;
   Screen screen_ = Screen::Main;
   int selected_ = 0;
+  mutable int mainScroll_ = 0;
   int optionTab_ = 0;  // onglet (type d'options) affiché
   int optionSelected_ = 0;
   mutable int optionScroll_ = 0;

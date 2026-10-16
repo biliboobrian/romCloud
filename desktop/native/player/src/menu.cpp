@@ -49,7 +49,7 @@ static const struct {
     {"aspect_16_9", "16:9", "16:9"},
     {"aspect_stretch", "étiré", "stretch"},
     {"runahead", "Run-ahead", "Run-ahead"},
-    {"runahead_off", "non", "off"},
+    {"runahead_off", "Non", "Off"},
     {"runahead_unsupported", "Run-ahead impossible : ce cœur n'enregistre pas d'états", "Run-ahead unavailable: this core cannot save states"},
     {"runahead_failed", "Run-ahead coupé : état du cœur non enregistré", "Run-ahead turned off: the core state could not be saved"},
     {"fullscreen", "Plein écran", "Fullscreen"},
@@ -58,6 +58,7 @@ static const struct {
     {"yes", "Oui", "Yes"},
     {"no", "Non", "No"},
     {"hint", "A / Entrée : OK   B / Échap : retour   Flèches : choisir", "A / Enter: OK   B / Esc: back   Arrows: move"},
+    {"main_hint", "A / Entrée : OK   B / Échap : retour au jeu", "A / Enter: OK   B / Esc: back to game"},
     {"options_title", "Options du cœur", "Core options"},
     {"options_hint", "Mémorisées pour ce système. Certaines s'appliquent au redémarrage du jeu.",
      "Saved for this system. Some apply after restarting the game."},
@@ -316,21 +317,32 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::Keys: return tr("keys");
     case Item::Pad: return tr("pad_config");
     case Item::Players: return tr("players");
-    case Item::Disk:
-      return tr("disk") + " : " + std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
-    case Item::Filter: return tr("filter") + " : " + tr(state.filterLabel);
-    case Item::Aspect: {
-      static const char* names[] = {"aspect_core", "aspect_4_3", "aspect_16_9", "aspect_stretch"};
-      return tr("aspect") + " : " + tr(names[state.aspect]);
-    }
-    case Item::RunAhead: return tr("runahead") + " : " + (state.runAhead ? std::to_string(state.runAhead) : tr("runahead_off"));
-    case Item::Fullscreen: return tr("fullscreen") + " : " + tr(state.fullscreen ? "yes" : "no");
-    case Item::Sound: return tr("sound") + " : " + std::to_string(state.volume) + " %";
+    case Item::Disk: return tr("disk");
+    case Item::Filter: return tr("filter");
+    case Item::Aspect: return tr("aspect");
+    case Item::RunAhead: return tr("runahead");
+    case Item::Fullscreen: return tr("fullscreen");
+    case Item::Sound: return tr("sound");
     case Item::LeaveNetplay: return tr("netplay_leave");
     case Item::SaveQuit: return tr("save_quit");
     case Item::Quit: return tr("quit");
   }
   return {};
+}
+
+std::string Menu::itemValue(Item item, const MenuState& state) const {
+  switch (item) {
+    case Item::Disk: return std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
+    case Item::Filter: return tr(state.filterLabel);
+    case Item::Aspect: {
+      static const char* names[] = {"aspect_core", "aspect_4_3", "aspect_16_9", "aspect_stretch"};
+      return tr(names[state.aspect]);
+    }
+    case Item::RunAhead: return state.runAhead ? std::to_string(state.runAhead) : tr("runahead_off");
+    case Item::Fullscreen: return tr(state.fullscreen ? "yes" : "no");
+    case Item::Sound: return std::to_string(state.volume) + " %";
+    default: return {};
+  }
 }
 
 void Menu::openSoundSettings(std::vector<FilterRow> rows) {
@@ -556,29 +568,19 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
     return MenuAction::None;
   }
 
-  // Entrées sur deux colonnes, lues ligne par ligne : haut / bas changent de ligne, gauche /
-  // droite de colonne (disque, filtre, format d'image et plein écran changent avec A / Entrée).
+  // Entrées l'une sous l'autre : haut / bas changent d'entrée (disque, format d'image, run-ahead et
+  // plein écran changent avec A / Entrée).
   int count = itemCount(state);
   selected_ = std::min(selected_, count - 1);
   Item item = itemAt(selected_, state);
-  const int rows = (count + 1) / 2;
-  const int row = selected_ / 2, column = selected_ % 2;
   switch (nav) {
-    case Nav::Up:
-    case Nav::Down: {
-      int next = ((row + (nav == Nav::Up ? rows - 1 : 1)) % rows) * 2 + column;
-      selected_ = std::min(next, count - 1);  // dernière ligne incomplète : seule entrée
-      return MenuAction::None;
-    }
+    case Nav::Up: selected_ = (selected_ + count - 1) % count; return MenuAction::None;
+    case Nav::Down: selected_ = (selected_ + 1) % count; return MenuAction::None;
     case Nav::Back: return MenuAction::Resume;
     case Nav::TabPrev:
-    case Nav::TabNext: return MenuAction::None;
+    case Nav::TabNext:
     case Nav::Left:
-    case Nav::Right: {
-      int next = row * 2 + (1 - column);
-      if (next < count) selected_ = next;
-      return MenuAction::None;
-    }
+    case Nav::Right: return MenuAction::None;
     case Nav::Confirm:
       switch (item) {
         case Item::Resume: return MenuAction::Resume;
@@ -612,7 +614,7 @@ void Menu::render(Canvas& c, const MenuState& state) const {
     renderFilterSettings(c);
     return;
   }
-  c.fill(0, 0, c.width(), c.height(), rgba(8, 9, 14, 200));
+  if (screen_ != Screen::Main) c.fill(0, 0, c.width(), c.height(), rgba(8, 9, 14, 200));
   if (screen_ == Screen::Options) {
     renderOptions(c);
     return;
@@ -625,24 +627,32 @@ void Menu::render(Canvas& c, const MenuState& state) const {
     renderStates(c);
     return;
   }
-  int y = 32;
-  c.text(40, y, Canvas::fit(title_, 2, c.width() - 80), 2, kText);
-  y += 22;
-  c.text(40, y, core_, 1, kMuted);
-  y += 34;
-  // Deux colonnes de même largeur, entrées lues ligne par ligne.
-  const int margin = 32, gap = 12, rowHeight = 32;
-  const int columnWidth = (c.width() - 2 * margin - gap) / 2;
-  int count = itemCount(state);
-  for (int i = 0; i < count; i++) {
-    bool sel = i == selected_;
-    int x = margin + (i % 2) * (columnWidth + gap);
-    int top = y + (i / 2) * rowHeight;
-    c.fill(x, top - 6, columnWidth, 26, sel ? kSelection : rgba(255, 255, 255, 18));
-    c.text(x + 10, top, Canvas::fit(itemLabel(itemAt(i, state), state), 2, columnWidth - 20), 2, sel ? rgba(255, 255, 255) : kText);
+  // Panneau à droite comme celui de l'écran Image, le jeu reste visible à gauche : titre du jeu, cœur,
+  // entrées l'une sous l'autre (défilement si elles dépassent).
+  const int width = std::clamp(c.width() * 9 / 20, 380, 520), x = c.width() - width;
+  c.fill(x, 0, width, c.height(), rgba(8, 9, 14, 220));
+  c.text(x + 16, 14, Canvas::fit(title_, 2, width - 32), 2, kText);
+  c.text(x + 16, 36, Canvas::fit(core_, 1, width - 32), 1, kMuted);
+  const int rowHeight = 20, top = 58, bottom = c.height() - 26;
+  const int visible = std::max(1, (bottom - top) / rowHeight);
+  const int count = itemCount(state);
+  if (selected_ < mainScroll_) mainScroll_ = selected_;
+  if (selected_ >= mainScroll_ + visible) mainScroll_ = selected_ - visible + 1;
+  mainScroll_ = std::clamp(mainScroll_, 0, std::max(0, count - visible));
+  int y = top;
+  for (int i = mainScroll_; i < std::min(count, mainScroll_ + visible); i++) {
+    const bool sel = i == selected_;
+    c.fill(x + 8, y - 5, width - 16, 18, sel ? kSelection : rgba(255, 255, 255, 18));
+    // Libellé à gauche, valeur réglée (filtre, format…) à droite.
+    const Item item = itemAt(i, state);
+    const std::string value = Canvas::fit(itemValue(item, state), 1, (width - 32) / 2);
+    const int valueWidth = value.empty() ? 0 : Canvas::measure(value, 1);
+    if (!value.empty()) c.text(x + width - 16 - valueWidth, y, value, 1, sel ? rgba(255, 255, 255) : kAccent);
+    c.text(x + 16, y, Canvas::fit(itemLabel(item, state), 1, width - 48 - valueWidth), 1, sel ? rgba(255, 255, 255) : kText);
+    y += rowHeight;
   }
-  std::string hint = tr("hint");
-  c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 18, hint, 1, kMuted);
+  std::string hint = Canvas::fit(tr("main_hint"), 1, width - 24);
+  c.text(x + (width - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, kMuted);
 }
 
 void Menu::renderStates(Canvas& c) const {
