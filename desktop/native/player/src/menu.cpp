@@ -43,6 +43,10 @@ static const struct {
     {"aspect_4_3", "4:3", "4:3"},
     {"aspect_16_9", "16:9", "16:9"},
     {"aspect_stretch", "étiré", "stretch"},
+    {"runahead", "Run-ahead", "Run-ahead"},
+    {"runahead_off", "non", "off"},
+    {"runahead_unsupported", "Run-ahead impossible : ce cœur n'enregistre pas d'états", "Run-ahead unavailable: this core cannot save states"},
+    {"runahead_failed", "Run-ahead coupé : état du cœur non enregistré", "Run-ahead turned off: the core state could not be saved"},
     {"fullscreen", "Plein écran", "Fullscreen"},
     {"save_quit", "Sauvegarder et quitter", "Save and quit"},
     {"quit", "Quitter", "Quit"},
@@ -254,7 +258,10 @@ std::vector<Menu::Item> Menu::items(const MenuState& state) const {
   list.insert(list.end(), {Item::Keys, Item::Pad, Item::Players});
   if (state.diskCount > 1 && !state.together) list.push_back(Item::Disk);
   list.push_back(Item::Filter);
-  list.insert(list.end(), {Item::Aspect, Item::Fullscreen, Item::Sound});
+  list.push_back(Item::Aspect);
+  // Partie à plusieurs : images rejouées par l'échange des touches, sans run-ahead.
+  if (!state.together) list.push_back(Item::RunAhead);
+  list.insert(list.end(), {Item::Fullscreen, Item::Sound});
   if (state.netplay) list.push_back(Item::LeaveNetplay);
   list.insert(list.end(), {Item::SaveQuit, Item::Quit});
   return list;
@@ -281,6 +288,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
       static const char* names[] = {"aspect_core", "aspect_4_3", "aspect_16_9", "aspect_stretch"};
       return tr("aspect") + " : " + tr(names[state.aspect]);
     }
+    case Item::RunAhead: return tr("runahead") + " : " + (state.runAhead ? std::to_string(state.runAhead) : tr("runahead_off"));
     case Item::Fullscreen: return tr("fullscreen") + " : " + tr(state.fullscreen ? "yes" : "no");
     case Item::Sound: return tr("sound") + " : " + std::to_string(state.volume) + " %";
     case Item::LeaveNetplay: return tr("netplay_leave");
@@ -545,6 +553,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
         case Item::Disk: return MenuAction::DiskNext;
         case Item::Filter: return MenuAction::ImageSettings;
         case Item::Aspect: return MenuAction::NextAspect;
+        case Item::RunAhead: return MenuAction::NextRunAhead;
         case Item::Fullscreen: return MenuAction::ToggleFullscreen;
         case Item::Sound: return MenuAction::SoundSettings;
         case Item::LeaveNetplay: return MenuAction::LeaveNetplay;

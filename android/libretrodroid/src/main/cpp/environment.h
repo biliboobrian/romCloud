@@ -54,6 +54,11 @@ public:
 
     void setEnableVirtualFileSystem(bool value);
     void setEnableMicrophone(bool value);
+    /**
+     * RomCloud : réponse à RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE pendant le run-ahead (image ou son
+     * écartés, états rapides) ; -1 : demande non gérée (le cœur produit tout).
+     */
+    void setAudioVideoEnable(int value) { audioVideoEnable = value; }
 
 private:
     Environment() {}
@@ -129,6 +134,7 @@ private:
     unsigned language = RETRO_LANGUAGE_ENGLISH;
     bool useVirtualFileSystem = false;
     bool enableMicrophone = false;
+    int audioVideoEnable = -1;
 
     int pixelFormat = RETRO_PIXEL_FORMAT_RGB565;
     bool useHWAcceleration = false;

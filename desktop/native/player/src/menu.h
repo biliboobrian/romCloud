@@ -1,7 +1,7 @@
 // Menu du moteur (Échap, bouton central de la manette ou Start + Select) : reprendre, états de
 // sauvegarde, redémarrage, options du cœur (un onglet par type), touches du clavier,
 // configuration des manettes, joueurs des manettes, disque,
-// image (filtre et ses réglages), format d'image, plein écran, sauvegarder et quitter, quitter.
+// image (filtre et ses réglages), format d'image, run-ahead, plein écran, sauvegarder et quitter, quitter.
 #pragma once
 
 #include <SDL3/SDL.h>
@@ -14,7 +14,7 @@
 
 enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext };
 
-enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, ImageSettings, FilterChoice, NextAspect, ConfigurePad, Players, FilterParam, FilterDefaults, SoundSettings, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay };
+enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, ImageSettings, FilterChoice, NextAspect, ConfigurePad, Players, FilterParam, FilterDefaults, SoundSettings, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay, NextRunAhead };
 
 /** État affiché par le menu (fourni par la boucle principale). */
 struct MenuState {
@@ -29,6 +29,7 @@ struct MenuState {
   bool together = false;
   bool netplay = false;
   int volume = 100;  // volume du son (%), commun à tous les émulateurs
+  int runAhead = 0;   // images calculées en avance (run-ahead), 0 : sans
 };
 
 /** Réglage du filtre affiché dans l'écran « Réglages du filtre » (valeur montrée en pourcentage). */
@@ -92,7 +93,7 @@ class Menu {
 
  private:
   enum class Screen { Main, Options, Keys, States, FilterSettings };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, Aspect, Fullscreen, Sound, LeaveNetplay, SaveQuit, Quit };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, Aspect, RunAhead, Fullscreen, Sound, LeaveNetplay, SaveQuit, Quit };
 
   std::vector<Item> items(const MenuState& state) const;
   int itemCount(const MenuState& state) const;

@@ -145,8 +145,10 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
     // Jeu synchronisé : états échangés entre appareils. FBNeo coupe alors ce qui diffère d'un appareil
     // à l'autre (meilleurs scores de hiscore.dat, horloge de la Neo Geo, graine du hasard).
     case RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT:
-      *static_cast<int*>(data) = g.netplay && g.netplay->synchronized() ? RETRO_SAVESTATE_CONTEXT_ROLLBACK_NETPLAY
-                                                                        : RETRO_SAVESTATE_CONTEXT_NORMAL;
+      // Run-ahead : état gardé en mémoire et rechargé par le même cœur.
+      *static_cast<int*>(data) = g.runAheadState                          ? RETRO_SAVESTATE_CONTEXT_RUNAHEAD_SAME_INSTANCE
+                                 : g.netplay && g.netplay->synchronized() ? RETRO_SAVESTATE_CONTEXT_ROLLBACK_NETPLAY
+                                                                          : RETRO_SAVESTATE_CONTEXT_NORMAL;
       return true;
     case RETRO_ENVIRONMENT_GET_CAN_DUPE:
       *static_cast<bool*>(data) = true;
@@ -328,7 +330,9 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
       return true;
 
     case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE:
-      *static_cast<int*>(data) = 3;  // vidéo et audio
+      // Vidéo et audio, sauf images d'avance du run-ahead (écartées) ; états rapides (non portables)
+      // pendant le run-ahead.
+      *static_cast<int*>(data) = (g.hideVideo ? 0 : 1) | (g.muteAudio ? 0 : 2) | (g.runAheadState ? 4 : 0);
       return true;
 
     case RETRO_ENVIRONMENT_GET_FASTFORWARDING:
@@ -379,16 +383,16 @@ static bool RETRO_CALLCONV environment(unsigned cmd, void* data) {
 // ---------------------------------------------------------------------------
 
 static void RETRO_CALLCONV videoRefresh(const void* data, unsigned width, unsigned height, size_t pitch) {
-  if (g.video) g.video->onFrame(data, width, height, pitch);
+  if (g.video && !g.hideVideo) g.video->onFrame(data, width, height, pitch);
 }
 
 static void RETRO_CALLCONV audioSample(int16_t left, int16_t right) {
   int16_t frame[2] = {left, right};
-  if (g.audio) g.audio->push(frame, 1);
+  if (g.audio && !g.muteAudio) g.audio->push(frame, 1);
 }
 
 static size_t RETRO_CALLCONV audioSampleBatch(const int16_t* data, size_t frames) {
-  if (g.audio) g.audio->push(data, frames);
+  if (g.audio && !g.muteAudio) g.audio->push(data, frames);
   return frames;
 }
 
