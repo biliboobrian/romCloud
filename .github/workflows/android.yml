@@ -41,6 +41,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      # NDK de l'Android Gradle Plugin installé à part, avec plusieurs essais : un téléchargement
+      # corrompu par Gradle (« Error reading Zip content ») faisait échouer la compilation.
+      - name: NDK
+        run: |
+          for i in 1 2 3; do
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358" > /dev/null && exit 0
+            echo "Installation du NDK échouée (essai $i), nouvel essai"
+            sleep 15
+          done
+          exit 1
+
       - name: Tests et compilation
         if: env.PACKAGE != 'true'
         run: ./gradlew :core:testDebugUnitTest :app:compileDebugKotlin :tv:compileDebugKotlin --no-daemon
