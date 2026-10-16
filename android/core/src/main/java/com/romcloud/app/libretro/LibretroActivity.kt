@@ -307,6 +307,9 @@ class LibretroActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Mode jeu de la TV (ALLM) : sans les traitements de l'image (lissage du mouvement…), qui
+        // retardent l'affichage et rendent le défilement saccadé.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) window.setPreferMinimalPostProcessing(true)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
