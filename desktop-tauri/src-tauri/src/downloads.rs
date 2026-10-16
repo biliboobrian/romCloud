@@ -89,7 +89,28 @@ pub fn start(system: Value, game: Value, options: Value) {
                 }
                 done += n(b, "size");
             }
-            if include_rom {
+            if include_rom && library::is_folder(&game) {
+                // Jeu en dossier (PC) : ses fichiers un par un, ceux déjà complets gardés (reprise).
+                let folder = library::file_for(&system, &game);
+                let id = game.get("id").map(key).unwrap_or_default();
+                let listing: Value = serde_json::from_str(&api::request(&format!("/api/games/{id}/files"), None).await?)?;
+                for file in listing["files"].as_array().cloned().unwrap_or_default() {
+                    let rel = s(&file, "path");
+                    let target = rel.split('/').fold(folder.clone(), |path, part| path.join(part));
+                    let size = n(&file, "size");
+                    if std::fs::metadata(&target).map(|m| m.is_file() && m.len() == size).unwrap_or(false) {
+                        done += size;
+                        continue;
+                    }
+                    let url = format!("{server}/api/games/{id}/file?path={}", urlencoding::encode(rel));
+                    fetch_to(&url, &target, size, &cancelled, |bytes| notify(&game_id, Some(running(done + bytes)), None)).await?;
+                    done += size;
+                }
+                std::fs::write(library::folder_marker(&system, &game), n(&game, "size").to_string())?;
+                if let Err(e) = api::remember_downloaded(&system, &game) {
+                    eprintln!("{e}"); // listé hors ligne
+                }
+            } else if include_rom {
                 // Le jeu puis ses parties (disques, mises à jour, DLC), rangés à côté de lui.
                 let dir = library::system_dir(&system);
                 for file in library::game_files(&game) {

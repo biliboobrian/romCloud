@@ -87,7 +87,15 @@ class Downloader(
                 }
                 // Clés et firmware importés par l'émulateur externe (Eden) : là où son sélecteur les trouve.
                 if (bios.isNotEmpty()) runCatching { library.exportForEmulators(system) }
-                if (includeRom) {
+                if (includeRom && game.folder) {
+                    // Jeu en dossier (PC) : ses fichiers un par un, ceux déjà complets gardés (reprise).
+                    for (file in api.folderFiles(game.id)) {
+                        val target = library.folderFile(system, game, file.path)
+                        if (!(target.isFile && target.length() == file.size)) fetch(api.folderFileUrl(game.id, file.path), target, file.size, progress)
+                        done += file.size
+                    }
+                    library.folderMarker(system, game).writeText(game.size.toString())
+                } else if (includeRom) {
                     for (file in game.files) {
                         fetch(api.fileUrl(file.id), File(library.systemDir(system), file.fileName), file.size, progress)
                         done += file.size

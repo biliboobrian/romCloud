@@ -114,6 +114,13 @@ class ApiClient(private val settings: Settings, val platform: String) {
     /** Fichier d'un jeu ou d'une de ses parties (disque, mise à jour, DLC). */
     fun fileUrl(id: Long): String = url("/api/games/$id/file")
 
+    /** Fichier [path] du dossier d'un jeu en dossier (PC). */
+    fun folderFileUrl(id: Long, path: String): String = url("/api/games/$id/file?path=${java.net.URLEncoder.encode(path, "UTF-8").replace("+", "%20")}")
+
+    /** Fichiers d'un jeu en dossier (PC), à télécharger un par un. */
+    suspend fun folderFiles(id: Long): List<FolderFile> =
+        json.decodeFromString(FolderListing.serializer(), get("/api/games/$id/files")).files
+
     private suspend fun get(path: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url(path)).build()
         http.newCall(request).execute().use { response ->

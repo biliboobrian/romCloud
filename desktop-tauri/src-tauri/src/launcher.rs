@@ -151,6 +151,9 @@ pub fn set_emulator_args(id: &str, args: &str) -> Result<Value> {
 }
 
 /// Lance un programme ; [game] : jeu lancé, dont le temps de jeu est compté jusqu'à sa fermeture.
+/// CreateProcess refusé : le programme demande les droits d'administrateur.
+const ERROR_ELEVATION_REQUIRED: i32 = 740;
+
 fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()> {
     let dir = paths::dirname(exe);
     let mut command = tokio::process::Command::new(exe);
@@ -158,7 +161,15 @@ fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()>
     if Path::new(&dir).exists() {
         command.current_dir(&dir);
     }
-    let mut child = command.spawn().map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e.to_string() })))?;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        // Programme qui demande les droits d'administrateur (installation, certains jeux PC) :
+        // lancé par le shell de Windows, qui affiche la demande ; temps de jeu non compté.
+        Err(e) if e.raw_os_error() == Some(ERROR_ELEVATION_REQUIRED) => {
+            return paths::run_elevated(exe, args, &dir).map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e })));
+        }
+        Err(e) => return Err(AppError::new("errors.launchFailed", json!({ "detail": e.to_string() }))),
+    };
     paths::allow_foreground(child.id());
     let started = paths::now_ms();
     game_started();
@@ -315,6 +326,11 @@ pub fn issues(system: &Value, game: &Value) -> Value {
 
 /// Commande de lancement selon l'émulateur choisi (le jeu n'a pas besoin d'être téléchargé).
 fn plan(system: &Value, game: &Value) -> Result<Plan> {
+    // Jeu en dossier (PC Windows) : son exécutable, lancé directement depuis son dossier.
+    if library::is_folder(game) {
+        let exe = library::folder_exe(system, game).ok_or_else(|| AppError::new("errors.noExe", json!({ "title": s(game, "title") })))?;
+        return Ok(Plan::Run { exe: exe.to_string_lossy().into_owned(), args: Vec::new(), emulator: None });
+    }
     let file = library::file_for(system, game).to_string_lossy().into_owned();
     // Jeu en plusieurs disques : liste des disques (.m3u) pour les émulateurs qui la lisent
     // (changement de disque en jeu), sinon le premier disque.

@@ -10,6 +10,7 @@ import { queuePs4Conversions } from './ps4-convert.js';
 import { fileNameDetails, mergeDetails, parseStoredDetails } from './scraper/details.js';
 import { stars } from './scraper/rating.js';
 import { contentIdLabel } from './scraper/serial.js';
+import { exeCandidates, folderFiles, folderStats } from './folder-games.js';
 import { listSystems, requireSystem, systemDir } from './systems.js';
 
 // Fichiers ignorés lors du scan : fichiers cachés, envois en cours, métadonnées diverses.
@@ -22,11 +23,12 @@ export function acceptsFileName(system, name) {
   return !system.filenameRegex || new RegExp(system.filenameRegex).test(name);
 }
 
-export function titleFromFileName(fileName) {
+export function titleFromFileName(fileName, { folder = false } = {}) {
   // Identifiant de contenu PS Vita / PSP (« EP0001-PCSB00040_00-ASPHALTINJECTION ») : son libellé.
   const label = contentIdLabel(fileName);
   if (label) return label;
-  const base = fileName.replace(/\.[^.]+$/, '');
+  // Dossier d'un jeu PC (« Mr. Robot ») : pas d'extension à retirer.
+  const base = folder ? fileName : fileName.replace(/\.[^.]+$/, '');
   const cleaned = base
     .replace(/\s*[([][^)\]]*[)\]]/g, '')
     .replace(/_/g, ' ')
@@ -76,6 +78,8 @@ export function rowToGame(row, parts = []) {
     totalSize: row.size + parts.reduce((n, p) => n + p.size, 0),
     parentId: row.parent_id ?? null,
     partKind: row.part_kind ?? null,
+    // Jeu en dossier (PC Windows) : fichiers listés par /games/:id/files, lancé par [exe].
+    ...(row.is_folder ? { folder: true, exe: row.exe ?? null } : {}),
     groupMode: row.group_mode ?? null,
     crc32: row.crc32,
     md5: row.md5,
@@ -179,6 +183,7 @@ const EDITABLE = {
   rating: 'rating',
   zrif: 'zrif',
   rap: 'rap',
+  exe: 'exe',
 };
 
 /** Licence zRIF (base64, « KO5ifR1dQ+eHBl… ») sans espaces ni retours à la ligne ; null si vide. */
@@ -207,6 +212,7 @@ export function updateGame(id, input) {
     if (key === 'rating' && value !== null) value = stars(value);
     if (key === 'zrif') value = normalizeZrif(value);
     if (key === 'rap') value = normalizeRap(value);
+    if (key === 'exe') value = validateExe(id, value);
     if (key === 'title' && !value) throw new HttpError(400, 'errors.titleRequired');
     sets.push(`${column} = ?`);
     values.push(value);
@@ -255,7 +261,7 @@ export function deleteGameMedia(id, type) {
 export function deleteGame(id, { deleteFile = true } = {}) {
   const row = requireGameRow(id);
   for (const part of db.prepare('SELECT id FROM games WHERE parent_id = ?').all(row.id)) deleteGame(part.id, { deleteFile });
-  if (deleteFile) fs.rmSync(gameFilePath(row), { force: true });
+  if (deleteFile) fs.rmSync(gameFilePath(row), { force: true, recursive: Boolean(row.is_folder) });
   fs.rmSync(gameMediaDir(row.id), { recursive: true, force: true });
   db.prepare('DELETE FROM games WHERE id = ?').run(row.id);
 }
@@ -274,6 +280,8 @@ export async function hashFile(file) {
 /** Renvoie CRC/MD5 du jeu, en les calculant et en les mémorisant si nécessaire. */
 export async function ensureHashes(row) {
   if (row.crc32 && row.md5) return row;
+  // Jeu en dossier : pas d'empreinte (plusieurs fichiers).
+  if (row.is_folder) return row;
   if (row.size > config.hashMaxMb * 1024 * 1024) return row;
   const { crc32, md5 } = await hashFile(gameFilePath(row));
   db.prepare('UPDATE games SET crc32 = ?, md5 = ? WHERE id = ?').run(crc32, md5, row.id);
@@ -285,32 +293,52 @@ export function scanSystem(systemId) {
   const system = requireSystem(systemId);
   const dir = systemDir(system);
   fs.mkdirSync(dir, { recursive: true });
+  const folders = system.folderGames;
   const files = new Map();
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (folders) {
+      // Jeux en dossiers : un sous-dossier par jeu (dossiers cachés et vides ignorés).
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const stats = folderStats(path.join(dir, entry.name));
+      if (stats.count) files.set(entry.name, { size: stats.size, mtime: stats.mtime });
+      continue;
+    }
     if (!entry.isFile() || !acceptsFileName(system, entry.name)) continue;
     const stat = fs.statSync(path.join(dir, entry.name));
     files.set(entry.name, { size: stat.size, mtime: Math.floor(stat.mtimeMs) });
   }
 
   const existing = new Map(
-    db.prepare('SELECT id, file_name, size, mtime FROM games WHERE system_id = ?').all(systemId).map((r) => [r.file_name, r]),
+    db
+      .prepare('SELECT id, file_name, size, mtime, is_folder FROM games WHERE system_id = ?')
+      .all(systemId)
+      // Mode du système changé (fichiers <-> dossiers) : anciennes fiches retirées, nouvelles créées.
+      .filter((r) => Boolean(r.is_folder) === folders)
+      .map((r) => [r.file_name, r]),
   );
   const result = { added: [], updated: 0, removed: 0 };
 
   transaction(() => {
-    const insert = db.prepare('INSERT INTO games (system_id, file_name, size, mtime, title) VALUES (?, ?, ?, ?, ?)');
+    const insert = db.prepare('INSERT INTO games (system_id, file_name, size, mtime, title, is_folder) VALUES (?, ?, ?, ?, ?, ?)');
     const update = db.prepare(
       "UPDATE games SET size = ?, mtime = ?, crc32 = NULL, md5 = NULL, updated_at = datetime('now') WHERE id = ?",
     );
     for (const [name, info] of files) {
       const row = existing.get(name);
       if (!row) {
-        const r = insert.run(systemId, name, info.size, info.mtime, titleFromFileName(name));
+        const r = insert.run(systemId, name, info.size, info.mtime, titleFromFileName(name, { folder: folders }), folders ? 1 : 0);
         result.added.push(Number(r.lastInsertRowid));
       } else if (row.size !== info.size || row.mtime !== info.mtime) {
         update.run(info.size, info.mtime, row.id);
         result.updated++;
       }
+    }
+    // Anciennes fiches de l'autre mode : retirées (fichier laissé sur le disque).
+    for (const row of db.prepare('SELECT id, is_folder FROM games WHERE system_id = ?').all(systemId)) {
+      if (Boolean(row.is_folder) === folders) continue;
+      db.prepare('DELETE FROM games WHERE id = ?').run(row.id);
+      fs.rmSync(gameMediaDir(row.id), { recursive: true, force: true });
+      result.removed++;
     }
     const del = db.prepare('DELETE FROM games WHERE id = ?');
     for (const [name, row] of existing) {
@@ -320,11 +348,37 @@ export function scanSystem(systemId) {
       result.removed++;
     }
   });
+  if (folders) {
+    // Exécutable de chaque jeu : deviné s'il n'a pas été choisi, ou s'il n'existe plus.
+    for (const row of db.prepare('SELECT id, file_name, exe FROM games WHERE system_id = ?').all(systemId)) {
+      const candidates = exeCandidates(folderFiles(path.join(dir, row.file_name)));
+      if (row.exe && candidates.includes(row.exe)) continue;
+      db.prepare('UPDATE games SET exe = ? WHERE id = ?').run(candidates[0] ?? null, row.id);
+    }
+    return result;
+  }
   // Disques, mises à jour et DLC rattachés à leur jeu.
   groupSystem(systemId);
   // Paquets PS4 convertis en .zip du dossier du jeu, en tâche de fond.
   queuePs4Conversions(systemId);
   return result;
+}
+
+/** Fichiers d'un jeu en dossier ({ path, size }) et ses exécutables (le plus probable en premier). */
+export function gameFolderFiles(row) {
+  if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
+  const files = folderFiles(gameFilePath(row));
+  return { files: files.map(({ path: p, size }) => ({ path: p, size })), exes: exeCandidates(files), exe: row.exe ?? null };
+}
+
+/** Exécutable choisi pour un jeu en dossier : un .exe de son dossier (vide : aucun). */
+function validateExe(id, value) {
+  if (value === null) return null;
+  const row = requireGameRow(id);
+  if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
+  const exe = String(value).replace(/\\/g, '/');
+  if (!gameFolderFiles(row).exes.includes(exe)) throw new HttpError(400, 'errors.unknownExe', { exe });
+  return exe;
 }
 
 export function scanAll() {

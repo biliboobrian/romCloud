@@ -42,6 +42,7 @@ import com.romcloud.app.launch.GameIssue
 import com.romcloud.app.launch.GameIssues
 import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.launch.VitaGames
+import com.romcloud.app.launch.Winlator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -83,6 +84,8 @@ fun RomCloudApp.play(
     missingBios: List<BiosFile> = emptyList(),
     disk: Int? = null,
 ): String? {
+    // Jeu PC (jeu en dossier) : son exécutable, lancé par Winlator.
+    if (game.folder) return playWindowsGame(activity, system, game)
     val player = launcher.selectedPlayer(system, game.fileName)
     val launchFile = library.launchFile(system, game, player)
     // Jeu en plusieurs disques démarré sur [disk] : émulateur intégré avec la liste des disques, disque
@@ -125,6 +128,21 @@ fun RomCloudApp.play(
     } catch (e: MissingEmulatorException) {
         missingEmulator.value = e.emulator
         null
+    } catch (e: LaunchException) {
+        account.reportError("launch:${system.id}", e.message ?: "launch", game.fileName)
+        e.message
+    }
+}
+
+/** Jeu PC lancé par Winlator ; renvoie un message (erreur, ou lecteur des ROMs à ajouter la première fois) ou null. */
+private fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem, game: Game): String? {
+    val exe = game.exe ?: return I18n.get(R.string.err_no_exe, game.title)
+    // Dossier privé de l'application (Android/data) : illisible par Winlator.
+    if (library.isAppPrivateDir()) return I18n.get(R.string.winlator_private_dir)
+    return try {
+        val hint = Winlator.launch(activity, game.title, library.fileFor(system, game), exe, File(settings.config.value.romsDir))
+        account.startExternalSession(game.id)
+        hint?.takeIf { !settings.winlatorDriveHintShown }?.also { settings.winlatorDriveHintShown = true }
     } catch (e: LaunchException) {
         account.reportError("launch:${system.id}", e.message ?: "launch", game.fileName)
         e.message
@@ -650,7 +668,8 @@ class GameDetailViewModel(
                     players = players,
                     selectedPlayer = selected,
                     localPath = file.absolutePath,
-                    launchCommand = selected?.let { p -> app.launcher.describe(p, file) },
+                    // Jeu PC : son exécutable, lancé avec Winlator.
+                    launchCommand = if (game.folder) I18n.get(R.string.pc_exe) + "\n" + (game.exe ?: "—") else selected?.let { p -> app.launcher.describe(p, file) },
                     retroArchInfo = selected?.let(app.launcher::retroArchInfo),
                     missingBios = missingBios,
                     canResume = canResume,

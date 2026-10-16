@@ -134,6 +134,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("autoUploadStates", true)
         set(value) = prefs.edit().putBoolean("autoUploadStates", value).apply()
 
+    /** Conseil « lecteur des ROMs à ajouter dans Winlator » déjà affiché (jeux PC). */
+    var winlatorDriveHintShown: Boolean
+        get() = prefs.getBoolean("winlatorDriveHintShown", false)
+        set(value) = prefs.edit().putBoolean("winlatorDriveHintShown", value).apply()
+
     /**
      * Pilotes graphiques du serveur (Turnip, puces Adreno) téléchargés avec les BIOS et recopiés
      * pour les émulateurs qui les installent eux-mêmes (Eden, Dolphin, Vita3K…). Par défaut sur les

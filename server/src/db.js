@@ -192,12 +192,21 @@ if (!systemColumns.includes('platforms')) db.exec("ALTER TABLE systems ADD COLUM
 if (!systemColumns.includes('color')) db.exec('ALTER TABLE systems ADD COLUMN color TEXT');
 // Ordre des émulateurs dans chaque application (JSON { plateforme: [identifiants] }, emulator-order.js).
 if (!systemColumns.includes('emulator_order')) db.exec("ALTER TABLE systems ADD COLUMN emulator_order TEXT NOT NULL DEFAULT '{}'");
+// Jeux en dossiers (PC Windows) : chaque sous-dossier du système est un jeu (folder-games.js).
+if (!systemColumns.includes('folder_games')) {
+  db.exec('ALTER TABLE systems ADD COLUMN folder_games INTEGER NOT NULL DEFAULT 0');
+  // Système « Windows » déjà créé (catalogue Daijishou) et encore vide : jeux PC en dossiers.
+  db.exec("UPDATE systems SET folder_games = 1 WHERE id = 'windows' AND NOT EXISTS (SELECT 1 FROM games WHERE system_id = 'windows')");
+}
 const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
 // Licence zRIF d'un jeu PS Vita en .pkg (proposée aux applications pour l'installer dans Vita3K).
 if (!gameColumns.includes('zrif')) db.exec('ALTER TABLE games ADD COLUMN zrif TEXT');
 // Licence RAP d'un jeu ou DLC PS3 en .pkg (16 octets en hexadécimal, écrite dans RPCS3 avant le lancement).
 if (!gameColumns.includes('rap')) db.exec('ALTER TABLE games ADD COLUMN rap TEXT');
+// Jeu en dossier : fichier = dossier du jeu ; exe : exécutable qui le lance (chemin dans le dossier).
+if (!gameColumns.includes('is_folder')) db.exec('ALTER TABLE games ADD COLUMN is_folder INTEGER NOT NULL DEFAULT 0');
+if (!gameColumns.includes('exe')) db.exec('ALTER TABLE games ADD COLUMN exe TEXT');
 // Captures d'écran 2 à 4 (« screenshot » : la première).
 for (const column of ['screenshot2', 'screenshot3', 'screenshot4']) {
   if (!gameColumns.includes(column)) db.exec(`ALTER TABLE games ADD COLUMN ${column} TEXT`);

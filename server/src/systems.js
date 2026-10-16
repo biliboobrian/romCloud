@@ -44,6 +44,8 @@ function rowToSystem(row, stats) {
     platforms: JSON.parse(row.platforms || '[]'),
     // Ordre des émulateurs par plateforme ({ windows: [...], android: [...] } ; absente : ordre de l'application).
     emulatorOrder: JSON.parse(row.emulator_order || '{}'),
+    // Jeux en dossiers (PC Windows) : un sous-dossier par jeu, lancé par son exécutable.
+    folderGames: Boolean(row.folder_games),
     source: row.source,
     hasImage: Boolean(row.image),
     // Nom du fichier image : change à chaque envoi, sert à invalider les caches.
@@ -97,6 +99,9 @@ export function systemDir(system) {
   return path.join(config.romsDir, system.folder);
 }
 
+/** Case cochée d'un formulaire (« on », « true », true, 1) ; vide, absente ou « false » : non. */
+const flag = (value) => value === true || value === 1 || ['on', 'true', '1'].includes(String(value ?? '').toLowerCase());
+
 function validateRegex(re) {
   if (!re) return null;
   try {
@@ -130,8 +135,8 @@ export function createSystem(input) {
     throw new HttpError(409, 'errors.folderInUse', { folder });
   }
   db.prepare(
-    `INSERT INTO systems (id, name, shortname, folder, filename_regex, libretro_name, screenscraper_id, players, platforms, source, source_revision)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO systems (id, name, shortname, folder, filename_regex, libretro_name, screenscraper_id, players, platforms, source, source_revision, folder_games)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.name,
@@ -144,6 +149,8 @@ export function createSystem(input) {
     JSON.stringify(normalizePlatforms(input.platforms)),
     input.source || 'custom',
     input.sourceRevision ?? null,
+    // « Windows » (catalogue Daijishou) : jeux PC en dossiers, sauf choix contraire.
+    (input.folderGames === undefined ? id === 'windows' : flag(input.folderGames)) ? 1 : 0,
   );
   fs.mkdirSync(path.join(config.romsDir, folder), { recursive: true });
   return getSystem(id);
@@ -167,9 +174,10 @@ export function updateSystem(id, input) {
     // Vide : retour à la couleur par défaut du système.
     color: input.color !== undefined ? validateColor(input.color) : current.customColor ? current.color : null,
     emulatorOrder: input.emulatorOrder !== undefined ? normalizeEmulatorOrder(input.emulatorOrder) : current.emulatorOrder,
+    folderGames: input.folderGames !== undefined ? flag(input.folderGames) : current.folderGames,
   };
   db.prepare(
-    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?, color = ?, emulator_order = ?
+    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?, color = ?, emulator_order = ?, folder_games = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -181,6 +189,7 @@ export function updateSystem(id, input) {
     JSON.stringify(next.platforms),
     next.color,
     JSON.stringify(next.emulatorOrder),
+    next.folderGames ? 1 : 0,
     id,
   );
   return getSystem(id);

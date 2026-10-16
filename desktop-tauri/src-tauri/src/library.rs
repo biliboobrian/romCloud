@@ -37,7 +37,31 @@ pub fn total_size(game: &Value) -> u64 {
     game_files(game).iter().map(|f| n(f, "size")).sum()
 }
 
+/// Jeu en dossier (PC Windows) : dossier du jeu avec tous ses fichiers, lancé par son exécutable.
+pub fn is_folder(game: &Value) -> bool {
+    game.get("folder").and_then(Value::as_bool).unwrap_or(false)
+}
+
+/// Jeu en dossier : fichier écrit à la fin du téléchargement (taille du jeu), absent tant qu'il manque des fichiers.
+pub fn folder_marker(system: &Value, game: &Value) -> PathBuf {
+    file_for(system, game).join(".romcloud-complete")
+}
+
+/// Jeu en dossier complet sur le PC : téléchargement terminé pour sa taille actuelle sur le serveur.
+fn folder_complete(system: &Value, game: &Value) -> bool {
+    std::fs::read_to_string(folder_marker(system, game)).ok().and_then(|t| t.trim().parse::<u64>().ok()) == Some(n(game, "size"))
+}
+
+/// Exécutable d'un jeu en dossier sur le PC (None : aucun choisi sur le serveur).
+pub fn folder_exe(system: &Value, game: &Value) -> Option<PathBuf> {
+    let exe = s(game, "exe");
+    (!exe.is_empty()).then(|| exe.split('/').fold(file_for(system, game), |path, part| path.join(part)))
+}
+
 pub fn is_downloaded(system: &Value, game: &Value) -> bool {
+    if is_folder(game) {
+        return folder_complete(system, game);
+    }
     let dir = system_dir(system);
     game_files(game).iter().all(|f| paths::size(&dir.join(s(f, "fileName"))) == Some(n(f, "size")))
 }
@@ -53,9 +77,11 @@ pub fn downloaded_ids(systems: &[Value], games: &[Value]) -> Vec<Value> {
             }
         }
     }
+    let by_id: HashMap<String, &Value> = systems.iter().map(|sys| (s(sys, "id").to_string(), sys)).collect();
     games
         .iter()
-        .filter(|g| game_files(g).iter().all(|f| sizes.get(&format!("{}/{}", s(g, "systemId"), s(f, "fileName"))) == Some(&n(f, "size"))))
+        .filter(|g| !is_folder(g) || by_id.get(s(g, "systemId")).is_some_and(|system| folder_complete(system, g)))
+        .filter(|g| is_folder(g) || game_files(g).iter().all(|f| sizes.get(&format!("{}/{}", s(g, "systemId"), s(f, "fileName"))) == Some(&n(f, "size"))))
         .filter_map(|g| g.get("id").cloned())
         .collect()
 }
@@ -118,6 +144,10 @@ pub fn missing_bios(files: Vec<Value>) -> Vec<Value> {
 
 /// Supprime les fichiers du jeu, ses parties et sa liste de disques.
 pub fn remove(system: &Value, game: &Value) {
+    if is_folder(game) {
+        let _ = std::fs::remove_dir_all(file_for(system, game));
+        return;
+    }
     let dir = system_dir(system);
     for f in game_files(game) {
         let _ = std::fs::remove_file(dir.join(s(&f, "fileName")));

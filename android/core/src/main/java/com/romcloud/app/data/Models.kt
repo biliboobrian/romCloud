@@ -139,6 +139,10 @@ data class Game(
     val scrapeStatus: String = "ok",
     /** Autres disques, mises à jour et DLC regroupés par le serveur, téléchargés avec le jeu. */
     val parts: List<GamePart> = emptyList(),
+    /** Jeu en dossier (PC Windows) : dossier [fileName] téléchargé fichier par fichier, lancé par [exe] avec Winlator. */
+    val folder: Boolean = false,
+    /** Exécutable du jeu en dossier, chemin dans son dossier (« Bin/Game.exe ») ; null : aucun choisi. */
+    val exe: String? = null,
 ) {
     /** Fichiers du jeu : le fichier principal puis ses parties. */
     val files: List<GamePart> get() = listOf(GamePart(id, fileName, size)) + parts
@@ -168,6 +172,14 @@ data class AgeRating(val type: String? = null, val text: String)
 
 @Serializable
 data class GameLink(val label: String, val url: String)
+
+/** Fichier d'un jeu en dossier (PC) : chemin dans son dossier (« Bin/Game.exe ») et taille. */
+@Serializable
+data class FolderFile(val path: String, val size: Long)
+
+/** Fichiers d'un jeu en dossier (`GET /api/games/{id}/files`). */
+@Serializable
+data class FolderListing(val files: List<FolderFile> = emptyList(), val exe: String? = null)
 
 /** Partie d'un jeu : [kind] disc (avec son numéro [index]), update ou dlc ; vide pour le fichier principal. */
 @Serializable

@@ -59,6 +59,33 @@ pub fn size(path: &std::path::Path) -> Option<u64> {
 /// Autorise le programme [pid] lancé par RomCloud (au premier plan) à passer devant lui : sans
 /// cela, Windows le laisse derrière quand le jeu a été lancé à la manette (seuls le clavier et la
 /// souris comptent comme une action de l'utilisateur).
+/**
+ * Lance [exe] par le shell de Windows (ShellExecute « runas ») depuis le dossier [dir] : demande des
+ * droits d'administrateur affichée par Windows. Sans attendre la fin du programme.
+ */
+pub fn run_elevated(exe: &str, args: &[String], dir: &str) -> std::result::Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "shell32")]
+        extern "system" {
+            fn ShellExecuteW(hwnd: isize, op: *const u16, file: *const u16, params: *const u16, dir: *const u16, show: i32) -> isize;
+        }
+        let wide = |text: &str| std::ffi::OsStr::new(text).encode_wide().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let params = args.iter().map(|a| if a.contains(' ') { format!("\"{a}\"") } else { a.clone() }).collect::<Vec<_>>().join(" ");
+        let (op, file, params, dir) = (wide("runas"), wide(exe), wide(&params), wide(dir));
+        // SAFETY : chaînes UTF-16 terminées par 0, gardées en vie pendant l'appel ; SW_SHOWNORMAL = 1.
+        let result = unsafe { ShellExecuteW(0, op.as_ptr(), file.as_ptr(), params.as_ptr(), dir.as_ptr(), 1) };
+        // Résultat > 32 : lancé ; sinon code d'erreur (5 : demande refusée par l'utilisateur).
+        if result > 32 { Ok(()) } else { Err(format!("ShellExecute {result}")) }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (exe, args, dir);
+        Err("Windows seulement".into())
+    }
+}
+
 pub fn allow_foreground(pid: Option<u32>) {
     #[cfg(windows)]
     {
