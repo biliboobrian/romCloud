@@ -385,6 +385,7 @@ function openSystemSettings() {
   }
   // Aucune plateforme enregistrée : proposé partout, toutes cochées.
   for (const box of form.querySelectorAll('input[name="platforms"]')) box.checked = !s.platforms.length || s.platforms.includes(box.value);
+  form.elements.folderGames.checked = Boolean(s.folderGames);
   setSystemColor(s.color || '#000000', !s.customColor);
   renderSystemImage(s);
   $('#sysFolder').textContent = t('sys.folderInfo', { id: s.id, folder: s.folder });
@@ -577,6 +578,8 @@ async function saveSystemSettings(e) {
   if ($('#sysColor').dataset.default) data.color = '';
   data.platforms = form.getAll('platforms');
   if (!data.platforms.length) return toast(t('sys.platformsNone'), 'error');
+  // Case décochée : absente du formulaire, envoyée quand même (jeux en dossiers coupés).
+  data.folderGames = $('#sysFolderGames').checked;
   data.emulatorOrder = state.emulatorOrder;
   await guard(async () => {
     state.current = await api(`/systems/${encodeURIComponent(state.current.id)}`, { method: 'PUT', body: data });
@@ -713,7 +716,7 @@ function openGame(game) {
 
 function fillGameDialog(game, bust = '') {
   $('#gameDialogTitle').textContent = game.title;
-  $('#gameFile').textContent = `${game.fileName} — ${formatSize(game.size)}${game.crc32 ? ` — CRC ${game.crc32}` : ''}`;
+  $('#gameFile').textContent = `${game.fileName}${game.folder ? '/' : ''} — ${formatSize(game.size)}${game.crc32 ? ` — CRC ${game.crc32}` : ''}`;
   const form = $('#gameForm');
   for (const k of ['title', 'releaseDate', 'players', 'rating', 'developer', 'publisher', 'genre', 'description']) {
     form.elements[k].value = game[k] ?? '';
@@ -728,6 +731,10 @@ function fillGameDialog(game, bust = '') {
   $('#gameRapField').classList.toggle('hidden', !ps3);
   form.elements.rap.disabled = !ps3;
   form.elements.rap.value = game.rap ?? '';
+  // Jeu en dossier (PC) : exécutable qui lance le jeu, parmi ceux du dossier.
+  $('#gameExeField').classList.toggle('hidden', !game.folder);
+  form.elements.exe.disabled = !game.folder;
+  if (game.folder) fillGameExe(game);
   const statusText = {
     none: t('game.never'),
     ok: t('game.scrapedVia', { source: game.scrapeSource }),
@@ -748,7 +755,22 @@ function fillGameDialog(game, bust = '') {
   }
   for (const label of $$('.media-slot [data-n]')) label.textContent = t('game.screenshotN', { n: label.dataset.n });
   $('#gameDownload').href = withKey(`/api/games/${game.id}/file`);
+  // Jeu en dossier : téléchargé fichier par fichier par les applications, pas de lien unique.
+  $('#gameDownload').classList.toggle('hidden', Boolean(game.folder));
   renderGameParts(game);
+}
+
+/** Liste des exécutables du dossier du jeu (le plus probable en premier), celui choisi sélectionné. */
+async function fillGameExe(game) {
+  const select = $('#gameForm').elements.exe;
+  select.innerHTML = `<option value="">${escapeHtml(t('game.exeNone'))}</option>`;
+  await guard(async () => {
+    const { files, exes, exe } = await api(`/games/${game.id}/files`);
+    if (state.editingGame?.id !== game.id) return;
+    select.innerHTML = `<option value="">${escapeHtml(t('game.exeNone'))}</option>${exes.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('')}`;
+    select.value = exe ?? '';
+    $('#gameFile').textContent += ` — ${t('game.files', { n: files.length })}`;
+  });
 }
 
 async function saveGame(e) {

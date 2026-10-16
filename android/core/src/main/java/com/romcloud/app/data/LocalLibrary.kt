@@ -23,12 +23,24 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
     fun fileFor(system: GameSystem, game: Game) = File(systemDir(system), game.fileName)
 
     fun isDownloaded(system: GameSystem, game: Game): Boolean =
-        game.files.all { f -> File(systemDir(system), f.fileName).let { it.isFile && it.length() == f.size } }
+        if (game.folder) folderComplete(system, game)
+        else game.files.all { f -> File(systemDir(system), f.fileName).let { it.isFile && it.length() == f.size } }
+
+    /** Jeu en dossier : fichier écrit à la fin du téléchargement (taille du jeu), absent tant qu'il manque des fichiers. */
+    fun folderMarker(system: GameSystem, game: Game) = File(fileFor(system, game), ".romcloud-complete")
+
+    /** Jeu en dossier complet sur l'appareil : téléchargement terminé pour sa taille actuelle sur le serveur. */
+    private fun folderComplete(system: GameSystem, game: Game): Boolean =
+        runCatching { folderMarker(system, game).readText().trim().toLong() == game.size }.getOrDefault(false)
+
+    /** Fichier d'un jeu en dossier à partir de son chemin sur le serveur (« Bin/Game.exe »), resté dans le dossier. */
+    fun folderFile(system: GameSystem, game: Game, path: String): File =
+        File(fileFor(system, game), path.split('/').filter { it.isNotEmpty() && it != "." && it != ".." }.joinToString("/"))
 
     /** Identifiants des jeux présents localement (un seul listage du dossier). */
     fun downloadedIds(system: GameSystem, games: List<Game>): Set<Long> {
         val sizes = systemDir(system).listFiles()?.associate { it.name to it.length() } ?: return emptySet()
-        return games.filter { g -> g.files.all { sizes[it.fileName] == it.size } }.map { it.id }.toSet()
+        return games.filter { g -> if (g.folder) folderComplete(system, g) else g.files.all { sizes[it.fileName] == it.size } }.map { it.id }.toSet()
     }
 
     /**
@@ -88,6 +100,7 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
     /** Supprime les fichiers du jeu, ses parties et sa liste de disques. */
     fun delete(system: GameSystem, game: Game): Boolean {
         val main = fileFor(system, game)
+        if (game.folder) return main.deleteRecursively()
         File(main.parentFile, "${main.nameWithoutExtension}.m3u").delete()
         return game.files.map { File(systemDir(system), it.fileName).delete() }.first()
     }

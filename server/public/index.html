@@ -131,6 +131,8 @@
       <label><span data-i18n="field.regex"></span> <input name="filenameRegex" placeholder="^.*\.(sfc|smc|zip)$"></label>
       <label><span data-i18n="field.libretro"></span> <input name="libretroName" placeholder="Nintendo - Super Nintendo Entertainment System"></label>
       <label><span data-i18n="field.ssId"></span> <input name="screenscraperId" type="number" min="1"></label>
+      <label class="inline"><input type="checkbox" name="folderGames"> <span data-i18n="field.folderGames"></span></label>
+      <span class="muted" data-i18n="field.folderGamesHint"></span>
       <div class="dialog-foot"><button class="btn primary" data-i18n="add.create"></button></div>
     </form>
   </dialog>
@@ -157,6 +159,8 @@
       <label><span data-i18n="field.regex"></span> <input name="filenameRegex"></label>
       <label><span data-i18n="field.libretro"></span> <input name="libretroName"></label>
       <label><span data-i18n="field.ssId"></span> <input name="screenscraperId" type="number" min="1"></label>
+      <label class="inline"><input type="checkbox" name="folderGames" id="sysFolderGames"> <span data-i18n="field.folderGames"></span></label>
+      <span class="muted" data-i18n="field.folderGamesHint"></span>
       <div class="sys-color">
         <label class="inline"><span data-i18n="sys.color"></span> <input type="color" name="color" id="sysColor"></label>
         <button type="button" class="btn small ghost" id="sysColorDefault" data-i18n="sys.colorDefault"></button>
@@ -236,6 +240,9 @@
         <label id="gameZrifField" class="hidden"><span data-i18n="game.zrif"></span>
           <input name="zrif" class="mono" placeholder="KO5ifR1dQ+eHBl…" autocomplete="off" spellcheck="false">
           <span class="muted" data-i18n="game.zrifHint"></span></label>
+        <label id="gameExeField" class="hidden"><span data-i18n="game.exe"></span>
+          <select name="exe" class="mono"></select>
+          <span class="muted" data-i18n="game.exeHint"></span></label>
         <label id="gameRapField" class="hidden"><span data-i18n="game.rap"></span>
           <input name="rap" class="mono" placeholder="1763B2473C1553028847437992400021" maxlength="40" autocomplete="off" spellcheck="false">
           <span class="muted" data-i18n="game.rapHint"></span></label>

@@ -2234,7 +2234,10 @@
           ${system.biosCount && st.kind !== 'running' ? (missingBios.length
             ? `<div class="line"><span class="muted">${esc(t('bios.missing', { n: missingBios.length, size: biosSize(missingBios) }))}</span>${st.kind === 'downloaded' ? `<button class="btn ghost" id="biosBtn">${icon('cloud', 18)} ${esc(t('bios.download'))}</button>` : ''}</div>`
             : `<div class="ok">${esc(t('bios.present', { n: system.biosCount }))}</div>`) : ''}
-          <div class="emu${issues.length ? ' blocked' : ''}" id="emuBox">
+          ${game.folder ? `<div class="emu" id="emuBox">
+            <label class="muted">${esc(t('detail.exe'))}</label>
+            <div class="mono">${esc(game.exe || t('detail.noExe'))}</div>
+          </div>` : `<div class="emu${issues.length ? ' blocked' : ''}" id="emuBox">
             ${issuesHtml(issues)}
             <label class="muted">${esc(t('detail.emulator'))}</label>
             <select id="emuSelect">${emu.options.map((o) => `<option value="${esc(o.id)}"${o.id === emu.selected ? ' selected' : ''}>${esc(optionLabel(o))}</option>`).join('')}</select>
@@ -2245,7 +2248,7 @@
             ${catalogEmu ? emulatorBlock(catalogEmu) : ''}
             ${vita ? vitaProcedureHtml(vita) : ''}
             ${command ? `<div class="muted small">${esc(t('emulator.command'))}</div><div class="mono">${esc(command)}</div>` : ''}
-          </div>
+          </div>`}
           ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
           ${gameInfoHtml(game)}
           ${shots.length ? `<div class="shots">${shotThumbs.map((url, i) => `<button class="shot" data-shot="${i}" title="${esc(t('detail.screenshot', { n: i + 1, total: shots.length }))}"><img src="${esc(url)}" alt=""></button>`).join('')}</div>` : ''}
@@ -2306,7 +2309,7 @@
         { label: t('detail.delete'), kind: 'danger', onClick: async () => { await call(rc.library.remove, system, game); await refreshDownloaded(); loadUsage(); renderGame(); } },
       ],
     }));
-    $('#emuSelect').onchange = async (e) => {
+    if ($('#emuSelect')) $('#emuSelect').onchange = async (e) => {
       await call(rc.launcher.choose, system.id, e.target.value);
       renderGame();
     };

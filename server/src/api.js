@@ -13,6 +13,7 @@ import { config, screenscraperEnabled } from './config.js';
 import { diskUsage } from './disk-usage.js';
 import { clearDownloads, downloadStats, listDownloads, trackDownload } from './download-logs.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
+import { fileInFolder } from './folder-games.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
 import { setGroup } from './groups.js';
@@ -21,6 +22,7 @@ import {
   acceptsFileName,
   deleteGame,
   gameFilePath,
+  gameFolderFiles,
   gameMediaDir,
   gameWithParts,
   listGames,
@@ -143,11 +145,21 @@ const platformOf = (req) => String(req.get('x-romcloud-platform') || req.query.p
 
 api.get('/systems', (req, res) => res.json(listSystems({ platform: platformOf(req) })));
 
-api.post('/systems', (req, res) => res.status(201).json(createSystem(req.body || {})));
+api.post('/systems', (req, res) => {
+  const system = createSystem(req.body || {});
+  if (system.folderGames) scanSystem(system.id);
+  res.status(201).json(system);
+});
 
 api.get('/systems/:id', (req, res) => res.json(requireSystem(req.params.id)));
 
-api.put('/systems/:id', (req, res) => res.json(updateSystem(req.params.id, req.body || {})));
+api.put('/systems/:id', (req, res) => {
+  const before = requireSystem(req.params.id);
+  const system = updateSystem(req.params.id, req.body || {});
+  // Jeux en dossiers activés ou coupés : fiches refaites aussitôt (dossiers <-> fichiers).
+  if (system.folderGames !== before.folderGames) scanSystem(system.id);
+  res.json(system);
+});
 
 // Émulateurs proposés par chaque application pour ce système, dans leur ordre par défaut
 // ({ windows, android, androidtv } : [{ id, name, kind }]), pour en choisir l'ordre.
@@ -441,14 +453,33 @@ api.delete('/games/:id', (req, res) => {
   res.status(204).end();
 });
 
-// Téléchargement du fichier ROM (gère les requêtes Range pour la reprise).
+// Jeu en dossier : fichiers notés dans le journal des téléchargements à partir de cette taille.
+const FOLDER_LOG_MIN_BYTES = 8 * 1024 * 1024;
+
+// Téléchargement du fichier ROM (gère les requêtes Range pour la reprise). Jeu en dossier (PC) :
+// un fichier de son dossier (?path=Bin/Game.exe, voir /games/:id/files).
 api.get('/games/:id/file', (req, res, next) => {
   const row = requireGameRow(req.params.id);
+  if (row.is_folder) {
+    if (req.query.path === undefined) throw new HttpError(400, 'errors.folderGamePath');
+    const file = fileInFolder(gameFilePath(row), req.query.path);
+    const size = fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0;
+    // Journal : seulement les gros fichiers (un jeu en compte parfois des milliers).
+    if (size >= FOLDER_LOG_MIN_BYTES) {
+      logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: `${row.file_name}/${req.query.path}`, fileSize: size });
+    }
+    return res.download(file, path.posix.basename(String(req.query.path)), { dotfiles: 'allow' }, (err) => {
+      if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
+    });
+  }
   logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: row.file_name, fileSize: row.size });
   res.download(gameFilePath(row), row.file_name, { dotfiles: 'allow' }, (err) => {
     if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
   });
 });
+
+// Jeu en dossier (PC) : ses fichiers ({ path, size }), à télécharger un par un, et ses exécutables.
+api.get('/games/:id/files', (req, res) => res.json(gameFolderFiles(requireGameRow(req.params.id))));
 
 const MEDIA_TYPES = ['boxart', ...SCREENSHOT_TYPES];
 
