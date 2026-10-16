@@ -838,6 +838,7 @@ int Player::run() {
     return saved ? 0 : 1;
   }
   audio_.open(g.av.timing.sample_rate);
+  raiseGamePriority();
   toast(menu_.tr("menu_hint"));
   startNetplay();
 

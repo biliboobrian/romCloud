@@ -176,6 +176,8 @@ private:
     unsigned int viewportAlignment = V_ALIGN_CENTER;
     float screenRefreshRate = 60.0;
     float contentFrameRate = 0;
+    /** RomCloud : rapport jeu / écran appliqué à la fréquence du son à son ouverture. */
+    double audioStretch = 1.0;
     PerformanceHint performanceHint;
     int openglESVersion = 2;
     bool skipDuplicateFrames = false;

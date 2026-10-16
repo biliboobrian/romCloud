@@ -143,6 +143,8 @@ class Video {
   unsigned sharedTexture_ = 0, sharedMemory_ = 0, readySemaphore_ = 0, releasedSemaphore_ = 0;
   int sharedWidth_ = 0, sharedHeight_ = 0;
   int textureWidth_ = 0, textureHeight_ = 0;
+  int textureFormat_ = 0;  // format interne de frameTexture_
+  bool rgb565_ = false;    // format interne 5-6-5 disponible
   unsigned fbo_ = 0, fboTexture_ = 0, fboDepth_ = 0;
   // Image intermédiaire de FSR (agrandissement, puis netteté à l'écran).
   unsigned postFbo_ = 0, postTexture_ = 0;

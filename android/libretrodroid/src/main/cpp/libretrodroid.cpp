@@ -85,7 +85,9 @@ int16_t LibretroDroid::callback_set_input_state(
 
 void LibretroDroid::updateAudioSampleRateMultiplier() {
     if (audio) {
-        audio->setPlaybackSpeed(frameSpeed);
+        // RomCloud : écran changé en cours de partie, son lu au rythme où le jeu le produit.
+        const double stretch = fpsSync ? fpsSync->getTimeStretchFactor() / audioStretch : 1.0;
+        audio->setPlaybackSpeed(frameSpeed * stretch);
     }
 }
 
@@ -475,9 +477,6 @@ void LibretroDroid::step() {
         return;
     }
 
-    // RomCloud : durée du travail de l'image signalée au système (indice de performance).
-    performanceHint.begin(contentFrameRate);
-
     unsigned frames = 1;
     if (fpsSync) {
         unsigned requestedFrames = fpsSync->advanceFrames();
@@ -485,6 +484,19 @@ void LibretroDroid::step() {
         // If the application runs too slow it's better to just skip those frames.
         frames = std::min(requestedFrames, 2u);
     }
+
+    // RomCloud : écran plus rapide que le jeu (120 Hz…) : rafraîchissement sans nouvelle image du
+    // jeu, la dernière est redessinée (le tampon affiché n'est pas gardé d'une fois à l'autre).
+    if (frames == 0) {
+        if (video) {
+            video->markDirty();
+            video->renderFrame();
+        }
+        return;
+    }
+
+    // RomCloud : durée du travail de l'image signalée au système (indice de performance).
+    performanceHint.begin(contentFrameRate);
 
     for (size_t i = 0; i < frames * frameSpeed; i++)
         core->retro_run();
@@ -526,6 +538,7 @@ void LibretroDroid::onRefreshRateChanged(float refreshRate) {
     std::lock_guard<std::mutex> lock(coreLock);
     screenRefreshRate = refreshRate;
     if (fpsSync) fpsSync->updateScreenRefreshRate(refreshRate);
+    if (frameSpeed > 0) updateAudioSampleRateMultiplier();
 }
 
 float LibretroDroid::getAspectRatio() {
@@ -646,7 +659,8 @@ void LibretroDroid::afterGameLoad() {
     fpsSync = std::make_unique<FPSSync>(system_av_info.timing.fps, screenRefreshRate);
     contentFrameRate = (float) system_av_info.timing.fps;
 
-    double inputSampleRate = system_av_info.timing.sample_rate * fpsSync->getTimeStretchFactor();
+    audioStretch = fpsSync->getTimeStretchFactor();
+    double inputSampleRate = system_av_info.timing.sample_rate * audioStretch;
 
     audio = std::make_unique<Audio>(
         (int32_t) std::lround(inputSampleRate),
