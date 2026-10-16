@@ -87,6 +87,8 @@ import com.romcloud.app.ui.GameIssuesCard
 import com.romcloud.app.launch.GameIssue
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.size
 
 @Composable
 fun TvGameDetailScreen(
@@ -212,6 +214,25 @@ fun TvGameDetailScreen(
                     }
                 }
 
+                // Jeu en plusieurs disques : disque de départ (icône : partie à reprendre sur ce disque).
+                if (state.downloaded && state.discCount > 0 && !lobbyState.isHost && download !is DownloadState.Running) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
+                        repeat(state.discCount) { d ->
+                            val content: @Composable RowScope.() -> Unit = {
+                                if (state.discResume.getOrElse(d) { false }) {
+                                    Icon(Icons.Filled.History, stringResource(R.string.disc_resume), Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(stringResource(R.string.parts_disc, (d + 1).toString()))
+                            }
+                            if (d == state.disc) {
+                                Button(onClick = { viewModel.selectDisc(d) }, content = content)
+                            } else {
+                                OutlinedButton(onClick = { viewModel.selectDisc(d) }, content = content)
+                            }
+                        }
+                    }
+                }
                 // Actions
                 Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
                     val primary = Modifier.focusRequester(primaryFocus)

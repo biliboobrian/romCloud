@@ -347,6 +347,9 @@
     <string name="libretro_aspect_original">d’origine</string>
     <string name="libretro_aspect_stretch">étiré</string>
     <string name="libretro_aspect_next_launch">Le nouveau format sera appliqué au prochain lancement du jeu.</string>
+    <string name="libretro_menu_disk">Disque : %1$d / %2$d</string>
+    <string name="libretro_disk_title">Disque dans le lecteur</string>
+    <string name="libretro_disk_inserted">Disque %1$d inséré</string>
     <string name="libretro_menu_runahead">Run-ahead : %1$s</string>
     <string name="libretro_runahead_title">Run-ahead (réaction plus rapide aux touches)</string>
     <string name="libretro_runahead_off">désactivé</string>
@@ -461,6 +464,7 @@
     <string name="storage_on_device">Sur l’appareil : %1$s</string>
     <string name="storage_free">%1$s libres</string>
     <string name="storage_free_of">%1$s libres sur %2$s</string>
+    <string name="disc_resume">Partie à reprendre sur ce disque</string>
     <string name="parts_disc">Disque %1$s</string>
     <string name="parts_update">Mise à jour</string>
     <string name="parts_dlcs">%1$d DLC</string>

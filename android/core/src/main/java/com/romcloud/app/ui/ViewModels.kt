@@ -27,6 +27,7 @@ import com.romcloud.app.data.SavedState
 import com.romcloud.app.data.StateHistory
 import com.romcloud.app.data.StorageUsage
 import com.romcloud.app.data.StreamReceiver
+import com.romcloud.app.data.discNames
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.data.sameSaveCore
 import com.romcloud.app.launch.BiosPrompt
@@ -80,24 +81,29 @@ fun RomCloudApp.play(
     core: String? = null,
     coreSwitchConfirmed: Boolean = false,
     missingBios: List<BiosFile> = emptyList(),
+    disk: Int? = null,
 ): String? {
     val player = launcher.selectedPlayer(system, game.fileName)
-    val file = library.launchFile(system, game, player)
+    val launchFile = library.launchFile(system, game, player)
+    // Jeu en plusieurs disques démarré sur [disk] : émulateur intégré avec la liste des disques, disque
+    // inséré au démarrage ; autre émulateur (ou disques compressés) : fichier de ce disque.
+    val listDisk = disk?.takeIf { (core ?: player?.libretroCore) != null && launchFile.extension.equals("m3u", ignoreCase = true) }
+    val file = if (disk != null && disk > 0 && listDisk == null) library.discFile(system, game, disk) else launchFile
     // Reprise ou état faits avec un autre cœur intégré du système : il devient l'émulateur du
     // système, après confirmation (un état ne se charge qu'avec le cœur qui l'a fait).
     if (!coreSwitchConfirmed && netplay == null && (resume || state != null)) {
-        val target = core ?: if (resume) launcher.latestResume(system, file, player)?.first else null
+        val target = core ?: if (resume) launcher.latestResume(system, file, player, listDisk)?.first else null
         val current = player?.libretroCore
         if (target != null && (current == null || !sameSaveCore(current, target))) {
             system.players.firstOrNull { p -> p.libretroCore?.let { sameSaveCore(it, target) } == true }?.let { next ->
-                coreSwitchPrompt.value = CoreSwitchPrompt(system, game, next, player?.name, resume, state, core, stream, streamMode, missingBios)
+                coreSwitchPrompt.value = CoreSwitchPrompt(system, game, next, player?.name, resume, state, core, stream, streamMode, missingBios, disk)
                 return null
             }
         }
     }
     // BIOS absents : les télécharger d'abord ? (lancement à la fin, reprise et état compris).
     if (missingBios.isNotEmpty() && netplay == null) {
-        biosPrompt.value = BiosPrompt(system, game, missingBios, PendingLaunch(resume, state, core, stream, streamMode))
+        biosPrompt.value = BiosPrompt(system, game, missingBios, PendingLaunch(resume, state, core, stream, streamMode, disk))
         return null
     }
     // Émulateur externe à configurer (sauf émulateur absent : proposition d'installation ci-dessous).
@@ -111,7 +117,7 @@ fun RomCloudApp.play(
         }
     }
     return try {
-        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay, state, core)
+        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay, state, core, listDisk)
         // Émulateur externe : temps de jeu compté jusqu'au retour dans l'application (l'émulateur
         // intégré compte lui-même le temps de la partie affichée).
         if (player?.libretroCore == null) account.startExternalSession(game.id)
@@ -529,8 +535,17 @@ class GameDetailViewModel(
         val retroArchInfo: RetroArchInfo? = null,
         val bios: List<BiosFile> = emptyList(),
         val missingBios: List<BiosFile> = emptyList(),
-        /** Partie sauvegardée dans l'émulateur intégré : « Reprendre » avant « Jouer ». */
+        /** Partie sauvegardée dans l'émulateur intégré (sur le disque choisi) : « Reprendre » avant « Jouer ». */
         val canResume: Boolean = false,
+        /**
+         * Jeu en plusieurs disques (téléchargé) : partie à reprendre sur chaque disque (émulateur intégré),
+         * vide pour un jeu d'un disque ; [disc] : disque choisi (celui de la dernière partie par défaut),
+         * sur lequel « Jouer » démarre et dont « Reprendre » reprend la dernière partie.
+         */
+        val discResume: List<Boolean> = emptyList(),
+        val disc: Int = 0,
+        /** Sauvegarde en ligne seule (disque inconnu) : reprise sur le premier disque. */
+        val onlineOnly: Boolean = false,
         /** État de sauvegarde en ligne du profil (émulateur intégré), récupéré au lancement s'il est plus récent. */
         val onlineSave: OnlineSave? = null,
         /** « Reprendre » avec un autre cœur intégré du système (partie sauvegardée avec lui, ailleurs). */
@@ -548,6 +563,12 @@ class GameDetailViewModel(
         val issues: List<GameIssue> = emptyList(),
     ) {
         val canStream: Boolean get() = downloaded && selectedPlayer?.libretroCore != null && tvs.isNotEmpty()
+
+        /** Nombre de disques proposés au choix (0 : un seul disque, ou jeu absent de l'appareil). */
+        val discCount: Int get() = discResume.size
+
+        /** Partie à reprendre sur le disque [d]. */
+        fun resumableOn(d: Int): Boolean = discResume.getOrElse(d) { false } || (onlineOnly && d == 0)
     }
 
     private val _state = MutableStateFlow(UiState())
@@ -599,7 +620,15 @@ class GameDetailViewModel(
                 ?: onlineSaves.filter { s -> cores.any { sameSaveCore(s.core, it) } }.maxByOrNull { it.savedAtMillis }.takeIf { !localResume }
             val resumeCore = online?.core?.takeIf { c -> !localResume && selected?.libretroCore?.let { sameSaveCore(it, c) } != true }
                 ?.let { c -> cores.firstOrNull { sameSaveCore(it, c) } }
-            val canResume = localResume || (downloaded && online != null)
+            // Jeu en plusieurs disques : partie à reprendre sur chaque disque, disque choisi (par défaut
+            // celui de la dernière partie).
+            val discCount = discNames(game).size.takeIf { downloaded && it >= 2 } ?: 0
+            val (discResume, latestDisc) = if (discCount == 0) emptyList<Boolean>() to null else withContext(Dispatchers.IO) {
+                app.launcher.resumeDiscs(system, file, selected, discCount)
+            }
+            val disc = (chosenDisc ?: latestDisc ?: 0).coerceIn(0, (discCount - 1).coerceAtLeast(0))
+            val onlineOnly = !localResume && downloaded && online != null
+            val canResume = if (discCount > 0) discResume.getOrElse(disc) { false } || (onlineOnly && disc == 0) else localResume || (downloaded && online != null)
             val issues = withContext(Dispatchers.IO) { GameIssues.of(app.launcher, system, game.fileName, file, downloaded) }
             val vita = selected?.takeIf { VitaGames.isVita3k(app.launcher.packageOf(it)) }?.let {
                 val titleId = withContext(Dispatchers.IO) { if (downloaded) VitaGames.titleId(file) else VitaGames.titleIdFromName(file.name) }
@@ -625,6 +654,9 @@ class GameDetailViewModel(
                     retroArchInfo = selected?.let(app.launcher::retroArchInfo),
                     missingBios = missingBios,
                     canResume = canResume,
+                    discResume = discResume,
+                    disc = disc,
+                    onlineOnly = onlineOnly,
                     onlineSave = online,
                     resumeCore = resumeCore,
                     savedStates = savedStates,
@@ -635,6 +667,15 @@ class GameDetailViewModel(
                 )
             }
         }
+    }
+
+    /** Disque choisi dans la fiche (jeu en plusieurs disques), gardé quand la fiche est relue. */
+    private var chosenDisc: Int? = null
+
+    /** Choix du disque : « Reprendre » et « Jouer » portent sur lui. */
+    fun selectDisc(d: Int) {
+        chosenDisc = d
+        _state.update { it.copy(disc = d, canResume = it.resumableOn(d)) }
     }
 
     /**
@@ -782,7 +823,8 @@ class GameDetailViewModel(
         val game = s.game ?: return I18n.get(R.string.game_not_found)
         // Reprise d'une partie faite avec un autre cœur intégré : lancée avec lui.
         val core = s.resumeCore?.takeIf { resume }
-        return app.play(activity, system, game, resume = resume, stream = tv, streamMode = mode, core = core, missingBios = s.missingBios)
+        val disk = s.disc.takeIf { s.discCount > 0 }
+        return app.play(activity, system, game, resume = resume, stream = tv, streamMode = mode, core = core, missingBios = s.missingBios, disk = disk)
     }
 
     /** Appareils RomCloud du réseau local (jeu à plusieurs). */

@@ -86,6 +86,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                         app.play(
                             activity, event.system, event.game, resume = pending.resume, stream = pending.stream,
                             streamMode = pending.streamMode, state = pending.state, core = pending.core, coreSwitchConfirmed = true,
+                            disk = pending.disk,
                         )?.let { snackbar.showSnackbar(it) }
                     } else if (!event.romIncluded) {
                         launch { snackbar.showSnackbar(I18n.get(R.string.bios_downloaded_snackbar, event.system.name)) }
@@ -337,7 +338,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                     app.play(
                         activity, prompt.system, prompt.game, resume = prompt.resume, stream = prompt.stream,
                         streamMode = prompt.streamMode, state = prompt.state, core = prompt.core, coreSwitchConfirmed = true,
-                        missingBios = prompt.missingBios,
+                        missingBios = prompt.missingBios, disk = prompt.disk,
                     )?.let { scope.launch { snackbar.showSnackbar(it) } }
                 }) { Text(stringResource(R.string.core_switch_confirm)) }
             },
@@ -373,6 +374,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                     app.play(
                         activity, prompt.system, prompt.game, resume = pending.resume, stream = pending.stream,
                         streamMode = pending.streamMode, state = pending.state, core = pending.core, coreSwitchConfirmed = true,
+                        disk = pending.disk,
                     )?.let { scope.launch { snackbar.showSnackbar(it) } }
                 }) { Text(stringResource(R.string.action_play_anyway)) }
             },

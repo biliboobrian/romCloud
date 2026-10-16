@@ -75,6 +75,7 @@ data class CoreSwitchPrompt(
     val stream: StreamReceiver?,
     val streamMode: StreamMode,
     val missingBios: List<BiosFile> = emptyList(),
+    val disk: Int? = null,
 )
 
 /** Options d'un lancement différé : jeu lancé ainsi à la fin de son téléchargement (ou de celui des BIOS). */
@@ -84,6 +85,8 @@ data class PendingLaunch(
     val core: String? = null,
     val stream: StreamReceiver? = null,
     val streamMode: StreamMode = StreamMode.NATIVE,
+    /** Jeu en plusieurs disques : disque de départ (0 pour le premier). */
+    val disk: Int? = null,
 )
 
 /** BIOS du système absents de l'appareil : les télécharger avant de lancer le jeu ([launch]) ? */
@@ -165,37 +168,41 @@ class GameLauncher(private val context: Context, private val settings: Settings)
     /**
      * Partie à reprendre la plus récente parmi les cœurs intégrés du système (celui choisi d'abord) :
      * cœur et état. Un état fait avec Yabause se reprend avec lui même si Beetle Saturn est choisi.
+     * [disk] : jeu en plusieurs disques, parmi les états faits sur ce disque (disque inconnu : le premier).
      */
-    fun latestResume(system: GameSystem, file: File, player: Player?): Pair<String, File>? {
+    fun latestResume(system: GameSystem, file: File, player: Player?, disk: Int? = null): Pair<String, File>? {
         if (player?.libretroCore == null) return null
         val cores = (listOfNotNull(player.libretroCore) + system.players.mapNotNull { it.libretroCore }).distinct()
         var best: Triple<String, File, Long>? = null
         for (core in cores) {
-            val (state, date) = resumePoint(core, file) ?: continue
+            val (state, date) = history(core, file).resumePoint(LibretroActivity.stateFile(context, core, file), disk) ?: continue
             if (best == null || date > best.third) best = Triple(core, state, date)
         }
         return best?.let { it.first to it.second }
     }
 
     /**
-     * État à charger pour reprendre la partie avec [core] et sa date : l'état de reprise (écrit en
-     * quittant), ou l'état de l'historique le plus récent s'il est plus récent ou que l'état de reprise manque.
+     * Jeu en plusieurs disques ([count] disques, [file] : leur liste) : partie à reprendre sur chaque
+     * disque, et disque de la partie la plus récente (null : aucune).
      */
-    private fun resumePoint(core: String, file: File): Pair<File, Long>? {
-        val quick = LibretroActivity.stateFile(context, core, file).takeIf { it.isFile }
-        val history = StateHistory(StateHistory.dir(context, core, file), core)
-        val latest = history.list().firstOrNull()
-        return when {
-            latest != null && (quick == null || latest.createdAt > quick.lastModified()) -> history.stateFile(latest.id) to latest.createdAt
-            quick != null -> quick to quick.lastModified()
-            else -> null
-        }
+    fun resumeDiscs(system: GameSystem, file: File, player: Player?, count: Int): Pair<List<Boolean>, Int?> {
+        val resume = (0 until count).map { latestResume(system, file, player, it) != null }
+        val latest = latestResume(system, file, player)?.let { (core, state) -> (diskOf(core, file, state) ?: 0).coerceAtMost(count - 1) }
+        return resume to latest
     }
+
+    /** Disque inséré quand l'état [state] du cœur [core] a été fait (jeu en plusieurs disques), null s'il n'est pas connu. */
+    fun diskOf(core: String, file: File, state: File): Int? =
+        history(core, file).diskOf(state, LibretroActivity.stateFile(context, core, file))
+
+    private fun history(core: String, file: File) = StateHistory(StateHistory.dir(context, core, file), core)
 
     /**
      * Lance le jeu avec l'émulateur choisi ([resume] : reprend la partie sauvegardée, émulateur
      * intégré ; [state] : à partir de cet état de l'historique ; [stream] : diffusé sur cette TV du
-     * profil, émulateur intégré, image [streamMode]). Sans modèle d'émulateur (système personnalisé), ouvre le sélecteur d'applications.
+     * profil, émulateur intégré, image [streamMode] ; [disk] : jeu en plusieurs disques (liste .m3u),
+     * démarré sur ce disque et repris depuis la dernière partie faite sur lui). Sans modèle d'émulateur
+     * (système personnalisé), ouvre le sélecteur d'applications.
      */
     fun launch(
         activityContext: Context,
@@ -209,13 +216,14 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         netplay: NetplayLaunch? = null,
         state: File? = null,
         core: String? = null,
+        disk: Int? = null,
     ) {
         if (!file.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, file.absolutePath))
 
         // Partie à plusieurs : émulateur intégré seulement ; invité : cœur de l'hôte ; liaison : cœur de la liaison.
         // [core] : cœur imposé (état ou sauvegarde d'un autre cœur intégré du système).
         // Reprise sans cœur imposé : celui de la partie la plus récente (autre cœur intégré possible).
-        val latest = if (resume && state == null && core == null && netplay == null) latestResume(system, file, player) else null
+        val latest = if (resume && state == null && core == null && netplay == null) latestResume(system, file, player, disk) else null
         val libretroCore = core ?: latest?.first ?: if (netplay != null && (!netplay.host || netplay.link != null)) netplay.game.core else player?.libretroCore
         if (netplay != null && libretroCore == null) throw LaunchException(I18n.get(R.string.netplay_needs_builtin))
 
@@ -223,9 +231,16 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         libretroCore?.let { core ->
             // Reprise : état de l'historique s'il est plus récent que l'état de reprise (ou seul).
             val resumeState = latest?.second?.takeIf { it != LibretroActivity.stateFile(activityContext, core, file) }
+            // Disque inséré au démarrage : celui de l'état chargé s'il est connu, sinon celui choisi.
+            val startDisk = when {
+                netplay != null -> null
+                state != null -> diskOf(core, file, state)
+                latest != null -> diskOf(core, file, latest.second) ?: disk
+                else -> disk
+            }
             val intent = LibretroActivity.intent(
                 activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode, netplay,
-                state = state ?: resumeState, autoUploadStates = settings.autoUploadStates,
+                state = state ?: resumeState, autoUploadStates = settings.autoUploadStates, disk = startDisk ?: 0,
             )
             if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             activityContext.startActivity(intent)

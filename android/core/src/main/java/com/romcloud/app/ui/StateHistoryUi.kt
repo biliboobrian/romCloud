@@ -310,6 +310,7 @@ private fun StateRow(
                     Icon(Icons.Filled.Cloud, stringResource(R.string.states_online), Modifier.size(16.dp))
                 }
                 if (state.pinned) Icon(Icons.Filled.PushPin, stringResource(R.string.states_pinned), Modifier.size(16.dp))
+                state.disk?.let { Text(stringResource(R.string.parts_disc, (it + 1).toString()), style = MaterialTheme.typography.bodySmall) }
             }
             if (downloading) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

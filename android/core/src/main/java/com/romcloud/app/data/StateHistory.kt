@@ -21,6 +21,8 @@ data class StateMeta(
     val pinned: Boolean = false,
     /** Envoyé au serveur (profil connecté). */
     val uploaded: Boolean = false,
+    /** Disque inséré (jeu en plusieurs disques, 0 pour le premier) ; null : inconnu ou un seul disque. */
+    val disk: Int? = null,
 )
 
 /** État de l'historique d'un profil sur le serveur (`GET /api/account/states`). */
@@ -53,6 +55,9 @@ data class SavedState(
     val local: StateMeta?,
     val online: OnlineState?,
 ) {
+    /** Disque inséré quand l'état a été fait (état de cet appareil), null s'il n'est pas connu. */
+    val disk: Int? get() = local?.disk
+
     /** Envoi possible : état de cet appareil pas encore sur le serveur. */
     val canUpload: Boolean get() = local != null && online == null
 }
@@ -60,7 +65,8 @@ data class SavedState(
 /**
  * Historique des états de sauvegarde d'un jeu pour un cœur, sur l'appareil : un fichier par état
  * (« <id>.state »), sa miniature (« <id>.jpg », écran du jeu) et ses informations (« <id>.json »).
- * Les [LIMIT] plus récents sont gardés, plus les états épinglés.
+ * Les [LIMIT] plus récents sont gardés, plus les états épinglés et, pour un jeu en plusieurs
+ * disques, le plus récent de chaque disque (reprise depuis la fiche du jeu).
  */
 class StateHistory(val dir: File, private val core: String) {
 
@@ -78,10 +84,20 @@ class StateHistory(val dir: File, private val core: String) {
     fun get(id: String): StateMeta? =
         runCatching { json.decodeFromString(StateMeta.serializer(), metaFile(id).readText()) }.getOrNull()?.takeIf { stateFile(id).isFile }
 
-    /** Ajoute un état (et sa miniature) ; les plus anciens au-delà de la limite sont supprimés. */
-    fun add(bytes: ByteArray, thumbnail: Bitmap?, device: String?, platform: String?, createdAt: Long = System.currentTimeMillis()): StateMeta {
+    /**
+     * Ajoute un état (et sa miniature) ; les plus anciens au-delà de la limite sont supprimés.
+     * [disk] : disque inséré (jeu en plusieurs disques), null sinon.
+     */
+    fun add(
+        bytes: ByteArray,
+        thumbnail: Bitmap?,
+        device: String?,
+        platform: String?,
+        createdAt: Long = System.currentTimeMillis(),
+        disk: Int? = null,
+    ): StateMeta {
         dir.mkdirs()
-        val meta = StateMeta(UUID.randomUUID().toString(), core, createdAt, device, platform)
+        val meta = StateMeta(UUID.randomUUID().toString(), core, createdAt, device, platform, disk = disk)
         writeAtomically(stateFile(meta.id)) { it.writeBytes(bytes) }
         thumbnail?.let { bitmap ->
             runCatching { writeAtomically(thumbnailFile(meta.id)) { f -> f.outputStream().use { scaled(bitmap).compress(Bitmap.CompressFormat.JPEG, 80, it) } } }
@@ -101,8 +117,39 @@ class StateHistory(val dir: File, private val core: String) {
         if (!quick.isFile || quick.length() == 0L) return false
         val date = quick.lastModified()
         val size = quick.length()
-        if (list().any { Math.abs(it.createdAt - date) <= 2000 && stateFile(it.id).length() == size }) return false
+        if (sameAs(quick) != null) return false
         return runCatching { add(quick.readBytes(), null, device, platform, date) }.isSuccess
+    }
+
+    /** État de l'historique identique à l'état de reprise [quick] (même taille, date à 2 s près). */
+    fun sameAs(quick: File): StateMeta? {
+        if (!quick.isFile) return null
+        val date = quick.lastModified()
+        val size = quick.length()
+        return list().firstOrNull { Math.abs(it.createdAt - date) <= 2000 && stateFile(it.id).length() == size }
+    }
+
+    /**
+     * Disque inséré quand l'état [file] (de cet historique, ou état de reprise [quick]) a été fait,
+     * null s'il n'est pas connu.
+     */
+    fun diskOf(file: File, quick: File): Int? =
+        if (file == quick) sameAs(quick)?.disk else get(file.nameWithoutExtension)?.disk
+
+    /**
+     * État à charger pour reprendre la partie et sa date : l'état de reprise [quick] (écrit en
+     * quittant), ou l'état de l'historique le plus récent s'il est plus récent ou que l'état de
+     * reprise manque. [disk] : parmi les états faits sur ce disque (disque inconnu : le premier).
+     */
+    fun resumePoint(quick: File, disk: Int? = null): Pair<File, Long>? {
+        val onDisk = { d: Int? -> disk == null || (d ?: 0) == disk }
+        val q = quick.takeIf { it.isFile && onDisk(sameAs(it)?.disk) }
+        val latest = list().firstOrNull { onDisk(it.disk) }
+        return when {
+            latest != null && (q == null || latest.createdAt > q.lastModified()) -> stateFile(latest.id) to latest.createdAt
+            q != null -> q to q.lastModified()
+            else -> null
+        }
     }
 
     fun setPinned(id: String, pinned: Boolean) {
@@ -122,7 +169,9 @@ class StateHistory(val dir: File, private val core: String) {
     }
 
     private fun prune() {
-        list().filterNot { it.pinned }.drop(LIMIT).forEach { delete(it.id) }
+        // Le plus récent de chaque disque est gardé en plus des [LIMIT] plus récents.
+        val lastOfDisk = list().filter { it.disk != null }.distinctBy { it.disk }.map { it.id }.toSet()
+        list().filterNot { it.pinned || it.id in lastOfDisk }.drop(LIMIT).forEach { delete(it.id) }
     }
 
     private fun save(meta: StateMeta) {
