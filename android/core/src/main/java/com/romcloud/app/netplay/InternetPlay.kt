@@ -335,6 +335,12 @@ class PlayPresence(context: Context, account: Account, name: String, platform: S
     }
 }
 
+/**
+ * Boucle locale IPv4 (127.0.0.1), celle où les cœurs se connectent (PPSSPP, Gambatte) ; sous Android,
+ * InetAddress.getLoopbackAddress() vaut ::1 : un port ouvert dessus refuse les connexions à 127.0.0.1.
+ */
+val LOOPBACK_V4: InetAddress = InetAddress.getByAddress("localhost", byteArrayOf(127, 0, 0, 1))
+
 /** Ports de PPSSPP pour le jeu ad hoc de la PSP : mise en relation et « bureau de poste » (sans décalage). */
 const val PSP_ADHOCCTL_PORT = 27312
 const val PSP_POSTOFFICE_PORT = 27313
@@ -346,8 +352,8 @@ const val PSP_POSTOFFICE_PORT = 27313
  * déjà pris (rien n'est alors ouvert).
  */
 fun CoroutineScope.pspBridges(request: (String) -> RelayRequest?): Job? {
-    val adhocctl = runCatching { ServerSocket(PSP_ADHOCCTL_PORT, 8, InetAddress.getLoopbackAddress()) }.getOrNull() ?: return null
-    val postoffice = runCatching { ServerSocket(PSP_POSTOFFICE_PORT, 16, InetAddress.getLoopbackAddress()) }.getOrNull()
+    val adhocctl = runCatching { ServerSocket(PSP_ADHOCCTL_PORT, 8, LOOPBACK_V4) }.getOrNull() ?: return null
+    val postoffice = runCatching { ServerSocket(PSP_POSTOFFICE_PORT, 16, LOOPBACK_V4) }.getOrNull()
     if (postoffice == null) {
         runCatching { adhocctl.close() }
         return null
@@ -405,7 +411,7 @@ fun CoroutineScope.tunnelHost(request: () -> RelayRequest?, localPort: Int): Job
             delay(3_000)
             continue
         }
-        val local = runCatching { Socket(InetAddress.getLoopbackAddress(), localPort).apply { tcpNoDelay = true } }.getOrNull()
+        val local = runCatching { Socket(LOOPBACK_V4, localPort).apply { tcpNoDelay = true } }.getOrNull()
         if (local == null) runCatching { remote.close() } else Relay.pipe(remote, local)
     }
 }
@@ -415,7 +421,7 @@ fun CoroutineScope.tunnelHost(request: () -> RelayRequest?, localPort: Int): Job
  * chaque connexion est reliée à l'hôte par le relais.
  */
 fun CoroutineScope.tunnelGuest(request: () -> RelayRequest?, localPort: Int): Job = launch(Dispatchers.IO) {
-    val server = runCatching { ServerSocket(localPort, 4, InetAddress.getLoopbackAddress()) }.getOrNull() ?: return@launch
+    val server = runCatching { ServerSocket(localPort, 4, LOOPBACK_V4) }.getOrNull() ?: return@launch
     try {
         while (isActive) {
             val local = runCatching { server.accept().apply { tcpNoDelay = true } }.getOrNull() ?: break
