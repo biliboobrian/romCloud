@@ -1,5 +1,6 @@
 // File de tâches en mémoire, exécutées une par une ; dans une tâche, SCRAPE_CONCURRENCY jeux
 // scrapés en même temps (ScreenScraper limite le nombre de requêtes simultanées selon le compte).
+// Conversions (paquets PS4) : file à part, une à la fois, sans bloquer le scraping.
 import { config, screenscraperEnabled } from './config.js';
 import { QuotaError, scrapeGame } from './scraper/index.js';
 import { screenscraperMaxThreads } from './scraper/screenscraper.js';
@@ -9,7 +10,7 @@ const jobs = [];
 let running = false;
 
 function publicJob(job) {
-  const { items, cancelRequested, ...rest } = job;
+  const { items, cancelRequested, run, cancel, key, ...rest } = job;
   return { ...rest, cancellable: job.status === 'queued' || job.status === 'running' };
 }
 
@@ -22,7 +23,58 @@ export function cancelJob(id) {
   if (!job) return false;
   job.cancelRequested = true;
   if (job.status === 'queued') job.status = 'cancelled';
+  job.cancel?.();
   return true;
+}
+
+let converting = false;
+
+/**
+ * Programme une conversion ([run(job)] : met à jour job.done et job.total, en octets ; job.cancel :
+ * interrompt) ; ignorée si une conversion de même [key] attend ou tourne déjà.
+ */
+export function enqueueConvert({ key, label, systemId, run }) {
+  if (jobs.some((j) => j.key === key && (j.status === 'queued' || j.status === 'running'))) return null;
+  const job = {
+    id: nextId++,
+    type: 'convert',
+    key,
+    label,
+    systemId,
+    status: 'queued',
+    total: 0,
+    done: 0,
+    lastError: null,
+    createdAt: new Date().toISOString(),
+    finishedAt: null,
+    cancelRequested: false,
+    run,
+  };
+  jobs.push(job);
+  if (jobs.length > 100) jobs.splice(0, jobs.length - 100);
+  runConversions();
+  return publicJob(job);
+}
+
+async function runConversions() {
+  if (converting) return;
+  converting = true;
+  try {
+    let job;
+    while ((job = jobs.find((j) => j.type === 'convert' && j.status === 'queued'))) {
+      job.status = 'running';
+      try {
+        await job.run(job);
+        job.status = job.cancelRequested ? 'cancelled' : 'done';
+      } catch (err) {
+        job.status = job.cancelRequested ? 'cancelled' : 'failed';
+        if (!job.cancelRequested) job.lastError = err.message;
+      }
+      job.finishedAt = new Date().toISOString();
+    }
+  } finally {
+    converting = false;
+  }
 }
 
 /** Programme le scraping d'une liste de jeux. */
@@ -91,7 +143,7 @@ async function run() {
   running = true;
   try {
     let job;
-    while ((job = jobs.find((j) => j.status === 'queued'))) {
+    while ((job = jobs.find((j) => j.type === 'scrape' && j.status === 'queued'))) {
       job.status = 'running';
       await runJob(job);
       job.status = job.cancelRequested ? (job.lastError ? 'failed' : 'cancelled') : 'done';

@@ -5,7 +5,7 @@
     "name": "Sony PlayStation 4",
     "uniqueId": "ps4",
     "shortname": "ps4",
-    "description": "Console de salon Sony (2013). Jeux en .zip du dossier du jeu décrypté (CUSAxxxxx, avec eboot.bin), lancés par shadPS4 sous Windows.",
+    "description": "Console de salon Sony (2013). Jeux en .zip du dossier du jeu décrypté (CUSAxxxxx, avec eboot.bin) ou en paquet fpkg (.pkg, converti par le serveur), lancés par shadPS4 sous Windows.",
     "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
     "scraperSourceList": [],
     "boxArtAspectRatioId": 0,

@@ -10,7 +10,9 @@
 //    le titre du DLC ;
 //  - paquets Sony (.pkg : PS Vita, PS3, PSP) : type de contenu lu dans l'en-tête du paquet (jeu, patch,
 //    DLC), à défaut d'après l'identifiant de contenu (« EP0001-PCSB00598_00-DLC0100000000000 »,
-//    « …_patch_01.02 ») ; rattachés au jeu du même numéro de série (PCSB00598).
+//    « …_patch_01.02 ») ; rattachés au jeu du même numéro de série (PCSB00598) ;
+//  - PS4 : catégorie du param.sfo des paquets (jeu, mise à jour, DLC), dossier des .zip convertis
+//    (CUSAxxxxx, CUSAxxxxx-UPDATE) ; rattachés au jeu du même identifiant (CUSAxxxxx).
 // Un rattachement ou un détachement fait dans l'interface web (group_mode = 'manual') n'est plus
 // modifié par le regroupement automatique.
 import fs from 'node:fs';
@@ -18,6 +20,7 @@ import path from 'node:path';
 import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
 import { titleFromFileName } from './library.js';
+import { PS4_PKG_MAGIC, ps4PkgInfo, ps4ZipInfo } from './ps4-pkg.js';
 import { requireSystem, systemDir } from './systems.js';
 
 export const PART_KINDS = ['disc', 'update', 'dlc'];
@@ -42,6 +45,11 @@ const PKG_GAME_DATA = 0x4; // PS3 : données de jeu (DLC ou patch)
 const PKG_GAME_EXEC = 0x5; // PS3 : jeu
 const PKG_VITA_APP = 0x15; // PS Vita : jeu ou patch (drapeau 0x10)
 const PKG_VITA_DLC = 0x16; // PS Vita : DLC
+// Catégories PS4 (param.sfo) des mises à jour et DLC.
+const PS4_KINDS = { gp: 'update', ac: 'dlc' };
+
+/** Informations PS4 (paquet ou .zip converti) : { type: 'ps4', category, titleId } ; null sinon. */
+const ps4Meta = (info) => (info ? { type: 'ps4', category: info.category, titleId: info.titleId } : null);
 
 /** En-tête d'un paquet Sony : { type (type de contenu), patch } ; null si ce n'est pas un .pkg lisible. */
 export function parsePkgHeader(buffer) {
@@ -64,7 +72,10 @@ export function parsePkgHeader(buffer) {
 // En-têtes déjà lus : chemin -> { key (taille et date), header }.
 const pkgCache = new Map();
 
-/** En-tête du paquet [file] (4 premiers Ko), mémorisé tant que sa taille et sa date ne changent pas. */
+/**
+ * En-tête du paquet [file] (4 premiers Ko ; paquet PS4 : son param.sfo), mémorisé tant que sa taille
+ * et sa date ne changent pas.
+ */
 export function pkgHeader(file, size, mtime) {
   const key = `${size}:${mtime}`;
   const cached = pkgCache.get(file);
@@ -74,7 +85,8 @@ export function pkgHeader(file, size, mtime) {
     const fd = fs.openSync(file, 'r');
     try {
       const buffer = Buffer.alloc(4096);
-      header = parsePkgHeader(buffer.subarray(0, fs.readSync(fd, buffer, 0, buffer.length, 0)));
+      const n = fs.readSync(fd, buffer, 0, buffer.length, 0);
+      header = n >= 4 && buffer.readUInt32BE(0) === PS4_PKG_MAGIC ? ps4Meta(ps4PkgInfo(file)) : parsePkgHeader(buffer.subarray(0, n));
     } finally {
       fs.closeSync(fd);
     }
@@ -119,6 +131,10 @@ const normalize = (text) => text.toLowerCase().replace(/[\s._-]+/g, ' ').trim();
  */
 export function partInfo(fileName, pkg = null) {
   const name = base(fileName);
+  if (pkg?.type === 'ps4') {
+    const kind = PS4_KINDS[pkg.category];
+    return kind ? { kind, serial: pkg.titleId, title: null } : null;
+  }
   const wiiu = WIIU_ID_RE.exec(name);
   if (wiiu && wiiu[1] !== '0') {
     return { kind: wiiu[1].toUpperCase() === 'E' ? 'update' : 'dlc', wiiu: wiiu[2].toLowerCase(), code: productCode(name), title: dlcTitle(name) };
@@ -212,7 +228,8 @@ export function autoGroups(files) {
   const gameInfo = games.map((g) => {
     const name = base(g.fileName);
     const wiiu = WIIU_ID_RE.exec(name);
-    return { id: g.id, wiiu: wiiu && wiiu[1] === '0' ? wiiu[2].toLowerCase() : null, serial: serialOf(name), code: productCode(name), title: normalize(titleFromFileName(g.fileName)) };
+    const serial = g.pkg?.titleId || serialOf(name);
+    return { id: g.id, wiiu: wiiu && wiiu[1] === '0' ? wiiu[2].toLowerCase() : null, serial, code: productCode(name), title: normalize(titleFromFileName(g.fileName)) };
   });
   for (const f of auto) {
     const info = infos.get(f.id);
@@ -230,9 +247,33 @@ export function autoGroups(files) {
   return result;
 }
 
+// Dossiers PS4 des .zip déjà lus : chemin -> { key (taille et date), info }.
+const zipCache = new Map();
+
+/** Dossier PS4 du .zip [file] (CUSAxxxxx ou CUSAxxxxx-UPDATE), mémorisé comme les en-têtes des paquets. */
+function ps4Zip(file, size, mtime) {
+  const key = `${size}:${mtime}`;
+  const cached = zipCache.get(file);
+  if (cached?.key === key) return cached.info;
+  const info = ps4Meta(ps4ZipInfo(file));
+  zipCache.set(file, { key, info });
+  return info;
+}
+
+const isPs4 = (system) => [system.id, system.shortname].some((k) => String(k || '').toLowerCase() === 'ps4');
+
+/** Informations de regroupement lues dans le fichier : en-tête d'un paquet, dossier d'un .zip PS4. */
+function fileMeta(system, file, size, mtime) {
+  const ext = extension(file);
+  if (ext === 'pkg') return pkgHeader(file, size, mtime);
+  if (ext === 'zip' && isPs4(system)) return ps4Zip(file, size, mtime);
+  return null;
+}
+
 /** Applique le regroupement automatique aux fichiers d'un système. */
 export function groupSystem(systemId) {
-  const dir = systemDir(requireSystem(systemId));
+  const system = requireSystem(systemId);
+  const dir = systemDir(system);
   const rows = db.prepare('SELECT id, file_name, size, mtime, parent_id, group_mode FROM games WHERE system_id = ?').all(systemId);
   const groups = autoGroups(
     rows.map((r) => ({
@@ -240,7 +281,7 @@ export function groupSystem(systemId) {
       fileName: r.file_name,
       manual: r.group_mode === 'manual',
       manualParentId: r.parent_id,
-      pkg: extension(r.file_name) === 'pkg' ? pkgHeader(path.join(dir, r.file_name), r.size, r.mtime) : null,
+      pkg: fileMeta(system, path.join(dir, r.file_name), r.size, r.mtime),
     })),
   );
   const current = new Map(rows.map((r) => [r.id, r]));

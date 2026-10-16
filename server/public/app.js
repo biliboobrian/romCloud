@@ -636,7 +636,8 @@ function uploadFiles(files) {
     if (xhr.status >= 300) return toast(data.error || t('upload.failed', { status: xhr.status }), 'error');
     const rejected = data.rejected.length ? t('upload.rejected', { n: data.rejected.length }) : '';
     toast(t('upload.done', { n: data.saved.length }) + rejected, data.rejected.length ? 'error' : '');
-    if (data.job) refreshJobs();
+    // Scraping des nouveaux jeux, conversion des paquets PS4.
+    refreshJobs();
     await loadSystems();
   };
   xhr.onerror = () => {
@@ -1363,8 +1364,8 @@ function renderJobs(jobs) {
     el.className = 'job';
     el.innerHTML = `
       <div class="job-head"><strong>${escapeHtml(j.label)}</strong><span class="muted">${escapeHtml(t(`jobs.${j.status}`))}</span></div>
-      <progress max="${j.total}" value="${j.done}"></progress>
-      <div class="muted">${escapeHtml(t('jobs.progress', j))}</div>
+      <progress max="${j.total || 1}" value="${j.done}"></progress>
+      <div class="muted">${escapeHtml(j.type === 'convert' ? t('jobs.convertProgress', { percent: j.total ? Math.floor((j.done / j.total) * 100) : 0 }) : t('jobs.progress', j))}</div>
       ${j.lastError ? `<div class="err">${escapeHtml(j.lastError)}</div>` : ''}`;
     if (j.cancellable) {
       const btn = document.createElement('button');
@@ -1410,6 +1411,7 @@ function bindEvents() {
   $('#scanAllBtn').onclick = () => guard(async () => {
     await api('/scan', { method: 'POST' });
     toast(t('rescan.allDone'));
+    refreshJobs();
     await loadSystems();
   });
 
@@ -1444,6 +1446,7 @@ function bindEvents() {
   $('#scanSysBtn').onclick = () => guard(async () => {
     const r = await api(`/systems/${encodeURIComponent(state.current.id)}/scan`, { method: 'POST' });
     toast(t('rescan.done', { added: r.added.length, updated: r.updated, removed: r.removed }));
+    refreshJobs();
     await loadSystems();
   });
   $('#scrapeSysBtn').onclick = scrapeSystem;
