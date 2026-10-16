@@ -2303,10 +2303,21 @@
     });
     $('#deleteBtn')?.addEventListener('click', () => modal({
       title: t('detail.deleteTitle'),
-      body: `<p>${esc(t('detail.deleteText'))}</p>`,
+      body: `<p>${esc(t(game.folder && game.uninstallExe ? 'detail.deleteUninstallText' : 'detail.deleteText', { exe: game.uninstallExe }))}</p>`,
       buttons: [
         { label: t('app.cancel'), kind: 'ghost' },
-        { label: t('detail.delete'), kind: 'danger', onClick: async () => { await call(rc.library.remove, system, game); await refreshDownloaded(); loadUsage(); renderGame(); } },
+        {
+          label: t('detail.delete'),
+          kind: 'danger',
+          onClick: async () => {
+            // Jeu PC avec un désinstalleur : désinstallation à terminer dans sa fenêtre.
+            const removed = await call(rc.library.remove, system, game);
+            if (removed?.uninstalling) toast(t('detail.uninstalling', { title: game.title }));
+            await refreshDownloaded();
+            loadUsage();
+            renderGame();
+          },
+        },
       ],
     }));
     if ($('#emuSelect')) $('#emuSelect').onchange = async (e) => {
@@ -2595,6 +2606,12 @@
       }
       if (S.route.name === 'games') renderGamesBody();
       else if (S.route.name === 'systems' && S.search.query) renderSystemsBody();
+    } else if (event?.type === 'uninstalled') {
+      // Jeu PC désinstallé : dossier effacé (ou laissé si la désinstallation n'a pas abouti).
+      await refreshDownloaded();
+      loadUsage();
+      toast(t(event.complete ? 'detail.uninstalled' : 'detail.uninstallIncomplete', { title: event.title }), event.complete ? {} : { type: 'error' });
+      if (S.route.name === 'game' && S.route.gameId === gameId) renderGame();
     } else if (event?.type === 'failed') {
       S.autoLaunch.delete(gameId);
       toast(t('download.failed', { title: event.title, error: errorText(event.error) }), { type: 'error' });

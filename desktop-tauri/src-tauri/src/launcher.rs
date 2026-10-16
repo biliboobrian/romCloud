@@ -183,6 +183,45 @@ fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()>
     Ok(())
 }
 
+/**
+ * Jeu en dossier supprimé du PC par son désinstalleur (choisi sur le serveur) : marque de fin de
+ * téléchargement retirée (le jeu n'est plus « sur ce PC »), désinstalleur lancé depuis son dossier
+ * (droits d'administrateur demandés si besoin), puis ce qui reste du dossier effacé quand le
+ * désinstalleur a disparu (Inno Setup, NSIS : copiés ailleurs, ils s'effacent en dernier). Au bout
+ * d'une heure sans cela (désinstallation annulée), le dossier est laissé. Fin annoncée par
+ * « downloads:update » (événement « uninstalled »). Faux : pas de désinstalleur sur le PC.
+ */
+pub fn uninstall(system: &Value, game: &Value) -> Result<bool> {
+    let Some(exe) = library::folder_uninstaller(system, game).filter(|p| p.is_file()) else { return Ok(false) };
+    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    let _ = std::fs::remove_file(library::folder_marker(system, game));
+    match std::process::Command::new(&exe).current_dir(&dir).spawn() {
+        Ok(child) => paths::allow_foreground(Some(child.id())),
+        Err(e) if e.raw_os_error() == Some(ERROR_ELEVATION_REQUIRED) => {
+            paths::run_elevated(&exe.to_string_lossy(), &[], &dir.to_string_lossy())
+                .map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e })))?;
+        }
+        Err(e) => return Err(AppError::new("errors.launchFailed", json!({ "detail": e.to_string() }))),
+    }
+    let folder = library::file_for(system, game);
+    let (game_id, title) = (game["id"].clone(), s(game, "title").to_string());
+    tauri::async_runtime::spawn(async move {
+        let start = std::time::Instant::now();
+        while exe.exists() && start.elapsed() < std::time::Duration::from_secs(3600) {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        let complete = !exe.exists();
+        if complete {
+            let _ = std::fs::remove_dir_all(&folder);
+        }
+        crate::events::emit(
+            "downloads:update",
+            json!({ "gameId": game_id, "state": null, "event": { "type": "uninstalled", "gameId": game_id, "title": title, "complete": complete } }),
+        );
+    });
+    Ok(true)
+}
+
 /// Ouvre l'émulateur seul (sans jeu).
 pub fn launch_emulator(id: &str) -> Result<()> {
     let emu = catalog::by_id(id).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": id })))?;
