@@ -67,6 +67,14 @@ struct Session {
 
   bool supportsNoGame = false;
 
+  /**
+   * Run-ahead : image d'avance non affichée ([hideVideo]) ou son écarté ([muteAudio]) ; état
+   * enregistré ou rechargé pour le run-ahead (même instance du cœur, [runAheadState]).
+   */
+  bool hideVideo = false;
+  bool muteAudio = false;
+  bool runAheadState = false;
+
   /** Message du cœur (SET_MESSAGE) à afficher brièvement par-dessus le jeu. */
   std::string message;
   unsigned messageFrames = 0;

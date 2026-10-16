@@ -134,6 +134,11 @@ public:
     void handleRumbleUpdates(const std::function<void(int, float, float)> &handler);
 
     void setFrameSpeed(unsigned int speed);
+    /**
+     * RomCloud : run-ahead, [frames] images calculées en avance à chaque image (0 : sans) ; la
+     * dernière est affichée puis l'état réel est rétabli : réaction aux touches plus rapide.
+     */
+    void setRunAhead(unsigned int frames);
 
     void setAudioEnabled(bool enabled);
 
@@ -151,6 +156,8 @@ public:
 
 private:
     void updateAudioSampleRateMultiplier();
+    /** RomCloud : une image du jeu, avec le run-ahead s'il est demandé. */
+    void runFrame();
     float findDefaultAspectRatio(const retro_system_av_info &system_av_info);
     void afterGameLoad();
 
@@ -164,6 +171,12 @@ protected:
 
 private:
     unsigned int frameSpeed = 1;
+    // RomCloud : run-ahead (images d'avance), état réel gardé entre deux, image ou son écartés
+    // pendant les images calculées en avance.
+    unsigned int runAhead = 0;
+    std::vector<uint8_t> runAheadState;
+    bool hideVideo = false;
+    bool muteAudio = false;
     bool audioEnabled = true;
     bool preferLowLatencyAudio = false;
     bool rumbleEnabled = false;

@@ -586,6 +586,14 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setFrameSp
     LibretroDroid::getInstance().setFrameSpeed(speed);
 }
 
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setRunAhead(
+    JNIEnv* env,
+    jclass obj,
+    jint frames
+) {
+    LibretroDroid::getInstance().setRunAhead(frames > 0 ? frames : 0);
+}
+
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setAudioEnabled(
     JNIEnv* env,
     jclass obj,

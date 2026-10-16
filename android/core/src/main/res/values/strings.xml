@@ -356,6 +356,18 @@
     <string name="libretro_aspect_16_9" translatable="false">16:9</string>
     <string name="libretro_aspect_stretch">stretched</string>
     <string name="libretro_aspect_next_launch">The new aspect ratio will apply the next time the game is started.</string>
+    <string name="libretro_menu_runahead">Run-ahead: %1$s</string>
+    <string name="libretro_runahead_title">Run-ahead (faster response to the buttons)</string>
+    <string name="libretro_runahead_off">off</string>
+    <plurals name="libretro_runahead_frames">
+        <item quantity="one">%1$d frame</item>
+        <item quantity="other">%1$d frames</item>
+    </plurals>
+    <string name="libretro_runahead_off_hint">Normal play.</string>
+    <string name="libretro_runahead_1_hint">Removes the delay built into most games. Needs a faster device.</string>
+    <string name="libretro_runahead_2_hint">For games with more delay (some fighting games).</string>
+    <string name="libretro_runahead_3_hint">Rarely useful: too many frames make the game skip ahead. Needs a very fast device.</string>
+    <string name="libretro_runahead_unavailable">Run-ahead is turned off while the game is shared (multiplayer or TV).</string>
     <string name="libretro_image_title">Image</string>
     <string name="libretro_image_shader">Shader</string>
     <string name="libretro_image_settings">Settings: %1$s</string>

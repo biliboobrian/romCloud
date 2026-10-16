@@ -83,6 +83,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -262,6 +263,10 @@ class LibretroActivity : ComponentActivity() {
     /** Format de l'image du système, changé depuis le menu ; [aspectPicker] : liste affichée. */
     private var aspectRatio by mutableStateOf(AspectRatio.ORIGINAL)
     private var aspectPicker by mutableStateOf(false)
+    private val runAheadStore by lazy { RunAheadStore(this) }
+    /** Run-ahead du système (images d'avance), changé depuis le menu ; [runAheadPicker] : liste affichée. */
+    private var runAhead by mutableStateOf(0)
+    private var runAheadPicker by mutableStateOf(false)
     /** Cœur chargé par l'adaptateur natif ([CoreShim]) : format d'image modifiable en cours de partie. */
     private var throughShim = false
     /** Disposition de la manette tactile propre à la console. */
@@ -338,6 +343,7 @@ class LibretroActivity : ComponentActivity() {
                 playersOrder != null -> playersOrder = null
                 imageOpen -> closeImage()
                 aspectPicker -> aspectPicker = false
+                runAheadPicker -> runAheadPicker = false
                 statesOpen -> statesOpen = false
                 editing != null -> editing = null
                 options != null -> options = null
@@ -442,6 +448,7 @@ class LibretroActivity : ComponentActivity() {
             sramFile.takeIf { it.isFile }?.readBytes()
         }
         aspectRatio = aspectRatios.load(systemId)
+        runAhead = runAheadStore.load(systemId)
         val data = GLRetroViewData(this).apply {
             coreFilePath = corePath(coreFile)
             gameFilePath = game.absolutePath
@@ -477,6 +484,7 @@ class LibretroActivity : ComponentActivity() {
                 if (it is GLRetroView.GLRetroEvents.FrameRendered && !gameReady) {
                     gameReady = true
                     startPlayClock()
+                    applyRunAhead()
                     selectControllers(view)
                     // Invité : l'état de l'hôte remplace la partie reprise.
                     if (netplayLaunch?.host != false) {
@@ -575,6 +583,7 @@ class LibretroActivity : ComponentActivity() {
         mappingSession = null
         imageOpen = false
         aspectPicker = false
+        runAheadPicker = false
         statesOpen = false
         pausedFrame = null
         Netplay.setPaused(false)
@@ -643,6 +652,7 @@ class LibretroActivity : ComponentActivity() {
                 is StreamSender.Event.Stopped -> {
                     streamSender = null
                     streamingTo = null
+                    applyRunAhead()
                     event.error?.let { account.reportError("stream:$core", it, event.details) }
                     if (!isFinishing) {
                         if (event.error != null) toastMillis = ERROR_TOAST_MS
@@ -651,6 +661,7 @@ class LibretroActivity : ComponentActivity() {
                 }
             }
         }.also { it.start() }
+        applyRunAhead()
     }
 
     // ---- Jeu à plusieurs en réseau local (touches échangées par l'adaptateur natif) ----
@@ -802,6 +813,7 @@ class LibretroActivity : ComponentActivity() {
         streamSender?.stop()
         streamSender = null
         streamingTo = null
+        applyRunAhead()
     }
 
     /** Appelé seulement émulation en pause : les appels se font hors du thread d'émulation. */
@@ -1215,6 +1227,8 @@ class LibretroActivity : ComponentActivity() {
                         ImageScreen()
                     } else if (menuOpen && aspectPicker) {
                         AspectPicker()
+                    } else if (menuOpen && runAheadPicker) {
+                        RunAheadPicker()
                     } else if (menuOpen && statesOpen) {
                         StateHistoryList(
                             controller = historyController,
@@ -1353,6 +1367,8 @@ class LibretroActivity : ComponentActivity() {
                     }
                     add(stringResource(R.string.libretro_menu_filter, videoFilter.title) to ::openImage)
                     add(stringResource(R.string.libretro_menu_aspect, stringResource(aspectRatio.label)) to { aspectPicker = true })
+                    // Partie à plusieurs ou liaison : images rejouées par l'adaptateur, sans run-ahead.
+                    if (netplayLaunch == null) add(stringResource(R.string.libretro_menu_runahead, runAheadLabel(runAhead)) to { runAheadPicker = true })
                 }
                 if (!isTv) {
                     add(
@@ -1845,6 +1861,45 @@ class LibretroActivity : ComponentActivity() {
             if (throughShim) applyAspectRatio() else if (changed) toast = getString(R.string.libretro_aspect_next_launch)
             closeMenu()
         }
+    }
+
+    /** Choix du run-ahead, mémorisé pour le système et appliqué aussitôt. */
+    @Composable
+    private fun RunAheadPicker() {
+        ChoicePicker(
+            stringResource(R.string.libretro_runahead_title),
+            RunAhead.CHOICES,
+            runAhead,
+            label = { runAheadLabel(it).replaceFirstChar { c -> c.uppercase() } },
+            description = {
+                stringResource(
+                    when (it) {
+                        0 -> R.string.libretro_runahead_off_hint
+                        1 -> R.string.libretro_runahead_1_hint
+                        2 -> R.string.libretro_runahead_2_hint
+                        else -> R.string.libretro_runahead_3_hint
+                    },
+                )
+            },
+        ) { frames ->
+            runAhead = frames
+            runAheadStore.save(systemId, frames)
+            applyRunAhead()
+            if (frames > 0 && streamSender != null) toast = getString(R.string.libretro_runahead_unavailable)
+            closeMenu()
+        }
+    }
+
+    @Composable
+    private fun runAheadLabel(frames: Int): String =
+        if (frames == 0) stringResource(R.string.libretro_runahead_off) else pluralStringResource(R.plurals.libretro_runahead_frames, frames, frames)
+
+    /**
+     * Run-ahead envoyé à LibretroDroid : coupé en partie à plusieurs (images rejouées par l'adaptateur)
+     * et en diffusion sur une TV (son copié par l'adaptateur, images d'avance comprises).
+     */
+    private fun applyRunAhead() {
+        retroView?.runAhead = if (netplayLaunch != null || streamSender != null) 0 else runAhead
     }
 
     /** Format d'image envoyé à l'adaptateur (« étiré » : proportions de la vue du jeu). */

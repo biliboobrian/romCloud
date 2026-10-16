@@ -357,7 +357,9 @@ bool Environment::handle_callback_environment(unsigned cmd, void *data) {
 
         case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE:
             LOGD("Called RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE");
-            return false;
+            if (audioVideoEnable < 0) return false;
+            *static_cast<int*>(data) = audioVideoEnable;
+            return true;
 
         case RETRO_ENVIRONMENT_GET_LANGUAGE:
             LOGD("Called RETRO_ENVIRONMENT_GET_LANGUAGE");

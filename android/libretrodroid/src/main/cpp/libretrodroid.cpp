@@ -499,7 +499,7 @@ void LibretroDroid::step() {
     performanceHint.begin(contentFrameRate);
 
     for (size_t i = 0; i < frames * frameSpeed; i++)
-        core->retro_run();
+        runFrame();
 
     if (video && !video->rendersInVideoCallback()) {
         video->renderFrame();
@@ -563,6 +563,47 @@ void LibretroDroid::setFrameSpeed(unsigned int speed) {
     if (speed > 0) updateAudioSampleRateMultiplier();  // RomCloud : 0 (figée) laisse le son tel quel
 }
 
+void LibretroDroid::setRunAhead(unsigned int frames) {
+    std::lock_guard<std::mutex> lock(coreLock);
+    runAhead = std::min(frames, 4u);
+    if (runAhead == 0) runAheadState.clear();
+}
+
+void LibretroDroid::runFrame() {
+    size_t size = runAhead > 0 ? core->retro_serialize_size() : 0;
+    if (size == 0) {
+        core->retro_run();
+        return;
+    }
+    auto &environment = Environment::getInstance();
+    // Image réelle : son gardé, image écartée (remplacée par celle d'avance) ; états rapides
+    // (même instance du cœur, non portables) : bit 4 de GET_AUDIO_VIDEO_ENABLE.
+    hideVideo = true;
+    environment.setAudioVideoEnable(2 | 4);
+    core->retro_run();
+    runAheadState.resize(size);
+    bool saved = core->retro_serialize(runAheadState.data(), size);
+    if (saved) {
+        // Images d'avance avec les mêmes touches, muettes, seule la dernière affichée.
+        muteAudio = true;
+        for (unsigned int i = 1; i <= runAhead; i++) {
+            hideVideo = i < runAhead;
+            environment.setAudioVideoEnable((hideVideo ? 0 : 1) | 4);
+            core->retro_run();
+        }
+        muteAudio = false;
+    }
+    hideVideo = false;
+    saved = saved && core->retro_unserialize(runAheadState.data(), size);
+    environment.setAudioVideoEnable(-1);
+    if (!saved) {
+        // Cœur sans états fiables : run-ahead coupé, jeu normal.
+        LOGE("Run-ahead unavailable: state could not be saved or restored");
+        runAhead = 0;
+        runAheadState.clear();
+    }
+}
+
 void LibretroDroid::setAudioEnabled(bool enabled) {
     audioEnabled = enabled;
 }
@@ -580,7 +621,7 @@ void LibretroDroid::handleVideoRefresh(
     unsigned int height,
     size_t pitch
 ) {
-    if (video) {
+    if (video && !hideVideo) {
         video->onNewFrame(data, width, height, pitch);
 
         if (video->rendersInVideoCallback()) {
@@ -590,7 +631,7 @@ void LibretroDroid::handleVideoRefresh(
 }
 
 size_t LibretroDroid::handleAudioCallback(const int16_t *data, size_t frames) {
-    if (audio && audioEnabled) {
+    if (audio && audioEnabled && !muteAudio) {
         audio->write(data, frames);
     }
     return frames;

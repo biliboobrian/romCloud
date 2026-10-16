@@ -347,6 +347,18 @@
     <string name="libretro_aspect_original">d’origine</string>
     <string name="libretro_aspect_stretch">étiré</string>
     <string name="libretro_aspect_next_launch">Le nouveau format sera appliqué au prochain lancement du jeu.</string>
+    <string name="libretro_menu_runahead">Run-ahead : %1$s</string>
+    <string name="libretro_runahead_title">Run-ahead (réaction plus rapide aux touches)</string>
+    <string name="libretro_runahead_off">désactivé</string>
+    <plurals name="libretro_runahead_frames">
+        <item quantity="one">%1$d image</item>
+        <item quantity="other">%1$d images</item>
+    </plurals>
+    <string name="libretro_runahead_off_hint">Jeu normal.</string>
+    <string name="libretro_runahead_1_hint">Supprime le retard propre à la plupart des jeux. Demande un appareil plus puissant.</string>
+    <string name="libretro_runahead_2_hint">Pour les jeux qui ont plus de retard (certains jeux de combat).</string>
+    <string name="libretro_runahead_3_hint">Rarement utile : trop d’images font sauter le jeu en avant. Demande un appareil très puissant.</string>
+    <string name="libretro_runahead_unavailable">Le run-ahead est coupé pendant une partie partagée (à plusieurs ou sur une TV).</string>
     <string name="libretro_image_title">Image</string>
     <string name="libretro_image_shader">Shader</string>
     <string name="libretro_image_settings">Réglages : %1$s</string>

@@ -208,6 +208,12 @@ class Player {
     players_ = std::make_unique<PlayerOrder>(input_, [this](const char* key) { return menu_.tr(key); });
   }
   void runFrame();
+  /**
+   * Image du jeu avec le run-ahead choisi : image réelle (son gardé, image écartée), état gardé,
+   * [runAhead_] images d'avance avec les mêmes touches (muettes, seule la dernière affichée), puis
+   * état réel rétabli. Sans run-ahead (ou en partie à plusieurs) : runFrame.
+   */
+  void runFrameAhead();
   void present();
   void shutdown();
   void startNetplay();
@@ -242,6 +248,8 @@ class Player {
   std::string overlayKey_;  // contenu de la surimpression déjà envoyée (vide : à redessiner)
   Uint64 noticeUntil_ = 0;
   double nextFrame_ = 0;
+  int runAhead_ = 0;  // images d'avance (run-ahead), mémorisé pour le système
+  std::vector<uint8_t> runAheadState_;
 };
 
 /**
@@ -249,6 +257,9 @@ class Player {
  * Yabause (Saturn) n'a plus de son si l'état est chargé avant le démarrage de son processeur de son
  * (environ 1,4 s après le lancement) : 3 s d'émulation, plus rapides que le temps réel.
  */
+/** Run-ahead : images d'avance au plus (choix du menu). */
+static constexpr int kMaxRunAhead = 3;
+
 static int resumeWarmupFrames(const std::string& core) {
   return core == "yabause" ? 180 : 1;
 }
@@ -358,6 +369,7 @@ MenuState Player::menuState() const {
   s.aspect = (int)video_.aspect();
   s.fullscreen = video_.fullscreen();
   s.volume = (int)std::lround(audio_.volume() * 100);
+  s.runAhead = runAhead_;
   if (g.hasDiskControl && g.disk.get_num_images) {
     s.diskCount = (int)g.disk.get_num_images();
     s.diskIndex = (int)g.disk.get_image_index();
@@ -457,6 +469,17 @@ void Player::onMenuAction(MenuAction action) {
       video_.setAspect(nextAspect(video_.aspect()));
       g.options.setSetting("romcloud_aspect", aspectId(video_.aspect()));
       break;
+    case MenuAction::NextRunAhead: {
+      // Désactivé, puis 1 à 3 images d'avance ; cœur sans états : impossible.
+      const int next = (runAhead_ + 1) % (kMaxRunAhead + 1);
+      if (next > 0 && !g.api.serialize_size()) {
+        toast(menu_.tr("runahead_unsupported"));
+        break;
+      }
+      runAhead_ = next;
+      g.options.setSetting("romcloud_runahead", std::to_string(runAhead_));
+      break;
+    }
     case MenuAction::ToggleFullscreen: video_.toggleFullscreen(); break;
     case MenuAction::DiskNext: changeDisk(1); break;
     case MenuAction::DiskPrev: changeDisk(-1); break;
@@ -602,6 +625,40 @@ void Player::runFrame() {
   if (g.avChanged) {
     g.avChanged = false;
     if (std::fabs(g.av.timing.sample_rate - audio_.coreRate()) > 1.0) audio_.open(g.av.timing.sample_rate);
+  }
+}
+
+void Player::runFrameAhead() {
+  const bool together = netplay_.enabled() || !netplay_.linked().empty();
+  const size_t size = runAhead_ > 0 && !together ? g.api.serialize_size() : 0;
+  if (!size) {
+    runFrame();
+    return;
+  }
+  g.hideVideo = true;
+  runFrame();
+  runAheadState_.resize(size);
+  g.runAheadState = true;
+  bool saved = g.api.serialize(runAheadState_.data(), size);
+  g.runAheadState = false;
+  if (saved) {
+    g.muteAudio = true;
+    for (int i = 1; i <= runAhead_; i++) {
+      g.hideVideo = i < runAhead_;
+      runFrame();
+    }
+    g.muteAudio = false;
+  }
+  g.hideVideo = false;
+  g.runAheadState = true;
+  saved = saved && g.api.unserialize(runAheadState_.data(), size);
+  g.runAheadState = false;
+  if (!saved) {
+    // Cœur sans états fiables : run-ahead coupé pour la partie (réglage gardé).
+    logf("Run-ahead coupé : état du cœur non enregistré ou non rechargé");
+    toast(menu_.tr("runahead_failed"));
+    runAhead_ = 0;
+    runAheadState_.clear();
   }
 }
 
@@ -756,6 +813,8 @@ int Player::run() {
   }
   video_.setFilter(filterFromId(filter));
   video_.setAspect(aspectFromId(g.options.setting("romcloud_aspect", "core")));
+  runAhead_ = std::clamp(atoi(g.options.setting("romcloud_runahead", "0").c_str()), 0, kMaxRunAhead);
+  if (runAhead_) logf("Run-ahead : %d image(s) d'avance", runAhead_);
   loadFilterParams();
   const int testFrames = args_.testFrames.empty() ? 0 : std::max(1, atoi(args_.testFrames.c_str()));
   // Essais : fenêtre cachée (sauf --test-window), y compris pour la boucle réelle (--test-seconds).
@@ -792,7 +851,7 @@ int Player::run() {
   if (testFrames) {
     audio_.resetPeak();
     for (int i = 0; i < testFrames; i++) {
-      runFrame();
+      runFrameAhead();
       if (args_.testWindow) {
         SDL_PumpEvents();
         present();
@@ -915,7 +974,7 @@ int Player::run() {
         continue;
       }
     }
-    runFrame();
+    runFrameAhead();
     netplay_.finishFrame();
     present();
     frames++;

@@ -62,6 +62,11 @@ class GLRetroView(
         LibretroDroid.setFrameSpeed(value)
     }
 
+    /** RomCloud : images calculées en avance à chaque image (run-ahead), 0 : sans. */
+    var runAhead: Int by Delegates.observable(0) { _, _, value ->
+        LibretroDroid.setRunAhead(value)
+    }
+
     var shader: ShaderConfig by Delegates.observable(data.shader) { _, _, value ->
         LibretroDroid.setShaderConfig(buildShader(value))
     }
