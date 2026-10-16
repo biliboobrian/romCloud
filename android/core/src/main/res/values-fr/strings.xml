@@ -466,9 +466,7 @@
     <string name="storage_free_of">%1$s libres sur %2$s</string>
     <string name="disc_resume">Partie à reprendre sur ce disque</string>
     <string name="err_no_exe">Aucun exécutable choisi pour %1$s : choisissez-le sur le serveur, dans la fiche du jeu.</string>
-    <string name="winlator_missing">Les jeux PC se lancent avec Winlator Cmod (Wine / Proton) : installez-le depuis github.com/coffincolors/winlator.</string>
     <string name="winlator_private_dir">Winlator ne peut pas lire le dossier privé de RomCloud : choisissez dans les réglages un dossier des ROMs hors de Android/data (par exemple dans Téléchargements).</string>
-    <string name="winlator_official">La version officielle de Winlator ne peut pas être lancée par une autre application : installez Winlator Cmod (github.com/coffincolors/winlator).</string>
     <string name="winlator_drive_hint">Dans Winlator, ajoutez au premier conteneur le lecteur %1$s: vers %2$s (Conteneur > Modifier > Lecteurs), ou placez le dossier des ROMs dans Téléchargements.</string>
     <string name="pc_exe">Exécutable (jeu PC, lancé avec Winlator)</string>
     <string name="parts_disc">Disque %1$s</string>

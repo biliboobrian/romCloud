@@ -21,8 +21,11 @@ import java.net.URI
  */
 class EmulatorReleases(private val api: ApiClient) {
 
-    /** Release d'un émulateur : [api] renvoie la dernière version, [asset] désigne l'APK du paquet. */
-    data class Source(val name: String, val api: String, val asset: Regex) {
+    /**
+     * Release d'un émulateur : [api] renvoie la dernière version, [asset] désigne l'APK du paquet ;
+     * [playStore] : faux pour une application absente du Google Play Store (Winlator).
+     */
+    data class Source(val name: String, val api: String, val asset: Regex, val playStore: Boolean = true) {
         /** Site du gestionnaire de versions (« github.com », « git.eden-emu.dev »). */
         val host: String get() = URI(api).host.removePrefix("api.")
     }
@@ -46,7 +49,7 @@ class EmulatorReleases(private val api: ApiClient) {
         val url = asset["browser_download_url"]?.jsonPrimitive?.content ?: return null
         // Eden : fichiers hébergés hors de Forgejo, taille 0 dans la Release -> en-tête Content-Length.
         val size = asset["size"]?.jsonPrimitive?.longOrNull?.takeIf { it > 0 } ?: contentLength(url) ?: return null
-        val version = release["tag_name"]?.jsonPrimitive?.content?.removePrefix("v")
+        val version = versionOf(release["tag_name"]?.jsonPrimitive?.content)
         return EmulatorApk(
             id = 0,
             packageName = packageName,
@@ -69,12 +72,17 @@ class EmulatorReleases(private val api: ApiClient) {
         private const val TAG = "EmulatorReleases"
 
         private fun github(repo: String) = "https://api.github.com/repos/$repo/releases/latest"
+
+        /** Version d'après le tag de la Release : « v2.3 » -> « 2.3 », « cmod_v13.1 » (Winlator Cmod) -> « 13.1 ». */
+        internal fun versionOf(tag: String?): String? = tag?.replace(Regex("^(?:[A-Za-z]+_)?v(?=\\d)"), "")
         private const val EDEN = "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest"
         private val AZAHAR = github("azahar-emu/azahar")
 
         /** Paquets des modèles d'émulateurs Daijishou -> Release qui publie leur APK. */
         val SOURCES: Map<String, Source> = mapOf(
             "dev.eden.eden_emulator" to Source("Eden", EDEN, Regex("""Eden-Android-.*-standard\.apk""")),
+            // Jeux PC (Wine / Proton) : Winlator Cmod, seulement sur GitHub.
+            "com.winlator.cmod" to Source("Winlator Cmod", github("coffincolors/winlator"), Regex("""Winlator-Cmod-.*\.apk"""), playStore = false),
             "dev.legacy.eden_emulator" to Source("Eden (Legacy)", EDEN, Regex("""Eden-Android-.*-legacy\.apk""")),
             "com.miHoYo.Yuanshen" to Source("Eden (Optimized)", EDEN, Regex("""Eden-Android-.*-optimized\.apk""")),
             "org.azahar_emu.azahar" to Source("Azahar", AZAHAR, Regex("""azahar-android-vanilla-.*\.apk""")),
