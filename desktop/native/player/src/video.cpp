@@ -269,7 +269,8 @@ bool Video::createContext(std::string& error) {
     return false;
   }
   SDL_GL_MakeCurrent(window_, context_);
-  SDL_GL_SetSwapInterval(0);  // rythme donné par l'audio
+  SDL_GL_SetSwapInterval(0);  // synchro verticale choisie par la boucle (setSwapInterval)
+  swapInterval_ = 0;
   logf("OpenGL : %s — %s", (const char*)glGetString(GL_VERSION), (const char*)glGetString(GL_RENDERER));
   return true;
 }
@@ -370,6 +371,32 @@ SDL_Surface* Video::captureFrame() {
   for (size_t i = 3; i < pixels.size(); i += 4) pixels[i] = 255;
   for (int y = 0; y < h; y++) memcpy((uint8_t*)surface->pixels + (size_t)y * surface->pitch, &pixels[(size_t)y * w * 4], (size_t)w * 4);
   return surface;
+}
+
+double Video::refreshRate() const {
+  if (!window_) return 0;
+  const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window_));
+  return mode ? mode->refresh_rate : 0;
+}
+
+int Video::syncInterval(double fps) const {
+  const double refresh = refreshRate();
+  if (vsyncFailed_ || refresh <= 0 || fps <= 0) return 0;
+  const int interval = (int)std::lround(refresh / fps);
+  // Écart rattrapé par la vitesse du son (1 % au plus : inaudible).
+  if (interval < 1 || interval > 4 || std::fabs(refresh / interval - fps) / fps > 0.01) return 0;
+  return interval;
+}
+
+void Video::setSwapInterval(int interval) {
+  if (interval == swapInterval_ || !context_ || (interval && vsyncFailed_)) return;
+  if (SDL_GL_SetSwapInterval(interval)) {
+    swapInterval_ = interval;
+    logf("Synchro verticale : écran %.2f Hz, échange des tampons tous les %d rafraîchissements", refreshRate(), interval);
+  } else {
+    vsyncFailed_ = true;
+    logf("Synchro verticale impossible : %s", SDL_GetError());
+  }
 }
 
 void Video::toggleFullscreen() {

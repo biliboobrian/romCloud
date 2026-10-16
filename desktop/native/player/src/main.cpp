@@ -857,12 +857,37 @@ int Player::run() {
     }
     if (menu_.isOpen()) {
       present();
-      SDL_Delay(16);
+      if (!video_.swapInterval()) SDL_Delay(16);
       continue;
     }
     double fps = g.av.timing.fps > 0 ? g.av.timing.fps : 60.0;
     double now = (double)SDL_GetPerformanceCounter() / freq;
-    if (audio_.isOpen() && audio_.producing()) {
+    // Écran au rythme du jeu : synchro verticale, une image du jeu par rafraîchissement (ou par 2…),
+    // affichée régulièrement et sans déchirure ; le son suit, légèrement accéléré ou ralenti.
+    // Écran plus rapide que le jeu sans en être un multiple (60 images/s sur 144 Hz, jeu PAL sur
+    // 60 Hz…) : synchro verticale aussi, sans déchirure (G-Sync / FreeSync : écran au rythme exact
+    // du jeu), rythme toujours donné par le son.
+    const int interval = video_.syncInterval(fps);
+    video_.setSwapInterval(interval > 0 ? interval : video_.refreshRate() > fps * 1.05 ? 1 : 0);
+    if (interval > 0) {
+      nextFrame_ = 0;
+      if (audio_.isOpen() && audio_.producing()) {
+        const double frameAudio = audio_.rate() / fps;
+        const double queued = (double)audio_.queuedFrames();
+        // Tampons échangés sans attendre l'écran (fenêtre réduite, synchro forcée par le pilote) :
+        // le son garde le rythme.
+        if (queued > frameAudio * 8) {
+          SDL_Delay(1);
+          continue;
+        }
+        const double target = frameAudio * 3;
+        const double error = std::clamp((queued - target) / target, -1.0, 1.0);
+        audio_.setSpeed(video_.refreshRate() / interval / fps * (1.0 + 0.005 * error));
+        // File presque vide (démarrage, image trop lente) : une image de plus, non affichée.
+        if (queued < frameAudio && !netplay_.enabled()) runFrame();
+      }
+    } else if (audio_.isOpen() && audio_.producing()) {
+      audio_.setSpeed(1.0);
       // Rythme donné par le son : quelques images d'avance dans la file audio, pas plus.
       double frameAudio = audio_.rate() / fps;
       if ((double)audio_.queuedFrames() > frameAudio * 3) {

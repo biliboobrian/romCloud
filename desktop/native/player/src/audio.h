@@ -32,6 +32,11 @@ class Audio {
   /** Volume du son joué (0 : muet, 1 : son du cœur tel quel), gardé si la sortie est rouverte. */
   void setVolume(float volume);
   float volume() const { return volume_; }
+  /**
+   * Vitesse de lecture du son (1 : celle du cœur) : avec la synchro verticale, suit le rythme de
+   * l'écran et garde la file audio à moitié pleine (écarts de moins de 1 %, inaudibles).
+   */
+  void setSpeed(double speed);
 
  private:
   SDL_AudioStream* stream_ = nullptr;
@@ -39,6 +44,7 @@ class Audio {
   Uint64 lastPush_ = 0;
   int peak_ = 0;
   float volume_ = 1.0f;
+  double speed_ = 1.0;
   // Moyenne de [decimate_] trames (fréquences très élevées) avant l'envoi à SDL.
   int decimate_ = 1;
   int32_t sumLeft_ = 0, sumRight_ = 0;

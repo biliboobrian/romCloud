@@ -26,6 +26,7 @@ bool Audio::open(double sampleRate) {
     return false;
   }
   SDL_SetAudioStreamGain(stream_, volume_);
+  speed_ = 1.0;
   SDL_ResumeAudioStreamDevice(stream_);
   logf("Audio : %d Hz envoyés (cœur %.2f Hz%s)", spec.freq, coreRate_, decimate_ > 1 ? ", moyenne des trames" : "");
   return true;
@@ -34,6 +35,11 @@ bool Audio::open(double sampleRate) {
 void Audio::setVolume(float volume) {
   volume_ = std::clamp(volume, 0.0f, 1.0f);
   if (stream_) SDL_SetAudioStreamGain(stream_, volume_);
+}
+
+void Audio::setSpeed(double speed) {
+  if (!stream_ || std::fabs(speed - speed_) < 1e-5) return;
+  if (SDL_SetAudioStreamFrequencyRatio(stream_, (float)speed)) speed_ = speed;
 }
 
 void Audio::close() {

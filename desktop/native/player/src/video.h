@@ -96,6 +96,18 @@ class Video {
   Aspect aspect() const { return aspect_; }
   SDL_Window* window() const { return window_; }
 
+  /** Fréquence de l'écran de la fenêtre (Hz), 0 si inconnue. */
+  double refreshRate() const;
+  /**
+   * Rafraîchissements de l'écran par image du jeu pour la synchro verticale (1 : 60 Hz pour un jeu
+   * à 60 images/s, 2 : 120 Hz…), 0 si l'écran ne suit pas le rythme du jeu (jeu PAL à 50 Hz sur
+   * un écran à 60 Hz…).
+   */
+  int syncInterval(double fps) const;
+  /** Synchro verticale : échange des tampons tous les [interval] rafraîchissements (0 : sans). */
+  void setSwapInterval(int interval);
+  int swapInterval() const { return swapInterval_; }
+
  private:
   bool createContext(std::string& error);
   bool loadFunctions();
@@ -114,6 +126,8 @@ class Video {
   SDL_GLContext context_ = nullptr;
   bool coreProfile_ = false;
   bool fullscreen_ = true;
+  int swapInterval_ = 0;
+  bool vsyncFailed_ = false;  // pilote sans synchro verticale : rythme donné par le son
   Filter filter_ = Filter::Sharp;
   Aspect aspect_ = Aspect::Core;
 
