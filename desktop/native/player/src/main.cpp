@@ -86,7 +86,7 @@ struct Args {
   bool testKeys = false;  // essai : écran des touches du clavier
   bool testPad = false;  // essai : écran de configuration des manettes
   bool testPlayers = false;  // essai : écran des joueurs des manettes
-  bool testFilterSettings = false;  // essai : écran des réglages du filtre
+  bool testFilterSettings = false;  // essai : écran « Image » (filtres et réglages)
   bool testStates = false;  // essai : historique des états (« Charger l'état »)
   bool testSaveState = false;  // essai : état enregistré après les N images
   bool testAudio = false;  // essai : amplitude maximale du son des N images
@@ -197,6 +197,12 @@ class Player {
   /** Réglages mémorisés du filtre choisi, donnés au rendu. */
   void loadFilterParams() {
     for (const auto& p : filterParams(video_.filter())) video_.setFilterParam(p.slot, filterParamValue(p));
+  }
+  /** Réglages du filtre choisi, affichés dans l'écran « Image ». */
+  std::vector<FilterRow> filterRows() const {
+    std::vector<FilterRow> rows;
+    for (const auto& p : filterParams(video_.filter())) rows.push_back({menu_.tr(p.label), filterParamValue(p), p.def, p.min, p.max, p.step});
+    return rows;
   }
   void startPlayers() {
     players_ = std::make_unique<PlayerOrder>(input_, [this](const char* key) { return menu_.tr(key); });
@@ -348,8 +354,7 @@ void Player::changeDisk(int direction) {
 
 MenuState Player::menuState() const {
   MenuState s;
-  s.filter = (int)video_.filter();
-  s.filterSettings = !filterParams(video_.filter()).empty();
+  s.filterLabel = filterLabel(video_.filter());
   s.aspect = (int)video_.aspect();
   s.fullscreen = video_.fullscreen();
   s.volume = (int)std::lround(audio_.volume() * 100);
@@ -407,22 +412,23 @@ void Player::onMenuAction(MenuAction action) {
         closeMenu();
       }
       break;
-    case MenuAction::NextFilter:
-      // Visible aussitôt derrière le menu ; mémorisé pour le système.
-      video_.setFilter(nextFilter(video_.filter()));
+    case MenuAction::ImageSettings: {
+      // Liste des shaders (nom, description), puis réglages de celui choisi.
+      std::vector<std::pair<std::string, std::string>> choices;
+      for (int i = 0; i < kFilterListCount; i++)
+        choices.emplace_back(menu_.tr(filterLabel(filterAt(i))), menu_.tr(filterDescription(filterAt(i))));
+      menu_.openImageSettings(std::move(choices), filterIndex(video_.filter()), filterRows());
+      break;
+    }
+    case MenuAction::FilterChoice:
+      // Visible aussitôt à côté du panneau ; mémorisé pour le système.
+      video_.setFilter(filterAt(menu_.filterChoice()));
       g.options.setSetting("romcloud_filter", filterId(video_.filter()));
       loadFilterParams();
+      menu_.setFilterRows(menu_.filterChoice(), filterRows());
       break;
     case MenuAction::ConfigurePad: startPadConfig(); break;
     case MenuAction::Players: startPlayers(); break;
-    case MenuAction::FilterSettings: {
-      static const char* names[] = {"filter_pixels", "filter_sharp", "filter_soft", "filter_smooth", "filter_epx",
-                                    "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr"};
-      std::vector<FilterRow> rows;
-      for (const auto& p : filterParams(video_.filter())) rows.push_back({menu_.tr(p.label), filterParamValue(p), p.def, p.min, p.max, p.step});
-      menu_.openFilterSettings(menu_.tr(names[(int)video_.filter()]), std::move(rows));
-      break;
-    }
     case MenuAction::SoundSettings:
       menu_.openSoundSettings({{menu_.tr("volume"), audio_.volume(), 1.0f, 0.0f, 1.0f, 0.05f}});
       break;
@@ -435,7 +441,7 @@ void Player::onMenuAction(MenuAction action) {
         global_.setSetting("romcloud_volume", std::to_string((int)std::lround(audio_.volume() * 100)));
         break;
       }
-      // Filtre : visible aussitôt au-dessus du panneau ; mémorisé pour le système.
+      // Filtre : visible aussitôt à côté du panneau ; mémorisé pour le système.
       const auto params = filterParams(video_.filter());
       const auto& rows = menu_.filterRows();
       for (size_t i = 0; i < params.size() && i < rows.size(); i++) {
@@ -738,7 +744,17 @@ int Player::run() {
   // Filtre d'image du système ; ancien réglage « lissage » (oui / non) repris s'il n'y en a pas.
   const std::string oldSmooth = g.options.setting("romcloud_smooth", "") == "true" ? "smooth" : "pixels";
   const bool hasOld = !g.options.setting("romcloud_smooth", "").empty();
-  video_.setFilter(filterFromId(g.options.setting("romcloud_filter", hasOld ? oldSmooth : "sharp")));
+  const std::string filter = g.options.setting("romcloud_filter", hasOld ? oldSmooth : "sharp");
+  if (filter == "crtmask") {
+    // Ancien « CRT+ » : devenu CRT avec ses réglages (masque RGB compris).
+    g.options.setSetting("romcloud_filter", "crt");
+    for (const auto& p : filterParams(Filter::Crt)) {
+      std::string old = g.options.setting(std::string("romcloud_crtmask_") + p.id, "");
+      if (old.empty() && std::string(p.id) == "mask") old = "0.30";  // masque par défaut de CRT+
+      if (!old.empty()) g.options.setSetting(std::string("romcloud_crt_") + p.id, old);
+    }
+  }
+  video_.setFilter(filterFromId(filter));
   video_.setAspect(aspectFromId(g.options.setting("romcloud_aspect", "core")));
   loadFilterParams();
   const int testFrames = args_.testFrames.empty() ? 0 : std::max(1, atoi(args_.testFrames.c_str()));
@@ -789,7 +805,7 @@ int Player::run() {
       if (args_.testStates) openStates();
       if (args_.testPad) startPadConfig();
       if (args_.testPlayers) startPlayers();
-      if (args_.testFilterSettings) onMenuAction(MenuAction::FilterSettings);
+      if (args_.testFilterSettings) onMenuAction(MenuAction::ImageSettings);
       if (!args_.testOptions.empty()) {
         menu_.openOptions();
         for (int i = atoi(args_.testOptions.c_str()); i > 0; i--) menu_.handle(Nav::TabNext, menuState());

@@ -464,6 +464,17 @@ void LibretroDroid::step() {
 
     LOGD("Stepping into retro_run()");
 
+    // RomCloud : vitesse 0, émulation figée (réglage des filtres d'image dans le menu) : dernière
+    // image redessinée avec le shader choisi, sans retro_run().
+    if (frameSpeed == 0) {
+        if (video) {
+            video->markDirty();
+            video->renderFrame();
+        }
+        if (fpsSync) fpsSync->wait();
+        return;
+    }
+
     // RomCloud : durée du travail de l'image signalée au système (indice de performance).
     performanceHint.begin(contentFrameRate);
 
@@ -536,7 +547,7 @@ bool LibretroDroid::isRumbleEnabled() const {
 
 void LibretroDroid::setFrameSpeed(unsigned int speed) {
     frameSpeed = speed;
-    updateAudioSampleRateMultiplier();
+    if (speed > 0) updateAudioSampleRateMultiplier();  // RomCloud : 0 (figée) laisse le son tel quel
 }
 
 void LibretroDroid::setAudioEnabled(bool enabled) {

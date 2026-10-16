@@ -28,13 +28,13 @@ static const struct {
     {"disk", "Disque", "Disc"},
     {"filter", "Image", "Image"},
     // Noms courts : les entrées du menu sont coupées vers 14 caractères.
-    {"filter_pixels", "pixels", "pixels"},
-    {"filter_sharp", "nette", "sharp"},
-    {"filter_soft", "douce", "soft"},
-    {"filter_smooth", "lissée", "smooth"},
-    {"filter_epx", "EPX", "EPX"},
+    {"filter_pixels", "Nearest", "Nearest"},
+    {"filter_sharp", "Sharp Bilinear", "Sharp Bilinear"},
+    {"filter_soft", "Bicubic", "Bicubic"},
+    {"filter_smooth", "Bilinear", "Bilinear"},
+    {"filter_epx", "Scale2x", "Scale2x"},
     {"filter_crt", "CRT", "CRT"},
-    {"filter_crtmask", "CRT+", "CRT+"},
+    {"filter_crtmask", "CRT", "CRT"},
     {"filter_lcd", "LCD", "LCD"},
     {"filter_xbr", "xBR", "xBR"},
     {"filter_fsr", "FSR", "FSR"},
@@ -73,16 +73,41 @@ static const struct {
     {"keys", "Touches du clavier", "Keyboard keys"},
     {"pad_config", "Configurer la manette", "Set up controller"},
     {"players", "Joueurs des manettes", "Controller players"},
-    {"filter_settings", "Réglages du filtre", "Filter settings"},
+    {"shader_settings", "Réglages", "Settings"},
     {"sound", "Son", "Sound"},
     {"sound_settings", "Son (tous les émulateurs)", "Sound (all emulators)"},
     {"volume", "Volume", "Volume"},
+    {"filter_list", "Shader", "Shader"},
+    {"image_hint", "A : choisir   Gauche / droite : régler", "A: choose   Left / right: adjust"},
+    {"image_hint2", "LB / RB : autre shader   B : retour", "LB / RB: other shader   B: back"},
+    {"fd_pixels", "Pixels bruts (plus proche voisin), sans lissage.", "Raw pixels (nearest neighbor), no smoothing."},
+    {"fd_sharp", "Pixels nets et de même taille, bordure lissée. Conseillé.", "Sharp, even pixels with smoothed edges. Recommended."},
+    {"fd_soft", "Lissage bicubique (Mitchell-Netravali).", "Bicubic smoothing (Mitchell-Netravali)."},
+    {"fd_smooth", "Lissage bilinéaire, flou.", "Blurry bilinear smoothing."},
+    {"fd_epx", "EPX : contours du pixel art arrondis.", "EPX: rounded pixel art edges."},
+    {"fd_crt", "Téléviseur cathodique : lignes de balayage, masque RGB.", "CRT television: scanlines, RGB mask."},
+    {"fd_crtmask", "Téléviseur cathodique : lignes de balayage, masque RGB.", "CRT television: scanlines, RGB mask."},
+    {"fd_lcd", "Écran de console portable : grille.", "Handheld console screen: grid."},
+    {"fd_xbr", "Contours redessinés en diagonale (niveau 1).", "Edges redrawn diagonally (level 1)."},
+    {"fd_fsr", "AMD FidelityFX Super Resolution 1 (jeux en 3D).", "AMD FidelityFX Super Resolution 1 (3D games)."},
     {"fp_softness", "Largeur de la transition", "Transition width"},
     {"fp_scanlines", "Lignes de balayage", "Scanlines"},
+    {"fp_glow", "Éclat des lignes", "Scanline glow"},
     {"fp_mask", "Masque RGB", "RGB mask"},
     {"fp_curvature", "Courbure de l'écran", "Screen curvature"},
+    {"fp_vignette", "Coins assombris", "Vignette"},
     {"fp_grid", "Grille", "Grid"},
+    {"fp_grid_width", "Épaisseur de la grille", "Grid width"},
     {"fp_sharpness", "Netteté", "Sharpness"},
+    {"fp_blur", "Flou (B)", "Blur (B)"},
+    {"fp_ringing", "Netteté (C)", "Sharpness (C)"},
+    {"fp_threshold", "Seuil des couleurs", "Color threshold"},
+    {"fp_strength", "Force", "Strength"},
+    {"fp_edge_softness", "Douceur des contours", "Edge softness"},
+    {"fp_brightness", "Luminosité", "Brightness"},
+    {"fp_contrast", "Contraste", "Contrast"},
+    {"fp_saturation", "Saturation", "Saturation"},
+    {"fp_gamma", "Gamma", "Gamma"},
     {"fp_defaults", "Valeurs par défaut", "Default values"},
     {"fp_hint", "Gauche / droite : régler   Échap : retour", "Left / right: adjust   Esc: back"},
     {"players_title", "Joueurs des manettes", "Controller players"},
@@ -229,7 +254,6 @@ std::vector<Menu::Item> Menu::items(const MenuState& state) const {
   list.insert(list.end(), {Item::Keys, Item::Pad, Item::Players});
   if (state.diskCount > 1 && !state.together) list.push_back(Item::Disk);
   list.push_back(Item::Filter);
-  if (state.filterSettings) list.push_back(Item::FilterSettings);
   list.insert(list.end(), {Item::Aspect, Item::Fullscreen, Item::Sound});
   if (state.netplay) list.push_back(Item::LeaveNetplay);
   list.insert(list.end(), {Item::SaveQuit, Item::Quit});
@@ -252,12 +276,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::Players: return tr("players");
     case Item::Disk:
       return tr("disk") + " : " + std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
-    case Item::FilterSettings: return tr("filter_settings");
-    case Item::Filter: {
-      static const char* names[] = {"filter_pixels", "filter_sharp", "filter_soft", "filter_smooth", "filter_epx",
-                                    "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr"};
-      return tr("filter") + " : " + tr(names[state.filter]);
-    }
+    case Item::Filter: return tr("filter") + " : " + tr(state.filterLabel);
     case Item::Aspect: {
       static const char* names[] = {"aspect_core", "aspect_4_3", "aspect_16_9", "aspect_stretch"};
       return tr("aspect") + " : " + tr(names[state.aspect]);
@@ -272,77 +291,173 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
 }
 
 void Menu::openSoundSettings(std::vector<FilterRow> rows) {
-  openFilterSettings(tr("sound"), std::move(rows));
-  sound_ = true;
-}
-
-void Menu::openFilterSettings(std::string filter, std::vector<FilterRow> rows) {
   screen_ = Screen::FilterSettings;
-  sound_ = false;
-  filterName_ = std::move(filter);
+  sound_ = true;
+  filterChoices_.clear();
   filterRows_ = std::move(rows);
   filterSelected_ = 0;
+  filterScroll_ = 0;
+  filterChanged_ = -1;
+}
+
+void Menu::openImageSettings(std::vector<std::pair<std::string, std::string>> choices, int chosen, std::vector<FilterRow> rows) {
+  screen_ = Screen::FilterSettings;
+  sound_ = false;
+  filterChoices_ = std::move(choices);
+  filterChosen_ = chosen;
+  filterRows_ = std::move(rows);
+  filterSelected_ = chosen;  // curseur sur le filtre affiché
+  filterScroll_ = 0;
+  filterChanged_ = -1;
+}
+
+void Menu::setFilterRows(int chosen, std::vector<FilterRow> rows) {
+  filterChosen_ = chosen;
+  filterRows_ = std::move(rows);
   filterChanged_ = -1;
 }
 
 MenuAction Menu::handleFilterSettings(Nav nav) {
-  const int count = (int)filterRows_.size() + 1;  // + « Valeurs par défaut »
+  // Lignes : filtres (écran « Image »), réglages, puis « Valeurs par défaut ».
+  const int choices = (int)filterChoices_.size();
+  const int count = choices + (int)filterRows_.size() + 1;
+  filterSelected_ = std::min(filterSelected_, count - 1);
   switch (nav) {
     case Nav::Up: filterSelected_ = (filterSelected_ + count - 1) % count; break;
     case Nav::Down: filterSelected_ = (filterSelected_ + 1) % count; break;
+    case Nav::TabPrev:
+    case Nav::TabNext:
+      // LB / RB : filtre précédent ou suivant, d'où que soit le curseur.
+      if (choices < 2) break;
+      filterChoice_ = (filterChosen_ + (nav == Nav::TabPrev ? choices - 1 : 1)) % choices;
+      if (filterSelected_ < choices) filterSelected_ = filterChoice_;
+      return MenuAction::FilterChoice;
     case Nav::Left:
     case Nav::Right:
     case Nav::Confirm: {
+      if (filterSelected_ < choices) {
+        if (nav != Nav::Confirm || filterSelected_ == filterChosen_) break;
+        filterChoice_ = filterSelected_;
+        return MenuAction::FilterChoice;
+      }
       if (filterSelected_ == count - 1) {
         if (nav != Nav::Confirm) break;
         for (auto& row : filterRows_) row.value = row.def;
         return MenuAction::FilterDefaults;
       }
       if (nav == Nav::Confirm) break;
-      FilterRow& row = filterRows_[(size_t)filterSelected_];
+      const int index = filterSelected_ - choices;
+      FilterRow& row = filterRows_[(size_t)index];
       float next = row.value + (nav == Nav::Left ? -row.step : row.step);
       next = std::round(next / row.step) * row.step;  // pas exacts malgré les arrondis
       next = std::min(row.max, std::max(row.min, next));
       if (next == row.value) break;
       row.value = next;
-      filterChanged_ = filterSelected_;
+      filterChanged_ = index;
       return MenuAction::FilterParam;
     }
     case Nav::Back: screen_ = Screen::Main; break;
-    default: break;
   }
   return MenuAction::None;
 }
 
+/** Ligne d'un réglage : libellé, barre de la valeur entre ses bornes, valeur en pourcentage. */
+static void renderFilterRow(Canvas& c, int x, int y, int width, const FilterRow& row, bool sel) {
+  const int barWidth = std::min(220, width / 4), barX = x + width - barWidth - 56;
+  const uint32_t color = sel ? rgba(255, 255, 255) : kText;
+  c.text(x + 8, y, Canvas::fit(row.label, 1, barX - x - 16), 1, color);
+  const float t = row.max > row.min ? (row.value - row.min) / (row.max - row.min) : 0.0f;
+  c.fill(barX, y + 2, barWidth, 4, rgba(255, 255, 255, 50));
+  c.fill(barX, y + 2, (int)(barWidth * t), 4, kText);
+  c.text(barX + barWidth + 10, y, std::to_string((int)std::lround(row.value * 100)) + " %", 1, color);
+}
+
 void Menu::renderFilterSettings(Canvas& c) const {
-  // Panneau en bas : le jeu reste visible au-dessus pour juger de l'effet.
-  const int rowHeight = 22, count = (int)filterRows_.size() + 1;
-  const int height = 52 + count * rowHeight + 20;
-  const int top = c.height() - height;
-  c.fill(0, top, c.width(), height, rgba(8, 9, 14, 215));
-  int y = top + 14;
-  const std::string title = sound_ ? tr("sound_settings") : tr("filter_settings") + " — " + filterName_;
-  c.text(24, y, Canvas::fit(title, 2, c.width() - 48), 2, kText);
-  y += 34;
-  const int barWidth = std::min(220, c.width() / 4), barX = c.width() - 24 - barWidth - 60;
-  for (int i = 0; i < count; i++) {
-    const bool sel = i == filterSelected_;
-    c.fill(16, y - 5, c.width() - 32, 18, sel ? kSelection : rgba(255, 255, 255, 18));
-    if (i == count - 1) {
-      c.text(24, y, tr("fp_defaults"), 1, sel ? rgba(255, 255, 255) : kText);
+  const int rowHeight = 20;
+  if (sound_) {
+    // Son : panneau en bas.
+    const int count = (int)filterRows_.size() + 1;
+    const int height = 52 + count * rowHeight + 20;
+    const int top = c.height() - height;
+    c.fill(0, top, c.width(), height, rgba(8, 9, 14, 215));
+    int y = top + 14;
+    c.text(24, y, Canvas::fit(tr("sound_settings"), 2, c.width() - 48), 2, kText);
+    y += 34;
+    for (int i = 0; i < count; i++) {
+      const bool sel = i == filterSelected_;
+      c.fill(16, y - 5, c.width() - 32, 18, sel ? kSelection : rgba(255, 255, 255, 18));
+      if (i == count - 1) {
+        c.text(24, y, tr("fp_defaults"), 1, sel ? rgba(255, 255, 255) : kText);
+      } else {
+        renderFilterRow(c, 16, y, c.width() - 32, filterRows_[(size_t)i], sel);
+      }
+      y += rowHeight;
+    }
+    std::string hint = tr("fp_hint");
+    c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 14, hint, 1, kMuted);
+    return;
+  }
+
+  // Image : panneau à droite, le jeu reste visible à gauche pour juger de l'effet. Lignes : titre
+  // de la liste, filtres, description du filtre affiché, titre des réglages, réglages, valeurs par
+  // défaut ; défilement si elles dépassent.
+  const int width = std::clamp(c.width() * 9 / 20, 380, 520), x = c.width() - width;
+  c.fill(x, 0, width, c.height(), rgba(8, 9, 14, 220));
+  c.text(x + 16, 14, tr("filter"), 2, kText);
+  const int choices = (int)filterChoices_.size();
+  const bool hasChosen = filterChosen_ >= 0 && filterChosen_ < choices;
+  struct Line {
+    int row;  // ligne sélectionnable (-1 : titre ou description)
+    std::string text;
+  };
+  std::vector<Line> lines;
+  lines.push_back({-1, tr("filter_list")});
+  for (int i = 0; i < choices; i++) lines.push_back({i, filterChoices_[(size_t)i].first});
+  if (hasChosen) lines.push_back({-1, filterChoices_[(size_t)filterChosen_].second});
+  lines.push_back({-1, tr("shader_settings") + (hasChosen ? " — " + filterChoices_[(size_t)filterChosen_].first : std::string())});
+  for (int i = 0; i < (int)filterRows_.size(); i++) lines.push_back({choices + i, std::string()});
+  lines.push_back({choices + (int)filterRows_.size(), tr("fp_defaults")});
+
+  const int top = 44, bottom = c.height() - 40;
+  const int visible = std::max(1, (bottom - top) / rowHeight);
+  int selectedLine = 0;
+  for (int i = 0; i < (int)lines.size(); i++) {
+    if (lines[(size_t)i].row == filterSelected_) selectedLine = i;
+  }
+  // Titres juste au-dessus de la ligne choisie gardés visibles (titre de la liste, des réglages).
+  int wanted = selectedLine;
+  while (wanted > 0 && lines[(size_t)wanted - 1].row < 0) wanted--;
+  if (wanted < filterScroll_) filterScroll_ = wanted;
+  if (selectedLine >= filterScroll_ + visible) filterScroll_ = selectedLine - visible + 1;
+  filterScroll_ = std::clamp(filterScroll_, 0, std::max(0, (int)lines.size() - visible));
+
+  int y = top;
+  for (int i = filterScroll_; i < std::min((int)lines.size(), filterScroll_ + visible); i++) {
+    const Line& line = lines[(size_t)i];
+    if (line.row < 0) {
+      c.text(x + 16, y + 2, Canvas::fit(line.text, 1, width - 32), 1, kMuted);
+      y += rowHeight;
+      continue;
+    }
+    const bool sel = line.row == filterSelected_;
+    c.fill(x + 8, y - 5, width - 16, 18, sel ? kSelection : rgba(255, 255, 255, 18));
+    const uint32_t color = sel ? rgba(255, 255, 255) : kText;
+    if (line.row < choices) {
+      // Filtre affiché repéré par un carré.
+      const bool chosen = line.row == filterChosen_;
+      if (chosen) c.fill(x + 16, y + 1, 6, 6, sel ? rgba(255, 255, 255) : kAccent);
+      c.text(x + 30, y, Canvas::fit(line.text, 1, width - 46), 1, chosen && !sel ? kAccent : color);
+    } else if (line.row < choices + (int)filterRows_.size()) {
+      renderFilterRow(c, x + 8, y, width - 16, filterRows_[(size_t)(line.row - choices)], sel);
     } else {
-      const FilterRow& row = filterRows_[(size_t)i];
-      c.text(24, y, Canvas::fit(row.label, 1, barX - 40), 1, sel ? rgba(255, 255, 255) : kText);
-      // Barre de la valeur entre ses bornes, puis la valeur en pourcentage.
-      const float t = row.max > row.min ? (row.value - row.min) / (row.max - row.min) : 0.0f;
-      c.fill(barX, y + 2, barWidth, 4, rgba(255, 255, 255, 50));
-      c.fill(barX, y + 2, (int)(barWidth * t), 4, kText);
-      c.text(barX + barWidth + 12, y, std::to_string((int)std::lround(row.value * 100)) + " %", 1, sel ? rgba(255, 255, 255) : kText);
+      c.text(x + 16, y, line.text, 1, color);
     }
     y += rowHeight;
   }
-  std::string hint = tr("fp_hint");
-  c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 14, hint, 1, kMuted);
+  for (int i = 0; i < 2; i++) {
+    std::string hint = Canvas::fit(tr(i ? "image_hint2" : "image_hint"), 1, width - 24);
+    c.text(x + (width - Canvas::measure(hint, 1)) / 2, c.height() - 30 + i * 14, hint, 1, kMuted);
+  }
 }
 
 MenuAction Menu::handle(Nav nav, const MenuState& state) {
@@ -428,8 +543,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
         case Item::Pad: return MenuAction::ConfigurePad;
         case Item::Players: return MenuAction::Players;
         case Item::Disk: return MenuAction::DiskNext;
-        case Item::Filter: return MenuAction::NextFilter;
-        case Item::FilterSettings: return MenuAction::FilterSettings;
+        case Item::Filter: return MenuAction::ImageSettings;
         case Item::Aspect: return MenuAction::NextAspect;
         case Item::Fullscreen: return MenuAction::ToggleFullscreen;
         case Item::Sound: return MenuAction::SoundSettings;

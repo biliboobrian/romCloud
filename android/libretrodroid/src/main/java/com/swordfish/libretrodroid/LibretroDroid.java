@@ -38,6 +38,17 @@ public class LibretroDroid {
     public static final int SHADER_UPSCALE_CUT2 = 5;
     public static final int SHADER_UPSCALE_CUT3 = 6;
 
+    // RomCloud : réglages des shaders simples et couleurs de l'image finale (tous les shaders).
+    public static final String SHADER_CRT_PARAM_INTENSITY = "CRT_INTENSITY";
+    public static final String SHADER_CRT_PARAM_BRIGHTBOOST = "CRT_BRIGHTBOOST";
+    public static final String SHADER_LCD_PARAM_INTENSITY = "LCD_INTENSITY";
+    public static final String SHADER_LCD_PARAM_BRIGHTBOOST = "LCD_BRIGHTBOOST";
+    public static final String SHADER_SHARP_PARAM_WIDTH = "SHARP_WIDTH";
+    public static final String SHADER_PARAM_BRIGHTNESS = "RC_BRIGHTNESS";
+    public static final String SHADER_PARAM_CONTRAST = "RC_CONTRAST";
+    public static final String SHADER_PARAM_SATURATION = "RC_SATURATION";
+    public static final String SHADER_PARAM_GAMMA = "RC_GAMMA";
+
     public static final String SHADER_UPSCALE_CUT_PARAM_USE_DYNAMIC_BLEND = "USE_DYNAMIC_BLEND";
     public static final String SHADER_UPSCALE_CUT_PARAM_BLEND_MIN_CONTRAST_EDGE = "BLEND_MIN_CONTRAST_EDGE";
     public static final String SHADER_UPSCALE_CUT_PARAM_BLEND_MAX_CONTRAST_EDGE = "BLEND_MAX_CONTRAST_EDGE";
