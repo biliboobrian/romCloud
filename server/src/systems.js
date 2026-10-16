@@ -54,6 +54,7 @@ function rowToSystem(row, stats) {
     defaultColor: DEFAULT_SYSTEM_COLORS[row.id] || null,
     sourceRevision: row.source_revision,
     createdAt: row.created_at,
+    // Jeux distincts : les disques, mises à jour et DLC rattachés à un jeu ne comptent pas.
     gameCount: stats?.game_count ?? 0,
     totalSize: stats?.total_size ?? 0,
     biosCount: stats?.bios_count ?? 0,
@@ -66,7 +67,7 @@ const biosCount = (id) => db.prepare('SELECT COUNT(*) AS n FROM bios WHERE syste
 export function listSystems({ platform } = {}) {
   const stats = new Map(
     db
-      .prepare('SELECT system_id, COUNT(*) AS game_count, SUM(size) AS total_size FROM games GROUP BY system_id')
+      .prepare('SELECT system_id, SUM(parent_id IS NULL) AS game_count, SUM(size) AS total_size FROM games GROUP BY system_id')
       .all()
       .map((r) => [r.system_id, r]),
   );
@@ -81,7 +82,7 @@ export function getSystem(id) {
   const row = db.prepare('SELECT * FROM systems WHERE id = ?').get(id);
   if (!row) return null;
   const stats = db
-    .prepare('SELECT COUNT(*) AS game_count, SUM(size) AS total_size FROM games WHERE system_id = ?')
+    .prepare('SELECT COALESCE(SUM(parent_id IS NULL), 0) AS game_count, SUM(size) AS total_size FROM games WHERE system_id = ?')
     .get(id);
   return rowToSystem(row, { ...stats, bios_count: biosCount(id) });
 }
