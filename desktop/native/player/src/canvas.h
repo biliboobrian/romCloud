@@ -28,6 +28,8 @@ class Canvas {
   void circleOutline(float cx, float cy, float r, float t, uint32_t rgba) { roundRectOutline(cx - r, cy - r, 2 * r, 2 * r, r, t, rgba); }
   /** Dessine le texte (UTF-8) ; renvoie la largeur en pixels. */
   int text(int x, int y, const std::string& s, int scale, uint32_t rgba);
+  /** Image RGBA ([pixels], [sw] x [sh], [pitch] octets par ligne) agrandie sans lissage dans le rectangle. */
+  void image(int x, int y, int w, int h, const uint8_t* pixels, int sw, int sh, int pitch);
   static int measure(const std::string& s, int scale);
   /** Texte coupé avec « … » pour tenir dans [maxWidth]. */
   static std::string fit(const std::string& s, int scale, int maxWidth);

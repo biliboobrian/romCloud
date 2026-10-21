@@ -18,6 +18,17 @@
 /** Applique les correspondances mémorisées pour le système ; avant l'ouverture des manettes. */
 void applySavedPadMappings();
 
+// Illustrations des manettes (@rachels_ham) : PNG du dossier --pad-images (« snes.png », « ps4.png »…).
+void setPadImagesDir(const std::string& dir);
+/** Illustration [name] (sans extension) en RGBA, gardée en mémoire ; null si absente. */
+SDL_Surface* padImage(const std::string& name);
+/** Illustration de la manette d'une console (style --pad-style) ; vide s'il n'y en a pas. */
+std::string consolePadImageName(const std::string& style);
+/** Illustration d'une manette branchée, d'après son type et son nom. */
+std::string gamepadImageName(SDL_GamepadType type, const char* name);
+/** Dessine l'illustration dans le rectangle, sur un fond arrondi. */
+void drawPadImage(Canvas& c, SDL_Surface* image, int x, int y, int w, int h);
+
 /**
  * Étape : un bouton du RetroPad ([id]) ou un axe d'un stick ([stick] : 'X' ou 'Y' à gauche, 'x' ou
  * 'y' à droite) ; [half] ('+' ou '-') : une seule direction du stick droit (bouton C de la Nintendo 64),

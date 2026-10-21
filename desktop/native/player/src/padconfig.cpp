@@ -20,6 +20,54 @@ static const uint32_t kError = rgba(255, 140, 140);
 /** Préfixe des réglages : « romcloud_pad_<GUID> » = correspondance SDL complète. */
 static const char* kSettingPrefix = "romcloud_pad_";
 
+static std::string padImagesDir;
+static std::map<std::string, SDL_Surface*> padImages;
+
+void setPadImagesDir(const std::string& dir) { padImagesDir = dir; }
+
+SDL_Surface* padImage(const std::string& name) {
+  if (name.empty() || padImagesDir.empty()) return nullptr;
+  auto it = padImages.find(name);
+  if (it != padImages.end()) return it->second;
+  SDL_Surface* image = nullptr;
+  if (SDL_Surface* loaded = SDL_LoadPNG((padImagesDir + "/" + name + ".png").c_str())) {
+    image = SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(loaded);
+  }
+  return padImages[name] = image;
+}
+
+std::string consolePadImageName(const std::string& style) {
+  static const std::map<std::string, std::string> names = {
+      {"nes", "nes"},         {"fds", "famicom"},     {"snes", "snes"},           {"n64", "n64"},
+      {"psx", "psx"},         {"ps2", "ps2"},         {"gc", "gamecube"},         {"genesis", "genesis"},
+      {"master", "master"},   {"saturn", "saturn"},   {"dreamcast", "dreamcast"}, {"pcEngine", "pcengine"},
+      {"neoGeo", "neogeo"},   {"atari2600", "atari2600"},
+  };
+  auto it = names.find(style);
+  return it == names.end() ? "" : it->second;
+}
+
+std::string gamepadImageName(SDL_GamepadType type, const char* name) {
+  switch (type) {
+    case SDL_GAMEPAD_TYPE_PS3: return "ps3";
+    case SDL_GAMEPAD_TYPE_PS4: return "ps4";
+    case SDL_GAMEPAD_TYPE_PS5: return "ps5";
+    case SDL_GAMEPAD_TYPE_XBOX360: return "xbox360";
+    case SDL_GAMEPAD_TYPE_XBOXONE: return name && SDL_strcasestr(name, "series") ? "xboxseries" : "xboxone";
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return "joycon";
+    default: return "xboxseries";
+  }
+}
+
+void drawPadImage(Canvas& c, SDL_Surface* image, int x, int y, int w, int h) {
+  if (!image) return;
+  c.image(x, y, w, h, static_cast<const uint8_t*>(image->pixels), image->w, image->h, image->pitch);
+}
+
 /** Correspondances de SDL avant celles mémorisées (GUID -> correspondance) : rétablies par « défaut ». */
 static std::map<std::string, std::string> originalMappings;
 
@@ -1268,8 +1316,21 @@ void PadConfig::render(Canvas& c) const {
   const int titleScale = Canvas::measure(title, 2) <= right - left ? 2 : 1;
   centered(c, cx, y + (titleScale == 1 ? 4 : 0), Canvas::fit(title, titleScale, right - left), titleScale, kText);
   y += 30;
-  const int padWidth = std::min(380, right - left);
-  y += renderPad(c, cx - padWidth / 2, y, padWidth) + 10;
+  // Illustration de la manette de la console à gauche du dessin, à sa hauteur (dessin de 340 x 150
+  // unités : hauteur = largeur * 150 / 340), si elle existe.
+  SDL_Surface* art = padImage(consolePadImageName(style_));
+  const int artGap = 12;
+  const float artRatio = art ? (float)art->w / art->h : 0.0f;
+  const int padWidth = std::min(380, (int)((right - left - (art ? artGap : 0)) / (1.0f + artRatio * 150.0f / 340.0f)));
+  const int artWidth = art ? (int)(padWidth * 150.0f / 340.0f * artRatio) : 0;
+  const int x0 = cx - (padWidth + (art ? artWidth + artGap : 0)) / 2;
+  const int padHeight = renderPad(c, x0 + (art ? artWidth + artGap : 0), y, padWidth);
+  if (art) {
+    drawPadImage(c, art, x0, y, artWidth, padHeight);
+    // Crédit sous l'illustration (le bas de l'écran rappelle les touches du clavier).
+    centered(c, x0 + artWidth / 2, y + padHeight + 4, Canvas::fit("@rachels_ham", 1, artWidth + artGap), 1, kMuted);
+  }
+  y += padHeight + (art ? 18 : 10);
   const int textWidth = right - left;
   if (!joystick_) {
     for (const auto& line : wrap(tr_("pad_press_any"), 1, textWidth)) {

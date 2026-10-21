@@ -31,6 +31,15 @@ pub fn player_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../desktop/native/player/build/romcloud-player.exe")
 }
 
+/// Illustrations des manettes (PNG) pour les écrans du moteur : à côté de lui, sinon dans les sources.
+fn pad_images_dir() -> PathBuf {
+    let bundled = player_path().with_file_name("pads");
+    if bundled.is_dir() {
+        return bundled;
+    }
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../desktop/native/player/pads")
+}
+
 pub fn available() -> bool {
     player_path().exists()
 }
@@ -320,6 +329,7 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         option_defaults: cores::game_option_defaults(core, &rom),
     });
     args.extend(["--history-dir".to_string(), text(history.clone()), "--history-device".to_string(), account::hostname()]);
+    args.extend(["--pad-images".to_string(), text(pad_images_dir())]);
     // Jeu à plusieurs en réseau local (netplay.rs) : partie proposée ou rejointe ; état choisi.
     args.extend(extra);
     std::fs::create_dir_all(&base)?;

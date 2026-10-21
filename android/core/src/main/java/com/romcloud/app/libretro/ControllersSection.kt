@@ -416,7 +416,7 @@ private fun Wizard(session: MappingSession, systemId: String, imageSize: Dp, onC
 
 /** Case d'une manette : illustration, ou icône (écran tactile, aucune manette). */
 @Composable
-private fun PadTile(@DrawableRes image: Int?, modifier: Modifier, highlighted: Boolean = false, touch: Boolean = false) {
+internal fun PadTile(@DrawableRes image: Int?, modifier: Modifier, highlighted: Boolean = false, touch: Boolean = false) {
     val shape = RoundedCornerShape(10.dp)
     Box(
         modifier

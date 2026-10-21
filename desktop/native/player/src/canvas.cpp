@@ -48,6 +48,17 @@ void Canvas::blend(int x, int y, uint32_t c) {
   p[3] = (uint8_t)outA;
 }
 
+void Canvas::image(int x, int y, int w, int h, const uint8_t* pixels, int sw, int sh, int pitch) {
+  if (w <= 0 || h <= 0 || sw <= 0 || sh <= 0) return;
+  for (int j = std::max(0, y); j < std::min(height_, y + h); j++) {
+    const uint8_t* row = pixels + (size_t)((j - y) * sh / h) * pitch;
+    for (int i = std::max(0, x); i < std::min(width_, x + w); i++) {
+      const uint8_t* p = row + (size_t)((i - x) * sw / w) * 4;
+      blend(i, j, rgba(p[0], p[1], p[2], p[3]));
+    }
+  }
+}
+
 void Canvas::fill(int x, int y, int w, int h, uint32_t c) {
   for (int j = std::max(0, y); j < std::min(height_, y + h); j++) {
     for (int i = std::max(0, x); i < std::min(width_, x + w); i++) blend(i, j, c);
