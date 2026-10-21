@@ -75,6 +75,12 @@ class Repository(
         runCatching { cacheFile(DOWNLOADED).writeText(api.json.encodeToString(DownloadedIndex.serializer(), next)) }
     }
 
+    /** Jeux notés comme téléchargés, avec leur système (présence sur l'appareil non vérifiée). */
+    fun downloadedGames(): List<Pair<GameSystem, Game>> {
+        val index = downloadedIndex()
+        return index.games.values.mapNotNull { game -> index.systems[game.systemId]?.let { it to game } }
+    }
+
     /**
      * Hors ligne : la liste en cache (ou rien, si elle ne l'a jamais été) est complétée par les
      * éléments [extra] de l'index des jeux téléchargés.

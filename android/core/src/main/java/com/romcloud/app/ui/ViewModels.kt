@@ -244,6 +244,11 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
     /** Place occupée par système sur l'appareil et espace de la partition des ROMs. */
     val usage: StateFlow<StorageUsage> = _usage.asStateFlow()
 
+    private val _localGames = MutableStateFlow<List<Game>>(emptyList())
+
+    /** Jeux téléchargés sur l'appareil, tous systèmes confondus, du plus récent au plus ancien. */
+    val localGames: StateFlow<List<Game>> = _localGames.asStateFlow()
+
     val downloads = app.downloader.states
     private var searchJob: Job? = null
 
@@ -254,6 +259,7 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
                 if (it is DownloadEvent.Completed) {
                     refreshSearchLocal()
                     refreshUsage()
+                    refreshLocalGames()
                 }
             }
         }
@@ -288,11 +294,30 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
                 _state.value.copy(loading = false, error = e.message ?: I18n.get(R.string.err_connection))
             }
             refreshUsage()
+            refreshLocalGames()
             if (_search.value.active) runSearch(_search.value.query, debounce = false)
         }
     }
 
     fun system(id: String): GameSystem? = _state.value.systems.find { it.id == id }
+
+    /**
+     * Jeux téléchargés (index des téléchargements, jeux effacés depuis écartés), du plus récent au
+     * plus ancien : rangée en tête de l'écran des systèmes. Affichage de l'écran, fin de téléchargement.
+     */
+    fun refreshLocalGames() {
+        viewModelScope.launch {
+            _localGames.value = withContext(Dispatchers.IO) {
+                app.repository.downloadedGames()
+                    .filter { (system, game) -> app.library.isDownloaded(system, game) }
+                    .sortedByDescending { (system, game) ->
+                        // Date du téléchargement : fichier du jeu (jeu en dossier : marque de fin).
+                        (if (game.folder) app.library.folderMarker(system, game) else app.library.fileFor(system, game)).lastModified()
+                    }
+                    .map { it.second }
+            }
+        }
+    }
 
     /** Recalcule la place occupée (affichage de l'écran, fin de téléchargement, jeu supprimé). */
     fun refreshUsage() {

@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -64,6 +66,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -143,9 +146,11 @@ fun SystemsScreen(
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.refreshSearchLocal()
             viewModel.refreshUsage()
+            viewModel.refreshLocalGames()
         }
     }
     val usage by viewModel.usage.collectAsStateWithLifecycle()
+    val localGames by viewModel.localGames.collectAsStateWithLifecycle()
 
     // Boutons de la barre du haut, rangés différemment en portrait (deux lignes) et en paysage.
     val netplayButton: @Composable () -> Unit = {
@@ -280,6 +285,13 @@ fun SystemsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
+                        // Jeux téléchargés, tous systèmes confondus (lobby : jeux à assez de joueurs).
+                        val local = localGames.filter { viewModel.system(it.systemId) != null && fitsLobby(it, lobbyState) }
+                        if (local.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }, key = "local-games") {
+                                LocalGamesRow(viewModel, local, imageUrl, mediaUrl, onOpenGame)
+                            }
+                        }
                         // Lobby : seulement les systèmes que tous ses membres savent jouer en réseau.
                         items(state.systems.filter { lobbyState.allowsSystem(it.id) }, key = { it.id }) { system ->
                             SystemCard(system, imageUrl(system), usage.systems[system.id] ?: 0) { onOpenSystem(system.id) }
@@ -429,6 +441,56 @@ private fun SearchResults(
             }
         }
     }
+}
+
+/** Rangée des jeux téléchargés, en tête des systèmes : cartes comme la recherche, appui -> fiche du jeu. */
+@Composable
+private fun LocalGamesRow(
+    viewModel: SystemsViewModel,
+    games: List<Game>,
+    imageUrl: (GameSystem) -> String?,
+    mediaUrl: MediaUrl,
+    onOpenGame: (systemId: String, gameId: Long) -> Unit,
+) {
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    Column {
+        Text(
+            stringResource(R.string.row_title, stringResource(R.string.row_downloaded), games.size),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        // Rangée de bord à bord (marges de la grille compensées).
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.layoutWidth(16.dp),
+        ) {
+            rowItems(games, key = { it.id }) { game ->
+                val system = viewModel.system(game.systemId)
+                GameCard(
+                    game = game,
+                    coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
+                    status = when (val d = downloads[game.id]) {
+                        is DownloadState.Running -> LocalStatus.Downloading(d)
+                        is DownloadState.Failed -> LocalStatus.Error(d.message)
+                        null -> LocalStatus.Downloaded
+                    },
+                    onClick = { onOpenGame(game.systemId, game.id) },
+                    onDetails = { onOpenGame(game.systemId, game.id) },
+                    badge = { SystemBadge(system, system?.let(imageUrl)) },
+                    modifier = Modifier.width(118.dp),
+                )
+            }
+        }
+    }
+}
+
+/** Élargit l'élément de [margin] de chaque côté (rangée de bord à bord dans une grille avec marges). */
+private fun Modifier.layoutWidth(margin: androidx.compose.ui.unit.Dp) = layout { measurable, constraints ->
+    val extra = margin.roundToPx() * 2
+    val placeable = measurable.measure(constraints.copy(minWidth = constraints.minWidth + extra, maxWidth = constraints.maxWidth + extra))
+    layout(placeable.width - extra, placeable.height) { placeable.place(-extra / 2, 0) }
 }
 
 @Composable
