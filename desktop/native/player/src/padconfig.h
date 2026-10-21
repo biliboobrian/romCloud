@@ -30,9 +30,19 @@ struct PadStep {
   char half = 0;
 };
 
+/**
+ * Élément de chaque étape sur la manette branchée [id], d'après sa position chez SDL (« a » : bouton
+ * du bas, « dpup », « lefttrigger », « +rightx »…), même si la manette a été configurée ; source brute
+ * (« b7 », « h0.1 », « +a2 ») pour un élément que SDL ne connaît pas sur cette manette ; vide : aucun.
+ */
+std::vector<std::string> padStepElements(SDL_JoystickID id, const std::vector<PadStep>& steps);
+
 class PadConfig {
  public:
   using Translate = std::function<std::string(const char*)>;
+
+  /** Étapes de la configuration pour les boutons de la console ([buttons], comme --buttons). */
+  static std::vector<PadStep> stepsFor(const std::string& buttons, const Translate& tr);
 
   /**
    * [buttons] : boutons de la console (--buttons, « bouton[=nom] ») ; [style] : sa manette
@@ -51,6 +61,20 @@ class PadConfig {
   const std::string& result() const { return result_; }
   void render(Canvas& c) const;
 
+  // État de la configuration (fiche du jeu de l'application, romcloud-player --pad-service).
+  const std::vector<PadStep>& steps() const { return steps_; }
+  size_t stepIndex() const { return step_; }
+  const std::vector<std::string>& assigned() const { return assigned_; }
+  /** Manette configurée (vide : pas encore choisie, en attente d'un bouton). */
+  const std::string& deviceName() const { return deviceName_; }
+  /** Message de l'étape (bouton déjà utilisé…), traduit. */
+  const std::string& message() const { return message_; }
+  std::string sourceLabel(const std::string& source) const;
+  /** Comme Tab, Suppr et Échap pendant la configuration. */
+  void skip();
+  void reset();
+  void cancel() { finish(nullptr); }
+
  private:
   void lock(SDL_JoystickID id);
   void onButton(int button, bool down);
@@ -63,7 +87,6 @@ class PadConfig {
   void finish(const char* message);
   float delta(int axis) const;
   bool usesAxis(int axis) const;
-  std::string sourceLabel(const std::string& source) const;
   /** Manette de la console ; renvoie sa hauteur. */
   int renderPad(Canvas& c, int x, int y, int width) const;
 

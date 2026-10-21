@@ -88,6 +88,26 @@ body.systems-screen { --bg: #000; }
 .profile-head { display: flex; align-items: center; gap: 14px; }
 .profile-head svg { color: var(--accent); }
 .profile-head h4 { font-size: 18px; }
+.pads { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.pad-players { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.pad-player { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pad-player.empty .pad-tile { opacity: 0.35; }
+.pad-player.current .pad-tile { outline: 3px solid var(--accent); outline-offset: 2px; }
+.pad-player span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pad-tile { aspect-ratio: 292 / 307; border-radius: 10px; overflow: hidden; background: var(--surface-2); display: grid; place-items: center; color: var(--muted); }
+.pad-tile img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.pad-tile.big { width: 200px; flex-shrink: 0; }
+.pad-layout, .pad-wizard { display: flex; gap: 18px; align-items: flex-start; }
+.pad-layout .grow, .pad-wizard .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.pad-binds { border-collapse: collapse; width: 100%; font-size: 13px; }
+.pad-binds th { text-align: left; color: var(--muted); font-weight: 600; padding: 0 8px 6px 0; }
+.pad-binds td { padding: 4px 8px 4px 0; border-top: 1px solid var(--border); }
+.pad-binds td:last-child { font-weight: 700; }
+.pad-prompt { font-size: 18px; font-weight: 700; }
+.pad-steps { list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; margin-top: 8px; font-size: 13px; }
+.pad-steps li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 6px; border-radius: 6px; }
+.pad-steps li.current { background: color-mix(in srgb, var(--accent) 30%, transparent); font-weight: 700; }
+.pad-steps li.done span:first-child::before { content: '✓ '; color: var(--accent); }
 .avatar.big { font-size: 40px; line-height: 1; }
 .avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; margin: 8px 0 12px; }
 .avatar-choice { height: 44px; font-size: 24px; border-radius: 10px; border: 2px solid transparent; background: var(--surface-2); color: inherit; cursor: pointer; display: grid; place-items: center; }

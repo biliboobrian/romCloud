@@ -103,6 +103,20 @@ static int axisOf(const std::string& source) {
 
 PadConfig::PadConfig(const std::string& buttons, const std::string& style, Translate tr)
     : tr_(std::move(tr)), style_(style) {
+  steps_ = stepsFor(buttons, tr_);
+  assigned_.resize(steps_.size());
+
+  // Toutes les manettes, connues de SDL ou non : la première utilisée est configurée.
+  int count = 0;
+  SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+  for (int i = 0; i < count; i++) {
+    if (SDL_Joystick* joystick = SDL_OpenJoystick(ids[i])) opened_.push_back(joystick);
+  }
+  SDL_free(ids);
+}
+
+std::vector<PadStep> PadConfig::stepsFor(const std::string& buttons, const Translate& tr_) {
+  std::vector<PadStep> steps_;
   // Boutons de la console et leur nom ; liste vide : tous ceux du RetroPad.
   std::map<std::string, std::string> labels;
   std::vector<std::string> names;
@@ -146,15 +160,57 @@ PadConfig::PadConfig(const std::string& buttons, const std::string& style, Trans
   }
   if (names.empty() || has("rx")) steps_.push_back({0, 'x', labels.count("rx") ? labels["rx"] : tr_("pad_right_x")});
   if (names.empty() || has("ry")) steps_.push_back({0, 'y', labels.count("ry") ? labels["ry"] : tr_("pad_right_y")});
-  assigned_.resize(steps_.size());
+  return steps_;
+}
 
-  // Toutes les manettes, connues de SDL ou non : la première utilisée est configurée.
-  int count = 0;
-  SDL_JoystickID* ids = SDL_GetJoysticks(&count);
-  for (int i = 0; i < count; i++) {
-    if (SDL_Joystick* joystick = SDL_OpenJoystick(ids[i])) opened_.push_back(joystick);
+std::vector<std::string> padStepElements(SDL_JoystickID id, const std::vector<PadStep>& steps) {
+  // Correspondance en cours (configurée ou de SDL) : élément -> source ; correspondance d'origine de
+  // SDL (avant la configuration) : source -> élément, pour nommer le bouton d'après sa position.
+  auto binds = [](const std::string& mapping) {
+    std::vector<std::pair<std::string, std::string>> list;
+    auto fields = split(mapping, ',');
+    for (size_t i = 2; i < fields.size(); i++) {
+      size_t colon = fields[i].find(':');
+      if (colon != std::string::npos) list.emplace_back(fields[i].substr(0, colon), fields[i].substr(colon + 1));
+    }
+    return list;
+  };
+  const std::string current = mappingFor(id);
+  char text[64] = {};
+  SDL_GUIDToString(SDL_GetJoystickGUIDForID(id), text, sizeof(text));
+  auto original = originalMappings.find(text);
+  const auto now = binds(current);
+  const auto before = binds(original != originalMappings.end() && !original->second.empty() ? original->second : current);
+  std::vector<std::string> result;
+  for (const auto& step : steps) {
+    const std::string element = sdlElement(step);
+    std::string source;
+    for (const auto& [e, s] : now) {
+      if (e == element) source = s;
+    }
+    // Direction du stick droit (bouton C) sans élément propre : moitié de l'axe entier.
+    if (source.empty() && step.half) {
+      for (const auto& [e, s] : now) {
+        if (e == baseElement(element)) source = std::string(1, step.half) + s;
+      }
+    }
+    std::string named;
+    for (const auto& [e, s] : before) {
+      if (s == source) named = e;
+      // Moitié d'un axe de SDL (« +a3 » de « rightx:a3 ») : moitié de l'élément.
+      else if (named.empty() && source.size() > 1 && (source[0] == '+' || source[0] == '-') && s == source.substr(1)) named = source[0] + e;
+    }
+    result.push_back(named.empty() ? source : named);
   }
-  SDL_free(ids);
+  return result;
+}
+
+void PadConfig::skip() {
+  if (joystick_) next();
+}
+
+void PadConfig::reset() {
+  if (joystick_) resetDevice();
 }
 
 PadConfig::~PadConfig() {

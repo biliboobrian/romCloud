@@ -56,7 +56,14 @@ class TvActivity : ComponentActivity() {
     /** Touche de la télécommande ou de la manette : « présent » pour les autres joueurs. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         (application as RomCloudApp).touchActivity()
+        // Manettes lues par la fiche du jeu (choix des joueurs, configuration d'une manette).
+        if (com.romcloud.app.libretro.ControllerCapture.dispatchKey(event)) return true
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean {
+        if (com.romcloud.app.libretro.ControllerCapture.dispatchMotion(ev)) return true
+        return super.dispatchGenericMotionEvent(ev)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -2,7 +2,8 @@
 // Croix ou stick gauche : déplace le focus vers l'élément le plus proche dans cette direction ;
 // A : valider ; B : retour (comme Échap) ; X : fiche du jeu ; Y : recherche ; LB / RB : filtre
 // précédent / suivant ; stick droit : défilement. Ignorée quand la fenêtre n'a pas le focus (jeu
-// lancé). Chargé par la page (window.RomCloudGamepad) et par les tests (module CommonJS).
+// lancé) ou quand la page lit elle-même les manettes (classe « pad-capture » de body). Chargé par la
+// page (window.RomCloudGamepad) et par les tests (module CommonJS).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.RomCloudGamepad = factory();
@@ -191,8 +192,10 @@
 
     function frame(now) {
       const { pressed, dir, scrollY } = snapshot();
-      // Fenêtre inactive (jeu au premier plan) : rien, et les boutons tenus au retour ne comptent pas.
-      if (!document.hasFocus()) {
+      // Fenêtre inactive (jeu au premier plan) ou manettes lues par la page (configuration des
+      // manettes, choix des joueurs : classe « pad-capture ») : rien, et les boutons tenus au retour
+      // ne comptent pas.
+      if (!document.hasFocus() || document.body.classList.contains('pad-capture')) {
         prev = pressed;
         held = dir ? { dir, next: Infinity } : null;
       } else {

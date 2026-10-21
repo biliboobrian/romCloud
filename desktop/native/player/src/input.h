@@ -50,6 +50,9 @@ class Input {
   int portOf(SDL_JoystickID id) const;
   /** Manettes [order] aux premières places, dans cet ordre, les autres ensuite ; enregistré. */
   void setPlayerOrder(const std::vector<SDL_JoystickID>& order);
+  /** Manette du joueur [port] (null : aucune) ; manette mémorisée pour lui (« GUID|série »), même débranchée. */
+  SDL_Gamepad* padAt(int port) const { return port >= 0 && port < kPorts ? pads_[port] : nullptr; }
+  const std::string& savedPlayer(int port) const { return savedPlayers_[port]; }
 
   /** Start + Select maintenus sur une manette (ouverture du menu). */
   bool menuCombo() const;

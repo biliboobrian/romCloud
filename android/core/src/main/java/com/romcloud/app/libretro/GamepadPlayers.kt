@@ -3,6 +3,13 @@ package com.romcloud.app.libretro
 import android.content.Context
 import android.view.InputDevice
 
+/**
+ * Mode des préférences des manettes : [fromDisk] (fiche du jeu, processus de l'application) relit le
+ * fichier s'il a changé, car le jeu (processus « :libretro ») les modifie aussi depuis son menu.
+ */
+@Suppress("DEPRECATION")
+internal fun prefsMode(fromDisk: Boolean) = if (fromDisk) Context.MODE_MULTI_PROCESS else Context.MODE_PRIVATE
+
 /** Manette branchée : identifiant Android (session), descripteur (stable) et numéro donné par Android. */
 internal data class Pad(val id: Int, val descriptor: String, val controllerNumber: Int)
 
@@ -11,9 +18,11 @@ internal data class Pad(val id: Int, val descriptor: String, val controllerNumbe
  * (descripteur Android) pour tous les jeux ; une manette rebranchée retrouve son joueur. Sans choix,
  * le numéro de manette d'Android décide, comme avant.
  */
-internal class GamepadPlayers(context: Context) {
-    private val prefs = context.getSharedPreferences("gamepad_players", Context.MODE_PRIVATE)
-    private var saved: List<String> = (0 until MAX_PLAYERS).map { prefs.getString("player$it", "").orEmpty() }
+internal class GamepadPlayers(context: Context, fromDisk: Boolean = false) {
+    private val prefs = context.getSharedPreferences("gamepad_players", prefsMode(fromDisk))
+    /** Manette mémorisée pour chaque joueur (descripteur Android, vide : aucune). */
+    var saved: List<String> = (0 until MAX_PLAYERS).map { prefs.getString("player$it", "").orEmpty() }
+        private set
     /** Port de chaque manette branchée (identifiant Android) ; recalculé au branchement / débranchement. */
     private var ports: Map<Int, Int>? = null
 

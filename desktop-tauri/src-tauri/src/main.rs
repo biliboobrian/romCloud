@@ -22,6 +22,7 @@ mod library;
 mod lobby;
 mod managed;
 mod netplay;
+mod pads;
 mod paths;
 mod relay;
 mod screencast;
