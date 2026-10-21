@@ -33,6 +33,13 @@ const STATE_ID_RE = /^[a-z0-9-]{8,64}$/i;
 export const STATE_HISTORY_LIMIT = 10;
 const THUMBNAIL_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 
+/** Avatars proposés pour un profil (affichés à côté du nom dans les lobbies). */
+export const AVATARS = [
+  '🎮', '🕹️', '👾', '🤖', '👻', '💀', '🎃', '👽', '🐱', '🐶', '🦊', '🐼', '🐸', '🐧', '🐵', '🦁',
+  '🐯', '🐻', '🐨', '🐰', '🐲', '🦖', '🦄', '🐙', '🦉', '🐝', '🍄', '⭐', '🔥', '⚡', '🌈', '🍕',
+  '🏆', '🚀', '⚽', '🎸', '🧙', '🥷', '🦸', '🧛',
+];
+
 const text = (value, max) => (value == null || value === '' ? null : String(value).slice(0, max));
 
 // ---------------------------------------------------------------------------
@@ -105,6 +112,7 @@ function validatePassword(password) {
 const publicUser = (row) => row && {
   id: row.id,
   username: row.username,
+  avatar: row.avatar ?? null,
   disabled: Boolean(row.disabled),
   createdAt: row.created_at,
   lastLoginAt: row.last_login_at,
@@ -184,6 +192,13 @@ export function authenticate(token, client) {
 export function logout(auth, client) {
   db.prepare('DELETE FROM sessions WHERE id = ?').run(auth.sessionId);
   logEvent('logout', { userId: auth.user.id, username: auth.user.username, success: true }, client);
+}
+
+/** Avatar du profil : un des [AVATARS], ou null pour aucun ; renvoie le profil. */
+export function setAvatar(auth, avatar) {
+  if (avatar != null && !AVATARS.includes(avatar)) throw new HttpError(400, 'errors.invalidAvatar');
+  db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(avatar ?? null, auth.user.id);
+  return publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(auth.user.id));
 }
 
 export function changePassword(auth, current, next) {

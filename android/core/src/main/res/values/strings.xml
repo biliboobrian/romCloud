@@ -527,6 +527,9 @@
     <string name="profile_offline">Server unreachable: play time and saves will be sent later.</string>
     <string name="profile_stats">%1$s of play · %2$d game(s)</string>
     <string name="profile_no_play">No game played yet</string>
+    <string name="profile_avatar">Avatar</string>
+    <string name="profile_avatar_hint">Shown next to your name in lobbies.</string>
+    <string name="profile_no_avatar">No avatar</string>
     <string name="profile_cloud_hint">Built-in emulator: your saves are sent to the server when you quit a game, and retrieved before playing when they are more recent (game continued on another device).</string>
     <string name="profile_playtime">%1$s played</string>
     <string name="profile_hours">%1$d h %2$s</string>

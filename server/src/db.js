@@ -185,6 +185,8 @@ db.exec(`
 `);
 
 // Migrations légères pour les bases créées par une version antérieure.
+// Avatar du profil (émoji choisi dans accounts.AVATARS ; NULL : aucun).
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'avatar')) db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
 const systemColumns = db.prepare('PRAGMA table_info(systems)').all().map((c) => c.name);
 if (!systemColumns.includes('image')) db.exec('ALTER TABLE systems ADD COLUMN image TEXT');
 if (!systemColumns.includes('platforms')) db.exec("ALTER TABLE systems ADD COLUMN platforms TEXT NOT NULL DEFAULT '[]'");

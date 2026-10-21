@@ -29,12 +29,17 @@ data class LobbyPlayer(
     val id: String,
     val name: String = "",
     val user: String? = null,
+    /** Avatar du profil (émoji), affiché devant le nom. */
+    val avatar: String? = null,
     val platform: String = "",
     val busy: Boolean = false,
     val active: Boolean = false,
 ) {
-    val displayName: String get() = if (user.isNullOrBlank()) name else "$user · $name"
+    val displayName: String get() = withAvatar(avatar, if (user.isNullOrBlank()) name else "$user · $name")
 }
+
+/** Nom précédé de l'avatar du profil, s'il en a un. */
+private fun withAvatar(avatar: String?, name: String) = if (avatar.isNullOrBlank()) name else "$avatar $name"
 
 /** Jeu d'un lobby ; [players] : nombre de joueurs maximal du jeu. */
 @Serializable
@@ -56,11 +61,12 @@ data class LobbyMember(
     val id: String,
     val name: String = "",
     val user: String? = null,
+    val avatar: String? = null,
     val platform: String = "",
     val status: String = "waiting",
     val host: Boolean = false,
 ) {
-    val displayName: String get() = if (user.isNullOrBlank()) name else "$user · $name"
+    val displayName: String get() = withAvatar(avatar, if (user.isNullOrBlank()) name else "$user · $name")
     val playing: Boolean get() = status == "playing"
 }
 

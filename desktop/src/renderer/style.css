@@ -88,6 +88,11 @@ body.systems-screen { --bg: #000; }
 .profile-head { display: flex; align-items: center; gap: 14px; }
 .profile-head svg { color: var(--accent); }
 .profile-head h4 { font-size: 18px; }
+.avatar.big { font-size: 40px; line-height: 1; }
+.avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; margin: 8px 0 12px; }
+.avatar-choice { height: 44px; font-size: 24px; border-radius: 10px; border: 2px solid transparent; background: var(--surface-2); color: inherit; cursor: pointer; display: grid; place-items: center; }
+.avatar-choice:hover { border-color: var(--border); }
+.avatar-choice.selected { border-color: var(--accent); }
 .profile-form { display: flex; flex-direction: column; gap: 10px; }
 .profile-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 .cast-devices { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }

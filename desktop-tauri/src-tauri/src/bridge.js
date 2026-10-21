@@ -147,6 +147,7 @@
       login: call('account:login'),
       sendReport: call('account:sendReport'),
       logout: call('account:logout'),
+      setAvatar: call('account:setAvatar'),
       playtime: call('account:playtime'),
       uploadPending: call('account:uploadPending'),
       reportError: call('account:reportError'),

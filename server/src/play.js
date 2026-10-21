@@ -58,6 +58,7 @@ export function announce(auth, body, client) {
   presence.set(id, {
     userId: auth.user.id,
     user: auth.user.username,
+    avatar: auth.user.avatar ?? null,
     name: text(body.name, 100) || client.device || 'RomCloud',
     platform: text(body.platform || client.platform, 30),
     hosting: hostedGame(body.hosting),
@@ -80,7 +81,7 @@ export function peers(exceptId) {
   prune();
   return [...presence]
     .filter(([id]) => id !== exceptId)
-    .map(([id, p]) => ({ id, name: p.name, platform: p.platform, user: p.user, hosting: p.hosting, busy: p.busy, rtt: p.rtt }));
+    .map(([id, p]) => ({ id, name: p.name, platform: p.platform, user: p.user, avatar: p.avatar, hosting: p.hosting, busy: p.busy, rtt: p.rtt }));
 }
 
 /** Appareil connecté (annonce encore valable), ou null. */
@@ -96,7 +97,7 @@ export function presenceOf(deviceId) {
 export function players(now = Date.now()) {
   prune(now);
   return [...presence].map(([id, p]) => ({
-    id, name: p.name, user: p.user, platform: p.platform, busy: p.busy,
+    id, name: p.name, user: p.user, avatar: p.avatar, platform: p.platform, busy: p.busy,
     active: p.busy || now - (p.activeAt ?? p.seenAt) < ACTIVE_MS,
   }));
 }

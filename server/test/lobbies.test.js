@@ -103,3 +103,22 @@ test('systèmes jouables par tous (émulateur intégré) : jeu du lobby limité,
   assert.deepEqual(l.systems, ['snes', 'genesis', 'gba']);
   assert.throws(() => lobbies.create(a, { deviceId: 'alice-phone-1', game: { ...game, systemId: 'psx' }, systems: ['snes'] }), { status: 400 });
 });
+
+test('avatar du profil : affiché avec les joueurs et les membres du lobby, changé pendant le lobby', () => {
+  assert.throws(() => accounts.setAvatar(a, 'pas un avatar'), { status: 400 });
+  assert.equal(accounts.setAvatar(a, '🦊').avatar, '🦊');
+  const fox = accounts.authenticate(alice.token, phone);
+  assert.equal(fox.user.avatar, '🦊');
+  play.reset();
+  lobbies.reset();
+  play.announce(fox, { deviceId: 'alice-phone-1', name: 'Pixel', platform: 'android' }, phone);
+  play.announce(b, { deviceId: 'bob-pc-0001', name: 'PC de Bob', platform: 'windows' }, pc);
+  assert.equal(lobbies.list().players.find((p) => p.id === 'alice-phone-1').avatar, '🦊');
+  const lobby = lobbies.create(fox, { deviceId: 'alice-phone-1' });
+  lobbies.join(b, lobby.id, { deviceId: 'bob-pc-0001' });
+  assert.deepEqual(lobbies.list().lobbies[0].members.map((m) => m.avatar), ['🦊', null]);
+  // Avatar retiré : annoncé à la présence suivante.
+  assert.equal(accounts.setAvatar(fox, null).avatar, null);
+  play.announce(accounts.authenticate(alice.token, phone), { deviceId: 'alice-phone-1', name: 'Pixel', platform: 'android' }, phone);
+  assert.equal(lobbies.list().lobbies[0].members[0].avatar, null);
+});

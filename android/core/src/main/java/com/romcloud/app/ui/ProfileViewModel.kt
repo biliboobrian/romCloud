@@ -84,6 +84,9 @@ class ProfileViewModel(private val app: RomCloudApp) : ViewModel() {
         }
     }
 
+    /** Avatar du profil (null : aucun), affiché à côté du nom dans les lobbies. */
+    fun setAvatar(avatar: String?) = run { app.account.setAvatar(avatar) }
+
     fun logout() = run {
         app.account.logout()
         message.value = I18n.get(R.string.profile_logged_out)

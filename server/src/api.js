@@ -581,10 +581,13 @@ api.get('/account/me', signedIn, (req, res) => {
   const playtime = accounts.listPlaytime(req.auth.user.id);
   res.json({
     user: req.auth.user,
+    avatars: accounts.AVATARS,
     playSeconds: playtime.reduce((n, p) => n + p.seconds, 0),
     gamesPlayed: playtime.length,
   });
 });
+
+api.put('/account/avatar', signedIn, (req, res) => res.json({ user: accounts.setAvatar(req.auth, req.body?.avatar ?? null) }));
 
 api.post('/account/password', signedIn, (req, res) => {
   accounts.changePassword(req.auth, req.body?.current, req.body?.password);

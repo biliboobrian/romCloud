@@ -85,7 +85,11 @@ function view(lobby) {
     modes: lobby.modes,
     started: lobby.started,
     createdAt: lobby.createdAt,
-    members: lobby.members.map((m) => ({ id: m.id, name: m.name, user: m.user, platform: m.platform, status: m.status, host: m.id === lobby.host })),
+    // Avatar : celui annoncé en dernier par l'appareil (changé dans le profil pendant le lobby).
+    members: lobby.members.map((m) => ({
+      id: m.id, name: m.name, user: m.user, avatar: (presenceOf(m.id) ?? m).avatar ?? null,
+      platform: m.platform, status: m.status, host: m.id === lobby.host,
+    })),
     // Jeux possibles : seulement ces systèmes (émulateur intégré disponible chez tous les membres).
     systems: commonSystems(lobby),
   };
@@ -110,7 +114,7 @@ function leaveAll(deviceId) {
   }
 }
 
-const member = (dev, systems) => ({ id: dev.id, name: dev.name, user: dev.user, platform: dev.platform, status: 'waiting', seenAt: Date.now(), systems });
+const member = (dev, systems) => ({ id: dev.id, name: dev.name, user: dev.user, avatar: dev.avatar, platform: dev.platform, status: 'waiting', seenAt: Date.now(), systems });
 
 /** Joueurs connectés (pastilles) et lobbies ouverts ; [now] : essais. */
 export function list(now = Date.now()) {

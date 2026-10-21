@@ -2,6 +2,9 @@
 
 package com.romcloud.tv
 
+import com.romcloud.app.ui.ProfileAvatar
+import com.romcloud.app.ui.AvatarPicker
+import com.romcloud.app.data.AccountState
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -85,7 +88,7 @@ fun TvProfileScreen(viewModel: ProfileViewModel, onMessage: (String) -> Unit) {
     ) {
         Text(stringResource(R.string.profile_title), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         if (account.signedIn) {
-            SignedIn(viewModel, account.username, account.playSeconds, account.gamesPlayed, account.offline)
+            SignedIn(viewModel, account)
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(48.dp)) {
                 LoginForm(viewModel, Modifier.weight(1f))
@@ -158,18 +161,19 @@ private fun QrPanel(content: String?, code: String?, error: String?, modifier: M
 }
 
 @Composable
-private fun SignedIn(viewModel: ProfileViewModel, username: String, playSeconds: Long, gamesPlayed: Int, offline: Boolean) {
+private fun SignedIn(viewModel: ProfileViewModel, account: AccountState) {
+    val playSeconds = account.playSeconds
     val logout = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { logout.requestFocus() } }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Filled.AccountCircle, null, Modifier.size(72.dp), tint = MaterialTheme.colorScheme.primary)
+        ProfileAvatar(account.avatar, 72.dp, tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.width(20.dp))
         Column {
-            Text(username, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+            Text(account.username, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
             Text(
                 when {
-                    offline -> stringResource(R.string.profile_offline)
-                    playSeconds > 0 -> stringResource(R.string.profile_stats, Account.formatDuration(playSeconds), gamesPlayed)
+                    account.offline -> stringResource(R.string.profile_offline)
+                    playSeconds > 0 -> stringResource(R.string.profile_stats, Account.formatDuration(playSeconds), account.gamesPlayed)
                     else -> stringResource(R.string.profile_no_play)
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -177,6 +181,12 @@ private fun SignedIn(viewModel: ProfileViewModel, username: String, playSeconds:
         }
     }
     Text(stringResource(R.string.profile_cloud_hint), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth(0.7f))
+    // Avatar, affiché à côté du nom dans les lobbies (choisi à la télécommande).
+    if (account.avatars.isNotEmpty()) {
+        Text(stringResource(R.string.profile_avatar), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.profile_avatar_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(Modifier.fillMaxWidth(0.8f)) { AvatarPicker(account.avatar, account.avatars, viewModel::setAvatar, itemSize = 56.dp) }
+    }
     OutlinedButton(onClick = viewModel::logout, modifier = Modifier.focusRequester(logout)) {
         Icon(Icons.AutoMirrored.Filled.Logout, null, modifier = IconSize)
         Spacer(Modifier.width(8.dp))
