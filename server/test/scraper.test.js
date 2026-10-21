@@ -109,6 +109,9 @@ test('Noms de fichiers', () => {
     titleFromFileName('The Legend of Zelda Tears of the Kingdom v1.1.0 Eur SuperXCi - CLC.xci'),
     'The Legend of Zelda Tears of the Kingdom',
   );
+  assert.equal(titleFromFileName('It Takes Two v1.0.2- CLC.xci'), 'It Takes Two');
+  assert.equal(titleFromFileName('Minecraft.Dungeons.II_(v1.1.1.0 & DLC)_(EU)_SuperXCI-NX.xci'), 'Minecraft Dungeons II');
+  assert.equal(titleFromFileName('Dr. Mario (World).nes'), 'Dr. Mario');
   assert.equal(titleFromFileName('Super Mario Odyssey [0100000000010000][v0].nsp'), 'Super Mario Odyssey');
   assert.equal(
     normalize('Bomberman Online v1.004 (2001)(Sega)(NTSC)(US)[!].zip'),
@@ -493,4 +496,15 @@ test('nom de fichier qui ne suit pas la DAT : sigle, mots de patch, nombres en l
   assert.equal(await found('5356 - 9 Hours 9 Persons 9 Doors.nds'), 'Nine Hours, Nine Persons, Nine Doors');
   assert.equal(await found('Pokemon Patch.nds'), null);
   assert.equal(await found('Chrono.nds'), null);
+});
+
+test('sigle d’une série en tête du titre : titre complet essayé en plus', async () => {
+  const { expandAbbreviation } = await import('../src/scraper/abbreviations.js');
+  assert.equal(expandAbbreviation('GTA chinatown wars'), 'Grand Theft Auto chinatown wars');
+  assert.equal(expandAbbreviation('MGS: Peace Walker'), 'Metal Gear Solid: Peace Walker');
+  assert.equal(expandAbbreviation('FF'), 'Final Fantasy');
+  // Mot ordinaire, minuscules ou sigle inconnu : rien.
+  assert.equal(expandAbbreviation('Gta chinatown wars'), null);
+  assert.equal(expandAbbreviation('Codename Kids Next Door'), null);
+  assert.equal(expandAbbreviation('ABC Wars'), null);
 });

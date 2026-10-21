@@ -21,6 +21,7 @@ import { zipEntries, zipMainEntry } from './rom-identity.js';
 import { findArcadeGame, isArcadeSystem } from './arcade.js';
 import { scrapeScreenScraper, searchScreenScraper } from './screenscraper.js';
 import { scrapeLaunchBox } from './launchbox.js';
+import { expandAbbreviation } from './abbreviations.js';
 import { scrapeWikipedia, wikidataFacts } from './wikipedia.js';
 
 export { QuotaError } from './screenscraper.js';
@@ -96,8 +97,11 @@ export async function scrapeGame(gameId, source = 'auto') {
         crc32: row.crc32,
         md5: row.md5,
       });
-      // Inconnu par son fichier (homebrew, fichier renommé) : recherche par titre.
+      // Inconnu par son fichier (homebrew, fichier renommé) : recherche par titre, puis par le titre
+      // complet d'un sigle (« GTA Chinatown Wars »).
       if (!meta && !arcade) meta = await searchScreenScraper({ system, title: titleFromFileName(row.file_name) });
+      const expanded = expandAbbreviation(titleFromFileName(row.file_name));
+      if (!meta && !arcade && expanded) meta = await searchScreenScraper({ system, title: expanded });
       if (meta) usedSources.push('screenscraper');
       if (meta?.ratingScore != null) ratings.set('screenscraper', { source: 'screenscraper', score: meta.ratingScore });
     } catch (err) {
@@ -173,7 +177,11 @@ export async function scrapeGame(gameId, source = 'auto') {
   };
   if (source !== 'screenscraper') {
     try {
-      const lb = await scrapeLaunchBox({ system, titles: [meta?.title, row.title, titleFromFileName(row.file_name), inner && titleFromLibretroName(inner.name)] });
+      const fileTitle = titleFromFileName(row.file_name);
+      const lb = await scrapeLaunchBox({
+        system,
+        titles: [meta?.title, row.title, fileTitle, expandAbbreviation(row.title), expandAbbreviation(fileTitle), inner && titleFromLibretroName(inner.name)],
+      });
       if (lb) applyLaunchBox(lb);
     } catch (err) {
       errors.push(err.message);
@@ -189,7 +197,8 @@ export async function scrapeGame(gameId, source = 'auto') {
       const wiki = await scrapeWikipedia({
         // Titre tiré du nom de fichier par les règles actuelles (jeu ajouté avec une version
         // précédente : auteur, version ou article encore dans son titre).
-        title: meta?.title || (row.title === row.file_name.replace(/\.[^.]+$/, '') ? titleFromFileName(row.file_name) : row.title),
+        // Sigle d'une série (« GTA Chinatown Wars ») : titre complet.
+        title: meta?.title || ((t) => expandAbbreviation(t) || t)(row.title === row.file_name.replace(/\.[^.]+$/, '') ? titleFromFileName(row.file_name) : row.title),
         system: system.name,
         languages: config.screenscraper.languages,
         loose: unidentified,
