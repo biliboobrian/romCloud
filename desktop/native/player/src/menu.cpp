@@ -158,6 +158,7 @@ static const struct {
     {"players_keys", "Même manette ou Entrée : terminer   Échap : annuler", "Same controller or Enter: done   Esc: cancel"},
     {"players_saved", "Joueurs des manettes enregistrés", "Controller players saved"},
     {"pad_title", "Configuration de la manette", "Controller setup"},
+    {"pad_art_credit", "Illustrations : @rachels_ham", "Illustrations: @rachels_ham"},
     {"pad_press_any", "Appuyez sur un bouton de la manette à configurer.", "Press any button on the controller to set up."},
     {"pad_step", "Étape", "Step"},
     {"pad_hint", "Appuyez sur ce bouton (ou cette gâchette), puis relâchez-le. Pour passer cette étape, appuyez de nouveau sur le bouton précédent.",

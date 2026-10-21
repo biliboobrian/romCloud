@@ -4,7 +4,7 @@
 //                   [--state-dir <dossier>] [--options <fichier>] [--title <nom>] [--lang fr|en]
 //                   [--windowed] [--resume] [--state-name <nom>] [--option-default <clé>=<valeur>]…
 //                   [--keys-file <touches du clavier>] [--buttons <boutons de la console>]
-//                   [--pad-style <manette de la console>]
+//                   [--pad-style <manette de la console>] [--pad-images <illustrations des manettes>]
 //                   [--history-dir <historique des états> --history-device <nom du PC>] [--state-file <état>]
 //                   [--disk <disque inséré au démarrage, 0 pour le premier>]
 //                   [--netplay-host | --netplay-join <adresse:port> --netplay-peer <nom de l'hôte>]
@@ -73,6 +73,7 @@ struct Args {
   std::string keysFile;  // touches du clavier « bouton=scancode », modifiées depuis le menu
   std::string buttons;  // boutons de la console proposés dans l'écran des touches (--buttons)
   std::string padStyle;  // manette de la console dessinée dans la configuration (--pad-style)
+  std::string padImages;  // illustrations des manettes (PNG), dossier (--pad-images)
   std::string historyDir, historyDevice;  // historique des états du jeu, nom du PC
   std::string stateFile;  // état de l'historique chargé au lancement
   std::string disk;  // disque inséré au démarrage (jeu en plusieurs disques), 0 pour le premier
@@ -108,6 +109,7 @@ Args parseArgs(int argc, char** argv) {
       {"--save-dir", &a.saveDir},    {"--state-dir", &a.stateDir}, {"--options", &a.options},
       {"--title", &a.title},         {"--lang", &a.lang},       {"--state-name", &a.stateName},
       {"--keys-file", &a.keysFile}, {"--buttons", &a.buttons}, {"--pad-style", &a.padStyle},
+      {"--pad-images", &a.padImages},
       {"--test-frames", &a.testFrames}, {"--screenshot", &a.screenshot}, {"--test-seconds", &a.testSeconds},
       {"--test-options", &a.testOptions},  // essai : écran des options du cœur, onglet N
       {"--test-load-at", &a.testLoadAt},
@@ -886,6 +888,7 @@ int Player::run() {
   }
   audio_.setVolume(std::clamp(atoi(global_.setting("romcloud_volume", "100").c_str()), 0, 100) / 100.0f);
   menu_.setButtons(args_.buttons);
+  setPadImagesDir(args_.padImages);
   applySavedPadMappings();  // manettes configurées pour ce système (avant leur ouverture)
   input_.init();
   loadSram();  // avant l'état de sauvegarde, qui la contient aussi
