@@ -178,9 +178,10 @@ fn extract(zip: &[u8], dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Télécharge la dernière version et l'installe à la place de l'actuelle (ou dans le dossier par
-/// défaut) ; chemins d'Eden et d'eden-cli enregistrés ; renvoie le nouvel état ([check]).
-pub async fn install(id: &str) -> Result<Value> {
+/// Télécharge la dernière version et l'installe dans [dir] (choisi à la première installation,
+/// créé s'il n'existe pas), sinon à la place de l'actuelle (ou dans le dossier par défaut) ;
+/// chemins d'Eden et d'eden-cli enregistrés ; renvoie le nouvel état ([check]).
+pub async fn install(id: &str, dir: Option<&str>) -> Result<Value> {
     let state = check(id).await?;
     let release = latest_release().await?;
     let variant = state["variant"].as_str().unwrap_or("amd64-clang-pgo").to_string();
@@ -196,10 +197,13 @@ pub async fn install(id: &str) -> Result<Value> {
         return Err(AppError::new("errors.http", json!({ "status": res.status().as_u16() })));
     }
     let zip = res.bytes().await?.to_vec();
-    let dir = PathBuf::from(state["dir"].as_str().unwrap_or(""));
+    let dir = PathBuf::from(dir.map(str::trim).filter(|d| !d.is_empty()).unwrap_or(state["dir"].as_str().unwrap_or("")));
     {
         let dir = dir.clone();
-        tokio::task::spawn_blocking(move || extract(&zip, &dir)).await.map_err(|e| AppError::msg(e.to_string()))??;
+        tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&dir)?;
+            extract(&zip, &dir)
+        }).await.map_err(|e| AppError::msg(e.to_string()))??;
     }
     // Variante gardée pour les prochaines mises à jour (celle de l'archive installée).
     let mut variants = setting_map("emulatorVariants");
