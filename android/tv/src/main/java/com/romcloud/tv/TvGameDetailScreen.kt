@@ -339,6 +339,12 @@ fun TvGameDetailScreen(
                     )
                 }
                 GameIssuesCard(state.issues)
+                // Émulateur intégré : manettes des joueurs et touches de la console.
+                val builtinCore = state.selectedPlayer?.libretroCore
+                val system = state.system
+                if (builtinCore != null && system != null) {
+                    com.romcloud.app.libretro.ControllersSection(system.id, system.name, builtinCore, Modifier.fillMaxWidth(0.8f), imageSize = 180.dp)
+                }
                 // Vita3K : installation du jeu dans l'émulateur, puis démarrage direct.
                 state.vita?.let { VitaProcedure(it, state.localPath, viewModel::setVitaLicense) }
 

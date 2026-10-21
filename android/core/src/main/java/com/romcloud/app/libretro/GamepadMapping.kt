@@ -94,9 +94,9 @@ internal fun mappingSteps(layout: PadLayout): List<MappingStep> = buildList {
  * Configurations mémorisées par console ([systemId]) et modèle de manette (fabricant, produit, nom).
  * Sans configuration pour la console : celle faite pour toutes les consoles (anciennes versions).
  */
-internal class GamepadMappings(context: Context, private val systemId: String) {
+internal class GamepadMappings(context: Context, private val systemId: String, fromDisk: Boolean = false) {
 
-    private val prefs = context.getSharedPreferences("libretro_gamepads", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("libretro_gamepads", prefsMode(fromDisk))
     private val cache = HashMap<String, GamepadMapping?>()
     private val json = Json { ignoreUnknownKeys = true }
 

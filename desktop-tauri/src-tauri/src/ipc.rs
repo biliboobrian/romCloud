@@ -168,6 +168,19 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
             let _ = tauri_plugin_opener::open_url(str_arg(a, 0), None::<&str>);
             Value::Null
         }
+        // Manettes du moteur intégré (fiche du jeu) : service du système, commandes, arrêt.
+        "pads:start" => {
+            crate::pads::start(&arg(a, 0), &str_arg(a, 1))?;
+            Value::Null
+        }
+        "pads:command" => {
+            crate::pads::command(&str_arg(a, 0))?;
+            Value::Null
+        }
+        "pads:stop" => {
+            crate::pads::stop();
+            Value::Null
+        }
         "keyboard:layout" => keyboard::layout(builtin::load_keys()),
         "keyboard:save" => builtin::save_keys(&arg(a, 0))?,
         "app:version" => json!(account::version()),

@@ -41,6 +41,8 @@
     connectivity: { online: true, pending: 0 }, // serveur joignable ; envois en attente
     localSystems: new Set(), // systèmes avec des jeux sur le PC (seuls affichés hors ligne)
     localGames: [], // jeux téléchargés, tous systèmes (rangée de la page des systèmes)
+    // Manettes du moteur intégré dans la fiche du jeu (pads:event) : service du système affiché.
+    pads: { key: null },
   };
 
   // ---------------------------------------------------------------------------
@@ -204,6 +206,7 @@
     $('#backBtn').classList.toggle('hidden', S.route.name === 'systems');
     document.body.classList.remove('immersive');
     applySystemColor();
+    if (S.route.name !== 'game') stopPads();
     $('#main').scrollTop = 0;
     ({ systems: renderSystems, games: renderGames, game: renderGame, settings: renderSettings, lobby: renderLobby })[S.route.name]();
   }
@@ -2288,6 +2291,8 @@
       return t(`emu.${o.kind}`);
     };
     const catalogEmu = selected.kind === 'emulator' ? emulators.find((e) => e.id === selected.emuId) : null;
+    // Moteur intégré (pas RPCS3, Cemu… : applications à part) : manettes des joueurs et touches.
+    const builtinPads = !game.folder && selected.kind === 'builtin' && !selected.name;
     // Vita3K (sans ligne de commande personnalisée) : procédure d'installation du jeu.
     const vita = catalogEmu?.id === 'vita3k' && !catalogEmu.customArgs ? await call(rc.launcher.vitaStatus, system, game).catch(() => null) : null;
     const meta = [
@@ -2360,6 +2365,7 @@
             ${vita ? vitaProcedureHtml(vita) : ''}
             ${command ? `<div class="muted small">${esc(t('emulator.command'))}</div><div class="mono">${esc(command)}</div>` : ''}
           </div>`}
+          ${builtinPads ? '<section class="pads" id="padsBox"></section>' : ''}
           ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
           ${gameInfoHtml(game)}
           ${shots.length ? `<div class="shots">${shotThumbs.map((url, i) => `<button class="shot" data-shot="${i}" title="${esc(t('detail.screenshot', { n: i + 1, total: shots.length }))}"><img src="${esc(url)}" alt=""></button>`).join('')}</div>` : ''}
@@ -2406,6 +2412,8 @@
     $('#folderBtn')?.addEventListener('click', () => rc.shell.showItem(localPath));
     $('#raHelpBtn')?.addEventListener('click', () => showRetroArchHelp(system));
     $('#resetCoreBtn')?.addEventListener('click', () => confirmResetCore(system.id, selected.core));
+    if (builtinPads) startPads(system, selected.core);
+    else stopPads();
     if (catalogEmu) bindEmulatorBlock($('#main'), catalogEmu, () => renderGame());
     $('#vitaLicenseSave')?.addEventListener('click', async () => {
       await call(rc.launcher.setVitaLicense, game.id, $('#vitaLicense').value);
@@ -2539,6 +2547,232 @@
     } finally {
       button.disabled = false;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Manettes du moteur intégré (fiche du jeu) : romcloud-player sans fenêtre (pads.rs) donne les
+  // manettes des joueurs, les boutons de la console et, pour chacun, l'élément de la manette qui le
+  // commande ; mêmes réglages que le menu du jeu (« Joueurs des manettes », « Configurer la manette »).
+  // ---------------------------------------------------------------------------
+
+  // Illustrations des manettes : @rachels_ham (pads/<nom>.webp), manette de chaque console.
+  const CONSOLE_PADS = {
+    nes: 'nes', fds: 'famicom', snes: 'snes', snesmsu1: 'snes', satellaview: 'snes', n64: 'n64', gc: 'gamecube', ngc: 'gamecube',
+    wii: 'wii', psx: 'psx', ps2: 'ps2', genesis: 'genesis', genesismsu: 'genesis', segacd: 'genesis', sega32x: 'genesis',
+    pico: 'genesis', master: 'master', sg1000: 'master', saturn: 'saturn', dreamcast: 'dreamcast', naomi: 'dreamcast',
+    atomiswave: 'dreamcast', tg16: 'pcengine', tgcd: 'pcengine', supergrafx: 'pcengine', neogeo: 'neogeo', neogeocd: 'neogeo',
+    atari2600: 'atari2600',
+  };
+  const consolePadImage = (system) => {
+    const name = CONSOLE_PADS[(system.shortname || '').toLowerCase()] || CONSOLE_PADS[system.id];
+    return name ? `pads/${name}.webp` : null;
+  };
+
+  /** Manette branchée (type donné par SDL, nom) : son image et la famille des noms de ses boutons. */
+  function controllerOf(pad) {
+    const kind = pad.kind || '';
+    if (/^ps[345]$/.test(kind)) return { image: kind, family: 'ps' };
+    if (kind.startsWith('switch') || kind.startsWith('joycon')) return { image: 'joycon', family: 'nintendo' };
+    if (kind === 'xbox360') return { image: 'xbox360', family: 'xbox' };
+    if (kind === 'xboxone') return { image: /series/i.test(pad.name || '') ? 'xboxseries' : 'xboxone', family: 'xbox' };
+    return { image: 'xboxseries', family: 'xbox' };
+  }
+
+  // Éléments de SDL (position sur la manette : « a » = bouton du bas) -> nom sur chaque famille.
+  const PAD_BUTTON_NAMES = {
+    xbox: { a: 'A', b: 'B', x: 'X', y: 'Y', leftshoulder: 'LB', rightshoulder: 'RB', lefttrigger: 'LT', righttrigger: 'RT', leftstick: 'LS', rightstick: 'RS', start: 'Menu', back: 'View', guide: 'Xbox' },
+    ps: { a: '✕', b: '○', x: '□', y: '△', leftshoulder: 'L1', rightshoulder: 'R1', lefttrigger: 'L2', righttrigger: 'R2', leftstick: 'L3', rightstick: 'R3', start: 'Options', back: 'Share', guide: 'PS' },
+    nintendo: { a: 'B', b: 'A', x: 'Y', y: 'X', leftshoulder: 'L', rightshoulder: 'R', lefttrigger: 'ZL', righttrigger: 'ZR', leftstick: 'L3', rightstick: 'R3', start: '+', back: '−', guide: 'Home' },
+  };
+
+  /** Nom de l'élément de la manette (« a », « dpup », « +rightx », source brute « b7 »…) pour sa famille. */
+  function padElementLabel(element, family) {
+    if (!element) return '—';
+    const arrows = { up: '↑', down: '↓', left: '←', right: '→' };
+    let m = /^dp(up|down|left|right)$/.exec(element);
+    if (m) return t('pads.dpad', { dir: arrows[m[1]] });
+    m = /^([+-]?)(left|right)([xy])$/.exec(element);
+    if (m) {
+      const dir = !m[1] ? (m[3] === 'x' ? '↔' : '↕') : m[3] === 'x' ? (m[1] === '+' ? '→' : '←') : m[1] === '+' ? '↓' : '↑';
+      return t(m[2] === 'left' ? 'pads.leftStick' : 'pads.rightStick', { dir });
+    }
+    m = /^b(\d+)$/.exec(element);
+    if (m) return t('pads.button', { n: Number(m[1]) + 1 });
+    m = /^h\d+\.(\d+)$/.exec(element);
+    if (m) return t('pads.dpad', { dir: { 1: '↑', 2: '→', 4: '↓', 8: '←' }[m[1]] || '?' });
+    m = /^([+-]?)a(\d+)~?$/.exec(element);
+    if (m) return `${t('pads.axis', { n: Number(m[2]) + 1 })}${m[1] ? ` ${m[1]}` : ''}`;
+    return (PAD_BUTTON_NAMES[family] || PAD_BUTTON_NAMES.xbox)[element] || element;
+  }
+
+  /** Service des manettes pour le système du jeu (relancé seulement si le système ou le cœur change). */
+  function startPads(system, core) {
+    const key = `${system.id}|${core}`;
+    if (S.pads.key !== key) {
+      S.pads = { key, system, steps: [], pads: [], wizard: null, order: null, shown: null, error: null };
+      call(rc.pads.start, system, core).catch((err) => {
+        S.pads.error = err.message;
+        paintPads();
+      });
+    }
+    paintPads();
+  }
+
+  function stopPads() {
+    if (!S.pads.key) return;
+    S.pads = { key: null };
+    document.body.classList.remove('pad-capture');
+    rc.pads.stop();
+  }
+
+  function paintPads() {
+    const box = $('#padsBox');
+    const p = S.pads;
+    if (!box || !p.key) return;
+    const connected = p.pads.filter((x) => x.name);
+    const shown = connected.find((x) => x.port === p.shown) || connected[0];
+    const family = shown ? controllerOf(shown).family : 'xbox';
+    const image = consolePadImage(p.system);
+    const player = (port) => {
+      const pad = p.pads.find((x) => x.port === port) || { port };
+      // Joueur 1 sans manette : le clavier.
+      const tile = pad.name ? controllerOf(pad).image : port === 0 ? 'keyboard' : null;
+      const name = pad.name || (port === 0 ? t('pads.keyboard') : pad.saved ? t('pads.unplugged') : t('pads.none'));
+      return `<div class="pad-player${tile ? '' : ' empty'}">
+        <div class="pad-tile">${tile ? `<img src="pads/${tile}.webp" alt="">` : icon('pad', 32)}</div>
+        <strong>${esc(t('pads.player', { n: port + 1 }))}</strong><span class="muted small">${esc(name)}</span></div>`;
+    };
+    box.innerHTML = `<h3>${esc(t('pads.title'))}</h3>
+      ${p.error ? `<p class="bad">${esc(p.error)}</p>` : ''}
+      <div class="pad-players">${[0, 1, 2, 3].map(player).join('')}</div>
+      <div class="line"><button class="btn" id="padOrderBtn"${connected.length ? '' : ' disabled'}>${icon('group', 18)} ${esc(t('pads.order'))}</button></div>
+      <div class="pad-layout">
+        ${image ? `<div class="pad-tile big"><img src="${image}" alt="${esc(p.system.name)}"></div>` : ''}
+        <div class="grow">
+          ${connected.length > 1 ? `<div class="line">${connected.map((x) => `<button class="chip${x === shown ? ' selected' : ''}" data-pad-shown="${x.port}">${esc(t('pads.player', { n: x.port + 1 }))}</button>`).join('')}</div>` : ''}
+          ${connected.length ? `<table class="pad-binds"><tr><th>${esc(p.system.name)}</th><th>${esc(shown.name)}</th></tr>
+            ${p.steps.map((label, i) => `<tr><td>${esc(label)}</td><td>${esc(padElementLabel(shown.elements?.[i], family))}</td></tr>`).join('')}</table>`
+            : `<p class="muted">${esc(t('pads.noPad'))}</p>`}
+        </div>
+      </div>
+      <div class="line"><button class="btn" id="padConfigBtn"${connected.length ? '' : ' disabled'}>${icon('pad', 18)} ${esc(t('pads.configure'))}</button></div>
+      <p class="muted small">${esc(t('pads.hint', { system: p.system.name }))}</p>
+      <p class="muted small">${esc(t('pads.credit'))}</p>`;
+    for (const el of $$('[data-pad-shown]', box)) {
+      el.onclick = () => {
+        p.shown = Number(el.dataset.padShown);
+        paintPads();
+      };
+    }
+    $('#padOrderBtn', box).onclick = openPadOrder;
+    $('#padConfigBtn', box).onclick = openPadWizard;
+  }
+
+  /** Fenêtre de la page qui lit les manettes : navigation à la manette suspendue, rétablie à sa fermeture. */
+  function padCaptureModal(options, onClosed) {
+    document.body.classList.add('pad-capture');
+    const root = modal(options);
+    const dialog = $('.modal', root);
+    if (options.wide) dialog.classList.add('wide');
+    const observer = new MutationObserver(() => {
+      if (dialog.isConnected) return;
+      observer.disconnect();
+      document.body.classList.remove('pad-capture');
+      onClosed?.();
+    });
+    observer.observe(root, { childList: true });
+    return root;
+  }
+
+  function closePadModal() {
+    if ($('#padOrderBody') || $('#padWizardBody')) $('#modalRoot').innerHTML = '';
+  }
+
+  /** Joueurs des manettes : chaque joueur appuie à son tour sur un bouton de sa manette. */
+  function openPadOrder() {
+    S.pads.order = [];
+    padCaptureModal({
+      title: t('pads.orderTitle'),
+      body: '<div id="padOrderBody"></div>',
+      buttons: [
+        { label: t('app.cancel'), kind: 'ghost', left: true },
+        { label: t('pads.orderDone'), kind: 'primary', onClick: () => savePadOrder() },
+      ],
+    }, () => (S.pads.order = null));
+    paintPadModal();
+  }
+
+  function savePadOrder() {
+    const order = S.pads.order || [];
+    if (!order.length) return;
+    call(rc.pads.command, `order ${order.join(',')}`);
+    toast(t('pads.orderSaved'));
+  }
+
+  function onPadPress(e) {
+    const p = S.pads;
+    if (!p.order || !$('#padOrderBody') || p.order.includes(e.port)) return;
+    p.order.push(e.port);
+    // Toutes les manettes branchées ont un joueur : enregistré.
+    if (p.order.length >= p.pads.filter((x) => x.name).length) {
+      savePadOrder();
+      closePadModal();
+      return;
+    }
+    paintPadModal();
+  }
+
+  /** Configuration d'une manette, étape par étape, comme dans le menu du jeu. */
+  function openPadWizard() {
+    S.pads.wizard = { device: '', step: 0, message: '', assigned: [] };
+    call(rc.pads.command, 'config');
+    padCaptureModal({
+      title: t('pads.configTitle'),
+      wide: true,
+      body: '<div id="padWizardBody"></div>',
+      buttons: [
+        { label: t('app.cancel'), kind: 'ghost', left: true, keepOpen: true, onClick: () => call(rc.pads.command, 'cancel') },
+        { label: t('pads.reset'), keepOpen: true, onClick: () => call(rc.pads.command, 'reset') },
+        { label: t('pads.skip'), kind: 'primary', keepOpen: true, onClick: () => call(rc.pads.command, 'skip') },
+      ],
+    }, () => {
+      if (S.pads.wizard) call(rc.pads.command, 'cancel');
+    });
+    paintPadModal();
+  }
+
+  function paintPadModal() {
+    const p = S.pads;
+    const order = $('#padOrderBody');
+    if (order && p.order) {
+      const next = p.order.length;
+      order.innerHTML = `<p class="pad-prompt">${esc(t('pads.orderPrompt', { n: next + 1 }))}</p>
+        <div class="pad-players">${[0, 1, 2, 3].map((n) => {
+          const pad = p.pads.find((x) => x.port === p.order[n]);
+          return `<div class="pad-player${pad ? '' : ' empty'}${n === next ? ' current' : ''}">
+            <div class="pad-tile">${pad ? `<img src="pads/${controllerOf(pad).image}.webp" alt="">` : icon('pad', 32)}</div>
+            <strong>${esc(t('pads.player', { n: n + 1 }))}</strong><span class="muted small">${esc(pad?.name || '…')}</span></div>`;
+        }).join('')}</div>`;
+    }
+    const wizard = $('#padWizardBody');
+    const w = p.wizard;
+    if (!wizard || !w) return;
+    const image = consolePadImage(p.system);
+    const current = p.steps[w.step];
+    wizard.innerHTML = `<div class="pad-wizard">
+        ${image ? `<div class="pad-tile big"><img src="${image}" alt=""></div>` : ''}
+        <div class="grow">
+          <p class="pad-prompt">${esc(w.device ? t('pads.press', { button: current || '' }) : t('pads.pressAny'))}</p>
+          ${w.device ? `<p class="muted small">${esc(t('pads.configuring', { name: w.device }))}</p>` : ''}
+          ${w.message ? `<p class="bad">${esc(w.message)}</p>` : ''}
+          <ol class="pad-steps">${p.steps.map((label, i) => `<li class="${i === w.step && w.device ? 'current' : ''}${w.assigned[i] ? ' done' : ''}">
+            <span>${esc(label)}</span><span class="muted">${esc(w.assigned[i] || '')}</span></li>`).join('')}</ol>
+        </div>
+      </div>
+      <p class="muted small">${esc(t('pads.wizardHint', { system: p.system.name }))}</p>`;
+    // Passer et Par défaut : une fois la manette choisie.
+    const buttons = $$('#modalRoot .foot .btn');
+    for (const b of buttons.slice(1)) b.disabled = !w.device;
   }
 
   // ---------------------------------------------------------------------------
@@ -2694,6 +2928,22 @@
   // ---------------------------------------------------------------------------
   // Téléchargements (événements du processus principal)
   // ---------------------------------------------------------------------------
+
+  rc.pads.onEvent(({ event: e }) => {
+    const p = S.pads;
+    if (!p.key) return;
+    if (e.type === 'press') return onPadPress(e);
+    if (e.type === 'steps') p.steps = e.steps;
+    else if (e.type === 'pads') p.pads = e.pads;
+    else if (e.type === 'wizard') p.wizard = e;
+    else if (e.type === 'wizardDone') {
+      p.wizard = null;
+      closePadModal();
+      if (e.result) toast(e.result);
+    }
+    paintPads();
+    paintPadModal();
+  });
 
   rc.downloads.onUpdate(async ({ gameId, state, event }) => {
     if (state) S.downloads[gameId] = state;

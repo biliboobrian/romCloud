@@ -139,6 +139,7 @@
     dialog: { pickFile: call('dialog:pickFile'), pickFolder: call('dialog:pickFolder') },
     shell: { showItem: call('shell:showItem'), openExternal: call('shell:openExternal') },
     keyboard: { layout: call('keyboard:layout'), save: call('keyboard:save') },
+    pads: { start: call('pads:start'), command: call('pads:command'), stop: call('pads:stop'), onEvent: on('pads:event') },
     app: { version: call('app:version') },
     player: { resetCore: call('player:resetCore'), onCrash: on('player:crashed') },
     account: {

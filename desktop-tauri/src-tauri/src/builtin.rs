@@ -213,6 +213,27 @@ fn options_file(system_id: &str) -> PathBuf {
     root().join("options").join(format!("{}.cfg", safe(system_id)))
 }
 
+/**
+ * Arguments du moteur sans fenêtre pour les manettes du système (fiche du jeu, pads.rs) : mêmes
+ * fichiers que le jeu (options du système, touches du clavier et joueurs) et boutons de sa console.
+ */
+pub fn pad_service_args(system: &Value, core: &str) -> Vec<String> {
+    let system_key = if s(system, "shortname").is_empty() { s(system, "id") } else { s(system, "shortname") };
+    let language = settings::language();
+    let _ = std::fs::create_dir_all(root().join("options"));
+    vec![
+        "--pad-service".into(),
+        "--options".into(),
+        options_file(s(system, "id")).to_string_lossy().into_owned(),
+        "--keys-file".into(),
+        keys_file().to_string_lossy().into_owned(),
+        "--buttons".into(),
+        keyboard::console_buttons(system_key, core, &language),
+        "--lang".into(),
+        language,
+    ]
+}
+
 /// Réinitialise un cœur après un plantage : DLL supprimée, options du cœur du système effacées.
 pub fn reset_core(system_id: &str, core: &str) -> Result<()> {
     // RPCS3, Cemu : nouvelle version au prochain lancement, configuration et sauvegardes gardées.
@@ -305,6 +326,8 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
     if !keys_file().exists() {
         save_keys(&load_keys())?;
     }
+    // Manettes de la fiche du jeu : service arrêté (le jeu reprend leurs réglages).
+    crate::pads::stop();
     let log = std::fs::File::create(base.join("player.log"))?;
     let mut child = tokio::process::Command::new(player_path())
         .args(&args)

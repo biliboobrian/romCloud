@@ -12,6 +12,9 @@
 //                   [--netplay-link <gb|gba|psp> [--netplay-packets] [--netplay-multi]] [--linked <nom>]
 //                   [--netplay-port <port d'écoute de l'hôte>] [--netplay-delay <images de délai demandées>]
 //                   [--option <clé>=<valeur>]…
+//   romcloud-player --pad-service --options <fichier> --keys-file <fichier> [--buttons <…>] [--lang fr|en]
+//
+// --pad-service : sans fenêtre, manettes du moteur pour la fiche d'un jeu de l'application (padservice.h).
 //
 // Jeu à plusieurs en réseau local (netplay.h) : partie proposée (--netplay-host) ou rejointe
 // (--netplay-join), même protocole que l'application Android. Liaison entre consoles (--netplay-link) :
@@ -48,6 +51,7 @@
 #include "menu.h"
 #include "netplay.h"
 #include "padconfig.h"
+#include "padservice.h"
 #include "players.h"
 #include "util.h"
 #include "video.h"
@@ -1099,6 +1103,14 @@ int main(int argc, char** argv) {
   // Fenêtre au premier plan même si le jeu a été lancé à la manette (Windows ne donne ce droit
   // qu'après une action au clavier ou à la souris).
   SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--pad-service") != 0) continue;
+    const Args a = parseArgs(argc, argv);
+    if (!SDL_Init(SDL_INIT_GAMEPAD)) return 1;
+    int code = runPadService({a.options, a.keysFile, a.buttons, a.lang});
+    SDL_Quit();
+    return code;
+  }
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "RomCloud", SDL_GetError(), nullptr);
     return 1;
