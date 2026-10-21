@@ -29,13 +29,18 @@ export function titleFromFileName(fileName, { folder = false } = {}) {
   if (label) return label;
   // Dossier d'un jeu PC (« Mr. Robot ») : pas d'extension à retirer.
   const base = folder ? fileName : fileName.replace(/\.[^.]+$/, '');
-  const cleaned = base
-    .replace(/\s*[([][^)\]]*[)\]]/g, '')
+  const bare = base.replace(/\s*[([][^)\]]*[)\]]/g, '');
+  const cleaned = bare
+    // Nom à la façon des releases, sans espace (« Minecraft.Dungeons.II ») : points entre les mots.
+    .replace(/(?<=[A-Za-z]{2})\.(?=[A-Za-z0-9])/g, /\s/.test(bare) ? '.' : ' ')
     .replace(/_/g, ' ')
+    // Groupe de release Switch en fin de nom (« SuperXCI-NX », « SuperXCi - CLC »).
+    .replace(/\s+\S*(?:xci|xcz|nsp|nsz)\S*(?:\s+-\s+\S+)?\s*$/i, '')
     // Homebrew : auteur en fin de nom (« … by Mickey McMurray », prénom et nom).
     .replace(/\s+by\s+[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*)+\s*$/, '')
-    // Nom de release (Switch : « Titre v1.1.0 Eur SuperXCi - CLC ») : tout ce qui suit la version.
-    .replace(/\s+v\d+(?:\.\d+)+\s+\S.*$/i, '')
+    // Nom de release (Switch : « Titre v1.1.0 Eur SuperXCi - CLC », « Titre v1.0.2- CLC ») : tout ce
+    // qui suit la version.
+    .replace(/\s+v\d+(?:\.\d+)+[\s-]+\S.*$/i, '')
     // Version (« v1.004 », « V2 ») en fin de titre ou avant l'article (« Gus and Rob V2, The »).
     .replace(/\s+v\d+(?:\.\d+)*(?=\s*(?:,|$))/i, '')
     .replace(/\s+/g, ' ')
