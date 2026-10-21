@@ -22,12 +22,36 @@ class WinlatorTest {
     }
 
     @Test
+    fun `reglages du jeu selon l'appareil`() {
+        // Téléphone 20:9 (portrait ou paysage), TV 16:9, tablette 4:3, écran très allongé.
+        assertEquals("1600x720", Winlator.screenSize(1080, 2400))
+        assertEquals("1280x720", Winlator.screenSize(3840, 2160))
+        assertEquals("960x720", Winlator.screenSize(2048, 1536))
+        assertEquals("1680x720", Winlator.screenSize(4000, 1000))
+
+        val adreno = Winlator.gameSettings(adreno = true, screenWidth = 2400, screenHeight = 1080, locale = java.util.Locale.FRANCE)
+        assertEquals("1600x720", adreno["screenSize"])
+        assertEquals("1", adreno["forceFullscreen"])
+        assertEquals("wrapper", adreno["graphicsDriver"])
+        assertTrue("adrenotoolsTurnip=1" in adreno.getValue("graphicsDriverConfig"))
+        assertEquals("fr_FR.UTF-8", adreno["lc_all"])
+        assertEquals("DXVK_HUD=0 MANGOHUD=0", adreno["envVars"])
+        // Mali, Xclipse… : pilote Vulkan de l'appareil.
+        val mali = Winlator.gameSettings(adreno = false, screenWidth = 1920, screenHeight = 1080, locale = java.util.Locale.US)
+        assertTrue("adrenotoolsTurnip=0" in mali.getValue("graphicsDriverConfig"))
+        assertEquals("en_US.UTF-8", mali["lc_all"])
+    }
+
+    @Test
     fun `raccourci relu par Winlator, espaces et barres obliques echappees`() {
         val text = Winlator.desktopEntry("Mr. Robot", "D:\\My Games\\Robot.exe")
         assertTrue(text.startsWith("[Desktop Entry]\n"))
         assertTrue("Exec=env WINEPREFIX=\"/home/xuser/.wine\" wine D:\\\\\\\\My\\ Games\\\\\\\\Robot.exe\n" in text)
         assertTrue("StartupWMClass=robot.exe\n" in text)
         assertTrue(text.endsWith("[Extra Data]\ncontainer_id=1\n"))
+        // Réglages du jeu : une ligne « clé=valeur » chacun (valeur avec « = » relue entière).
+        val withSettings = Winlator.desktopEntry("Doom", "D:\\Doom\\doom.exe", mapOf("screenSize" to "1600x720", "envVars" to "DXVK_HUD=0 MANGOHUD=0"))
+        assertTrue(withSettings.endsWith("[Extra Data]\ncontainer_id=1\nscreenSize=1600x720\nenvVars=DXVK_HUD=0 MANGOHUD=0\n"))
         // Chemin relu comme Winlator (StringUtils.unescape) : le chemin Windows d'origine.
         val exec = text.lines().first { it.startsWith("Exec=") }
         val raw = exec.substring(exec.lastIndexOf("wine ") + 5)

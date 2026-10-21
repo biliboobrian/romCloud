@@ -2,10 +2,14 @@ package com.romcloud.app.launch
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Environment
+import android.view.WindowManager
 import com.romcloud.app.I18n
+import com.romcloud.app.data.Settings
 import com.romcloud.core.R
 import java.io.File
+import java.util.Locale
 
 /**
  * Jeux PC (jeux en dossiers) lancés par Winlator (Wine / Proton et Box64) : raccourci « .desktop »
@@ -51,9 +55,10 @@ object Winlator {
 
     /**
      * Raccourci Winlator : Exec au format des raccourcis de Wine (« \\\\ » pour « \ », « \  » pour
-     * une espace : relu par StringUtils.unescape de Winlator), conteneur [containerId].
+     * une espace : relu par StringUtils.unescape de Winlator), conteneur [containerId] ; [settings] :
+     * réglages du raccourci, qui remplacent ceux du conteneur pour ce jeu (voir [gameSettings]).
      */
-    fun desktopEntry(title: String, winePath: String, containerId: Int = CONTAINER_ID): String {
+    fun desktopEntry(title: String, winePath: String, settings: Map<String, String> = emptyMap(), containerId: Int = CONTAINER_ID): String {
         val escaped = winePath.replace("\\", "\\\\\\\\").replace(" ", "\\ ")
         val exeName = winePath.substringAfterLast('\\')
         return buildString {
@@ -66,8 +71,41 @@ object Winlator {
             appendLine()
             appendLine("[Extra Data]")
             appendLine("container_id=$containerId")
+            for ((key, value) in settings) appendLine("$key=${value.replace('\n', ' ')}")
         }
     }
+
+    /**
+     * Réglages de Winlator Cmod choisis par RomCloud pour chaque jeu (section « Extra Data » du
+     * raccourci, lue à la place des réglages du conteneur) :
+     *  - résolution de l'écran Windows au format de l'écran de l'appareil (720 lignes : rapide sur
+     *    tous les appareils, image mise à l'échelle par Winlator), jeu en plein écran ;
+     *  - pilote graphique « wrapper » : Turnip (adrenotools) sur Adreno ([adreno]), sinon le pilote
+     *    Vulkan de l'appareil (Mali, Xclipse…) ;
+     *  - langue de Windows d'après celle de l'appareil ([locale]) ;
+     *  - compteurs de DXVK et de MangoHud masqués (affichés par défaut dans Winlator Cmod).
+     * [screenWidth] x [screenHeight] : taille de l'écran de l'appareil (pixels, dans n'importe quel sens).
+     */
+    fun gameSettings(adreno: Boolean, screenWidth: Int, screenHeight: Int, locale: Locale): Map<String, String> = linkedMapOf(
+        "screenSize" to screenSize(screenWidth, screenHeight),
+        "forceFullscreen" to "1",
+        "fullscreenStretched" to "0",
+        "graphicsDriver" to "wrapper",
+        "graphicsDriverConfig" to "version=System;blacklistedExtensions=;maxDeviceMemory=0;adrenotoolsTurnip=${if (adreno) 1 else 0};frameSync=Normal",
+        "lc_all" to "${locale.language.ifEmpty { "en" }}_${locale.country.ifEmpty { "US" }}.UTF-8",
+        "envVars" to "DXVK_HUD=0 MANGOHUD=0",
+    )
+
+    /** Résolution Windows : 720 lignes, largeur au format de l'écran (paire, entre 4:3 et 21:9). */
+    fun screenSize(screenWidth: Int, screenHeight: Int): String {
+        val long = maxOf(screenWidth, screenHeight).toDouble()
+        val short = minOf(screenWidth, screenHeight).coerceAtLeast(1).toDouble()
+        val width = (SCREEN_HEIGHT * (long / short).coerceIn(4.0 / 3, 21.0 / 9)).toInt() / 2 * 2
+        return "${width}x$SCREEN_HEIGHT"
+    }
+
+    /** Hauteur de l'écran Windows des jeux. */
+    private const val SCREEN_HEIGHT = 720
 
     /** Application Winlator installée qui accepte les raccourcis : paquet et activité, ou null. */
     fun installed(context: Context): Pair<String, String>? =
@@ -91,7 +129,16 @@ object Winlator {
         val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val (path, needsDrive) = winePath(target, downloads, romsRoot)
         val shortcut = File(gameDir, "romcloud.desktop")
-        shortcut.writeText(desktopEntry(title, path))
+        // Taille réelle de l'écran (barres système comprises : le jeu est en plein écran).
+        val screen = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) activityContext.getSystemService(WindowManager::class.java)?.maximumWindowMetrics?.bounds else null
+        val metrics = activityContext.resources.displayMetrics
+        val settings = gameSettings(
+            adreno = Settings.isSnapdragon(),
+            screenWidth = screen?.width() ?: metrics.widthPixels,
+            screenHeight = screen?.height() ?: metrics.heightPixels,
+            locale = Locale.getDefault(),
+        )
+        shortcut.writeText(desktopEntry(title, path, settings))
         val intent = Intent().setClassName(pkg, activity)
             .putExtra("shortcut_path", shortcut.absolutePath)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
