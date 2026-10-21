@@ -1,6 +1,10 @@
 # Serveur RomCloud — image multi-architecture (amd64, arm64)
 FROM node:24-alpine
 
+# Version affichée par le serveur (tag de la publication, passé par la CI).
+ARG VERSION=""
+ENV ROMCLOUD_VERSION=$VERSION
+
 ENV NODE_ENV=production \
     DATA_DIR=/data \
     PORT=8080

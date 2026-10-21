@@ -54,7 +54,8 @@ import {
 } from './systems.js';
 import { emulatorCandidates } from './emulator-order.js';
 
-const VERSION = '1.0.0';
+// Version du serveur : celle de l'image Docker (tag v1.2.3 de la publication), sinon package.json.
+const VERSION = process.env.ROMCLOUD_VERSION || JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 export const api = express.Router();
 
 // Enveloppe les handlers async pour transmettre les erreurs à Express.
