@@ -14,6 +14,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed as rowItemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -29,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,6 +68,7 @@ import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.SystemBadge
 import com.romcloud.app.ui.SystemsViewModel
 import com.romcloud.app.ui.accountState
+import com.romcloud.app.ui.fitsLobby
 import com.romcloud.app.ui.pluralString
 import com.romcloud.app.ui.quitApp
 import com.romcloud.core.R
@@ -86,18 +93,35 @@ fun TvSystemsScreen(
     var searchDialog by remember { mutableStateOf(false) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
-        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.refreshUsage() }
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.refreshUsage()
+            viewModel.refreshLocalGames()
+        }
     }
-    // Au retour d'un système, le focus revient sur la carte d'où l'on venait.
+    val app = (LocalContext.current as Activity).application as RomCloudApp
+    val lobbyState by app.lobbies.state.collectAsStateWithLifecycle()
+    // Jeux téléchargés, tous systèmes confondus : rangée en tête de la grille (lobby : jeux à assez de joueurs).
+    val localGames by viewModel.localGames.collectAsStateWithLifecycle()
+    val local = localGames.filter { viewModel.system(it.systemId) != null && fitsLobby(it, lobbyState) }
+    // Au retour d'un système (ou d'un jeu de la rangée), le focus revient sur la carte d'où l'on venait.
     var lastFocused by rememberSaveable { mutableIntStateOf(0) }
+    var lastGame by rememberSaveable { mutableLongStateOf(-1L) }
     val restoreFocus = remember { FocusRequester() }
     val settingsFocus = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
+    val rowState = rememberLazyListState()
 
-    LaunchedEffect(state.systems.size, search.active) {
+    LaunchedEffect(state.systems.size, search.active, local.isNotEmpty()) {
         if (state.systems.isEmpty() || search.active) return@LaunchedEffect
-        val index = lastFocused.coerceIn(0, state.systems.lastIndex)
-        gridState.scrollToItem(index)
+        val gameIndex = local.indexOfFirst { it.id == lastGame }
+        if (gameIndex >= 0) {
+            gridState.scrollToItem(0)
+            rowState.scrollToItem(gameIndex)
+        } else {
+            val index = lastFocused.coerceIn(0, state.systems.lastIndex)
+            gridState.scrollToItem(index + if (local.isNotEmpty()) 1 else 0)
+        }
+        withFrameNanos { }
         runCatching { restoreFocus.requestFocus() }
     }
 
@@ -117,9 +141,7 @@ fun TvSystemsScreen(
         )
     }
 
-    val app = activity.application as RomCloudApp
     val account by app.account.state.collectAsStateWithLifecycle()
-    val lobbyState by app.lobbies.state.collectAsStateWithLifecycle()
     if (showNetplay) {
         com.romcloud.app.ui.MultiplayerDialog(
             app,
@@ -221,6 +243,17 @@ fun TvSystemsScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
+                if (local.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "local-games") {
+                        TvLocalGamesRow(
+                            viewModel, local, rowState, imageUrl, mediaUrl,
+                            restoreGame = lastGame.takeIf { id -> local.any { it.id == id } },
+                            restoreFocus = restoreFocus,
+                            onFocused = { lastGame = it.id },
+                            onOpenGame = onOpenGame,
+                        )
+                    }
+                }
                 // Lobby : seulement les systèmes que tous ses membres savent jouer en réseau.
                 itemsIndexed(state.systems.filter { lobbyState.allowsSystem(it.id) }, key = { _, s -> s.id }) { index, system ->
                     TvSystemCard(
@@ -229,8 +262,13 @@ fun TvSystemsScreen(
                         localSize = usage.systems[system.id] ?: 0,
                         onClick = { onOpenSystem(system.id) },
                         modifier = Modifier
-                            .then(if (index == lastFocused) Modifier.focusRequester(restoreFocus) else Modifier)
-                            .onFocusChanged { if (it.isFocused) lastFocused = index },
+                            .then(if (index == lastFocused && local.none { it.id == lastGame }) Modifier.focusRequester(restoreFocus) else Modifier)
+                            .onFocusChanged {
+                                if (it.isFocused) {
+                                    lastFocused = index
+                                    lastGame = -1L
+                                }
+                            },
                     )
                 }
             }
@@ -247,6 +285,54 @@ fun Message(text: String) {
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** Rangée des jeux téléchargés, en tête des systèmes : cartes comme la recherche, validation -> fiche du jeu. */
+@Composable
+private fun TvLocalGamesRow(
+    viewModel: SystemsViewModel,
+    games: List<Game>,
+    rowState: LazyListState,
+    imageUrl: (GameSystem) -> String?,
+    mediaUrl: MediaUrl,
+    restoreGame: Long?,
+    restoreFocus: FocusRequester,
+    onFocused: (Game) -> Unit,
+    onOpenGame: (systemId: String, gameId: Long) -> Unit,
+) {
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    Column {
+        Text(
+            stringResource(R.string.row_title, stringResource(R.string.row_downloaded), games.size),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        LazyRow(
+            state = rowState,
+            contentPadding = PaddingValues(vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            rowItemsIndexed(games, key = { _, g -> g.id }) { _, game ->
+                val system = viewModel.system(game.systemId)
+                TvGameCard(
+                    game = game,
+                    coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
+                    status = when (val d = downloads[game.id]) {
+                        is DownloadState.Running -> LocalStatus.Downloading(d)
+                        is DownloadState.Failed -> LocalStatus.Error(d.message)
+                        null -> LocalStatus.Downloaded
+                    },
+                    onClick = { onOpenGame(game.systemId, game.id) },
+                    onLongClick = { onOpenGame(game.systemId, game.id) },
+                    onFocused = { onFocused(game) },
+                    modifier = Modifier
+                        .width(PosterWidth)
+                        .then(if (game.id == restoreGame) Modifier.focusRequester(restoreFocus) else Modifier),
+                    badge = { SystemBadge(system, system?.let(imageUrl), height = 26.dp) },
+                )
+            }
+        }
     }
 }
 
