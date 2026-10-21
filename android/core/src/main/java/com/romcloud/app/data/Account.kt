@@ -34,13 +34,13 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPOutputStream
 
 @Serializable
-data class AccountUser(val id: Long, val username: String)
+data class AccountUser(val id: Long, val username: String, val avatar: String? = null)
 
 @Serializable
 private data class SessionResponse(val token: String, val user: AccountUser)
 
 @Serializable
-private data class MeResponse(val user: AccountUser, val playSeconds: Long = 0, val gamesPlayed: Int = 0)
+private data class MeResponse(val user: AccountUser, val avatars: List<String> = emptyList(), val playSeconds: Long = 0, val gamesPlayed: Int = 0)
 
 @Serializable
 data class PlaytimeEntry(val gameId: Long, val seconds: Long, val sessions: Int = 0, val lastPlayedAt: String? = null)
@@ -92,6 +92,9 @@ data class StreamReceiver(
 data class AccountState(
     val signedIn: Boolean = false,
     val username: String = "",
+    /** Avatar choisi (émoji, affiché à côté du nom dans les lobbies) ; [avatars] : ceux proposés par le serveur. */
+    val avatar: String? = null,
+    val avatars: List<String> = emptyList(),
     val playSeconds: Long = 0,
     val gamesPlayed: Int = 0,
     val offline: Boolean = false,
@@ -233,10 +236,20 @@ class Account(private val context: Context, private val api: ApiClient, private 
             val me = json.decodeFromString(MeResponse.serializer(), execute(request("/api/account/me")))
             val list = json.decodeFromString(ListSerializer(PlaytimeEntry.serializer()), execute(request("/api/account/playtime")))
             _playtime.value = list.associate { it.gameId to it.seconds }
-            _state.value = AccountState(signedIn = true, username = me.user.username, playSeconds = me.playSeconds, gamesPlayed = me.gamesPlayed)
+            _state.value = AccountState(
+                signedIn = true, username = me.user.username, avatar = me.user.avatar, avatars = me.avatars,
+                playSeconds = me.playSeconds, gamesPlayed = me.gamesPlayed,
+            )
         } catch (e: IOException) {
             if (token != null) _state.value = _state.value.copy(offline = true)
         }
+    }
+
+    /** Avatar du profil (un de [AccountState.avatars], null : aucun), affiché à côté du nom dans les lobbies. */
+    suspend fun setAvatar(avatar: String?) {
+        val body = buildJsonObject { put("avatar", avatar?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull) }.toString().toRequestBody(JSON)
+        execute(request("/api/account/avatar").put(body))
+        _state.value = _state.value.copy(avatar = avatar)
     }
 
     // -------------------------------------------------------------------------

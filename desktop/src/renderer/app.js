@@ -331,17 +331,35 @@
   function openProfile(tab = 'login') {
     if (S.account.signedIn) {
       const a = S.account;
-      modal({
+      const avatars = a.avatars || [];
+      const root = modal({
         title: t('profile.title'),
-        body: `<div class="profile-head">${icon('user', 40)}<div><h4>${esc(a.username)}</h4>
+        body: `<div class="profile-head">${a.avatar ? `<span class="avatar big">${esc(a.avatar)}</span>` : icon('user', 40)}<div><h4>${esc(a.username)}</h4>
             ${a.offline ? `<span class="muted">${esc(t('profile.offline'))}</span>`
             : `<span class="muted">${esc(a.playSeconds ? t('profile.stats', { time: formatDuration(a.playSeconds), n: a.gamesPlayed }) : t('profile.noPlay'))}</span>`}</div></div>
+          ${avatars.length ? `<h4>${esc(t('profile.avatar'))}</h4>
+          <p class="muted small">${esc(t('profile.avatarHint'))}</p>
+          <div class="avatar-grid">
+            <button class="avatar-choice${a.avatar ? '' : ' selected'}" data-avatar="" title="${esc(t('profile.noAvatar'))}">${icon('user', 22)}</button>
+            ${avatars.map((v) => `<button class="avatar-choice${v === a.avatar ? ' selected' : ''}" data-avatar="${esc(v)}">${esc(v)}</button>`).join('')}
+          </div>` : ''}
           <p class="muted">${esc(t('profile.cloudHint'))}</p>`,
         buttons: [
           { label: t('profile.logout'), kind: 'danger', left: true, onClick: async () => { await call(rc.account.logout); toast(t('profile.loggedOut')); } },
           { label: t('app.close'), kind: 'primary' },
         ],
       });
+      // Avatar choisi : enregistré sur le serveur, affiché à côté du nom dans les lobbies.
+      for (const el of $$('[data-avatar]', root)) {
+        el.onclick = async () => {
+          try {
+            S.account = await call(rc.account.setAvatar, el.dataset.avatar || null);
+            openProfile();
+          } catch (err) {
+            toast(err.message, { type: 'error' });
+          }
+        };
+      }
       return;
     }
     if (!S.settings.serverUrl) return toast(t('app.configure'), { type: 'error' });
@@ -1399,7 +1417,8 @@
   /** Façons de jouer en réseau possibles pour ce jeu (netplay, liaison entre consoles). */
   const lobbyModes = (game) => [playKind(game)].filter(Boolean);
   const lobbyTitle = (lobby) => lobby.game?.title || t('lobby.new');
-  const memberName = (m) => (m.user ? `${m.user} · ${m.name}` : m.name);
+  // Avatar du profil devant le nom (lobbies, joueurs connectés).
+  const memberName = (m) => `${m.avatar ? `${m.avatar} ` : ''}${m.user ? `${m.user} · ${m.name}` : m.name}`;
 
   /** Bouton « Multijoueurs » de l'écran principal (nombre de lobbies ouverts en pastille). */
   const multiplayerBtn = () => {

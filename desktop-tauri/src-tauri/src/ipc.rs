@@ -118,6 +118,7 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "account:register" => account::register(&str_arg(a, 0), &str_arg(a, 1)).await?,
         "account:login" => account::login(&str_arg(a, 0), &str_arg(a, 1)).await?,
         "account:logout" => account::logout().await?,
+        "account:setAvatar" => account::set_avatar(arg(a, 0)).await?,
         "account:playtime" => account::playtime().await,
         "account:uploadPending" => account::upload_pending().await,
         // Rapport d'erreur envoyé depuis les paramètres (description, journal du moteur).

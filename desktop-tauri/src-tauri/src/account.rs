@@ -231,11 +231,24 @@ pub async fn logout() -> Result<Value> {
     Ok(state().await)
 }
 
-/// Profil affiché : { signedIn, username, playSeconds, gamesPlayed, offline }.
+/// Avatar du profil (un de ceux proposés par le serveur, null : aucun) ; renvoie le profil affiché.
+pub async fn set_avatar(avatar: Value) -> Result<Value> {
+    call("/api/account/avatar", reqwest::Method::PUT, Body::Json(json!({ "avatar": avatar })), false, &[], Duration::from_secs(15)).await?;
+    Ok(state().await)
+}
+
+/// Profil affiché : { signedIn, username, avatar, avatars (proposés), playSeconds, gamesPlayed, offline }.
 pub async fn state() -> Value {
     let Some(s) = session() else { return json!({ "signedIn": false }) };
     match get("/api/account/me", 15000).await {
-        Ok(me) => json!({ "signedIn": true, "username": me["user"]["username"], "playSeconds": me["playSeconds"], "gamesPlayed": me["gamesPlayed"] }),
+        Ok(me) => json!({
+            "signedIn": true,
+            "username": me["user"]["username"],
+            "avatar": me["user"]["avatar"],
+            "avatars": me["avatars"],
+            "playSeconds": me["playSeconds"],
+            "gamesPlayed": me["gamesPlayed"],
+        }),
         Err(e) => {
             if session().is_none() {
                 return json!({ "signedIn": false });

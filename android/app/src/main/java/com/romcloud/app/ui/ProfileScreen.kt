@@ -56,6 +56,7 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.romcloud.app.data.Account
+import com.romcloud.app.data.AccountState
 import com.romcloud.core.R
 
 /**
@@ -91,7 +92,7 @@ fun ProfileScreen(viewModel: ProfileViewModel, onBack: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (account.signedIn) SignedIn(viewModel, account.username, account.playSeconds, account.gamesPlayed, account.offline)
+                if (account.signedIn) SignedIn(viewModel, account)
                 else SignInForm(viewModel)
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (state.busy) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
@@ -164,19 +165,20 @@ private fun SignInForm(viewModel: ProfileViewModel) {
 }
 
 @Composable
-private fun SignedIn(viewModel: ProfileViewModel, username: String, playSeconds: Long, gamesPlayed: Int, offline: Boolean) {
+private fun SignedIn(viewModel: ProfileViewModel, account: AccountState) {
+    val playSeconds = account.playSeconds
     val context = LocalContext.current
     var typing by rememberSaveable { mutableStateOf(false) }
     var code by rememberSaveable { mutableStateOf("") }
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Icon(Icons.Filled.AccountCircle, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+        ProfileAvatar(account.avatar, 56.dp)
         Column {
-            Text(username, style = MaterialTheme.typography.headlineSmall)
+            Text(account.username, style = MaterialTheme.typography.headlineSmall)
             Text(
                 when {
-                    offline -> stringResource(R.string.profile_offline)
-                    playSeconds > 0 -> stringResource(R.string.profile_stats, Account.formatDuration(playSeconds), gamesPlayed)
+                    account.offline -> stringResource(R.string.profile_offline)
+                    playSeconds > 0 -> stringResource(R.string.profile_stats, Account.formatDuration(playSeconds), account.gamesPlayed)
                     else -> stringResource(R.string.profile_no_play)
                 },
                 style = MaterialTheme.typography.bodyMedium,
@@ -185,6 +187,17 @@ private fun SignedIn(viewModel: ProfileViewModel, username: String, playSeconds:
         }
     }
     Text(stringResource(R.string.profile_cloud_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+    // Avatar, affiché à côté du nom dans les lobbies.
+    if (account.avatars.isNotEmpty()) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(stringResource(R.string.profile_avatar), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.profile_avatar_hint), style = MaterialTheme.typography.bodySmall)
+                AvatarPicker(account.avatar, account.avatars, viewModel::setAvatar)
+            }
+        }
+    }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
