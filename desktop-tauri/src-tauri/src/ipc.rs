@@ -150,7 +150,8 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "emulators:setArgs" => launcher::set_emulator_args(&str_arg(a, 0), &str_arg(a, 1))?,
         // Dernière version d'un émulateur (Eden) : vérifiée puis installée à la place de l'actuelle.
         "emulators:checkUpdate" => crate::emulator_updates::check(&str_arg(a, 0)).await?,
-        "emulators:update" => crate::emulator_updates::install(&str_arg(a, 0)).await?,
+        // Dossier d'installation choisi (première installation), sinon celui de l'actuelle.
+        "emulators:update" => crate::emulator_updates::install(&str_arg(a, 0), arg(a, 1).as_str()).await?,
         "emulators:launch" => {
             launcher::launch_emulator(&str_arg(a, 0))?;
             Value::Null

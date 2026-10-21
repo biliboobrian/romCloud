@@ -1764,9 +1764,77 @@
       buttons: [
         { label: t('app.cancel'), kind: 'ghost', left: true },
         { label: t(emu.folder ? 'emulator.browseFolder' : 'emulator.browse'), onClick: () => locateEmulator(emu) },
-        { label: t('emulator.download', { name: emu.name }), kind: 'primary', onClick: () => rc.shell.openExternal(emu.url) },
+        { label: t('emulator.download', { name: emu.name }), kind: 'primary', onClick: () => downloadEmulator(emu) },
       ],
     });
+  }
+
+  /**
+   * « Télécharger » : émulateur installable par RomCloud (Eden) -> dernière version téléchargée et
+   * décompressée dans le dossier choisi (proposé par défaut, créé s'il n'existe pas) ; sinon son site.
+   */
+  async function downloadEmulator(emu, button) {
+    if (!emu.updatable) return rc.shell.openExternal(emu.url);
+    const label = button?.innerHTML;
+    if (button) {
+      button.disabled = true;
+      button.textContent = t('emulator.checking');
+    }
+    let u;
+    try {
+      u = await call(rc.emulators.checkUpdate, emu.id);
+    } catch (err) {
+      toast(err.message, { type: 'error' });
+      return;
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.innerHTML = label;
+      }
+    }
+    if (!u.asset) {
+      toast(t('emulator.noBuild'), { type: 'error' });
+      return rc.shell.openExternal(emu.url);
+    }
+    const root = modal({
+      title: t('emulator.installTitle', { name: emu.name, version: u.latest }),
+      body: `<p>${esc(t('emulator.installText', { file: u.asset }))}</p>
+        <label>${esc(t('emulator.installDir'))}<span class="line"><input type="text" id="emuInstallDir" value="${esc(u.dir)}">
+        <button class="btn" id="emuInstallBrowse">${esc(t('settings.browse'))}</button></span></label>
+        <p class="muted small">${esc(t('emulator.installDirHint'))}</p>`,
+      buttons: [
+        { label: t('app.cancel'), kind: 'ghost', left: true },
+        { label: t('emulator.website'), keepOpen: true, onClick: () => rc.shell.openExternal(emu.url) },
+        {
+          label: t('emulator.installVersion', { version: u.latest }),
+          kind: 'primary',
+          keepOpen: true,
+          onClick: async (close) => {
+            const dir = $('#emuInstallDir', root).value.trim();
+            if (!dir) return;
+            const buttons = $$('.foot .btn', root);
+            const install = buttons.pop();
+            for (const b of [...buttons, install, $('#emuInstallBrowse', root)]) b.disabled = true;
+            install.textContent = t('emulator.installing');
+            try {
+              const done = await call(rc.emulators.update, emu.id, dir);
+              close();
+              toast(t('emulator.installed', { name: emu.name, version: done.installed || done.latest }));
+              if (S.route.name === 'game') renderGame();
+              else if (S.route.name === 'settings') renderSettings();
+            } catch (err) {
+              toast(err.message, { type: 'error' });
+              for (const b of [...buttons, install, $('#emuInstallBrowse', root)]) b.disabled = false;
+              install.textContent = t('emulator.installVersion', { version: u.latest });
+            }
+          },
+        },
+      ],
+    });
+    $('#emuInstallBrowse', root).onclick = async () => {
+      const dir = await call(rc.dialog.pickFolder);
+      if (dir) $('#emuInstallDir', root).value = dir;
+    };
   }
 
   /** Choix manuel de l'exécutable d'un émulateur. */
@@ -2375,7 +2443,8 @@
   function bindEmulatorBlock(root, emu, refresh) {
     const block = $(`[data-emu="${emu.id}"]`, root);
     if (!block) return;
-    for (const b of $$('[data-emu-download]', block)) b.onclick = () => rc.shell.openExternal(emu.url);
+    // Émulateur absent : dernière version installée par RomCloud si possible ; présent : son site.
+    for (const b of $$('[data-emu-download]', block)) b.onclick = () => (emu.path ? rc.shell.openExternal(emu.url) : downloadEmulator(emu, b));
     $('[data-emu-browse]', block).onclick = () => locateEmulator(emu);
     $('[data-emu-detect]', block)?.addEventListener('click', (e) => detectEmulators(e.currentTarget));
     $('[data-emu-launch]', block)?.addEventListener('click', async () => {
