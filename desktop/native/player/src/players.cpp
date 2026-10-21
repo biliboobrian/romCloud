@@ -64,7 +64,8 @@ void PlayerOrder::render(Canvas& c) const {
   centered(c, cx, y, Canvas::fit(hint, 1, width), 1, connected ? kAccent : kMuted);
   y += 24;
 
-  // Joueurs 1 à 4 : manette choisie (en couleur), sinon celle d'avant (en gris), avec son illustration.
+  // Joueurs 1 à 4 : manette choisie (en couleur), sinon celle d'avant (en gris), avec la manette de
+  // la console (sinon celle branchée).
   const int left = cx - width / 2;
   const int rowHeight = 40, art = 36;
   bool anyArt = false;
@@ -76,10 +77,10 @@ void PlayerOrder::render(Canvas& c) const {
       const char* n = SDL_GetGamepadNameForID(order_[(size_t)port]);
       name = n ? n : "?";
       color = kText;
-      image = padImage(gamepadImageName(SDL_GetGamepadTypeForID(order_[(size_t)port]), n));
+      image = playerPadImage(SDL_GetGamepadTypeForID(order_[(size_t)port]), n);
     } else if (next == 0) {
       name = input_.padName(port);
-      if (SDL_Gamepad* pad = input_.padAt(port)) image = padImage(gamepadImageName(SDL_GetGamepadType(pad), SDL_GetGamepadName(pad)));
+      if (SDL_Gamepad* pad = input_.padAt(port)) image = playerPadImage(SDL_GetGamepadType(pad), SDL_GetGamepadName(pad));
     }
     anyArt = anyArt || image;
     const bool current = port == next && port < connected;

@@ -2578,6 +2578,9 @@
     return { image: 'xboxseries', family: 'xbox' };
   }
 
+  /** Image d'un joueur : manette de la console du jeu, sinon celle qui est branchée. */
+  const playerPadImage = (pad) => consolePadImage(S.pads.system) || `pads/${controllerOf(pad).image}.webp`;
+
   // Éléments de SDL (position sur la manette : « a » = bouton du bas) -> nom sur chaque famille.
   const PAD_BUTTON_NAMES = {
     xbox: { a: 'A', b: 'B', x: 'X', y: 'Y', leftshoulder: 'LB', rightshoulder: 'RB', lefttrigger: 'LT', righttrigger: 'RT', leftstick: 'LS', rightstick: 'RS', start: 'Menu', back: 'View', guide: 'Xbox' },
@@ -2635,11 +2638,11 @@
     const image = consolePadImage(p.system);
     const player = (port) => {
       const pad = p.pads.find((x) => x.port === port) || { port };
-      // Joueur 1 sans manette : le clavier.
-      const tile = pad.name ? controllerOf(pad).image : port === 0 ? 'keyboard' : null;
+      // Manette de la console du jeu (sinon celle branchée) ; joueur 1 sans manette : le clavier.
+      const tile = pad.name ? playerPadImage(pad) : port === 0 ? 'pads/keyboard.webp' : null;
       const name = pad.name || (port === 0 ? t('pads.keyboard') : pad.saved ? t('pads.unplugged') : t('pads.none'));
       return `<div class="pad-player${tile ? '' : ' empty'}">
-        <div class="pad-tile">${tile ? `<img src="pads/${tile}.webp" alt="">` : icon('pad', 32)}</div>
+        <div class="pad-tile">${tile ? `<img src="${tile}" alt="">` : icon('pad', 32)}</div>
         <strong>${esc(t('pads.player', { n: port + 1 }))}</strong><span class="muted small">${esc(name)}</span></div>`;
     };
     box.innerHTML = `<h3>${esc(t('pads.title'))}</h3>
@@ -2750,7 +2753,7 @@
         <div class="pad-players">${[0, 1, 2, 3].map((n) => {
           const pad = p.pads.find((x) => x.port === p.order[n]);
           return `<div class="pad-player${pad ? '' : ' empty'}${n === next ? ' current' : ''}">
-            <div class="pad-tile">${pad ? `<img src="pads/${controllerOf(pad).image}.webp" alt="">` : icon('pad', 32)}</div>
+            <div class="pad-tile">${pad ? `<img src="${playerPadImage(pad)}" alt="">` : icon('pad', 32)}</div>
             <strong>${esc(t('pads.player', { n: n + 1 }))}</strong><span class="muted small">${esc(pad?.name || '…')}</span></div>`;
         }).join('')}</div>`;
     }

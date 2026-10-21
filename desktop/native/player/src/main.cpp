@@ -889,6 +889,7 @@ int Player::run() {
   audio_.setVolume(std::clamp(atoi(global_.setting("romcloud_volume", "100").c_str()), 0, 100) / 100.0f);
   menu_.setButtons(args_.buttons);
   setPadImagesDir(args_.padImages);
+  setConsolePadStyle(args_.padStyle);
   applySavedPadMappings();  // manettes configurées pour ce système (avant leur ouverture)
   input_.init();
   loadSram();  // avant l'état de sauvegarde, qui la contient aussi

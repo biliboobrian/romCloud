@@ -26,6 +26,10 @@ SDL_Surface* padImage(const std::string& name);
 std::string consolePadImageName(const std::string& style);
 /** Illustration d'une manette branchée, d'après son type et son nom. */
 std::string gamepadImageName(SDL_GamepadType type, const char* name);
+/** Manette de la console du jeu (style --pad-style), montrée aussi pour chaque joueur. */
+void setConsolePadStyle(const std::string& style);
+/** Illustration d'un joueur : manette de la console du jeu, sinon la manette branchée. */
+SDL_Surface* playerPadImage(SDL_GamepadType type, const char* name);
 /** Dessine l'illustration dans le rectangle, sur un fond arrondi. */
 void drawPadImage(Canvas& c, SDL_Surface* image, int x, int y, int w, int h);
 
@@ -100,6 +104,11 @@ class PadConfig {
   bool usesAxis(int axis) const;
   /** Manette de la console ; renvoie sa hauteur. */
   int renderPad(Canvas& c, int x, int y, int width) const;
+  /**
+   * Illustration de la manette de la console avec un repère sur chaque bouton des étapes (en cours,
+   * attribué) ; renvoie sa hauteur, 0 si la console n'a pas d'illustration (dessin à la place).
+   */
+  int renderArt(Canvas& c, int cx, int y, int maxWidth, int maxHeight) const;
 
   Translate tr_;
   std::string style_;

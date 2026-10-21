@@ -94,6 +94,10 @@ internal fun physicalPad(device: InputDevice): Pair<Int, PadFamily> {
     }
 }
 
+/** Image d'un joueur : manette de la console du système, sinon la manette branchée. */
+@DrawableRes
+internal fun playerPadImage(systemId: String, device: InputDevice): Int = consolePadImage(systemId) ?: physicalPad(device).first
+
 /** Manette de la console du système (illustrations de @rachels_ham), null s'il n'y en a pas. */
 @DrawableRes
 internal fun consolePadImage(systemId: String): Int? = when (systemId.lowercase()) {
@@ -272,7 +276,7 @@ fun ControllersSection(systemId: String, systemName: String, core: String, modif
                 val device = if (capture == Capture.ORDER) order.getOrNull(port) else byPort[port]
                 val current = capture == Capture.ORDER && port == order.size
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    PadTile(device?.let { physicalPad(it).first }, Modifier.fillMaxWidth(), highlighted = current, touch = port == 0 && device == null && capture == Capture.NONE)
+                    PadTile(device?.let { playerPadImage(systemId, it) }, Modifier.fillMaxWidth(), highlighted = current, touch = port == 0 && device == null && capture == Capture.NONE)
                     Text(stringResource(R.string.pads_player, port + 1), style = MaterialTheme.typography.labelLarge)
                     Text(
                         device?.name ?: stringResource(if (port == 0 && capture == Capture.NONE) R.string.pads_touch else R.string.pads_none),
