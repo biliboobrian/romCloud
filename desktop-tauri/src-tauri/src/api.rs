@@ -1,6 +1,6 @@
 // Accès au serveur RomCloud, avec cache disque des listes (utilisation hors ligne).
 use crate::error::{AppError, Result};
-use crate::{connectivity, paths, settings};
+use crate::{connectivity, library, paths, settings};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -135,6 +135,28 @@ pub fn remember_downloaded(system: &Value, game: &Value) -> Result<()> {
     std::fs::create_dir_all(cache_dir())?;
     std::fs::write(cache_dir().join("downloaded.json"), serde_json::to_string(&index)?)?;
     Ok(())
+}
+
+/// Jeux téléchargés sur le PC, tous systèmes confondus (index des téléchargements), du plus récent
+/// au plus ancien ; jeux effacés depuis écartés.
+pub fn downloaded_games() -> Vec<Value> {
+    let index = downloaded_index();
+    let systems = index.get("systems").and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut games: Vec<(std::time::SystemTime, Value)> = index_values("games")
+        .into_iter()
+        .filter_map(|game| {
+            let system = systems.get(game.get("systemId").and_then(Value::as_str)?)?;
+            if !library::is_downloaded(system, &game) {
+                return None;
+            }
+            // Date du téléchargement : fichier du jeu (jeu en dossier : marque de fin).
+            let file = if library::is_folder(&game) { library::folder_marker(system, &game) } else { library::file_for(system, &game) };
+            let modified = std::fs::metadata(file).and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+            Some((modified, game))
+        })
+        .collect();
+    games.sort_by(|a, b| b.0.cmp(&a.0));
+    games.into_iter().map(|(_, game)| game).collect()
 }
 
 fn index_values(kind: &str) -> Vec<Value> {

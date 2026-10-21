@@ -40,6 +40,7 @@
     playtime: {}, // temps de jeu du profil : { [gameId]: secondes }
     connectivity: { online: true, pending: 0 }, // serveur joignable ; envois en attente
     localSystems: new Set(), // systèmes avec des jeux sur le PC (seuls affichés hors ligne)
+    localGames: [], // jeux téléchargés, tous systèmes (rangée de la page des systèmes)
   };
 
   // ---------------------------------------------------------------------------
@@ -176,7 +177,7 @@
   }
 
   function findGame(id) {
-    return S.games.list.find((g) => g.id === id) || S.search.results.find((g) => g.id === id) || S.detailGame?.id === id && S.detailGame;
+    return S.games.list.find((g) => g.id === id) || S.search.results.find((g) => g.id === id) || S.localGames.find((g) => g.id === id) || S.detailGame?.id === id && S.detailGame;
   }
 
   // ---------------------------------------------------------------------------
@@ -667,6 +668,7 @@
 
   function renderSystems() {
     loadUsage();
+    loadLocalGames();
     setTopbar({
       title: 'RomCloud',
       disk: true,
@@ -698,7 +700,12 @@
       main.innerHTML = `<div class="centered"><p>${esc(text)}</p>${S.systemsError ? `<button class="btn" data-action="settings">${esc(t('app.settings'))}</button>` : ''}</div>`;
       return;
     }
-    main.innerHTML = `<div class="page"><div class="systems-grid">${systems.map((s) => {
+    // Jeux téléchargés, tous systèmes confondus (comme la recherche, avec le logo du système).
+    const local = S.localGames.filter((g) => systemById(g.systemId) && fitsLobby(g));
+    const localIds = new Set(local.map((g) => g.id));
+    const localRow = local.length ? `<section class="row local-row"><h3>${esc(t('row.downloaded'))} <span class="count">· ${local.length}</span></h3>
+      <div class="row-track">${local.map((g) => cardHtml(g, localIds, { badge: true })).join('')}</div></section>` : '';
+    main.innerHTML = `${localRow}<div class="page"><div class="systems-grid">${systems.map((s) => {
       const img = systemImageUrl(s);
       const color = /^#[0-9a-f]{6}$/i.test(s.color || '') ? ` style="--card:${s.color}"` : '';
       return `<div class="system-card" data-system="${esc(s.id)}"${color}>
@@ -709,6 +716,18 @@
       </div>`;
     }).join('')}</div></div>`;
     for (const el of $$('[data-system]', main)) el.onclick = () => openSystem(el.dataset.system);
+    if (local.length) {
+      bindCards(main, local, (g) => openGameDetail(g.systemId, g.id));
+      bindTrackDrag($('.local-row .row-track', main));
+    }
+  }
+
+  /** Jeux téléchargés sur le PC (rangée de la page des systèmes), réaffichée si elle change. */
+  async function loadLocalGames() {
+    const games = await call(rc.library.downloadedGames).catch(() => []);
+    const same = games.length === S.localGames.length && games.every((g, i) => g.id === S.localGames[i].id);
+    S.localGames = games;
+    if (!same && S.route.name === 'systems' && !S.search.query.trim()) renderSystemsBody();
   }
 
   function renderSearchResults() {
@@ -818,6 +837,7 @@
       await refreshResumable();
     }
     if (S.search.results.length) S.search.downloaded = new Set(await call(rc.library.downloaded, S.systems, S.search.results));
+    loadLocalGames();
   }
 
   function visibleGames() {
@@ -1046,57 +1066,60 @@
       main.scrollTo({ top: next === 0 && e.deltaY < 0 ? 0 : offset(rows[next]), behavior: 'smooth' });
     }, { passive: false });
 
-    for (const track of $$('.row-track', main)) {
-      let drag = null; // { x, left, moved, samples }
-      let glide = 0;
-      track.addEventListener('dragstart', (e) => e.preventDefault()); // pas de fantôme des jaquettes
-      track.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0 || e.pointerType !== 'mouse') return;
-        cancelAnimationFrame(glide);
-        track.classList.remove('gliding');
-        drag = { x: e.clientX, left: track.scrollLeft, moved: false, samples: [[e.timeStamp, e.clientX]] };
-      });
-      track.addEventListener('pointermove', (e) => {
-        if (!drag) return;
-        const dx = e.clientX - drag.x;
-        if (!drag.moved && Math.abs(dx) < 6) return;
-        if (!drag.moved) {
-          drag.moved = true;
-          track.setPointerCapture(e.pointerId);
-          track.classList.add('dragging'); // défilement immédiat (pas d'animation) et curseur
-        }
-        track.scrollLeft = drag.left - dx;
-        drag.samples = [...drag.samples, [e.timeStamp, e.clientX]].slice(-5);
-      });
-      const end = (e) => {
-        if (!drag) return;
-        const { moved, samples } = drag;
-        drag = null;
-        if (!moved) return;
-        track.releasePointerCapture?.(e.pointerId);
-        // Le clic qui suit le relâchement ne doit pas sélectionner la carte sous le pointeur.
-        track.addEventListener('click', (c) => { c.stopPropagation(); c.preventDefault(); }, { capture: true, once: true });
-        track.classList.remove('dragging');
-        track.classList.add('gliding'); // défilement direct pendant l'élan
-        // Élan : vitesse des derniers déplacements, amortie.
-        const [t0, x0] = samples[0];
-        const [t1, x1] = samples[samples.length - 1];
-        let speed = t1 > t0 ? (x1 - x0) / (t1 - t0) : 0; // px/ms
-        let last = performance.now();
-        const step = (now) => {
-          const dt = now - last;
-          last = now;
-          track.scrollLeft -= speed * dt;
-          speed *= Math.pow(0.95, dt / 16);
-          if (Math.abs(speed) > 0.02) glide = requestAnimationFrame(step);
-          else track.classList.remove('gliding');
-        };
-        if (Math.abs(speed) > 0.1) glide = requestAnimationFrame(step);
+    for (const track of $$('.row-track', main)) bindTrackDrag(track);
+  }
+
+  /** Clic maintenu dans une rangée : glissée de côté, avec un peu d'élan au lâcher. */
+  function bindTrackDrag(track) {
+    let drag = null; // { x, left, moved, samples }
+    let glide = 0;
+    track.addEventListener('dragstart', (e) => e.preventDefault()); // pas de fantôme des jaquettes
+    track.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.pointerType !== 'mouse') return;
+      cancelAnimationFrame(glide);
+      track.classList.remove('gliding');
+      drag = { x: e.clientX, left: track.scrollLeft, moved: false, samples: [[e.timeStamp, e.clientX]] };
+    });
+    track.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x;
+      if (!drag.moved && Math.abs(dx) < 6) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        track.setPointerCapture(e.pointerId);
+        track.classList.add('dragging'); // défilement immédiat (pas d'animation) et curseur
+      }
+      track.scrollLeft = drag.left - dx;
+      drag.samples = [...drag.samples, [e.timeStamp, e.clientX]].slice(-5);
+    });
+    const end = (e) => {
+      if (!drag) return;
+      const { moved, samples } = drag;
+      drag = null;
+      if (!moved) return;
+      track.releasePointerCapture?.(e.pointerId);
+      // Le clic qui suit le relâchement ne doit pas sélectionner la carte sous le pointeur.
+      track.addEventListener('click', (c) => { c.stopPropagation(); c.preventDefault(); }, { capture: true, once: true });
+      track.classList.remove('dragging');
+      track.classList.add('gliding'); // défilement direct pendant l'élan
+      // Élan : vitesse des derniers déplacements, amortie.
+      const [t0, x0] = samples[0];
+      const [t1, x1] = samples[samples.length - 1];
+      let speed = t1 > t0 ? (x1 - x0) / (t1 - t0) : 0; // px/ms
+      let last = performance.now();
+      const step = (now) => {
+        const dt = now - last;
+        last = now;
+        track.scrollLeft -= speed * dt;
+        speed *= Math.pow(0.95, dt / 16);
+        if (Math.abs(speed) > 0.02) glide = requestAnimationFrame(step);
         else track.classList.remove('gliding');
       };
-      track.addEventListener('pointerup', end);
-      track.addEventListener('pointercancel', end);
-    }
+      if (Math.abs(speed) > 0.1) glide = requestAnimationFrame(step);
+      else track.classList.remove('gliding');
+    };
+    track.addEventListener('pointerup', end);
+    track.addEventListener('pointercancel', end);
   }
 
   /** Partie sauvegardée dans le moteur intégré pour ce jeu téléchargé. */
