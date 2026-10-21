@@ -1477,10 +1477,11 @@ class LibretroActivity : ComponentActivity() {
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (port in 0 until GamepadPlayers.MAX_PLAYERS) {
-                        // Manette choisie, sinon (rien de choisi) celle du joueur jusqu'ici, avec son illustration.
+                        // Manette choisie, sinon (rien de choisi) celle du joueur jusqu'ici, avec la manette
+                        // de la console (sinon celle branchée).
                         val device = order.getOrNull(port) ?: if (order.isEmpty()) players.deviceOf(port) else null
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PadTile(device?.let { physicalPad(it).first }, Modifier.width(40.dp))
+                            PadTile(device?.let { playerPadImage(systemId, it) }, Modifier.width(40.dp))
                             Text(
                                 stringResource(R.string.players_row, port + 1, device?.name ?: "—"),
                                 color = if (port < order.size) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1535,15 +1536,15 @@ class LibretroActivity : ComponentActivity() {
     private fun MappingInstructions(session: MappingSession) {
         val name = session.deviceName
         val step = session.step
-        // Illustration de la manette de la console (@rachels_ham) à gauche du dessin annoté.
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            consolePadImage(systemId)?.let { image ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    PadTile(image, Modifier.width(110.dp))
-                    Text("@rachels_ham", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+        // Illustration de la manette de la console (@rachels_ham), boutons repérés ; sans illustration, le dessin.
+        val art = padArtName(padLayout.style)
+        if (art != null) {
+            Column(horizontalAlignment = Alignment.End) {
+                PadArt(art, session.steps, step.takeIf { name != null }, session.done)
+                Text("@rachels_ham", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            PadPreview(padLayout, session.steps, step.takeIf { name != null }, session.done, Modifier.weight(1f, fill = false))
+        } else {
+            PadPreview(padLayout, session.steps, step.takeIf { name != null }, session.done)
         }
         Text(stringResource(R.string.pad_config_title), style = MaterialTheme.typography.titleMedium)
         if (name == null) {

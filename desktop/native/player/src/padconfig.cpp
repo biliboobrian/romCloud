@@ -63,6 +63,60 @@ std::string gamepadImageName(SDL_GamepadType type, const char* name) {
   }
 }
 
+static std::string consoleStyle;
+
+void setConsolePadStyle(const std::string& style) { consoleStyle = style; }
+
+SDL_Surface* playerPadImage(SDL_GamepadType type, const char* name) {
+  SDL_Surface* console = padImage(consolePadImageName(consoleStyle));
+  return console ? console : padImage(gamepadImageName(type, name));
+}
+
+// Boutons sur chaque illustration (pixels de l'image, 291 x 306) : position et rayon du repère.
+// up / down / left / right : croix ; ls / rs : sticks (et L3 / R3) ; rx+, ry- … : directions du stick
+// droit (boutons C de la Nintendo 64). Même table que PadArt.kt (Android).
+struct PadSpot {
+  const char* key;
+  int x, y, r;
+};
+static const std::map<std::string, std::vector<PadSpot>> kPadSpots = {
+      {"nes", {{"up", 79, 142, 6}, {"down", 79, 165, 6}, {"left", 67, 153, 6}, {"right", 91, 153, 6}, {"select", 125, 161, 7}, {"start", 152, 161, 7}, {"b", 188, 163, 10}, {"a", 217, 163, 10}}},
+      {"famicom", {{"up", 79, 137, 6}, {"down", 79, 161, 6}, {"left", 66, 149, 6}, {"right", 92, 149, 6}, {"select", 125, 161, 7}, {"start", 152, 161, 7}, {"b", 187, 160, 10}, {"a", 216, 160, 10}, {"l", 60, 104, 8}, {"r", 232, 104, 8}}},
+      {"snes", {{"up", 85, 140, 6}, {"down", 85, 166, 6}, {"left", 72, 153, 6}, {"right", 98, 153, 6}, {"select", 128, 159, 7}, {"start", 150, 159, 7}, {"x", 206, 135, 8}, {"y", 189, 152, 8}, {"a", 223, 152, 8}, {"b", 206, 167, 8}, {"l", 90, 101, 8}, {"r", 202, 101, 8}}},
+      {"n64", {{"up", 77, 113, 6}, {"down", 77, 135, 6}, {"left", 66, 124, 6}, {"right", 88, 124, 6}, {"start", 145, 137, 7}, {"b", 197, 146, 8}, {"y", 181, 129, 7}, {"l2", 146, 205, 9}, {"l", 73, 77, 9}, {"r", 217, 77, 9}, {"ls", 146, 177, 12}, {"rs", 217, 118, 15}, {"ry-", 217, 105, 6}, {"ry+", 217, 130, 6}, {"rx-", 204, 118, 6}, {"rx+", 230, 118, 6}}},
+      {"psx", {{"up", 82, 120, 6}, {"down", 82, 152, 6}, {"left", 68, 137, 6}, {"right", 97, 137, 6}, {"select", 133, 153, 7}, {"start", 159, 153, 7}, {"x", 209, 116, 8}, {"a", 229, 136, 8}, {"b", 209, 154, 8}, {"y", 189, 136, 8}, {"l", 82, 96, 8}, {"l2", 82, 82, 8}, {"r", 208, 96, 8}, {"r2", 208, 82, 8}}},
+      {"ps2", {{"up", 72, 118, 6}, {"down", 72, 143, 6}, {"left", 59, 131, 6}, {"right", 85, 131, 6}, {"select", 122, 131, 6}, {"start", 167, 131, 6}, {"x", 217, 113, 7}, {"a", 232, 131, 7}, {"b", 218, 147, 7}, {"y", 202, 131, 7}, {"l", 75, 95, 8}, {"l2", 75, 82, 8}, {"r", 218, 95, 8}, {"r2", 218, 82, 8}, {"ls", 113, 167, 13}, {"rs", 183, 167, 13}}},
+      {"gamecube", {{"ls", 82, 121, 13}, {"up", 112, 158, 5}, {"down", 112, 176, 5}, {"left", 103, 167, 5}, {"right", 121, 167, 5}, {"start", 146, 119, 5}, {"a", 209, 120, 10}, {"b", 188, 133, 7}, {"x", 233, 116, 7}, {"y", 203, 97, 7}, {"l2", 77, 83, 9}, {"r2", 228, 84, 9}, {"r", 205, 80, 7}, {"rs", 179, 168, 12}}},
+      {"genesis", {{"up", 80, 133, 6}, {"down", 80, 161, 6}, {"left", 66, 147, 6}, {"right", 94, 147, 6}, {"start", 150, 145, 7}, {"y", 189, 156, 9}, {"b", 213, 139, 9}, {"a", 237, 134, 9}}},
+      {"master", {{"up", 95, 132, 6}, {"down", 95, 162, 6}, {"left", 80, 147, 6}, {"right", 110, 147, 6}, {"b", 188, 165, 13}, {"a", 228, 165, 13}}},
+      {"saturn", {{"up", 85, 139, 6}, {"down", 85, 167, 6}, {"left", 71, 153, 6}, {"right", 99, 153, 6}, {"start", 143, 172, 7}, {"b", 181, 151, 8}, {"a", 208, 160, 8}, {"r", 238, 154, 8}, {"y", 200, 137, 7}, {"x", 219, 129, 7}, {"l", 238, 124, 7}, {"l2", 80, 87, 9}, {"r2", 203, 87, 9}}},
+      {"dreamcast", {{"ls", 55, 105, 14}, {"up", 73, 148, 6}, {"down", 73, 168, 6}, {"left", 63, 158, 6}, {"right", 83, 158, 6}, {"start", 143, 210, 7}, {"b", 228, 147, 8}, {"a", 247, 126, 8}, {"y", 206, 126, 8}, {"x", 228, 107, 8}, {"l2", 40, 75, 9}, {"r2", 250, 75, 9}}},
+      {"pcengine", {{"up", 68, 160, 6}, {"down", 68, 184, 6}, {"left", 56, 172, 6}, {"right", 80, 172, 6}, {"select", 133, 177, 7}, {"start", 159, 177, 7}, {"b", 204, 176, 10}, {"a", 231, 176, 10}}},
+      {"neogeo", {{"up", 83, 115, 6}, {"down", 83, 183, 6}, {"left", 52, 149, 6}, {"right", 117, 149, 6}, {"b", 203, 165, 9}, {"a", 230, 151, 9}, {"y", 190, 139, 9}, {"x", 214, 124, 9}, {"start", 152, 150, 7}, {"select", 152, 173, 7}}},
+      {"atari2600", {{"b", 97, 103, 10}, {"up", 146, 125, 8}, {"down", 146, 175, 8}, {"left", 121, 150, 8}, {"right", 171, 150, 8}}},
+};
+
+/** Partie de l'illustration affichée (la manette, sans le fond autour). */
+static constexpr int kArtX = 10, kArtY = 55, kArtW = 271, kArtH = 190;
+
+/** Repère d'une étape sur l'illustration : bouton, croix, stick ou direction du stick droit. */
+static const PadSpot* spotOf(const std::vector<PadSpot>& spots, const PadStep& step) {
+  auto find = [&](const std::string& key) -> const PadSpot* {
+    for (const auto& s : spots) {
+      if (key == s.key) return &s;
+    }
+    return nullptr;
+  };
+  if (step.stick == 'X' || step.stick == 'Y') return find("ls");
+  if (step.stick) {
+    const PadSpot* half = step.half ? find(std::string("r") + step.stick + step.half) : nullptr;
+    return half ? half : find("rs");
+  }
+  static const char* const names[] = {"b", "y", "select", "start", "up", "down", "left", "right",
+                                      "a", "x", "l", "r", "l2", "r2", "ls", "rs"};
+  return step.id < sizeof(names) / sizeof(names[0]) ? find(names[step.id]) : nullptr;
+}
+
 void drawPadImage(Canvas& c, SDL_Surface* image, int x, int y, int w, int h) {
   if (!image) return;
   c.image(x, y, w, h, static_cast<const uint8_t*>(image->pixels), image->w, image->h, image->pitch);
@@ -1297,6 +1351,33 @@ void PadPainter::gamecube() {
 
 }  // namespace
 
+int PadConfig::renderArt(Canvas& c, int cx, int y, int maxWidth, int maxHeight) const {
+  const std::string name = consolePadImageName(style_);
+  SDL_Surface* art = padImage(name);
+  auto spots = kPadSpots.find(name);
+  if (!art || spots == kPadSpots.end() || art->w < kArtX + kArtW || art->h < kArtY + kArtH) return 0;
+  const float scale = std::min((float)maxWidth / kArtW, (float)maxHeight / kArtH);
+  const int w = (int)(kArtW * scale), h = (int)(kArtH * scale), x = cx - w / 2;
+  const auto* pixels = static_cast<const uint8_t*>(art->pixels) + (size_t)kArtY * art->pitch + (size_t)kArtX * 4;
+  c.image(x, y, w, h, pixels, kArtW, kArtH, art->pitch);
+  // Repères : étape en cours (couleur du menu), boutons attribués (vert), les autres discrets.
+  for (size_t i = 0; i < steps_.size(); i++) {
+    const PadSpot* s = spotOf(spots->second, steps_[i]);
+    if (!s) continue;
+    const float sx = x + (s->x - kArtX) * scale, sy = y + (s->y - kArtY) * scale, sr = s->r * scale + 1.5f;
+    if (joystick_ && i == step_) {
+      c.circle(sx, sy, sr, rgba(140, 130, 255, 110));
+      c.circleOutline(sx, sy, sr + 1.5f, 3.0f, kAccent);
+    } else if (!assigned_[i].empty()) {
+      c.circleOutline(sx, sy, sr, 2.5f, rgba(70, 210, 110));
+    } else {
+      c.circleOutline(sx, sy, sr, 1.0f, rgba(255, 255, 255, 110));
+    }
+  }
+  c.text(x + w - Canvas::measure("@rachels_ham", 1), y + h + 2, "@rachels_ham", 1, kMuted);
+  return h + 10;
+}
+
 int PadConfig::renderPad(Canvas& c, int x, int y, int w) const {
   PadPainter painter(c, (float)x, (float)y, (float)w, steps_, assigned_, joystick_ ? (int)step_ : -1);
   painter.draw(style_);
@@ -1316,21 +1397,14 @@ void PadConfig::render(Canvas& c) const {
   const int titleScale = Canvas::measure(title, 2) <= right - left ? 2 : 1;
   centered(c, cx, y + (titleScale == 1 ? 4 : 0), Canvas::fit(title, titleScale, right - left), titleScale, kText);
   y += 30;
-  // Illustration de la manette de la console à gauche du dessin, à sa hauteur (dessin de 340 x 150
-  // unités : hauteur = largeur * 150 / 340), si elle existe.
-  SDL_Surface* art = padImage(consolePadImageName(style_));
-  const int artGap = 12;
-  const float artRatio = art ? (float)art->w / art->h : 0.0f;
-  const int padWidth = std::min(380, (int)((right - left - (art ? artGap : 0)) / (1.0f + artRatio * 150.0f / 340.0f)));
-  const int artWidth = art ? (int)(padWidth * 150.0f / 340.0f * artRatio) : 0;
-  const int x0 = cx - (padWidth + (art ? artWidth + artGap : 0)) / 2;
-  const int padHeight = renderPad(c, x0 + (art ? artWidth + artGap : 0), y, padWidth);
-  if (art) {
-    drawPadImage(c, art, x0, y, artWidth, padHeight);
-    // Crédit sous l'illustration (le bas de l'écran rappelle les touches du clavier).
-    centered(c, x0 + artWidth / 2, y + padHeight + 4, Canvas::fit("@rachels_ham", 1, artWidth + artGap), 1, kMuted);
+  // Illustration de la manette de la console avec ses boutons repérés ; sans illustration, le dessin.
+  const int artHeight = renderArt(c, cx, y, right - left, std::max(80, c.height() - y - 120));
+  if (artHeight) {
+    y += artHeight + 8;
+  } else {
+    const int padWidth = std::min(380, right - left);
+    y += renderPad(c, cx - padWidth / 2, y, padWidth) + 10;
   }
-  y += padHeight + (art ? 18 : 10);
   const int textWidth = right - left;
   if (!joystick_) {
     for (const auto& line : wrap(tr_("pad_press_any"), 1, textWidth)) {
