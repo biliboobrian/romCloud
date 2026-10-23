@@ -1491,7 +1491,6 @@ class LibretroActivity : ComponentActivity() {
                     }
                 }
                 Text(stringResource(R.string.players_hint), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
-                Text(stringResource(R.string.pads_credit), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { finishPlayers(order) }, enabled = order.isNotEmpty()) { Text(stringResource(R.string.players_done)) }
                     FocusedButton(stringResource(R.string.action_cancel), { playersOrder = null })
@@ -1536,13 +1535,10 @@ class LibretroActivity : ComponentActivity() {
     private fun MappingInstructions(session: MappingSession) {
         val name = session.deviceName
         val step = session.step
-        // Illustration de la manette de la console (@rachels_ham), boutons repérés ; sans illustration, le dessin.
+        // Illustration de la manette de la console, boutons repérés ; sans illustration, le dessin.
         val art = padArtName(padLayout.style)
         if (art != null) {
-            Column(horizontalAlignment = Alignment.End) {
-                PadArt(art, session.steps, step.takeIf { name != null }, session.done)
-                Text("@rachels_ham", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            PadArt(art, session.steps, step.takeIf { name != null }, session.done)
         } else {
             PadPreview(padLayout, session.steps, step.takeIf { name != null }, session.done)
         }

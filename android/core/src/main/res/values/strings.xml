@@ -453,7 +453,6 @@
     <string name="pads_dpad">D-pad %1$s</string>
     <string name="pads_left_stick">Left stick %1$s</string>
     <string name="pads_right_stick">Right stick %1$s</string>
-    <string name="pads_credit">Controller illustrations: @rachels_ham</string>
     <string name="pad_already_used">This button is already assigned</string>
     <string name="pad_config_saved">Controller setup saved</string>
     <string name="pad_config_reset">Default controller setup restored</string>

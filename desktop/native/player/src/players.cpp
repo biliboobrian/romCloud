@@ -68,7 +68,6 @@ void PlayerOrder::render(Canvas& c) const {
   // la console (sinon celle branchée).
   const int left = cx - width / 2;
   const int rowHeight = 40, art = 36;
-  bool anyArt = false;
   for (int port = 0; port < Input::kPorts; port++) {
     std::string name;
     uint32_t color = kMuted;
@@ -82,7 +81,6 @@ void PlayerOrder::render(Canvas& c) const {
       name = input_.padName(port);
       if (SDL_Gamepad* pad = input_.padAt(port)) image = playerPadImage(SDL_GetGamepadType(pad), SDL_GetGamepadName(pad));
     }
-    anyArt = anyArt || image;
     const bool current = port == next && port < connected;
     c.roundRect((float)left, (float)y, (float)width, (float)rowHeight, 6, current ? rgba(60, 55, 120, 220) : rgba(30, 30, 44, 200));
     drawPadImage(c, image, left + 4, y + 2, art * 292 / 307, art);
@@ -91,7 +89,6 @@ void PlayerOrder::render(Canvas& c) const {
     c.text(tx + 100, ty, Canvas::fit(name.empty() ? "-" : name, 1, width - 112 - 52), 1, color);
     y += rowHeight + 6;
   }
-  if (anyArt) c.text(12, c.height() - 14, Canvas::fit(tr_("pad_art_credit"), 1, c.width() - 24), 1, kMuted);
   y += 6;
   centered(c, cx, y, Canvas::fit(tr_("players_keyboard"), 1, width), 1, kMuted);
   y += 16;

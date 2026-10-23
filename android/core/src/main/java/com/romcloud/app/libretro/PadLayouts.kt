@@ -165,6 +165,8 @@ internal object PadLayouts {
         style = PadStyle.SATURN,
     )
     private val MASTER_SYSTEM = PadLayout(buttons = diagonal("1" to B, "2" to A), select = null, style = PadStyle.MASTER_SYSTEM)
+    /** Game Gear : mêmes boutons que la Master System, illustration de la console portable. */
+    private val GAME_GEAR = MASTER_SYSTEM.copy(style = PadStyle.GAME_GEAR)
 
     /** Amstrad GX4000 (cap32, joystick Amstrad) : Feu 1 sur B, Feu 2 sur A, ni Select ni Start. */
     private val GX4000 = PadLayout(buttons = diagonal("1" to B, "2" to A), select = null, start = null, style = PadStyle.GX4000)
@@ -245,7 +247,8 @@ internal object PadLayouts {
         listOf("psp", "pspminis").forEach { put(it, PSP) }
         listOf("genesis", "genesismsu", "segacd", "sega32x", "pico").forEach { put(it, GENESIS) }
         listOf("saturn", "stv").forEach { put(it, SATURN) }
-        listOf("master", "gamegear", "sg1000").forEach { put(it, MASTER_SYSTEM) }
+        listOf("master", "sg1000").forEach { put(it, MASTER_SYSTEM) }
+        put("gamegear", GAME_GEAR)
         listOf("dreamcast", "naomi", "atomiswave").forEach { put(it, DREAMCAST) }
         // PC-FX (six boutons) : disposition par défaut, qui donne tous les boutons du RetroPad.
         listOf("tg16", "tgcd", "supergrafx").forEach { put(it, PC_ENGINE) }

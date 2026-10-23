@@ -2555,13 +2555,15 @@
   // commande ; mêmes réglages que le menu du jeu (« Joueurs des manettes », « Configurer la manette »).
   // ---------------------------------------------------------------------------
 
-  // Illustrations des manettes : @rachels_ham (pads/<nom>.webp), manette de chaque console.
+  // Illustrations des manettes (pads/<nom>.webp, desktop/native/player/pads/generate_pads.py), manette de chaque console.
   const CONSOLE_PADS = {
     nes: 'nes', fds: 'famicom', snes: 'snes', snesmsu1: 'snes', satellaview: 'snes', n64: 'n64', gc: 'gamecube', ngc: 'gamecube',
     wii: 'wii', psx: 'psx', ps2: 'ps2', genesis: 'genesis', genesismsu: 'genesis', segacd: 'genesis', sega32x: 'genesis',
-    pico: 'genesis', master: 'master', sg1000: 'master', saturn: 'saturn', dreamcast: 'dreamcast', naomi: 'dreamcast',
+    pico: 'genesis', master: 'master', sg1000: 'master', gamegear: 'gamegear', saturn: 'saturn', stv: 'saturn', dreamcast: 'dreamcast', naomi: 'dreamcast',
     atomiswave: 'dreamcast', tg16: 'pcengine', tgcd: 'pcengine', supergrafx: 'pcengine', neogeo: 'neogeo', neogeocd: 'neogeo',
-    atari2600: 'atari2600',
+    atari2600: 'atari2600', gb: 'gameboy', gbc: 'gameboy', megaduck: 'gameboy', gw: 'gameboy', pokemini: 'gameboy',
+    supervision: 'gameboy', gba: 'gba', psp: 'psp', pspminis: 'psp', ngp: 'ngp', ngpc: 'ngp', cps1: 'cps', cps2: 'cps',
+    cps3: 'cps', fbneo: 'arcade', mame: 'arcade', gx4000: 'gx4000', atari7800: 'atari7800', lynx: 'lynx',
   };
   const consolePadImage = (system) => {
     const name = CONSOLE_PADS[(system.shortname || '').toLowerCase()] || CONSOLE_PADS[system.id];
@@ -2659,8 +2661,7 @@
         </div>
       </div>
       <div class="line"><button class="btn" id="padConfigBtn"${connected.length ? '' : ' disabled'}>${icon('pad', 18)} ${esc(t('pads.configure'))}</button></div>
-      <p class="muted small">${esc(t('pads.hint', { system: p.system.name }))}</p>
-      <p class="muted small">${esc(t('pads.credit'))}</p>`;
+      <p class="muted small">${esc(t('pads.hint', { system: p.system.name }))}</p>`;
     for (const el of $$('[data-pad-shown]', box)) {
       el.onclick = () => {
         p.shown = Number(el.dataset.padShown);

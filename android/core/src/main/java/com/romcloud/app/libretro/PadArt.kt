@@ -24,7 +24,7 @@ import com.romcloud.core.R
 internal data class Spot(val x: Int, val y: Int, val r: Int)
 
 /**
- * Boutons sur chaque illustration de manette (@rachels_ham) : up / down / left / right (croix), ls /
+ * Boutons sur chaque illustration de manette (generate_pads.py) : up / down / left / right (croix), ls /
  * rs (sticks, L3 / R3), rx+, ry- … (directions du stick droit). Même table que padconfig.cpp (Windows).
  */
 internal val PAD_SPOTS: Map<String, Map<String, Spot>> = mapOf(
@@ -37,11 +37,21 @@ internal val PAD_SPOTS: Map<String, Map<String, Spot>> = mapOf(
     "gamecube" to mapOf("ls" to Spot(82, 121, 13), "up" to Spot(112, 158, 5), "down" to Spot(112, 176, 5), "left" to Spot(103, 167, 5), "right" to Spot(121, 167, 5), "start" to Spot(146, 119, 5), "a" to Spot(209, 120, 10), "b" to Spot(188, 133, 7), "x" to Spot(233, 116, 7), "y" to Spot(203, 97, 7), "l2" to Spot(77, 83, 9), "r2" to Spot(228, 84, 9), "r" to Spot(205, 80, 7), "rs" to Spot(179, 168, 12)),
     "genesis" to mapOf("up" to Spot(80, 133, 6), "down" to Spot(80, 161, 6), "left" to Spot(66, 147, 6), "right" to Spot(94, 147, 6), "start" to Spot(150, 145, 7), "y" to Spot(189, 156, 9), "b" to Spot(213, 139, 9), "a" to Spot(237, 134, 9)),
     "master" to mapOf("up" to Spot(95, 132, 6), "down" to Spot(95, 162, 6), "left" to Spot(80, 147, 6), "right" to Spot(110, 147, 6), "b" to Spot(188, 165, 13), "a" to Spot(228, 165, 13)),
-    "saturn" to mapOf("up" to Spot(85, 139, 6), "down" to Spot(85, 167, 6), "left" to Spot(71, 153, 6), "right" to Spot(99, 153, 6), "start" to Spot(143, 172, 7), "b" to Spot(181, 151, 8), "a" to Spot(208, 160, 8), "r" to Spot(238, 154, 8), "y" to Spot(200, 137, 7), "x" to Spot(219, 129, 7), "l" to Spot(238, 124, 7), "l2" to Spot(80, 87, 9), "r2" to Spot(203, 87, 9)),
+    "saturn" to mapOf("up" to Spot(85, 139, 6), "down" to Spot(85, 167, 6), "left" to Spot(71, 153, 6), "right" to Spot(99, 153, 6), "start" to Spot(143, 172, 7), "b" to Spot(183, 162, 8), "a" to Spot(208, 158, 8), "r" to Spot(233, 154, 8), "y" to Spot(190, 135, 7), "x" to Spot(214, 131, 7), "l" to Spot(238, 127, 7), "l2" to Spot(80, 87, 9), "r2" to Spot(210, 87, 9)),
     "dreamcast" to mapOf("ls" to Spot(55, 105, 14), "up" to Spot(73, 148, 6), "down" to Spot(73, 168, 6), "left" to Spot(63, 158, 6), "right" to Spot(83, 158, 6), "start" to Spot(143, 210, 7), "b" to Spot(228, 147, 8), "a" to Spot(247, 126, 8), "y" to Spot(206, 126, 8), "x" to Spot(228, 107, 8), "l2" to Spot(40, 75, 9), "r2" to Spot(250, 75, 9)),
     "pcengine" to mapOf("up" to Spot(68, 160, 6), "down" to Spot(68, 184, 6), "left" to Spot(56, 172, 6), "right" to Spot(80, 172, 6), "select" to Spot(133, 177, 7), "start" to Spot(159, 177, 7), "b" to Spot(204, 176, 10), "a" to Spot(231, 176, 10)),
     "neogeo" to mapOf("up" to Spot(83, 115, 6), "down" to Spot(83, 183, 6), "left" to Spot(52, 149, 6), "right" to Spot(117, 149, 6), "b" to Spot(203, 165, 9), "a" to Spot(230, 151, 9), "y" to Spot(190, 139, 9), "x" to Spot(214, 124, 9), "start" to Spot(152, 150, 7), "select" to Spot(152, 173, 7)),
     "atari2600" to mapOf("b" to Spot(97, 103, 10), "up" to Spot(146, 125, 8), "down" to Spot(146, 175, 8), "left" to Spot(121, 150, 8), "right" to Spot(171, 150, 8)),
+    "gameboy" to mapOf("up" to Spot(109, 164, 6), "down" to Spot(109, 185, 6), "left" to Spot(98, 175, 6), "right" to Spot(120, 175, 6), "select" to Spot(130, 214, 6), "start" to Spot(151, 214, 6), "b" to Spot(166, 184, 9), "a" to Spot(187, 172, 9)),
+    "gba" to mapOf("up" to Spot(58, 141, 6), "down" to Spot(58, 162, 6), "left" to Spot(48, 151, 6), "right" to Spot(69, 151, 6), "start" to Spot(52, 184, 6), "select" to Spot(52, 196, 6), "b" to Spot(223, 160, 9), "a" to Spot(241, 142, 9), "l" to Spot(43, 106, 8), "r" to Spot(247, 106, 8)),
+    "psp" to mapOf("up" to Spot(40, 123, 5), "down" to Spot(40, 143, 5), "left" to Spot(30, 133, 5), "right" to Spot(50, 133, 5), "ls" to Spot(40, 172, 9), "select" to Spot(187, 198, 5), "start" to Spot(202, 198, 5), "x" to Spot(250, 131, 6), "a" to Spot(261, 142, 6), "b" to Spot(250, 153, 6), "y" to Spot(240, 142, 6), "l" to Spot(37, 100, 8), "r" to Spot(253, 100, 8)),
+    "ngp" to mapOf("up" to Spot(61, 138, 6), "down" to Spot(61, 165, 6), "left" to Spot(48, 151, 6), "right" to Spot(75, 151, 6), "b" to Spot(217, 163, 9), "a" to Spot(238, 145, 9), "start" to Spot(235, 187, 5)),
+    "cps" to mapOf("up" to Spot(61, 139, 8), "down" to Spot(61, 175, 8), "left" to Spot(43, 157, 8), "right" to Spot(79, 157, 8), "y" to Spot(148, 136, 9), "x" to Spot(175, 130, 9), "l" to Spot(202, 130, 9), "b" to Spot(142, 166, 9), "a" to Spot(169, 160, 9), "r" to Spot(196, 160, 9), "start" to Spot(247, 121, 6), "select" to Spot(265, 121, 6)),
+    "arcade" to mapOf("up" to Spot(61, 139, 8), "down" to Spot(61, 175, 8), "left" to Spot(43, 157, 8), "right" to Spot(79, 157, 8), "x" to Spot(148, 136, 9), "l" to Spot(175, 130, 9), "r" to Spot(202, 130, 9), "b" to Spot(142, 166, 9), "a" to Spot(169, 160, 9), "y" to Spot(196, 160, 9), "start" to Spot(247, 121, 6), "select" to Spot(265, 121, 6)),
+    "gx4000" to mapOf("up" to Spot(76, 140, 6), "down" to Spot(76, 168, 6), "left" to Spot(62, 154, 6), "right" to Spot(90, 154, 6), "b" to Spot(193, 160, 10), "a" to Spot(223, 160, 10)),
+    "atari7800" to mapOf("up" to Spot(82, 138, 6), "down" to Spot(82, 165, 6), "left" to Spot(69, 151, 6), "right" to Spot(95, 151, 6), "b" to Spot(187, 157, 10), "a" to Spot(217, 145, 10)),
+    "gamegear" to mapOf("up" to Spot(49, 144, 6), "down" to Spot(49, 171, 6), "left" to Spot(36, 157, 6), "right" to Spot(63, 157, 6), "b" to Spot(223, 166, 9), "a" to Spot(250, 151, 9), "start" to Spot(241, 121, 6)),
+    "lynx" to mapOf("up" to Spot(46, 138, 6), "down" to Spot(46, 165, 6), "left" to Spot(33, 151, 6), "right" to Spot(60, 151, 6), "b" to Spot(235, 169, 9), "a" to Spot(256, 151, 9), "l" to Spot(211, 121, 5), "start" to Spot(232, 115, 5), "r" to Spot(253, 121, 5)),
 )
 
 /** Partie de l'illustration affichée (la manette, sans le fond autour). */
@@ -59,11 +69,21 @@ internal fun padArtName(style: PadStyle): String? = when (style) {
     PadStyle.GAMECUBE -> "gamecube"
     PadStyle.GENESIS -> "genesis"
     PadStyle.MASTER_SYSTEM -> "master"
+    PadStyle.GAME_GEAR -> "gamegear"
     PadStyle.SATURN -> "saturn"
     PadStyle.DREAMCAST -> "dreamcast"
     PadStyle.PC_ENGINE -> "pcengine"
     PadStyle.NEO_GEO -> "neogeo"
     PadStyle.ATARI_2600 -> "atari2600"
+    PadStyle.GAME_BOY -> "gameboy"
+    PadStyle.GBA -> "gba"
+    PadStyle.PSP -> "psp"
+    PadStyle.NEO_GEO_POCKET -> "ngp"
+    PadStyle.CPS -> "cps"
+    PadStyle.ARCADE -> "arcade"
+    PadStyle.GX4000 -> "gx4000"
+    PadStyle.ATARI_7800 -> "atari7800"
+    PadStyle.LYNX -> "lynx"
     else -> null
 }
 
@@ -78,10 +98,20 @@ private fun padArtDrawable(name: String): Int = when (name) {
     "gamecube" -> R.drawable.pad_gamecube
     "genesis" -> R.drawable.pad_genesis
     "master" -> R.drawable.pad_master
+    "gamegear" -> R.drawable.pad_gamegear
     "saturn" -> R.drawable.pad_saturn
     "dreamcast" -> R.drawable.pad_dreamcast
     "pcengine" -> R.drawable.pad_pcengine
     "neogeo" -> R.drawable.pad_neogeo
+    "gameboy" -> R.drawable.pad_gameboy
+    "gba" -> R.drawable.pad_gba
+    "psp" -> R.drawable.pad_psp
+    "ngp" -> R.drawable.pad_ngp
+    "cps" -> R.drawable.pad_cps
+    "arcade" -> R.drawable.pad_arcade
+    "gx4000" -> R.drawable.pad_gx4000
+    "atari7800" -> R.drawable.pad_atari7800
+    "lynx" -> R.drawable.pad_lynx
     else -> R.drawable.pad_atari2600
 }
 

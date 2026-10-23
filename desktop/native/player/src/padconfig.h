@@ -18,7 +18,7 @@
 /** Applique les correspondances mémorisées pour le système ; avant l'ouverture des manettes. */
 void applySavedPadMappings();
 
-// Illustrations des manettes (@rachels_ham) : PNG du dossier --pad-images (« snes.png », « ps4.png »…).
+// Illustrations des manettes (pads/generate_pads.py) : PNG du dossier --pad-images (« snes.png », « ps4.png »…).
 void setPadImagesDir(const std::string& dir);
 /** Illustration [name] (sans extension) en RGBA, gardée en mémoire ; null si absente. */
 SDL_Surface* padImage(const std::string& name);
