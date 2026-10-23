@@ -10,7 +10,7 @@ import { queuePs4Conversions } from './ps4-convert.js';
 import { fileNameDetails, mergeDetails, parseStoredDetails } from './scraper/details.js';
 import { stars } from './scraper/rating.js';
 import { contentIdLabel } from './scraper/serial.js';
-import { exeCandidates, folderFiles, folderStats, uninstallerOf } from './folder-games.js';
+import { exeCandidates, folderFiles, folderStats, prereqsOf, uninstallerOf } from './folder-games.js';
 import { listSystems, requireSystem, systemDir } from './systems.js';
 
 // Fichiers ignorés lors du scan : fichiers cachés, envois en cours, métadonnées diverses.
@@ -85,7 +85,8 @@ export function rowToGame(row, parts = []) {
     partKind: row.part_kind ?? null,
     // Jeu en dossier (PC Windows) : fichiers listés par /games/:id/files, lancé par [exe].
     // uninstallExe : désinstalleur lancé quand le jeu est supprimé du PC (null : aucun).
-    ...(row.is_folder ? { folder: true, exe: row.exe ?? null, uninstallExe: row.uninstall_exe || null } : {}),
+    // extraExes : autres exécutables (prérequis : DirectX, Visual C++…) proposés par l'application Windows.
+    ...(row.is_folder ? { folder: true, exe: row.exe ?? null, uninstallExe: row.uninstall_exe || null, extraExes: extraExesOf(row) } : {}),
     groupMode: row.group_mode ?? null,
     crc32: row.crc32,
     md5: row.md5,
@@ -226,6 +227,17 @@ export function updateGame(id, input) {
     sets.push(`${column} = ?`);
     values.push(value);
   }
+  // Autres exécutables choisis dans la fiche (liste, vide : aucun) : gardés au scan ; null : devinés de nouveau.
+  if (input.extraExes !== undefined) {
+    const row = requireGameRow(id);
+    if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
+    const { exes } = gameFolderFiles(row);
+    const chosen = input.extraExes !== null;
+    const list = chosen ? [...new Set([].concat(input.extraExes).map((e) => String(e).replace(/\\/g, '/')))] : prereqsOf(folderFiles(gameFilePath(row)));
+    for (const exe of list) if (!exes.includes(exe)) throw new HttpError(400, 'errors.unknownExe', { exe });
+    sets.push('extra_exes = ?', 'extra_exes_chosen = ?');
+    values.push(JSON.stringify(list), chosen ? 1 : 0);
+  }
   if (sets.length) {
     db.prepare(`UPDATE games SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`).run(...values, Number(id));
   }
@@ -360,10 +372,13 @@ export function scanSystem(systemId) {
   if (folders) {
     // Exécutable et désinstalleur de chaque jeu : devinés s'ils n'ont pas été choisis, ou s'ils
     // n'existent plus (désinstalleur « aucun » choisi dans la fiche : gardé).
-    for (const row of db.prepare('SELECT id, file_name, exe, uninstall_exe FROM games WHERE system_id = ?').all(systemId)) {
+    for (const row of db.prepare('SELECT id, file_name, exe, uninstall_exe, extra_exes, extra_exes_chosen FROM games WHERE system_id = ?').all(systemId)) {
       const files = folderFiles(path.join(dir, row.file_name));
       const candidates = exeCandidates(files);
       if (!row.exe || !candidates.includes(row.exe)) db.prepare('UPDATE games SET exe = ? WHERE id = ?').run(candidates[0] ?? null, row.id);
+      // Autres exécutables : devinés, ou ceux choisis qui existent encore.
+      const extras = row.extra_exes_chosen ? extraExesOf(row).filter((p) => candidates.includes(p)) : prereqsOf(files);
+      db.prepare('UPDATE games SET extra_exes = ? WHERE id = ?').run(JSON.stringify(extras), row.id);
       if (row.uninstall_exe === '' || (row.uninstall_exe && candidates.includes(row.uninstall_exe))) continue;
       db.prepare('UPDATE games SET uninstall_exe = ? WHERE id = ?').run(uninstallerOf(files), row.id);
     }
@@ -385,7 +400,18 @@ export function gameFolderFiles(row) {
     exes: exeCandidates(files),
     exe: row.exe ?? null,
     uninstallExe: row.uninstall_exe || null,
+    extraExes: extraExesOf(row),
   };
+}
+
+/** Autres exécutables d'un jeu en dossier (colonne JSON), liste vide sans eux. */
+function extraExesOf(row) {
+  try {
+    const list = JSON.parse(row.extra_exes || '[]');
+    return Array.isArray(list) ? list.filter((p) => typeof p === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 /** Exécutable choisi pour un jeu en dossier : un .exe de son dossier (vide : aucun). */

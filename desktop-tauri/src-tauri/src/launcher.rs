@@ -193,16 +193,8 @@ fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()>
  */
 pub fn uninstall(system: &Value, game: &Value) -> Result<bool> {
     let Some(exe) = library::folder_uninstaller(system, game).filter(|p| p.is_file()) else { return Ok(false) };
-    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     let _ = std::fs::remove_file(library::folder_marker(system, game));
-    match std::process::Command::new(&exe).current_dir(&dir).spawn() {
-        Ok(child) => paths::allow_foreground(Some(child.id())),
-        Err(e) if e.raw_os_error() == Some(ERROR_ELEVATION_REQUIRED) => {
-            paths::run_elevated(&exe.to_string_lossy(), &[], &dir.to_string_lossy())
-                .map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e })))?;
-        }
-        Err(e) => return Err(AppError::new("errors.launchFailed", json!({ "detail": e.to_string() }))),
-    }
+    run_in_folder(&exe)?;
     let folder = library::file_for(system, game);
     let (game_id, title) = (game["id"].clone(), s(game, "title").to_string());
     tauri::async_runtime::spawn(async move {
@@ -220,6 +212,28 @@ pub fn uninstall(system: &Value, game: &Value) -> Result<bool> {
         );
     });
     Ok(true)
+}
+
+/// Programme d'un jeu en dossier lancé depuis son dossier (droits d'administrateur demandés si besoin).
+fn run_in_folder(exe: &Path) -> Result<()> {
+    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    match std::process::Command::new(exe).current_dir(&dir).spawn() {
+        Ok(child) => paths::allow_foreground(Some(child.id())),
+        Err(e) if e.raw_os_error() == Some(ERROR_ELEVATION_REQUIRED) => {
+            paths::run_elevated(&exe.to_string_lossy(), &[], &dir.to_string_lossy())
+                .map_err(|e| AppError::new("errors.launchFailed", json!({ "detail": e })))?;
+        }
+        Err(e) => return Err(AppError::new("errors.launchFailed", json!({ "detail": e.to_string() }))),
+    }
+    Ok(())
+}
+
+/// Autre exécutable d'un jeu en dossier sur le PC (prérequis : DirectX, Visual C++…, choisis sur le serveur).
+pub fn run_extra(system: &Value, game: &Value, rel: &str) -> Result<()> {
+    let exe = library::folder_extra(system, game, rel)
+        .filter(|p| p.is_file())
+        .ok_or_else(|| AppError::new("errors.launchFailed", json!({ "detail": rel })))?;
+    run_in_folder(&exe)
 }
 
 /// Ouvre l'émulateur seul (sans jeu).

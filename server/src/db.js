@@ -212,6 +212,10 @@ if (!gameColumns.includes('exe')) db.exec('ALTER TABLE games ADD COLUMN exe TEXT
 // Désinstalleur du jeu en dossier, lancé par l'application Windows quand le jeu est supprimé du PC
 // (NULL : à deviner au scan ; '' : aucun, choisi dans la fiche).
 if (!gameColumns.includes('uninstall_exe')) db.exec('ALTER TABLE games ADD COLUMN uninstall_exe TEXT');
+// Autres exécutables du jeu en dossier (prérequis : DirectX, Visual C++…), proposés par l'application
+// Windows (JSON, chemins dans le dossier) ; devinés au scan tant qu'ils n'ont pas été choisis dans la fiche.
+if (!gameColumns.includes('extra_exes')) db.exec('ALTER TABLE games ADD COLUMN extra_exes TEXT');
+if (!gameColumns.includes('extra_exes_chosen')) db.exec('ALTER TABLE games ADD COLUMN extra_exes_chosen INTEGER NOT NULL DEFAULT 0');
 // Captures d'écran 2 à 4 (« screenshot » : la première).
 for (const column of ['screenshot2', 'screenshot3', 'screenshot4']) {
   if (!gameColumns.includes(column)) db.exec(`ALTER TABLE games ADD COLUMN ${column} TEXT`);

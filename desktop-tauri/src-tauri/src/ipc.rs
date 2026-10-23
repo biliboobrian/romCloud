@@ -66,6 +66,11 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
             }
             json!({ "uninstalling": uninstalling })
         }
+        // Jeu PC : autre exécutable (prérequis : DirectX, Visual C++…).
+        "library:runExtra" => {
+            launcher::run_extra(&arg(a, 0), &arg(a, 1), &str_arg(a, 2))?;
+            Value::Null
+        }
         "library:systemsWithGames" => json!(library::systems_with_games(&list(a, 0))),
         "library:usage" => library::usage(&list(a, 0)),
         "connectivity:state" => connectivity::state(),

@@ -96,6 +96,7 @@
       downloadedGames: call('library:downloadedGames'),
       path: call('library:path'),
       remove: call('library:remove'),
+      runExtra: call('library:runExtra'),
       systemsWithGames: call('library:systemsWithGames'),
       usage: call('library:usage'),
     },

@@ -10,7 +10,7 @@ delete process.env.ADMIN_KEY;
 const { default: express } = await import('express');
 const { api } = await import('../src/api.js');
 const { config } = await import('../src/config.js');
-const { exeCandidates, fileInFolder } = await import('../src/folder-games.js');
+const { exeCandidates, fileInFolder, prereqsOf } = await import('../src/folder-games.js');
 
 const write = (file, bytes) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -27,6 +27,21 @@ test('exécutable deviné : hors installation et prérequis, le moins profond pu
     { path: 'data.pak', size: 99999 },
   ];
   assert.deepEqual(exeCandidates(files), ['Game.exe', 'Launcher.exe', 'Bin/Game.exe', 'unins000.exe', 'Redist/vc_redist.x64.exe']);
+});
+
+test('prérequis devinés : DirectX, Visual C++, .NET…, pas le jeu ni son désinstalleur', () => {
+  const files = [
+    'Game.exe', 'unins000.exe', 'setup.exe', 'Tools/Editor.exe',
+    '_CommonRedist/DirectX/Jun2010/DXSETUP.exe', '_CommonRedist/vcredist/2019/VC_redist.x64.exe',
+    'Redist/dotNetFx40_Full_x86_x64.exe', 'Redist/oalinst.exe', 'PhysX_9.21_SystemSoftware.exe',
+  ].map((p) => ({ path: p, size: 10 }));
+  assert.deepEqual(prereqsOf(files), [
+    'PhysX_9.21_SystemSoftware.exe',
+    'Redist/dotNetFx40_Full_x86_x64.exe',
+    'Redist/oalinst.exe',
+    '_CommonRedist/DirectX/Jun2010/DXSETUP.exe',
+    '_CommonRedist/vcredist/2019/VC_redist.x64.exe',
+  ]);
 });
 
 test('chemin hors du dossier du jeu refusé', () => {
@@ -88,6 +103,18 @@ test('système PC : un jeu par dossier, exécutable choisi, fichiers listés et 
     const rescanned = await (await fetch(`${base}/games/${game.id}`)).json();
     assert.equal(rescanned.exe, 'Tools/Editor.exe');
     assert.equal(rescanned.uninstallExe, null);
+    assert.deepEqual(rescanned.extraExes, []);
+
+    // Autres exécutables : prérequis devinés au scan ; choisis dans la fiche (même aucun) : gardés.
+    write(path.join(dir, 'Mr. Robot', 'Redist', 'DXSETUP.exe'), 20);
+    await fetch(`${base}/systems/windows/scan`, { method: 'POST' });
+    assert.deepEqual((await (await fetch(`${base}/games/${game.id}`)).json()).extraExes, ['Redist/DXSETUP.exe']);
+    assert.deepEqual((await (await json(`/games/${game.id}`, { method: 'PUT', body: { extraExes: ['Tools/Editor.exe'] } })).json()).extraExes, ['Tools/Editor.exe']);
+    assert.equal((await json(`/games/${game.id}`, { method: 'PUT', body: { extraExes: ['Absent.exe'] } })).status, 400);
+    await json(`/games/${game.id}`, { method: 'PUT', body: { extraExes: [] } });
+    await fetch(`${base}/systems/windows/scan`, { method: 'POST' });
+    assert.deepEqual((await (await fetch(`${base}/games/${game.id}`)).json()).extraExes, []);
+    assert.deepEqual((await (await json(`/games/${game.id}`, { method: 'PUT', body: { extraExes: null } })).json()).extraExes, ['Redist/DXSETUP.exe']);
 
     // Jeux en dossiers coupés : fiches refaites à partir des fichiers.
     const off = await (await json('/systems/windows', { method: 'PUT', body: { folderGames: false } })).json();

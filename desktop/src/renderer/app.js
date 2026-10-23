@@ -2230,6 +2230,19 @@
     return facts.filter(([, value]) => value);
   }
 
+  // Prérequis d'un jeu PC (chemin de l'exécutable) -> nom affiché.
+  const EXTRA_EXE_KINDS = [
+    [/dxsetup|dxwebsetup|directx/i, 'DirectX'], [/vc_?redist|vcredist/i, 'Visual C++'], [/dotnet|ndp\d|netfx/i, '.NET'],
+    [/physx/i, 'PhysX'], [/oalinst/i, 'OpenAL'], [/xnafx/i, 'XNA'], [/ue[34]?prereq/i, 'Unreal Engine'],
+  ];
+
+  /** Autre exécutable d'un jeu PC : « DirectX (DXSETUP.exe) », sinon son nom de fichier. */
+  function extraExeLabel(path) {
+    const name = path.split('/').pop();
+    const kind = EXTRA_EXE_KINDS.find(([re]) => re.test(path))?.[1];
+    return kind ? `${kind} (${name})` : name;
+  }
+
   function gameInfoHtml(game) {
     const facts = gameFacts(game);
     if (!facts.length) return '';
@@ -2353,6 +2366,8 @@
           ${game.folder ? `<div class="emu" id="emuBox">
             <label class="muted">${esc(t('detail.exe'))}</label>
             <div class="mono">${esc(game.exe || t('detail.noExe'))}</div>
+            ${game.extraExes?.length ? `<label class="muted">${esc(t('detail.extraExes'))}</label>
+              <div class="line">${game.extraExes.map((p) => `<button class="btn ghost" data-extra-exe="${esc(p)}" title="${esc(p)}"${st.kind === 'downloaded' ? '' : ' disabled'}>${icon('play', 18)} ${esc(extraExeLabel(p))}</button>`).join('')}</div>` : ''}
           </div>` : `<div class="emu${issues.length ? ' blocked' : ''}" id="emuBox">
             ${issuesHtml(issues)}
             <label class="muted">${esc(t('detail.emulator'))}</label>
@@ -2410,6 +2425,7 @@
     });
     $('#cancelBtn')?.addEventListener('click', () => rc.downloads.cancel(game.id));
     $('#folderBtn')?.addEventListener('click', () => rc.shell.showItem(localPath));
+    for (const btn of $$('[data-extra-exe]', main)) btn.addEventListener('click', () => call(rc.library.runExtra, system, game, btn.dataset.extraExe));
     $('#raHelpBtn')?.addEventListener('click', () => showRetroArchHelp(system));
     $('#resetCoreBtn')?.addEventListener('click', () => confirmResetCore(system.id, selected.core));
     if (builtinPads) startPads(system, selected.core);
