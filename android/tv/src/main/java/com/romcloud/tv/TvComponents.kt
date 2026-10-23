@@ -206,14 +206,16 @@ fun TvSystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Unit, mod
                     pluralString(R.plurals.games_count, system.gameCount, system.gameCount) + " · " + formatSize(system.totalSize),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                if (localSize > 0) {
-                    Text(
-                        stringResource(R.string.storage_on_device, formatSize(localSize)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                // Ligne toujours réservée (vide sans jeu sur l'appareil) : cartes de même hauteur.
+                Text(
+                    if (localSize > 0) stringResource(R.string.storage_on_device, formatSize(localSize)) else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
             }
         }
     }
