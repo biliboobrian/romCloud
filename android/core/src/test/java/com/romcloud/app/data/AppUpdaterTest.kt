@@ -19,9 +19,12 @@ class AppUpdaterTest {
     }
 
     @Test
-    fun `versions de developpement ignorees`() {
+    fun `versions compilees sur un PC`() {
         assertNull(AppUpdater.parseVersion("1.0.0-dev"))
-        assertFalse(AppUpdater.isNewer("1.12.0", "1.0.0-dev"))
+        assertTrue(AppUpdater.isNewer("1.64.0", "1.63.0-dev"))
+        assertTrue(AppUpdater.isNewer("1.63.0", "1.63.0-dev"))
+        assertFalse(AppUpdater.isNewer("1.62.0", "1.63.0-dev"))
+        assertFalse(AppUpdater.isNewer("1.63.0-dev", "1.62.0"))
         assertEquals(listOf(1, 12, 0), AppUpdater.parseVersion("v1.12.0"))
     }
 
