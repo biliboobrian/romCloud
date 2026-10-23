@@ -497,6 +497,10 @@
     <string name="err_no_exe">No executable chosen for %1$s: choose it on the server, in the game sheet.</string>
     <string name="winlator_private_dir">Winlator cannot read RomCloud\'s private folder: choose a ROMs folder outside Android/data in the settings (for example in Downloads).</string>
     <string name="winlator_drive_hint">In Winlator, add drive %1$s: pointing to %2$s to the first container (Container > Edit > Drives), or put the ROMs folder in Downloads.</string>
+    <string name="winlator_access_title">ROMs drive for Winlator</string>
+    <string name="winlator_access_text">To run PC games, Winlator must see the ROMs folder (drive R:). RomCloud can add it for you: in the next window, open \"Winlator Cmod\" from the menu, then tap \"Use this folder\". You only need to do this once.</string>
+    <string name="winlator_access_retry">The folder chosen was not Winlator\'s: choose the root of Winlator Cmod.</string>
+    <string name="winlator_access_allow">Allow</string>
     <string name="pc_exe">Executable (PC game, started with Winlator)</string>
     <string name="parts_disc">Disc %1$s</string>
     <string name="parts_update">Update</string>

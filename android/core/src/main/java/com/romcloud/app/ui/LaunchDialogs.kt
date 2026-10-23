@@ -1,6 +1,7 @@
 package com.romcloud.app.ui
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Build
 import androidx.activity.ComponentActivity
@@ -381,6 +382,49 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                         disk = pending.disk,
                     )?.let { scope.launch { snackbar.showSnackbar(it) } }
                 }) { Text(stringResource(R.string.action_play_anyway)) }
+            },
+        )
+    }
+
+    // Jeu PC : accès aux fichiers de Winlator demandé une fois (sélecteur de dossier d'Android),
+    // pour ajouter le lecteur des ROMs à son conteneur ; refusé : lancé avec le conseil d'avant.
+    val drivePrompt by app.winlatorDrivePrompt.collectAsStateWithLifecycle()
+    val driveScope = rememberCoroutineScope()
+    fun launchWindowsGame(askDrive: Boolean) {
+        val prompt = app.winlatorDrivePrompt.value ?: return
+        app.winlatorDrivePrompt.value = null
+        app.playWindowsGame(activity, prompt.system, prompt.game, askDrive)?.let { driveScope.launch { snackbar.showSnackbar(it) } }
+    }
+    val winlatorFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                activity.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                app.settings.winlatorTree = uri.toString()
+            }
+        }
+        launchWindowsGame(askDrive = uri != null)
+    }
+    drivePrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = { app.winlatorDrivePrompt.value = null },
+            title = { Text(stringResource(R.string.winlator_access_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (prompt.retry) Text(stringResource(R.string.winlator_access_retry), color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.winlator_access_text))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    try {
+                        winlatorFolder.launch(prompt.initialUri)
+                    } catch (e: ActivityNotFoundException) {
+                        launchWindowsGame(askDrive = false)
+                    }
+                }) { Text(stringResource(R.string.winlator_access_allow)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { launchWindowsGame(askDrive = false) }) { Text(stringResource(R.string.action_later)) }
             },
         )
     }

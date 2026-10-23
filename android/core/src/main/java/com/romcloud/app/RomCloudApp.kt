@@ -29,6 +29,7 @@ import com.romcloud.app.launch.CoreSwitchPrompt
 import com.romcloud.app.launch.GameLauncher
 import com.romcloud.app.launch.MissingEmulator
 import com.romcloud.app.launch.PendingLaunch
+import com.romcloud.app.launch.WinlatorDrivePrompt
 import com.romcloud.core.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,9 @@ class RomCloudApp : Application(), ImageLoaderFactory {
 
     /** BIOS du système absents au lancement : en attente du choix (les télécharger avant de jouer ?). */
     val biosPrompt = MutableStateFlow<BiosPrompt?>(null)
+
+    /** Jeu PC en attente de l'accès aux fichiers de Winlator (lecteur des ROMs à y ajouter). */
+    val winlatorDrivePrompt = MutableStateFlow<WinlatorDrivePrompt?>(null)
 
     /** Jeux à lancer automatiquement dès la fin de leur téléchargement, avec les options du lancement (reprise…). */
     val autoLaunch: MutableMap<Long, PendingLaunch> = ConcurrentHashMap()
