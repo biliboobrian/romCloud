@@ -34,11 +34,13 @@ class WinlatorTest {
         assertEquals("1", adreno["forceFullscreen"])
         assertEquals("wrapper", adreno["graphicsDriver"])
         assertTrue("adrenotoolsTurnip=1" in adreno.getValue("graphicsDriverConfig"))
+        assertTrue(adreno.getValue("graphicsDriverConfig").startsWith("version=turnip"))
         assertEquals("fr_FR.UTF-8", adreno["lc_all"])
         assertEquals("DXVK_HUD=0 MANGOHUD=0", adreno["envVars"])
         // Mali, Xclipse… : pilote Vulkan de l'appareil.
         val mali = Winlator.gameSettings(adreno = false, screenWidth = 1920, screenHeight = 1080, locale = java.util.Locale.US)
         assertTrue("adrenotoolsTurnip=0" in mali.getValue("graphicsDriverConfig"))
+        assertTrue(mali.getValue("graphicsDriverConfig").startsWith("version=System"))
         assertEquals("en_US.UTF-8", mali["lc_all"])
     }
 

@@ -3,6 +3,7 @@ name: Android APK
 # Deux applications, même version et même clé de signature :
 #   RomCloud-<version>.apk     téléphone / tablette (com.romcloud.app)
 #   RomCloud-TV-<version>.apk  Android TV (com.romcloud.app.tv)
+#   RomCloud-PC-<version>.apk  jeux PC, application compagnon (com.romcloud.wine, android/pc)
 # main et pull requests : tests et compilation seulement. Tag v* (ou lancement manuel) : APK signés,
 # joints à la Release du tag.
 
@@ -54,7 +55,7 @@ jobs:
 
       - name: Tests et compilation
         if: env.PACKAGE != 'true'
-        run: ./gradlew :core:testDebugUnitTest :app:compileDebugKotlin :tv:compileDebugKotlin --no-daemon
+        run: ./gradlew :core:testDebugUnitTest :pc:testDebugUnitTest :app:compileDebugKotlin :tv:compileDebugKotlin --no-daemon
 
       - name: Version
         if: env.PACKAGE == 'true'
@@ -92,7 +93,7 @@ jobs:
 
       - name: Tests et APK
         if: env.PACKAGE == 'true'
-        run: ./gradlew :core:testDebugUnitTest :app:assembleRelease :tv:assembleRelease --no-daemon
+        run: ./gradlew :core:testDebugUnitTest :pc:testDebugUnitTest :app:assembleRelease :tv:assembleRelease :pc:assembleRelease --no-daemon
 
       - name: Renommer les APK
         if: env.PACKAGE == 'true'
@@ -100,6 +101,7 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/RomCloud-${ROMCLOUD_VERSION_NAME}.apk"
           cp tv/build/outputs/apk/release/tv-release.apk "dist/RomCloud-TV-${ROMCLOUD_VERSION_NAME}.apk"
+          cp pc/build/outputs/apk/release/pc-release.apk "dist/RomCloud-PC-${ROMCLOUD_VERSION_NAME}.apk"
 
       # Lancement manuel seulement (les tags publient la Release) : gardé 7 jours, sans bloquer la
       # suite si le quota de stockage des artefacts est atteint.

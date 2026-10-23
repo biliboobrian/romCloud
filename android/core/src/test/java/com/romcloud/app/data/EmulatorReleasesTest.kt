@@ -50,6 +50,12 @@ class EmulatorReleasesTest {
     }
 
     @Test
+    fun `RomCloud PC, APK de la Release de RomCloud`() {
+        assertEquals("RomCloud-PC-1.63.0.apk", pick("com.romcloud.wine", 34, "RomCloud-1.63.0.apk", "RomCloud-TV-1.63.0.apk", "RomCloud-PC-1.63.0.apk"))
+        assertEquals(false, EmulatorReleases.SOURCES.getValue("com.romcloud.wine").playStore)
+    }
+
+    @Test
     fun `Winlator Cmod, APK de GitHub hors Play Store`() {
         assertEquals("Winlator-Cmod-v13.1.1.apk", pick("com.winlator.cmod", 34, "cmod-hotfix-checklist-08-07-2025.png", "Winlator-Cmod-v13.1.1.apk"))
         assertEquals(false, EmulatorReleases.SOURCES.getValue("com.winlator.cmod").playStore)

@@ -13,11 +13,13 @@ data class GameIssue(val kind: Kind, val message: String) {
 /**
  * Problèmes qui empêchent de jouer avec l'émulateur externe choisi pour ce fichier : la liste des
  * jeux propose alors « Configurer » (fiche du jeu) au lieu de « Jouer ». Vide pour l'émulateur
- * intégré, qui télécharge lui-même ce qui lui manque.
+ * intégré, qui télécharge lui-même ce qui lui manque, et pour un jeu PC ([folder]) : lancé par
+ * RomCloud PC (ou Winlator Cmod), proposé à l'installation au lancement s'il manque.
  */
 object GameIssues {
 
-    fun of(launcher: GameLauncher, system: GameSystem, fileName: String, file: File, downloaded: Boolean): List<GameIssue> {
+    fun of(launcher: GameLauncher, system: GameSystem, fileName: String, file: File, downloaded: Boolean, folder: Boolean = false): List<GameIssue> {
+        if (folder) return emptyList()
         val player = launcher.selectedPlayer(system, fileName) ?: return emptyList()
         if (player.libretroCore != null) return emptyList()
         return buildList {
