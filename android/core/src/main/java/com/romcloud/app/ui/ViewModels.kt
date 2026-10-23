@@ -9,6 +9,7 @@ import com.romcloud.app.netplay.anyAvailable
 import com.romcloud.app.netplay.NetplayProtocol
 import com.romcloud.app.netplay.NetplayLaunch
 import android.app.Activity
+import android.net.Uri
 import android.content.Context
 import androidx.annotation.StringRes
 import com.romcloud.app.I18n
@@ -43,6 +44,8 @@ import com.romcloud.app.launch.GameIssues
 import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.launch.VitaGames
 import com.romcloud.app.launch.Winlator
+import com.romcloud.app.launch.WinlatorDrivePrompt
+import com.romcloud.app.launch.WinlatorDrives
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -85,7 +88,7 @@ fun RomCloudApp.play(
     disk: Int? = null,
 ): String? {
     // Jeu PC (jeu en dossier) : son exécutable, lancé par Winlator.
-    if (game.folder) return playWindowsGame(activity, system, game)
+    if (game.folder) return playWindowsGame(activity, system, game, askDrive = true)
     val player = launcher.selectedPlayer(system, game.fileName)
     val launchFile = library.launchFile(system, game, player)
     // Jeu en plusieurs disques démarré sur [disk] : émulateur intégré avec la liste des disques, disque
@@ -135,13 +138,39 @@ fun RomCloudApp.play(
     }
 }
 
-/** Jeu PC lancé par Winlator ; renvoie un message (erreur, ou lecteur des ROMs à ajouter la première fois) ou null. */
-private fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem, game: Game): String? {
+/**
+ * Jeu PC lancé par Winlator ; renvoie un message (erreur, ou lecteur des ROMs à ajouter la première
+ * fois) ou null. Dossier des ROMs hors de Téléchargements : lecteur des ROMs ajouté au conteneur de
+ * Winlator par RomCloud ; sans accès à ses fichiers, accès demandé d'abord ([askDrive]).
+ */
+internal fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem, game: Game, askDrive: Boolean): String? {
     val exe = game.exe ?: return I18n.get(R.string.err_no_exe, game.title)
     // Dossier privé de l'application (Android/data) : illisible par Winlator.
     if (library.isAppPrivateDir()) return I18n.get(R.string.winlator_private_dir)
+    val gameDir = library.fileFor(system, game)
+    val romsRoot = File(settings.config.value.romsDir)
+    var driveReady = false
+    if (Winlator.needsRomsDrive(gameDir, exe, romsRoot)) {
+        val pkg = Winlator.installed(activity)?.first
+        val authority = pkg?.let { WinlatorDrives.authority(activity, it) }
+        val granted = settings.winlatorTree?.let(Uri::parse)?.takeIf { WinlatorDrives.hasAccess(activity, it) }
+        // Dossier autorisé qui n'est pas celui de Winlator : accès demandé à nouveau.
+        val tree = granted?.takeIf { pkg != null && WinlatorDrives.isDataDir(it, pkg) }
+        if (granted != null && tree == null) settings.winlatorTree = null
+        if (pkg != null && authority != null) {
+            if (tree != null) {
+                // Échec (conteneur pas encore créé…) : lancé avec le conseil, comme sans accès.
+                driveReady = runCatching { WinlatorDrives.ensure(activity, tree, pkg, Winlator.ROMS_DRIVE, romsRoot.absolutePath) }
+                    .onFailure { account.reportError("winlator:drive", it.message ?: it.javaClass.name, tree.toString()) }
+                    .isSuccess
+            } else if (askDrive) {
+                winlatorDrivePrompt.value = WinlatorDrivePrompt(system, game, WinlatorDrives.initialUri(authority, pkg), retry = granted != null)
+                return null
+            }
+        }
+    }
     return try {
-        val hint = Winlator.launch(activity, game.title, library.fileFor(system, game), exe, File(settings.config.value.romsDir))
+        val hint = Winlator.launch(activity, game.title, gameDir, exe, romsRoot, driveReady)
         account.startExternalSession(game.id)
         hint?.takeIf { !settings.winlatorDriveHintShown }?.also { settings.winlatorDriveHintShown = true }
     } catch (e: MissingEmulatorException) {

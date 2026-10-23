@@ -58,4 +58,20 @@ class WinlatorTest {
         val unescaped = raw.replace(Regex("\\\\([^\\\\]+)"), "$1").replace(Regex("\\\\([^\\\\]+)"), "$1").replace("\\\\", "\\").trim()
         assertEquals("D:\\My Games\\Robot.exe", unescaped)
     }
+
+    @Test
+    fun `lecteurs du conteneur lus et modifies comme Winlator`() {
+        val defaults = "D:/storage/emulated/0/DownloadE:/data/data/com.winlator.cmod/storage"
+        assertEquals(listOf('D' to "/storage/emulated/0/Download", 'E' to "/data/data/com.winlator.cmod/storage"), Winlator.parseDrives(defaults))
+        // Lecteur des ROMs ajouté à la fin, puis remplacé (nouveau dossier) sans doublon.
+        val added = Winlator.withDrive(defaults, 'R', "/storage/emulated/0/RomCloud")
+        assertEquals("$defaults" + "R:/storage/emulated/0/RomCloud", added)
+        assertEquals(
+            listOf('D' to "/storage/emulated/0/Download", 'E' to "/data/data/com.winlator.cmod/storage", 'R' to "/sdcard/Jeux"),
+            Winlator.parseDrives(Winlator.withDrive(added, 'r', "/sdcard/Jeux")).map { (l, p) -> l.uppercaseChar() to p },
+        )
+        assertEquals(emptyList<Pair<Char, String>>(), Winlator.parseDrives(""))
+        assertEquals("R:/x", Winlator.withDrive("", 'R', "/x"))
+        assertEquals("files/imagefs/home/xuser-1/.container", Winlator.containerConfigPath())
+    }
 }

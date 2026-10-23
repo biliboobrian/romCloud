@@ -18,8 +18,8 @@ import java.util.Locale
  * application ; la version officielle ne l'expose pas.
  *
  * Wine ne voit que les lecteurs du conteneur : D: est le dossier Téléchargements (réglage par
- * défaut de Winlator). Un dossier des ROMs ailleurs est lu par le lecteur [ROMS_DRIVE], à ajouter
- * une fois dans le conteneur (vers le dossier des ROMs).
+ * défaut de Winlator). Un dossier des ROMs ailleurs est lu par le lecteur [ROMS_DRIVE], ajouté au
+ * conteneur par RomCloud ([WinlatorDrives]) ou, à défaut, à la main (vers le dossier des ROMs).
  */
 object Winlator {
 
@@ -52,6 +52,39 @@ object Winlator {
         val inRoms = relative(romsRoot) ?: file.name
         return "$ROMS_DRIVE:\\" + inRoms.replace('/', '\\') to true
     }
+
+    /** Le jeu [exe] du dossier [gameDir] se lance-t-il depuis le lecteur des ROMs ([ROMS_DRIVE]) ? */
+    fun needsRomsDrive(gameDir: File, exe: String, romsRoot: File): Boolean =
+        winePath(File(gameDir, exe), downloadsDir(), romsRoot).second
+
+    @Suppress("DEPRECATION")
+    private fun downloadsDir(): File = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+
+    /** Configuration du conteneur [containerId] (JSON, clé « drives »), relative au dossier de données de Winlator. */
+    fun containerConfigPath(containerId: Int = CONTAINER_ID): String = "files/imagefs/home/xuser-$containerId/.container"
+
+    /** Lecteurs par défaut d'un conteneur de Winlator [pkg] (Container.DEFAULT_DRIVES), sans clé « drives ». */
+    fun defaultDrives(pkg: String): String = "D:${downloadsDir().absolutePath}E:/data/data/$pkg/storage"
+
+    /**
+     * Lecteurs d'un conteneur, lus comme Container.drivesIterator de Winlator : « D:/chemin E:/chemin »
+     * sans séparateur (la lettre d'un lecteur est le caractère qui précède ses deux-points).
+     */
+    fun parseDrives(drives: String): List<Pair<Char, String>> {
+        val result = mutableListOf<Pair<Char, String>>()
+        var index = drives.indexOf(':')
+        while (index > 0) {
+            val next = drives.indexOf(':', index + 1)
+            result += drives[index - 1] to drives.substring(index + 1, if (next != -1) next - 1 else drives.length)
+            index = next
+        }
+        return result
+    }
+
+    /** Lecteurs [drives] avec [letter] vers [path] (remplacé s'il existait déjà, sinon ajouté). */
+    fun withDrive(drives: String, letter: Char, path: String): String =
+        (parseDrives(drives).filterNot { it.first.equals(letter, ignoreCase = true) } + (letter to path))
+            .joinToString("") { (l, p) -> "$l:$p" }
 
     /**
      * Raccourci Winlator : Exec au format des raccourcis de Wine (« \\\\ » pour « \ », « \  » pour
@@ -116,18 +149,17 @@ object Winlator {
 
     /**
      * Lance l'exécutable [exe] (dans le dossier du jeu [gameDir]) avec Winlator ; renvoie un conseil à
-     * afficher (lecteur des ROMs à ajouter dans le conteneur), ou null. Winlator Cmod absent (ou
+     * afficher (lecteur des ROMs à ajouter dans le conteneur, sauf [driveReady] : déjà ajouté par
+     * RomCloud), ou null. Winlator Cmod absent (ou
      * seulement la version officielle, qui ne peut pas être lancée ainsi) : MissingEmulatorException,
      * qui propose son APK (Release GitHub, absent du Play Store).
      */
-    fun launch(activityContext: Context, title: String, gameDir: File, exe: String, romsRoot: File): String? {
+    fun launch(activityContext: Context, title: String, gameDir: File, exe: String, romsRoot: File, driveReady: Boolean = false): String? {
         val (pkg, activity) = installed(activityContext)
             ?: throw MissingEmulatorException(MissingEmulator(APPS.first().first, CMOD_NAME))
         val target = File(gameDir, exe)
         if (!target.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, target.absolutePath))
-        @Suppress("DEPRECATION")
-        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val (path, needsDrive) = winePath(target, downloads, romsRoot)
+        val (path, needsDrive) = winePath(target, downloadsDir(), romsRoot)
         val shortcut = File(gameDir, "romcloud.desktop")
         // Taille réelle de l'écran (barres système comprises : le jeu est en plein écran).
         val screen = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) activityContext.getSystemService(WindowManager::class.java)?.maximumWindowMetrics?.bounds else null
@@ -143,6 +175,6 @@ object Winlator {
             .putExtra("shortcut_path", shortcut.absolutePath)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         activityContext.startActivity(intent)
-        return if (needsDrive) I18n.get(R.string.winlator_drive_hint, ROMS_DRIVE.toString(), romsRoot.absolutePath) else null
+        return if (needsDrive && !driveReady) I18n.get(R.string.winlator_drive_hint, ROMS_DRIVE.toString(), romsRoot.absolutePath) else null
     }
 }
