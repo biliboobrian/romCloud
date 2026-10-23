@@ -132,8 +132,8 @@ fun TvGameDetailScreen(
 
     Box(Modifier.fillMaxSize()) {
         Backdrop(mediaUrl(game, "screenshot", MediaSize.MEDIUM) ?: mediaUrl(game, "boxart", MediaSize.MEDIUM))
-        // Pas de marge en haut : la jaquette commence en haut de l'écran.
-        Row(Modifier.fillMaxSize().padding(start = 48.dp, end = 48.dp, bottom = 27.dp)) {
+        // Marges de sécurité des téléviseurs tout autour (le haut de l'écran peut être rogné).
+        Row(Modifier.fillMaxSize().padding(TvSafePadding)) {
             // Jaquette
             Box(
                 Modifier
