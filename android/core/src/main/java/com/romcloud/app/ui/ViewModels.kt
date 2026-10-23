@@ -62,7 +62,7 @@ import java.io.File
 fun RomCloudApp.gameIssues(system: GameSystem, game: Game): List<GameIssue> {
     val player = launcher.selectedPlayer(system, game.fileName)
     val file = library.launchFile(system, game, player)
-    return GameIssues.of(launcher, system, game.fileName, file, library.isDownloaded(system, game))
+    return GameIssues.of(launcher, system, game.fileName, file, library.isDownloaded(system, game), game.folder)
 }
 
 /**
@@ -151,7 +151,10 @@ internal fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem,
     val romsRoot = File(settings.config.value.romsDir)
     var driveReady = false
     if (Winlator.needsRomsDrive(gameDir, exe, romsRoot)) {
-        val pkg = Winlator.installed(activity)?.first
+        // RomCloud PC ajoute lui-même le lecteur des ROMs à son conteneur.
+        val installed = Winlator.installed(activity)?.first
+        driveReady = installed == Winlator.COMPANION
+        val pkg = installed?.takeIf { !driveReady }
         val authority = pkg?.let { WinlatorDrives.authority(activity, it) }
         val granted = settings.winlatorTree?.let(Uri::parse)?.takeIf { WinlatorDrives.hasAccess(activity, it) }
         // Dossier autorisé qui n'est pas celui de Winlator : accès demandé à nouveau.
@@ -710,7 +713,7 @@ class GameDetailViewModel(
             val disc = (chosenDisc ?: latestDisc ?: 0).coerceIn(0, (discCount - 1).coerceAtLeast(0))
             val onlineOnly = !localResume && downloaded && online != null
             val canResume = if (discCount > 0) discResume.getOrElse(disc) { false } || (onlineOnly && disc == 0) else localResume || (downloaded && online != null)
-            val issues = withContext(Dispatchers.IO) { GameIssues.of(app.launcher, system, game.fileName, file, downloaded) }
+            val issues = withContext(Dispatchers.IO) { GameIssues.of(app.launcher, system, game.fileName, file, downloaded, game.folder) }
             val vita = selected?.takeIf { VitaGames.isVita3k(app.launcher.packageOf(it)) }?.let {
                 val titleId = withContext(Dispatchers.IO) { if (downloaded) VitaGames.titleId(file) else VitaGames.titleIdFromName(file.name) }
                 vitaInfo(titleId, file.extension.lowercase(), game)

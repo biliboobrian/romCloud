@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- RomCloud PC (LaunchActivity) ; le reste de Winlator reste en anglais. -->
+<resources>
+    <string name="romcloud_preparing">Lancement du jeu…</string>
+    <string name="romcloud_storage_access">Autorisez RomCloud PC à accéder à tous les fichiers pour que Windows lise vos jeux, puis revenez.</string>
+    <string name="romcloud_storage_denied">Sans accès aux fichiers, RomCloud PC ne peut pas lire vos jeux.</string>
+    <string name="romcloud_downloading">Téléchargement des fichiers de Windows (environ 700 Mo, la première fois seulement)…</string>
+    <string name="romcloud_installing">Installation des fichiers de Windows…</string>
+    <string name="romcloud_install_failed">Impossible d\'installer les fichiers de Windows. Vérifiez la place libre et réessayez.</string>
+    <string name="romcloud_container_failed">Impossible de préparer Windows. Réessayez.</string>
+    <string name="romcloud_download_failed">Échec du téléchargement : %1$s. Réessayez (les fichiers terminés sont gardés).</string>
+</resources>

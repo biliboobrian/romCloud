@@ -1,8 +1,10 @@
 package com.romcloud.app.launch
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.view.WindowManager
 import com.romcloud.app.I18n
@@ -12,10 +14,11 @@ import java.io.File
 import java.util.Locale
 
 /**
- * Jeux PC (jeux en dossiers) lancés par Winlator (Wine / Proton et Box64) : raccourci « .desktop »
- * écrit dans le dossier du jeu, ouvert par l'activité de jeu de Winlator (extra « shortcut_path »).
- * Seule la lignée Cmod (Winlator Cmod, Ludashi…) accepte un lancement depuis une autre
- * application ; la version officielle ne l'expose pas.
+ * Jeux PC (jeux en dossiers) lancés par Winlator (Wine / Proton et Box64). De préférence par
+ * RomCloud PC ([COMPANION], android/pc : moteur de Winlator Cmod repris dans RomCloud, sans écrans),
+ * qui prépare lui-même le système, le conteneur et ses lecteurs ; sinon par Winlator Cmod (ou
+ * Ludashi) : raccourci « .desktop » écrit dans le dossier du jeu, ouvert par son activité de jeu
+ * (extra « shortcut_path »). La version officielle de Winlator ne permet pas ce lancement.
  *
  * Wine ne voit que les lecteurs du conteneur : D: est le dossier Téléchargements (réglage par
  * défaut de Winlator). Un dossier des ROMs ailleurs est lu par le lecteur [ROMS_DRIVE], ajouté au
@@ -23,14 +26,21 @@ import java.util.Locale
  */
 object Winlator {
 
-    /** Applications Winlator lançables par un raccourci : paquet et activité de jeu. */
+    /** RomCloud PC (application compagnon de RomCloud) : paquet. */
+    const val COMPANION = "com.romcloud.wine"
+
+    /** Demande de lancement à RomCloud PC (lancé pour un résultat : il vérifie la signature de l'appelant). */
+    const val COMPANION_REQUEST = 0x5743
+
+    /** Applications Winlator lançables : paquet et activité (RomCloud PC d'abord, proposé à l'installation). */
     val APPS = listOf(
+        COMPANION to "com.romcloud.wine.LaunchActivity",
         "com.winlator.cmod" to "com.winlator.cmod.XServerDisplayActivity",
         "com.ludashi.benchmark" to "com.winlator.cmod.XServerDisplayActivity",
     )
 
     /** Nom affiché de l'application proposée à l'installation. */
-    const val CMOD_NAME = "Winlator Cmod"
+    const val COMPANION_NAME = "RomCloud PC"
 
     /** Lecteur du dossier des ROMs dans le conteneur, quand il n'est pas dans Téléchargements. */
     const val ROMS_DRIVE = 'R'
@@ -113,7 +123,9 @@ object Winlator {
      * raccourci, lue à la place des réglages du conteneur) :
      *  - résolution de l'écran Windows au format de l'écran de l'appareil (720 lignes : rapide sur
      *    tous les appareils, image mise à l'échelle par Winlator), jeu en plein écran ;
-     *  - pilote graphique « wrapper » : Turnip (adrenotools) sur Adreno ([adreno]), sinon le pilote
+     *  - pilote graphique « wrapper » : Turnip ([TURNIP], fourni avec Winlator Cmod, chargé par
+     *    adrenotools) sur Adreno ([adreno]) : le pilote Vulkan de Qualcomm n'a pas ce qu'il faut à
+     *    Zink (OpenGL des jeux), le jeu se fermait ; sinon le pilote
      *    Vulkan de l'appareil (Mali, Xclipse…) ;
      *  - langue de Windows d'après celle de l'appareil ([locale]) ;
      *  - compteurs de DXVK et de MangoHud masqués (affichés par défaut dans Winlator Cmod).
@@ -124,7 +136,7 @@ object Winlator {
         "forceFullscreen" to "1",
         "fullscreenStretched" to "0",
         "graphicsDriver" to "wrapper",
-        "graphicsDriverConfig" to "version=System;blacklistedExtensions=;maxDeviceMemory=0;adrenotoolsTurnip=${if (adreno) 1 else 0};frameSync=Normal",
+        "graphicsDriverConfig" to "version=${if (adreno) TURNIP else "System"};blacklistedExtensions=;maxDeviceMemory=0;adrenotoolsTurnip=${if (adreno) 1 else 0};frameSync=Normal",
         "lc_all" to "${locale.language.ifEmpty { "en" }}_${locale.country.ifEmpty { "US" }}.UTF-8",
         "envVars" to "DXVK_HUD=0 MANGOHUD=0",
     )
@@ -137,8 +149,39 @@ object Winlator {
         return "${width}x$SCREEN_HEIGHT"
     }
 
+    /** Pilote Turnip des Adreno (graphics_driver/adrenotools-<nom>.tzst de Winlator Cmod 13.1). */
+    const val TURNIP = "turnip25.3.0_R3_Auto"
+
     /** Hauteur de l'écran Windows des jeux. */
     private const val SCREEN_HEIGHT = 720
+
+    /** Réglages du jeu pour cet appareil ([gameSettings]). */
+    private fun deviceSettings(context: Context): Map<String, String> {
+        // Taille réelle de l'écran (barres système comprises : le jeu est en plein écran).
+        val screen = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) context.getSystemService(WindowManager::class.java)?.maximumWindowMetrics?.bounds else null
+        val metrics = context.resources.displayMetrics
+        return gameSettings(
+            adreno = Settings.isSnapdragon(),
+            screenWidth = screen?.width() ?: metrics.widthPixels,
+            screenHeight = screen?.height() ?: metrics.heightPixels,
+            locale = Locale.getDefault(),
+        )
+    }
+
+    /**
+     * Jeu [exe] lancé par RomCloud PC : exécutable, dossier des ROMs (son lecteur R:) et réglages du
+     * jeu ; lancé pour un résultat depuis une activité (RomCloud PC vérifie la signature de l'appelant).
+     */
+    private fun launchCompanion(activityContext: Context, activity: String, title: String, exe: File, romsRoot: File) {
+        val settings = Bundle().apply { deviceSettings(activityContext).forEach { (key, value) -> putString(key, value) } }
+        val intent = Intent().setClassName(COMPANION, activity)
+            .putExtra("exe", exe.absolutePath)
+            .putExtra("title", title)
+            .putExtra("roms_dir", romsRoot.absolutePath)
+            .putExtra("settings", settings)
+        val caller = activityContext as? Activity ?: throw LaunchException(I18n.get(R.string.err_launch_refused, COMPANION_NAME))
+        caller.startActivityForResult(intent, COMPANION_REQUEST)
+    }
 
     /** Application Winlator installée qui accepte les raccourcis : paquet et activité, ou null. */
     fun installed(context: Context): Pair<String, String>? =
@@ -150,27 +193,22 @@ object Winlator {
     /**
      * Lance l'exécutable [exe] (dans le dossier du jeu [gameDir]) avec Winlator ; renvoie un conseil à
      * afficher (lecteur des ROMs à ajouter dans le conteneur, sauf [driveReady] : déjà ajouté par
-     * RomCloud), ou null. Winlator Cmod absent (ou
-     * seulement la version officielle, qui ne peut pas être lancée ainsi) : MissingEmulatorException,
-     * qui propose son APK (Release GitHub, absent du Play Store).
+     * RomCloud), ou null. Ni RomCloud PC ni Winlator Cmod (ou seulement la version officielle, qui ne
+     * peut pas être lancée ainsi) : MissingEmulatorException, qui propose RomCloud PC (Release GitHub
+     * de RomCloud).
      */
     fun launch(activityContext: Context, title: String, gameDir: File, exe: String, romsRoot: File, driveReady: Boolean = false): String? {
         val (pkg, activity) = installed(activityContext)
-            ?: throw MissingEmulatorException(MissingEmulator(APPS.first().first, CMOD_NAME))
+            ?: throw MissingEmulatorException(MissingEmulator(COMPANION, COMPANION_NAME))
         val target = File(gameDir, exe)
         if (!target.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, target.absolutePath))
+        if (pkg == COMPANION) {
+            launchCompanion(activityContext, activity, title, target, romsRoot)
+            return null
+        }
         val (path, needsDrive) = winePath(target, downloadsDir(), romsRoot)
         val shortcut = File(gameDir, "romcloud.desktop")
-        // Taille réelle de l'écran (barres système comprises : le jeu est en plein écran).
-        val screen = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) activityContext.getSystemService(WindowManager::class.java)?.maximumWindowMetrics?.bounds else null
-        val metrics = activityContext.resources.displayMetrics
-        val settings = gameSettings(
-            adreno = Settings.isSnapdragon(),
-            screenWidth = screen?.width() ?: metrics.widthPixels,
-            screenHeight = screen?.height() ?: metrics.heightPixels,
-            locale = Locale.getDefault(),
-        )
-        shortcut.writeText(desktopEntry(title, path, settings))
+        shortcut.writeText(desktopEntry(title, path, deviceSettings(activityContext)))
         val intent = Intent().setClassName(pkg, activity)
             .putExtra("shortcut_path", shortcut.absolutePath)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)

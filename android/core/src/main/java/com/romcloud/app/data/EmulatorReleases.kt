@@ -81,7 +81,8 @@ class EmulatorReleases(private val api: ApiClient) {
         /** Paquets des modèles d'émulateurs Daijishou -> Release qui publie leur APK. */
         val SOURCES: Map<String, Source> = mapOf(
             "dev.eden.eden_emulator" to Source("Eden", EDEN, Regex("""Eden-Android-.*-standard\.apk""")),
-            // Jeux PC (Wine / Proton) : Winlator Cmod, seulement sur GitHub.
+            // Jeux PC (Wine / Proton) : RomCloud PC (android/pc, publié avec RomCloud), Winlator Cmod.
+            "com.romcloud.wine" to Source("RomCloud PC", github("biliboobrian/romCloud"), Regex("""RomCloud-PC-.*\.apk"""), playStore = false),
             "com.winlator.cmod" to Source("Winlator Cmod", github("coffincolors/winlator"), Regex("""Winlator-Cmod-.*\.apk"""), playStore = false),
             "dev.legacy.eden_emulator" to Source("Eden (Legacy)", EDEN, Regex("""Eden-Android-.*-legacy\.apk""")),
             "com.miHoYo.Yuanshen" to Source("Eden (Optimized)", EDEN, Regex("""Eden-Android-.*-optimized\.apk""")),
