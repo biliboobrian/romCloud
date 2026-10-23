@@ -137,7 +137,7 @@ fun TvGameDetailScreen(
             // Jaquette
             Box(
                 Modifier
-                    .width(260.dp)
+                    .width(200.dp)
                     .aspectRatio(3f / 4f)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
@@ -150,7 +150,7 @@ fun TvGameDetailScreen(
                     Icon(Icons.Filled.SportsEsports, null, modifier = Modifier.width(72.dp))
                 }
             }
-            Spacer(Modifier.width(40.dp))
+            Spacer(Modifier.width(32.dp))
 
             Column(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()),
@@ -341,13 +341,13 @@ fun TvGameDetailScreen(
                 val builtinCore = state.selectedPlayer?.libretroCore
                 val system = state.system
                 if (builtinCore != null && system != null) {
-                    com.romcloud.app.libretro.ControllersSection(system.id, system.name, builtinCore, Modifier.fillMaxWidth(0.8f), imageSize = 180.dp)
+                    com.romcloud.app.libretro.ControllersSection(system.id, system.name, builtinCore, Modifier.fillMaxWidth(), imageSize = 180.dp)
                 }
                 // Vita3K : installation du jeu dans l'émulateur, puis démarrage direct.
                 state.vita?.let { VitaProcedure(it, state.localPath, viewModel::setVitaLicense) }
 
                 game.description?.let {
-                    Text(it, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth(0.9f))
+                    Text(it, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth())
                 }
                 // Captures d'écran (jusqu'à 4) : OK pour les voir en plein écran, flèches pour passer aux autres.
                 ScreenshotGallery(game.screenshotTypes.mapNotNull { mediaUrl(game, it, MediaSize.MEDIUM) }, Modifier.fillMaxWidth(), height = 160.dp)
@@ -430,7 +430,7 @@ private fun SecondaryButton(label: String, icon: ImageVector, onClick: () -> Uni
 @Composable
 private fun TvGameInfo(facts: List<GameFact>) {
     if (facts.isEmpty()) return
-    Column(Modifier.fillMaxWidth(0.9f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(stringResource(R.string.info_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         for (fact in facts) {
             var focused by remember { mutableStateOf(false) }
