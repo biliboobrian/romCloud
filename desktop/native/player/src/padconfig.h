@@ -52,6 +52,13 @@ struct PadStep {
  */
 std::vector<std::string> padStepElements(SDL_JoystickID id, const std::vector<PadStep>& steps);
 
+/** Repère d'un bouton sur une illustration de manette : position et rayon (pixels de l'image), r = 0 : aucun. */
+struct PadSpotPos {
+  int x = 0, y = 0, r = 0;
+};
+/** Repère de chaque étape sur l'illustration de la manette de la console (style --pad-style). */
+std::vector<PadSpotPos> padStepSpots(const std::string& style, const std::vector<PadStep>& steps);
+
 class PadConfig {
  public:
   using Translate = std::function<std::string(const char*)>;
@@ -95,6 +102,11 @@ class PadConfig {
   void onButton(int button, bool down);
   void onHat(int hat, Uint8 value);
   void onAxes();
+  void onAxesMoved();
+  /** Bouton déjà attribué : refusé, avec les axes bougés par le même appui, jusqu'au retour au repos. */
+  void reject();
+  /** Appui fini (boutons relâchés, axes au repos) : ses axes sont oubliés. */
+  void endPress();
   void assign(const std::string& source);
   void next();
   void save();
@@ -128,6 +140,9 @@ class PadConfig {
   int candidateHat_ = -1;
   Uint8 candidateHatValue_ = 0;
   bool settling_ = false;  // après un bouton : attendre que tous les axes soient revenus au repos
+  std::set<int> pressAxes_;    // axes bougés pendant l'appui en cours (gâchette : axe et bouton)
+  std::set<int> claimedAxes_;  // axes bougés avec un bouton déjà attribué : jamais repris
+  bool axesAtRest_ = true;
   bool finished_ = false;
   std::string result_;
 };

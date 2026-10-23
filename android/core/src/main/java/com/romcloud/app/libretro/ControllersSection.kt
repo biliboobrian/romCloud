@@ -232,7 +232,8 @@ fun ControllersSection(systemId: String, systemName: String, core: String, modif
     }
     val players = remember(revision) { GamepadPlayers(context, fromDisk = true) }
     val mappings = remember(systemId, revision) { GamepadMappings(context, systemId, fromDisk = true) }
-    val steps = remember(systemId, core) { mappingSteps(PadLayouts.forGame(systemId, core)) }
+    val layout = remember(systemId, core) { PadLayouts.forGame(systemId, core) }
+    val steps = remember(layout) { mappingSteps(layout) }
     val byPort = remember(players) { (0 until GamepadPlayers.MAX_PLAYERS).map(players::deviceOf) }
     val connected = byPort.filterNotNull()
 
@@ -313,7 +314,7 @@ fun ControllersSection(systemId: String, systemName: String, core: String, modif
                     ) { Text(stringResource(R.string.pads_order_done)) }
                 }
             }
-            Capture.WIZARD -> session?.let { s -> Wizard(s, systemId, imageSize, onCancel = { capture = Capture.NONE }) }
+            Capture.WIZARD -> session?.let { s -> Wizard(s, layout, onCancel = { capture = Capture.NONE }) }
             Capture.NONE -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
@@ -386,14 +387,23 @@ fun ControllersSection(systemId: String, systemName: String, core: String, modif
 @Composable
 private fun stepLabel(step: MappingStep): String = step.label ?: stringResource(step.labelRes)
 
-/** Configuration d'une manette en cours : manette de la console, consigne, étapes et attributions. */
+/**
+ * Configuration d'une manette en cours : manette de la console avec le bouton demandé repéré (comme
+ * dans le menu du jeu), consigne, étapes et attributions.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Wizard(session: MappingSession, systemId: String, imageSize: Dp, onCancel: () -> Unit) {
+private fun Wizard(session: MappingSession, layout: PadLayout, onCancel: () -> Unit) {
     val device = session.deviceName
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        consolePadImage(systemId)?.let { PadTile(it, Modifier.width(imageSize)) }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val current = session.step.takeIf { device != null }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        val art = padArtName(layout.style)
+        if (art != null) {
+            PadArt(art, session.steps, current, session.done, Modifier.align(Alignment.CenterHorizontally))
+        } else {
+            PadPreview(layout, session.steps, current, session.done)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 if (device == null) stringResource(R.string.pads_press_any)
                 else stringResource(R.string.pads_press, session.step?.let { stepLabel(it) }.orEmpty()),

@@ -12,7 +12,7 @@
 //                   [--netplay-link <gb|gba|psp> [--netplay-packets] [--netplay-multi]] [--linked <nom>]
 //                   [--netplay-port <port d'écoute de l'hôte>] [--netplay-delay <images de délai demandées>]
 //                   [--option <clé>=<valeur>]…
-//   romcloud-player --pad-service --options <fichier> --keys-file <fichier> [--buttons <…>] [--lang fr|en]
+//   romcloud-player --pad-service --options <fichier> --keys-file <fichier> [--buttons <…>] [--pad-style <…>] [--lang fr|en]
 //
 // --pad-service : sans fenêtre, manettes du moteur pour la fiche d'un jeu de l'application (padservice.h).
 //
@@ -1111,7 +1111,7 @@ int main(int argc, char** argv) {
     if (strcmp(argv[i], "--pad-service") != 0) continue;
     const Args a = parseArgs(argc, argv);
     if (!SDL_Init(SDL_INIT_GAMEPAD)) return 1;
-    int code = runPadService({a.options, a.keysFile, a.buttons, a.lang});
+    int code = runPadService({a.options, a.keysFile, a.buttons, a.lang, a.padStyle});
     SDL_Quit();
     return code;
   }
