@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
@@ -73,6 +75,21 @@ class Repository(
         val index = downloadedIndex()
         val next = DownloadedIndex(index.systems + (system.id to system), index.games + (game.id to game))
         runCatching { cacheFile(DOWNLOADED).writeText(api.json.encodeToString(DownloadedIndex.serializer(), next)) }
+    }
+
+    private val playedSerializer = MapSerializer(Long.serializer(), Long.serializer())
+
+    /** Dernière partie lancée de chaque jeu (millisecondes) : rangée « Téléchargés », du plus récent au plus ancien. */
+    fun lastPlayed(): Map<Long, Long> = runCatching {
+        api.json.decodeFromString(playedSerializer, cacheFile(PLAYED).readText())
+    }.getOrDefault(emptyMap())
+
+    /** Note une partie lancée maintenant. */
+    @Synchronized
+    fun rememberPlayed(gameId: Long) {
+        if (gameId <= 0) return
+        val next = lastPlayed() + (gameId to System.currentTimeMillis())
+        runCatching { cacheFile(PLAYED).writeText(api.json.encodeToString(playedSerializer, next)) }
     }
 
     /** Jeux notés comme téléchargés, avec leur système (présence sur l'appareil non vérifiée). */
@@ -197,6 +214,7 @@ class Repository(
 
     private companion object {
         const val DOWNLOADED = "downloaded.json"
+        const val PLAYED = "played.json"
     }
 }
 
