@@ -1,6 +1,7 @@
 package com.romcloud.app.data
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +18,8 @@ import okhttp3.Request
 /**
  * Mise à jour de l'application au démarrage : la dernière Release GitHub de RomCloud est comparée
  * à la version installée ; si elle est plus récente, son APK (téléphone ou TV) est proposé et
- * installé par [ApkInstaller]. Les versions de développement (« 1.0.0-dev ») ne sont pas vérifiées.
+ * installé par [ApkInstaller]. Une version compilée sur un PC (« 1.63.0-dev ») passe avant la version
+ * publiée de même numéro ; les compilations de debug (signées autrement) ne sont pas vérifiées.
  */
 class AppUpdater(private val context: Context, private val api: ApiClient) {
 
@@ -41,8 +43,10 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
     suspend fun check() {
         if (checked) return
         checked = true
+        // Compilation de debug : sa signature ne permet pas d'installer l'APK de la Release.
+        if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) return
         val installed = installedVersion() ?: return
-        if (parseVersion(installed) == null) return // version de développement
+        if (parseVersion(baseVersion(installed)) == null) return
         val update = runCatching { withContext(Dispatchers.IO) { latest(installed) } }
             .onFailure { Log.i(TAG, "Vérification de mise à jour impossible : ${it.message}") }
             .getOrNull()
@@ -87,7 +91,7 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
 
     /** Commits entre les tags des deux versions (comparaison GitHub) ; vide en cas d'échec. */
     private fun changes(installed: String, latest: String): List<VersionChanges> = runCatching {
-        val request = Request.Builder().url("$COMPARE/v$installed...v$latest")
+        val request = Request.Builder().url("$COMPARE/v${baseVersion(installed)}...v$latest")
             .header("Accept", "application/vnd.github+json")
             .build()
         api.http.newCall(request).execute().use { response ->
@@ -134,16 +138,22 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
             return parts.map { it.toInt() }
         }
 
-        /** [candidate] est-elle plus récente que [installed] ? */
+        /** Numéro d'une version sans son suffixe : « 1.63.0-dev » -> « 1.63.0 ». */
+        internal fun baseVersion(version: String) = version.substringBefore('-')
+
+        /**
+         * [candidate] (version publiée) est-elle plus récente que [installed] ? Une version installée
+         * avec un suffixe (« 1.63.0-dev », compilée sur un PC) passe avant la version publiée 1.63.0.
+         */
         internal fun isNewer(candidate: String, installed: String): Boolean {
             val a = parseVersion(candidate) ?: return false
-            val b = parseVersion(installed) ?: return false
+            val b = parseVersion(baseVersion(installed)) ?: return false
             for (i in 0 until maxOf(a.size, b.size)) {
                 val x = a.getOrElse(i) { 0 }
                 val y = b.getOrElse(i) { 0 }
                 if (x != y) return x > y
             }
-            return false
+            return '-' in installed
         }
 
         /** Nom de l'APK dans la Release (voir .github/workflows/android.yml). */
