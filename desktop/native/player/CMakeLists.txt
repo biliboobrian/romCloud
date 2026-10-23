@@ -25,8 +25,11 @@ FetchContent_Declare(
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(SDL3)
-# Code de SDL : ses avertissements (variables Vulkan optionnelles, compteur inutilisé) ne nous concernent pas.
-target_compile_options(SDL3-static PRIVATE -Wno-unused-but-set-global)
+# Code de SDL : ses avertissements de clang (variables Vulkan optionnelles, compteur inutilisé) ne nous
+# concernent pas. Clang seulement : MSVC (CI GitHub) refuse l'option.
+if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
+  target_compile_options(SDL3-static PRIVATE -Wno-unused-but-set-global)
+endif()
 # En-têtes de Vulkan seulement (cœurs Vulkan) : le chargeur vulkan-1.dll du pilote est ouvert au
 # lancement, sans lien à la compilation (VK_NO_PROTOTYPES).
 FetchContent_Declare(
