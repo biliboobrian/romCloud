@@ -180,6 +180,9 @@
     <string name="local_folder_hint">A subfolder is created for each system (e.g. …/snes/).</string>
     <string name="local_folder_tv">Local folder (one subfolder per system)</string>
     <string name="default_folder">Default folder</string>
+    <string name="choose_folder">Choose a folder</string>
+    <string name="folder_unsupported">This folder is not on the device storage: choose one in the internal storage or on the SD card.</string>
+    <string name="folder_picker_missing">No folder picker on this device: type the folder path.</string>
     <string name="private_folder">App private folder</string>
     <string name="all_files_granted">✓ All files access granted</string>
     <string name="all_files_denied">File access not granted</string>

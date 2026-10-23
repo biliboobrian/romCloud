@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -270,10 +271,16 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
             }
 
             Text(stringResource(R.string.settings_storage), style = MaterialTheme.typography.titleMedium)
+            // Icône dossier : choix du dossier avec le sélecteur d'Android.
+            val pickRoms = rememberFolderPicker { dir = it }
+            val pickBios = rememberFolderPicker { biosDir = it }
             OutlinedTextField(
                 value = dir, onValueChange = { dir = it },
                 label = { Text(stringResource(R.string.local_folder)) },
                 supportingText = { Text(stringResource(R.string.local_folder_hint)) },
+                trailingIcon = {
+                    IconButton(onClick = { pickRoms(dir) }) { Icon(Icons.Filled.Folder, stringResource(R.string.choose_folder)) }
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -288,6 +295,9 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                 value = biosDir, onValueChange = { biosDir = it },
                 label = { Text(stringResource(R.string.bios_folder)) },
                 supportingText = { Text(stringResource(R.string.bios_folder_hint)) },
+                trailingIcon = {
+                    IconButton(onClick = { pickBios(biosDir) }) { Icon(Icons.Filled.Folder, stringResource(R.string.choose_folder)) }
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
