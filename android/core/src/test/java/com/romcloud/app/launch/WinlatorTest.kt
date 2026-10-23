@@ -10,6 +10,13 @@ class WinlatorTest {
     private val downloads = File("/storage/emulated/0/Download")
 
     @Test
+    fun `emulateurs d'un jeu PC, RomCloud PC d'abord`() {
+        assertEquals(listOf("RomCloud PC", "Winlator Cmod", "Winlator Cmod (Ludashi)"), Winlator.PLAYERS.map { it.name })
+        assertEquals("-n com.romcloud.wine/com.romcloud.wine.LaunchActivity", Winlator.PLAYERS.first().amStartArguments)
+        assertEquals(Winlator.PLAYERS.size, Winlator.PLAYERS.map { it.uniqueId }.distinct().size)
+    }
+
+    @Test
     fun `jeu dans Telechargements, lecteur D par defaut`() {
         val exe = File("/storage/emulated/0/Download/RomCloud/windows/Mr. Robot/Bin/Game.exe")
         assertEquals("D:\\RomCloud\\windows\\Mr. Robot\\Bin\\Game.exe" to false, Winlator.winePath(exe, downloads, File("/storage/emulated/0/Download/RomCloud")))

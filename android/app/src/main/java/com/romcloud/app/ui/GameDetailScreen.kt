@@ -409,7 +409,7 @@ fun GameDetailScreen(
                 onInfo = if (state.retroArchInfo != null) ({ showRetroArchHelp = true }) else null,
             )
             // Émulateur externe installé : ouvert seul (réglages, installation d'un jeu dans Vita3K…).
-            state.selectedPlayer?.takeIf { p -> p.libretroCore == null && state.players.any { it.first.uniqueId == p.uniqueId && it.second } }?.let { player ->
+            state.selectedPlayer?.takeIf { state.canOpenEmulator }?.let { player ->
                 OutlinedButton(onClick = { viewModel.openEmulator(activity)?.let { scope.launch { snackbar.showSnackbar(it) } } }) {
                     Icon(Icons.AutoMirrored.Filled.OpenInNew, null)
                     Spacer(Modifier.width(8.dp))
