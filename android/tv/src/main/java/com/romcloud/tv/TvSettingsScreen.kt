@@ -2,6 +2,9 @@
 
 package com.romcloud.tv
 
+import com.romcloud.app.ui.rememberFolderPicker
+import androidx.tv.material3.Icon
+import androidx.compose.ui.Alignment
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -19,6 +22,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -195,21 +200,30 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
         )
 
         Section(stringResource(R.string.settings_storage))
-        OutlinedTextField(
-            value = dir, onValueChange = { dir = it },
-            label = { androidx.compose.material3.Text(stringResource(R.string.local_folder_tv)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(0.7f),
-        )
+        // Bouton dossier à côté du chemin : choix du dossier avec le sélecteur d'Android.
+        val pickRoms = rememberFolderPicker { dir = it }
+        val pickBios = rememberFolderPicker { biosDir = it }
+        Row(Modifier.fillMaxWidth(0.7f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
+            OutlinedTextField(
+                value = dir, onValueChange = { dir = it },
+                label = { androidx.compose.material3.Text(stringResource(R.string.local_folder_tv)) },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            FolderButton { pickRoms(dir) }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
             TvOutlinedButton(onClick = { dir = Settings.defaultRomsDir() }) { Text(stringResource(R.string.default_folder)) }
         }
-        OutlinedTextField(
-            value = biosDir, onValueChange = { biosDir = it },
-            label = { androidx.compose.material3.Text(stringResource(R.string.bios_folder)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(0.7f),
-        )
+        Row(Modifier.fillMaxWidth(0.7f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
+            OutlinedTextField(
+                value = biosDir, onValueChange = { biosDir = it },
+                label = { androidx.compose.material3.Text(stringResource(R.string.bios_folder)) },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            FolderButton { pickBios(biosDir) }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
             Settings.biosPresets().forEach { (label, path) ->
                 FilterChip(selected = biosDir == path, onClick = { biosDir = path }) { Text(stringResource(label)) }
@@ -322,5 +336,13 @@ private fun LanguageSelector(app: RomCloudApp) {
                 },
             ) { Text(label) }
         }
+    }
+}
+
+/** Bouton dossier à côté d'un chemin : ouvre le sélecteur de dossier d'Android. */
+@Composable
+private fun FolderButton(onClick: () -> Unit) {
+    TvOutlinedButton(onClick = onClick) {
+        Icon(Icons.Filled.Folder, stringResource(R.string.choose_folder), modifier = IconSize)
     }
 }

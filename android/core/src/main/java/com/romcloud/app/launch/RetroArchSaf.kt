@@ -15,8 +15,8 @@ import android.annotation.SuppressLint
  */
 object RetroArchSaf {
 
-    private const val AUTHORITY = "com.android.externalstorage.documents"
-    private const val PRIMARY_ROOT = "/storage/emulated/0"
+    const val AUTHORITY = "com.android.externalstorage.documents"
+    const val PRIMARY_ROOT = "/storage/emulated/0"
 
     /** Chemin saf:// de [filePath] relatif à l'arborescence [treeDir], ou null si hors de celle-ci. */
     fun path(treeDir: String, filePath: String): String? {
