@@ -162,6 +162,7 @@ static PADS: LazyLock<HashMap<&'static str, Pad>> = LazyLock::new(|| {
     pads.insert("genesis", vec![same("y", "A"), same("b", "B"), same("a", "C"), same("l", "X"), same("x", "Y"), same("r", "Z"), same("start", "Start")]);
     pads.insert("saturn", vec![same("b", "A"), same("a", "B"), same("r", "C"), same("y", "X"), same("x", "Y"), same("l", "Z"), same("l2", "L"), same("r2", "R"), same("start", "Start")]);
     pads.insert("master", vec![same("b", "1"), same("a", "2"), same("start", "Start")]);
+    pads.insert("gameGear", vec![same("b", "1"), same("a", "2"), same("start", "Start")]);
     pads.insert("dreamcast", with(vec![same("b", "A"), same("a", "B"), same("y", "X"), same("x", "Y"), same("l2", "L"), same("r2", "R"), same("start", "Start")], vec![stick()]));
     pads.insert("pcEngine", vec![same("b", "II"), same("a", "I"), same("select", "Select"), same("start", "Run")]);
     pads.insert("neoGeo", vec![same("b", "A"), same("a", "B"), same("y", "C"), same("x", "D"), ("select", "Pièce", "Coin"), same("start", "Start")]);
@@ -193,7 +194,8 @@ fn pad_by_system(system: &str) -> Option<&'static str> {
         "psp" | "pspminis" => "psp",
         "genesis" | "genesismsu" | "segacd" | "sega32x" | "pico" => "genesis",
         "saturn" | "stv" => "saturn",
-        "master" | "gamegear" | "sg1000" => "master",
+        "master" | "sg1000" => "master",
+        "gamegear" => "gameGear",
         "dreamcast" | "naomi" | "atomiswave" => "dreamcast",
         "tg16" | "tgcd" | "supergrafx" => "pcEngine",
         "neogeo" | "neogeocd" => "neoGeo",

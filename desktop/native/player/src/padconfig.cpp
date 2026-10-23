@@ -42,7 +42,9 @@ std::string consolePadImageName(const std::string& style) {
       {"nes", "nes"},         {"fds", "famicom"},     {"snes", "snes"},           {"n64", "n64"},
       {"psx", "psx"},         {"ps2", "ps2"},         {"gc", "gamecube"},         {"genesis", "genesis"},
       {"master", "master"},   {"saturn", "saturn"},   {"dreamcast", "dreamcast"}, {"pcEngine", "pcengine"},
-      {"neoGeo", "neogeo"},   {"atari2600", "atari2600"},
+      {"neoGeo", "neogeo"},   {"atari2600", "atari2600"}, {"gameBoy", "gameboy"},  {"gba", "gba"},
+      {"psp", "psp"},         {"ngp", "ngp"},         {"cps", "cps"},             {"arcade", "arcade"},
+      {"gx4000", "gx4000"},   {"atari7800", "atari7800"}, {"lynx", "lynx"},         {"gameGear", "gamegear"},
   };
   auto it = names.find(style);
   return it == names.end() ? "" : it->second;
@@ -89,11 +91,21 @@ static const std::map<std::string, std::vector<PadSpot>> kPadSpots = {
       {"gamecube", {{"ls", 82, 121, 13}, {"up", 112, 158, 5}, {"down", 112, 176, 5}, {"left", 103, 167, 5}, {"right", 121, 167, 5}, {"start", 146, 119, 5}, {"a", 209, 120, 10}, {"b", 188, 133, 7}, {"x", 233, 116, 7}, {"y", 203, 97, 7}, {"l2", 77, 83, 9}, {"r2", 228, 84, 9}, {"r", 205, 80, 7}, {"rs", 179, 168, 12}}},
       {"genesis", {{"up", 80, 133, 6}, {"down", 80, 161, 6}, {"left", 66, 147, 6}, {"right", 94, 147, 6}, {"start", 150, 145, 7}, {"y", 189, 156, 9}, {"b", 213, 139, 9}, {"a", 237, 134, 9}}},
       {"master", {{"up", 95, 132, 6}, {"down", 95, 162, 6}, {"left", 80, 147, 6}, {"right", 110, 147, 6}, {"b", 188, 165, 13}, {"a", 228, 165, 13}}},
-      {"saturn", {{"up", 85, 139, 6}, {"down", 85, 167, 6}, {"left", 71, 153, 6}, {"right", 99, 153, 6}, {"start", 143, 172, 7}, {"b", 181, 151, 8}, {"a", 208, 160, 8}, {"r", 238, 154, 8}, {"y", 200, 137, 7}, {"x", 219, 129, 7}, {"l", 238, 124, 7}, {"l2", 80, 87, 9}, {"r2", 203, 87, 9}}},
+      {"saturn", {{"up", 85, 139, 6}, {"down", 85, 167, 6}, {"left", 71, 153, 6}, {"right", 99, 153, 6}, {"start", 143, 172, 7}, {"b", 183, 162, 8}, {"a", 208, 158, 8}, {"r", 233, 154, 8}, {"y", 190, 135, 7}, {"x", 214, 131, 7}, {"l", 238, 127, 7}, {"l2", 80, 87, 9}, {"r2", 210, 87, 9}}},
       {"dreamcast", {{"ls", 55, 105, 14}, {"up", 73, 148, 6}, {"down", 73, 168, 6}, {"left", 63, 158, 6}, {"right", 83, 158, 6}, {"start", 143, 210, 7}, {"b", 228, 147, 8}, {"a", 247, 126, 8}, {"y", 206, 126, 8}, {"x", 228, 107, 8}, {"l2", 40, 75, 9}, {"r2", 250, 75, 9}}},
       {"pcengine", {{"up", 68, 160, 6}, {"down", 68, 184, 6}, {"left", 56, 172, 6}, {"right", 80, 172, 6}, {"select", 133, 177, 7}, {"start", 159, 177, 7}, {"b", 204, 176, 10}, {"a", 231, 176, 10}}},
       {"neogeo", {{"up", 83, 115, 6}, {"down", 83, 183, 6}, {"left", 52, 149, 6}, {"right", 117, 149, 6}, {"b", 203, 165, 9}, {"a", 230, 151, 9}, {"y", 190, 139, 9}, {"x", 214, 124, 9}, {"start", 152, 150, 7}, {"select", 152, 173, 7}}},
       {"atari2600", {{"b", 97, 103, 10}, {"up", 146, 125, 8}, {"down", 146, 175, 8}, {"left", 121, 150, 8}, {"right", 171, 150, 8}}},
+      {"gameboy", {{"up", 109, 164, 6}, {"down", 109, 185, 6}, {"left", 98, 175, 6}, {"right", 120, 175, 6}, {"select", 130, 214, 6}, {"start", 151, 214, 6}, {"b", 166, 184, 9}, {"a", 187, 172, 9}}},
+      {"gba", {{"up", 58, 141, 6}, {"down", 58, 162, 6}, {"left", 48, 151, 6}, {"right", 69, 151, 6}, {"start", 52, 184, 6}, {"select", 52, 196, 6}, {"b", 223, 160, 9}, {"a", 241, 142, 9}, {"l", 43, 106, 8}, {"r", 247, 106, 8}}},
+      {"psp", {{"up", 40, 123, 5}, {"down", 40, 143, 5}, {"left", 30, 133, 5}, {"right", 50, 133, 5}, {"ls", 40, 172, 9}, {"select", 187, 198, 5}, {"start", 202, 198, 5}, {"x", 250, 131, 6}, {"a", 261, 142, 6}, {"b", 250, 153, 6}, {"y", 240, 142, 6}, {"l", 37, 100, 8}, {"r", 253, 100, 8}}},
+      {"ngp", {{"up", 61, 138, 6}, {"down", 61, 165, 6}, {"left", 48, 151, 6}, {"right", 75, 151, 6}, {"b", 217, 163, 9}, {"a", 238, 145, 9}, {"start", 235, 187, 5}}},
+      {"cps", {{"up", 61, 139, 8}, {"down", 61, 175, 8}, {"left", 43, 157, 8}, {"right", 79, 157, 8}, {"y", 148, 136, 9}, {"x", 175, 130, 9}, {"l", 202, 130, 9}, {"b", 142, 166, 9}, {"a", 169, 160, 9}, {"r", 196, 160, 9}, {"start", 247, 121, 6}, {"select", 265, 121, 6}}},
+      {"arcade", {{"up", 61, 139, 8}, {"down", 61, 175, 8}, {"left", 43, 157, 8}, {"right", 79, 157, 8}, {"x", 148, 136, 9}, {"l", 175, 130, 9}, {"r", 202, 130, 9}, {"b", 142, 166, 9}, {"a", 169, 160, 9}, {"y", 196, 160, 9}, {"start", 247, 121, 6}, {"select", 265, 121, 6}}},
+      {"gx4000", {{"up", 76, 140, 6}, {"down", 76, 168, 6}, {"left", 62, 154, 6}, {"right", 90, 154, 6}, {"b", 193, 160, 10}, {"a", 223, 160, 10}}},
+      {"atari7800", {{"up", 82, 138, 6}, {"down", 82, 165, 6}, {"left", 69, 151, 6}, {"right", 95, 151, 6}, {"b", 187, 157, 10}, {"a", 217, 145, 10}}},
+      {"gamegear", {{"up", 49, 144, 6}, {"down", 49, 171, 6}, {"left", 36, 157, 6}, {"right", 63, 157, 6}, {"b", 223, 166, 9}, {"a", 250, 151, 9}, {"start", 241, 121, 6}}},
+      {"lynx", {{"up", 46, 138, 6}, {"down", 46, 165, 6}, {"left", 33, 151, 6}, {"right", 60, 151, 6}, {"b", 235, 169, 9}, {"a", 256, 151, 9}, {"l", 211, 121, 5}, {"start", 232, 115, 5}, {"r", 253, 121, 5}}},
 };
 
 /** Partie de l'illustration affichée (la manette, sans le fond autour). */
@@ -912,7 +924,7 @@ void PadPainter::draw(const std::string& style) {
   else if (style == "gameBoy") gameBoy();
   else if (style == "gba") gba();
   else if (style == "genesis") genesis();
-  else if (style == "master") master();
+  else if (style == "master" || style == "gameGear") master();
   else if (style == "saturn") saturn();
   else if (style == "dreamcast") dreamcast();
   else if (style == "pcEngine") pcEngine();
@@ -1374,7 +1386,6 @@ int PadConfig::renderArt(Canvas& c, int cx, int y, int maxWidth, int maxHeight) 
       c.circleOutline(sx, sy, sr, 1.0f, rgba(255, 255, 255, 110));
     }
   }
-  c.text(x + w - Canvas::measure("@rachels_ham", 1), y + h + 2, "@rachels_ham", 1, kMuted);
   return h + 10;
 }
 

@@ -75,7 +75,7 @@ object ControllerCapture {
 /** Famille d'une manette branchée : noms de ses boutons. */
 internal enum class PadFamily { XBOX, PLAYSTATION, NINTENDO }
 
-/** Image (illustration de @rachels_ham) et famille d'une manette branchée, d'après son fabricant et son modèle. */
+/** Image (illustration) et famille d'une manette branchée, d'après son fabricant et son modèle. */
 internal fun physicalPad(device: InputDevice): Pair<Int, PadFamily> {
     val name = device.name.orEmpty()
     return when (device.vendorId) {
@@ -98,7 +98,7 @@ internal fun physicalPad(device: InputDevice): Pair<Int, PadFamily> {
 @DrawableRes
 internal fun playerPadImage(systemId: String, device: InputDevice): Int = consolePadImage(systemId) ?: physicalPad(device).first
 
-/** Manette de la console du système (illustrations de @rachels_ham), null s'il n'y en a pas. */
+/** Manette de la console du système (illustration), null s'il n'y en a pas. */
 @DrawableRes
 internal fun consolePadImage(systemId: String): Int? = when (systemId.lowercase()) {
     "nes" -> R.drawable.pad_nes
@@ -111,11 +111,21 @@ internal fun consolePadImage(systemId: String): Int? = when (systemId.lowercase(
     "ps2" -> R.drawable.pad_ps2
     "genesis", "genesismsu", "segacd", "sega32x", "pico" -> R.drawable.pad_genesis
     "master", "sg1000" -> R.drawable.pad_master
-    "saturn" -> R.drawable.pad_saturn
+    "gamegear" -> R.drawable.pad_gamegear
+    "saturn", "stv" -> R.drawable.pad_saturn
     "dreamcast", "naomi", "atomiswave" -> R.drawable.pad_dreamcast
     "tg16", "tgcd", "supergrafx" -> R.drawable.pad_pcengine
     "neogeo", "neogeocd" -> R.drawable.pad_neogeo
     "atari2600" -> R.drawable.pad_atari2600
+    "gb", "gbc", "megaduck", "gw", "pokemini", "supervision" -> R.drawable.pad_gameboy
+    "gba" -> R.drawable.pad_gba
+    "psp", "pspminis" -> R.drawable.pad_psp
+    "ngp", "ngpc" -> R.drawable.pad_ngp
+    "cps1", "cps2", "cps3" -> R.drawable.pad_cps
+    "fbneo", "mame" -> R.drawable.pad_arcade
+    "gx4000" -> R.drawable.pad_gx4000
+    "atari7800" -> R.drawable.pad_atari7800
+    "lynx" -> R.drawable.pad_lynx
     else -> null
 }
 
@@ -369,7 +379,6 @@ fun ControllersSection(systemId: String, systemName: String, core: String, modif
             }
         }
         Text(stringResource(R.string.pads_hint, systemName), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(R.string.pads_credit), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

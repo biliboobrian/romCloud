@@ -29,7 +29,7 @@ import kotlin.math.max
 
 /** Manette dessinée dans la configuration : celle de la console d'origine (même dessin que sous Windows). */
 internal enum class PadStyle {
-    DEFAULT, NES, FDS, SNES, N64, PLAYSTATION, PSP, GAME_BOY, GBA, GENESIS, MASTER_SYSTEM, SATURN, DREAMCAST,
+    DEFAULT, NES, FDS, SNES, N64, PLAYSTATION, PSP, GAME_BOY, GBA, GENESIS, MASTER_SYSTEM, GAME_GEAR, SATURN, DREAMCAST,
     PC_ENGINE, NEO_GEO, NEO_GEO_POCKET, CPS, ARCADE, ATARI_2600, ATARI_7800, LYNX, GX4000, PS2, GAMECUBE,
 }
 
@@ -333,7 +333,7 @@ private class PadPainter(
             PadStyle.GAME_BOY -> gameBoy()
             PadStyle.GBA -> gba()
             PadStyle.GENESIS -> genesis()
-            PadStyle.MASTER_SYSTEM -> master()
+            PadStyle.MASTER_SYSTEM, PadStyle.GAME_GEAR -> master()
             PadStyle.SATURN -> saturn()
             PadStyle.DREAMCAST -> dreamcast()
             PadStyle.PC_ENGINE -> pcEngine()

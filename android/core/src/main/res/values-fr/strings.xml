@@ -444,7 +444,6 @@
     <string name="pads_dpad">Croix %1$s</string>
     <string name="pads_left_stick">Stick gauche %1$s</string>
     <string name="pads_right_stick">Stick droit %1$s</string>
-    <string name="pads_credit">Illustrations des manettes : @rachels_ham</string>
     <string name="pad_already_used">Ce bouton est déjà attribué</string>
     <string name="pad_config_saved">Configuration de la manette enregistrée</string>
     <string name="pad_config_reset">Configuration par défaut de la manette rétablie</string>
