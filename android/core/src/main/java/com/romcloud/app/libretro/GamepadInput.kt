@@ -71,12 +71,26 @@ internal object GamepadInput {
         0x12e to KeyEvent.KEYCODE_BUTTON_A, 0x12f to KeyEvent.KEYCODE_BUTTON_X,
     )
 
-    /** Manette physique (boutons de manette ou axes de joystick) : pas une télécommande ni un clavier. */
-    fun isGamepad(device: InputDevice): Boolean =
-        !device.isVirtual && (
-            (device.sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
-                (device.sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
-            )
+    /** Réponse de [isGamepad] pour chaque appareil (identifiant de la session) : demandée à chaque évènement. */
+    private val gamepads = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
+
+    /**
+     * Manette physique : axes de joystick, ou boutons de manette (A et B) déclarés par l'appareil. Pas
+     * une télécommande ni un clavier, même virtuel (beaucoup se déclarent « manette » sur Android TV).
+     */
+    fun isGamepad(device: InputDevice): Boolean = gamepads.getOrPut(device.id) {
+        if (device.isVirtual) return@getOrPut false
+        val sources = device.sources
+        val joystick = (sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK &&
+            device.motionRanges.any { it.isFromSource(InputDevice.SOURCE_JOYSTICK) }
+        if (joystick) return@getOrPut true
+        if ((sources and InputDevice.SOURCE_GAMEPAD) != InputDevice.SOURCE_GAMEPAD) return@getOrPut false
+        // Clavier (même virtuel : « Virtual keyboard », uinput…) ou télécommande sans boutons A et B.
+        val name = device.name.orEmpty()
+        device.keyboardType != InputDevice.KEYBOARD_TYPE_ALPHABETIC &&
+            !name.contains("virtual", ignoreCase = true) && !name.startsWith("uinput", ignoreCase = true) &&
+            device.hasKeys(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B).all { it }
+    }
 
     /** Une manette physique est-elle branchée ? (sinon la manette tactile est affichée) */
     fun hasGamepad(): Boolean = InputDevice.getDeviceIds().any { id ->
