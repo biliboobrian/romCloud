@@ -40,11 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.FilterChip
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
@@ -127,7 +125,7 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             modifier = Modifier.fillMaxWidth(0.7f),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
-            OutlinedButton(onClick = {
+            TvOutlinedButton(onClick = {
                 testing = true
                 testResult = null
                 scope.launch {
@@ -204,7 +202,7 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             modifier = Modifier.fillMaxWidth(0.7f),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
-            OutlinedButton(onClick = { dir = Settings.defaultRomsDir() }) { Text(stringResource(R.string.default_folder)) }
+            TvOutlinedButton(onClick = { dir = Settings.defaultRomsDir() }) { Text(stringResource(R.string.default_folder)) }
         }
         OutlinedTextField(
             value = biosDir, onValueChange = { biosDir = it },
@@ -233,7 +231,7 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (!hasPermission) {
-            Button(onClick = ::requestPermission) { Text(stringResource(R.string.action_allow)) }
+            TvButton(onClick = ::requestPermission) { Text(stringResource(R.string.action_allow)) }
         }
         if (showAdbHelp && !hasPermission) {
             Text(
@@ -275,7 +273,7 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Button(
+        TvButton(
             onClick = {
                 app.settings.save(url, key, dir, biosDir)
                 app.repository.clearMemory()

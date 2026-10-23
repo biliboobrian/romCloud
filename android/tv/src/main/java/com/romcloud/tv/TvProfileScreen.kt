@@ -49,11 +49,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -123,7 +121,7 @@ private fun LoginForm(viewModel: ProfileViewModel, modifier: Modifier) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = { viewModel.login(username, password) }, modifier = Modifier.focusRequester(submit)) {
+        TvButton(onClick = { viewModel.login(username, password) }, modifier = Modifier.focusRequester(submit)) {
             Text(stringResource(R.string.profile_sign_in))
         }
     }
@@ -187,7 +185,7 @@ private fun SignedIn(viewModel: ProfileViewModel, account: AccountState) {
         Text(stringResource(R.string.profile_avatar_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(Modifier.fillMaxWidth(0.8f)) { AvatarPicker(account.avatar, account.avatars, viewModel::setAvatar, itemSize = 56.dp) }
     }
-    OutlinedButton(onClick = viewModel::logout, modifier = Modifier.focusRequester(logout)) {
+    TvOutlinedButton(onClick = viewModel::logout, modifier = Modifier.focusRequester(logout)) {
         Icon(Icons.AutoMirrored.Filled.Logout, null, modifier = IconSize)
         Spacer(Modifier.width(8.dp))
         Text(stringResource(R.string.profile_logout))

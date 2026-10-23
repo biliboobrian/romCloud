@@ -1,13 +1,20 @@
 package com.romcloud.tv
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.tv.material3.Surface
+import androidx.tv.material3.Typography as TvTypography
+import androidx.compose.material3.Typography as M3Typography
 import androidx.tv.material3.SurfaceDefaults
 import com.romcloud.app.ui.SystemBackground
 import com.romcloud.app.ui.contentColorOn
@@ -23,6 +30,28 @@ private val TvSurfaceVariant = Color(0xFF232733)
 
 /** Marges de sécurité des téléviseurs (zone parfois rognée par l'overscan). */
 val TvSafePadding = PaddingValues(horizontal = 48.dp, vertical = 27.dp)
+
+/** Taille des textes de la TV par rapport aux styles Material (textes un peu plus petits). */
+private const val TextScale = 0.88f
+
+private fun TextUnit.scaled() = if (isSpecified) this * TextScale else this
+private fun TextStyle.scaled() = copy(fontSize = fontSize.scaled(), lineHeight = lineHeight.scaled())
+
+private fun TvTypography.scaled() = TvTypography(
+    displayLarge.scaled(), displayMedium.scaled(), displaySmall.scaled(),
+    headlineLarge.scaled(), headlineMedium.scaled(), headlineSmall.scaled(),
+    titleLarge.scaled(), titleMedium.scaled(), titleSmall.scaled(),
+    bodyLarge.scaled(), bodyMedium.scaled(), bodySmall.scaled(),
+    labelLarge.scaled(), labelMedium.scaled(), labelSmall.scaled(),
+)
+
+private fun M3Typography.scaled() = M3Typography(
+    displayLarge.scaled(), displayMedium.scaled(), displaySmall.scaled(),
+    headlineLarge.scaled(), headlineMedium.scaled(), headlineSmall.scaled(),
+    titleLarge.scaled(), titleMedium.scaled(), titleSmall.scaled(),
+    bodyLarge.scaled(), bodyMedium.scaled(), bodySmall.scaled(),
+    labelLarge.scaled(), labelMedium.scaled(), labelSmall.scaled(),
+)
 
 /**
  * Thème TV : tv-material pour les écrans (focus, cartes, boutons) et Material 3 pour les
@@ -40,6 +69,7 @@ fun TvTheme(content: @Composable () -> Unit) {
             surfaceVariant = TvSurfaceVariant,
             surfaceContainerHigh = TvSurfaceVariant,
         ),
+        typography = M3Typography().scaled(),
     ) {
         TvMaterialTheme(
             colorScheme = tvDarkColorScheme(
@@ -51,6 +81,7 @@ fun TvTheme(content: @Composable () -> Unit) {
                 surfaceVariant = TvSurfaceVariant,
                 border = Accent,
             ),
+            typography = TvTypography().scaled(),
             content = content,
         )
     }
@@ -80,11 +111,14 @@ fun TvScreenTheme(background: Color?, content: @Composable () -> Unit) {
     }
 }
 
-/** Écran entier peint sur [background] (voir [TvScreenTheme]). */
+/** Écran entier peint sur [background] (voir [TvScreenTheme]), ou sur [brush] (dégradé) s'il est donné. */
 @Composable
-fun TvScreenBackground(background: Color?, content: @Composable () -> Unit) {
+fun TvScreenBackground(background: Color?, brush: Brush? = null, content: @Composable () -> Unit) {
     if (background == null) return content()
     TvScreenTheme(background) {
-        Surface(Modifier.fillMaxSize(), colors = SurfaceDefaults.colors(containerColor = background)) { content() }
+        Surface(
+            if (brush != null) Modifier.fillMaxSize().background(brush) else Modifier.fillMaxSize(),
+            colors = SurfaceDefaults.colors(containerColor = if (brush != null) Color.Transparent else background),
+        ) { content() }
     }
 }

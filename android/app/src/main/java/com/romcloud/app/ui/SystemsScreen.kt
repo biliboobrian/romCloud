@@ -192,7 +192,10 @@ fun SystemsScreen(
     }
     val portrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
 
+    // Fond en dégradé violet (barre du haut transparente en paysage).
     Scaffold(
+        modifier = Modifier.background(SystemsGradient),
+        containerColor = Color.Transparent,
         topBar = {
             if (portrait && !searching) {
                 // Portrait : barre de l'espace, jeu à plusieurs, profil et paramètres ; puis espace
@@ -221,7 +224,7 @@ fun SystemsScreen(
                         containerColor = HeaderGray,
                         titleContentColor = Color.White,
                         actionIconContentColor = Color.White,
-                    ) else TopAppBarDefaults.topAppBarColors(),
+                    ) else TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                     title = {
                         if (searching) {
                             TextField(

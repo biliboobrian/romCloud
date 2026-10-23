@@ -39,6 +39,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.ui.SystemsGradient
 import com.romcloud.app.ui.GameDetailViewModel
 import com.romcloud.app.ui.ProfileViewModel
 import com.romcloud.app.ui.GamesViewModel
@@ -126,8 +127,8 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                 }
                 composable("systems") {
                     val vm = viewModel { SystemsViewModel(app) }
-                    // Écran des systèmes sur fond noir, chaque carte sur la couleur de son système.
-                    TvScreenBackground(Color.Black) {
+                    // Écran des systèmes sur un dégradé violet, chaque carte sur la couleur de son système.
+                    TvScreenBackground(Color.Black, brush = SystemsGradient) {
                         TvSystemsScreen(
                             viewModel = vm,
                             storageWarning = storageWarning,
@@ -194,7 +195,7 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
             }
             // Hôte parti choisir le jeu : retour au lobby.
             if (lobbyState.isHost && route != "lobby") {
-                androidx.tv.material3.Button(onClick = openLobby, modifier = Modifier.align(Alignment.BottomEnd).padding(32.dp)) {
+                TvButton(onClick = openLobby, modifier = Modifier.align(Alignment.BottomEnd).padding(32.dp)) {
                     androidx.tv.material3.Icon(androidx.compose.material.icons.Icons.Filled.Groups, null)
                     androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 8.dp))
                     androidx.tv.material3.Text(stringResource(R.string.lobby_back))
