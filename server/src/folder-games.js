@@ -58,6 +58,22 @@ export function exeCandidates(files) {
     .map((f) => f.path);
 }
 
+// Prérequis à installer avant de jouer (DirectX, Visual C++, .NET, PhysX, OpenAL, XNA…).
+const PREREQ_RE = new RegExp(
+  [
+    String.raw`(^|/)(vc_?redist|vcredist|dxsetup|dxwebsetup|directx|dotnet|ndp\d|netfx|ue[34]?prereq|physx|oalinst|xnafx|easyanticheat_setup)[^/]*\.exe$`,
+    String.raw`(^|/)(_?commonredist|redist|redistributables?|directx|prereq[^/]*)/[^/]*\.exe$`,
+  ].join('|'),
+  'i',
+);
+
+/** Prérequis probables du jeu (DirectX, Visual C++…), du moins profond au plus profond, puis par chemin. */
+export function prereqsOf(files) {
+  return exeCandidates(files)
+    .filter((p) => PREREQ_RE.test(p))
+    .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
+}
+
 /** Désinstalleur probable du jeu (« unins000.exe », « uninstall.exe »…, le moins profond), ou null. */
 export function uninstallerOf(files) {
   return exeCandidates(files)

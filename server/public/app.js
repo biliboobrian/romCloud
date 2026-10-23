@@ -736,6 +736,7 @@ function fillGameDialog(game, bust = '') {
   form.elements.exe.disabled = !game.folder;
   $('#gameUninstallField').classList.toggle('hidden', !game.folder);
   form.elements.uninstallExe.disabled = !game.folder;
+  $('#gameExtraField').classList.toggle('hidden', !game.folder);
   if (game.folder) fillGameExe(game);
   const statusText = {
     none: t('game.never'),
@@ -764,28 +765,36 @@ function fillGameDialog(game, bust = '') {
 
 /**
  * Listes des exécutables du dossier du jeu (le plus probable en premier) pour le lancement et la
- * désinstallation, ceux choisis sélectionnés.
+ * désinstallation, ceux choisis sélectionnés ; autres exécutables (prérequis) cochés.
  */
 async function fillGameExe(game) {
   const { exe: select, uninstallExe: uninstall } = $('#gameForm').elements;
   const none = `<option value="">${escapeHtml(t('game.exeNone'))}</option>`;
   select.innerHTML = none;
   uninstall.innerHTML = none;
+  $('#gameExtraList').innerHTML = '';
   await guard(async () => {
-    const { files, exes, exe, uninstallExe } = await api(`/games/${game.id}/files`);
+    const { files, exes, exe, uninstallExe, extraExes } = await api(`/games/${game.id}/files`);
     if (state.editingGame?.id !== game.id) return;
     const options = exes.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
     select.innerHTML = none + options;
     select.value = exe ?? '';
     uninstall.innerHTML = none + options;
     uninstall.value = uninstallExe ?? '';
+    $('#gameExtraList').innerHTML = exes
+      .map((p) => `<label class="inline mono"><input type="checkbox" name="extraExes" value="${escapeHtml(p)}"${extraExes.includes(p) ? ' checked' : ''}> ${escapeHtml(p)}</label>`)
+      .join('');
     $('#gameFile').textContent += ` — ${t('game.files', { n: files.length })}`;
   });
 }
 
 async function saveGame(e) {
   e.preventDefault();
-  const data = Object.fromEntries(new FormData(e.target));
+  const form = new FormData(e.target);
+  const data = Object.fromEntries(form);
+  // Autres exécutables (jeu en dossier) : toutes les cases cochées, liste vide comprise.
+  delete data.extraExes;
+  if (state.editingGame.folder && $('#gameExtraList').childElementCount) data.extraExes = form.getAll('extraExes');
   await guard(async () => {
     await api(`/games/${state.editingGame.id}`, { method: 'PUT', body: data });
     $('#gameDialog').close();

@@ -62,6 +62,12 @@ pub fn folder_uninstaller(system: &Value, game: &Value) -> Option<PathBuf> {
     folder_path(system, game, s(game, "uninstallExe"))
 }
 
+/// Autre exécutable [rel] d'un jeu en dossier (prérequis : DirectX…), s'il est dans sa liste du serveur.
+pub fn folder_extra(system: &Value, game: &Value, rel: &str) -> Option<PathBuf> {
+    let listed = game["extraExes"].as_array().is_some_and(|list| list.iter().any(|e| e.as_str() == Some(rel)));
+    if listed { folder_path(system, game, rel) } else { None }
+}
+
 /// Fichier [rel] (« Bin/Game.exe ») du dossier du jeu ; None si vide.
 fn folder_path(system: &Value, game: &Value, rel: &str) -> Option<PathBuf> {
     (!rel.is_empty()).then(|| rel.split('/').fold(file_for(system, game), |path, part| path.join(part)))
@@ -227,6 +233,16 @@ pub fn extras(system: &Value, game: &Value) -> Vec<PathBuf> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn autres_executables_du_serveur_seulement() {
+        let system = json!({ "id": "windows", "folder": "windows" });
+        let game = json!({ "fileName": "Mr. Robot", "folder": true, "exe": "Game.exe", "extraExes": ["Redist/DXSETUP.exe"] });
+        let dx = folder_extra(&system, &game, "Redist/DXSETUP.exe").unwrap();
+        assert!(dx.ends_with(Path::new("Mr. Robot").join("Redist").join("DXSETUP.exe")));
+        assert!(folder_extra(&system, &game, "Game.exe").is_none());
+        assert!(folder_extra(&system, &json!({ "fileName": "Mr. Robot", "folder": true }), "Redist/DXSETUP.exe").is_none());
+    }
 
     #[test]
     fn liste_des_disques() {
