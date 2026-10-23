@@ -125,21 +125,10 @@ fn latest_on(dir: &Path, disk: Option<usize>) -> Option<(PathBuf, f64)> {
 }
 
 /**
- * État à charger pour reprendre la partie : l'état de reprise ([quick], écrit en quittant) ou
- * l'état de l'historique s'il est plus récent ou que l'état de reprise manque ; None sans aucun état.
- */
-pub fn resume_file(quick: &Path, history: &Path) -> Option<PathBuf> {
-    resume_point(quick, history).map(|(file, _)| file)
-}
-
-/// Comme [resume_file], avec la date de l'état (ms) : comparaison entre les cœurs du système.
-pub fn resume_point(quick: &Path, history: &Path) -> Option<(PathBuf, f64)> {
-    resume_point_on(quick, history, None)
-}
-
-/**
- * Comme [resume_point], parmi les états faits sur le disque [disk] (jeu en plusieurs disques ;
- * disque inconnu : le premier) ; None : tous les états.
+ * État à charger pour reprendre la partie, avec sa date (ms, comparaison entre les cœurs du système) :
+ * l'état de reprise ([quick], écrit en quittant) ou l'état de l'historique s'il est plus récent ou que
+ * l'état de reprise manque ; None sans aucun état. Parmi les états faits sur le disque [disk] (jeu en
+ * plusieurs disques ; disque inconnu : le premier) ; None : tous les états.
  */
 pub fn resume_point_on(quick: &Path, history: &Path, disk: Option<usize>) -> Option<(PathBuf, f64)> {
     let on_disk = |k: usize| disk_of(quick, history).unwrap_or(0) == k;
@@ -445,6 +434,11 @@ pub async fn delete(dir: &Path, id: &str, online: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// État à charger pour reprendre la partie, tous disques confondus.
+    fn resume_file(quick: &Path, history: &Path) -> Option<PathBuf> {
+        resume_point_on(quick, history, None).map(|(file, _)| file)
+    }
 
     #[test]
     fn etat_hors_ligne_trop_ancien_pas_envoye() {

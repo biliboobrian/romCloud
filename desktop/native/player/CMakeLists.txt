@@ -25,6 +25,8 @@ FetchContent_Declare(
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(SDL3)
+# Code de SDL : ses avertissements (variables Vulkan optionnelles, compteur inutilisé) ne nous concernent pas.
+target_compile_options(SDL3-static PRIVATE -Wno-unused-but-set-global)
 # En-têtes de Vulkan seulement (cœurs Vulkan) : le chargeur vulkan-1.dll du pilote est ouvert au
 # lancement, sans lien à la compilation (VK_NO_PROTOTYPES).
 FetchContent_Declare(

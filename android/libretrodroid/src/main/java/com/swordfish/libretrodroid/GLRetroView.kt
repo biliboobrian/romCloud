@@ -30,15 +30,15 @@ import android.opengl.GLSurfaceView
 import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.Display
 import android.view.MotionEvent
-import android.view.WindowManager
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.OnLifecycleEvent
 import androidx.lifecycle.coroutineScope
 import com.swordfish.libretrodroid.KtUtils.awaitUninterruptibly
 import com.swordfish.libretrodroid.gamepad.GamepadsManager
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -52,7 +52,7 @@ import kotlin.properties.Delegates
 class GLRetroView(
     context: Context,
     private val data: GLRetroViewData,
-) : GLSurfaceView(context), LifecycleObserver {
+) : GLSurfaceView(context), DefaultLifecycleObserver {
 
     var audioEnabled: Boolean by Delegates.observable(true) { _, _, value ->
         LibretroDroid.setAudioEnabled(value)
@@ -102,9 +102,8 @@ class GLRetroView(
         keepScreenOn = true
     }
 
-    @OnLifecycleEvent(Lifecycle.Event.ON_CREATE)
-    fun onCreate(lifecycleOwner: LifecycleOwner) = catchExceptions {
-        lifecycle = lifecycleOwner.lifecycle
+    override fun onCreate(owner: LifecycleOwner) = catchExceptions {
+        lifecycle = owner.lifecycle
         LibretroDroid.create(
             openGLESVersion,
             data.coreFilePath,
@@ -124,8 +123,7 @@ class GLRetroView(
         LibretroDroid.setViewportAlignment(data.viewportAlignment.value)
     }
 
-    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-    fun onDestroy() = catchExceptions {
+    override fun onDestroy(owner: LifecycleOwner) = catchExceptions {
         displayManager.unregisterDisplayListener(displayListener)
         LibretroDroid.destroy()
         lifecycle = null
@@ -164,7 +162,7 @@ class GLRetroView(
     }
 
     private fun getDefaultRefreshRate(): Float {
-        return (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.refreshRate
+        return displayManager.getDisplay(Display.DEFAULT_DISPLAY)?.refreshRate ?: 60f
     }
 
     fun sendKeyEvent(action: Int, keyCode: Int, port: Int = 0) {
@@ -340,18 +338,16 @@ class GLRetroView(
     }
 
     // These functions are called only after the GLSurfaceView has been created.
-    private inner class RenderLifecycleObserver : LifecycleObserver {
-        @OnLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        private fun resume() = catchExceptions {
+    private inner class RenderLifecycleObserver : DefaultLifecycleObserver {
+        override fun onResume(owner: LifecycleOwner) = catchExceptions {
             LibretroDroid.resume()
-            onResume()
+            this@GLRetroView.onResume()
             isEmulationReady = true
         }
 
-        @OnLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-        private fun pause() = catchExceptions {
+        override fun onPause(owner: LifecycleOwner) = catchExceptions {
             isEmulationReady = false
-            onPause()
+            this@GLRetroView.onPause()
             LibretroDroid.pause()
         }
     }
@@ -416,6 +412,7 @@ class GLRetroView(
         LibretroDroid.loadGameFromPath(gameFilePath)
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     private fun catchExceptions(block: () -> Unit) {
         try {
             if (isAborted) return
