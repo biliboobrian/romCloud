@@ -57,10 +57,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.romcloud.app.netplay.Together
@@ -226,9 +224,9 @@ fun TvGameDetailScreen(
                                 Text(stringResource(R.string.parts_disc, (d + 1).toString()))
                             }
                             if (d == state.disc) {
-                                Button(onClick = { viewModel.selectDisc(d) }, content = content)
+                                TvButton(onClick = { viewModel.selectDisc(d) }, content = content)
                             } else {
-                                OutlinedButton(onClick = { viewModel.selectDisc(d) }, content = content)
+                                TvOutlinedButton(onClick = { viewModel.selectDisc(d) }, content = content)
                             }
                         }
                     }
@@ -409,7 +407,7 @@ fun TvGameDetailScreen(
 
 @Composable
 private fun ActionButton(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = modifier) {
+    TvButton(onClick = onClick, modifier = modifier) {
         Icon(icon, null, modifier = IconSize)
         Spacer(Modifier.width(8.dp))
         Text(label)
@@ -418,7 +416,7 @@ private fun ActionButton(label: String, icon: ImageVector, modifier: Modifier = 
 
 @Composable
 private fun SecondaryButton(label: String, icon: ImageVector, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick) {
+    TvOutlinedButton(onClick = onClick) {
         Icon(icon, null, modifier = IconSize)
         Spacer(Modifier.width(8.dp))
         Text(label)

@@ -32,8 +32,8 @@ h1, h2, h3, h4 { margin: 0; line-height: 1.2; }
 .mono { font-family: Consolas, ui-monospace, monospace; font-size: 12px; word-break: break-all; user-select: text; }
 svg.icon { width: 20px; height: 20px; fill: currentColor; flex-shrink: 0; }
 
-/* Écran des systèmes sur fond noir ; liste des jeux et fiche d'un jeu sur la couleur du système. */
-body.systems-screen { --bg: #000; }
+/* Écran des systèmes sur un dégradé violet ; liste des jeux et fiche d'un jeu sur la couleur du système. */
+body.systems-screen { --bg: #000; background: linear-gradient(135deg, #2e1a6b 0%, #140c30 45%, #000 100%); }
 
 /* ---- Barre du haut ---- */
 .topbar {

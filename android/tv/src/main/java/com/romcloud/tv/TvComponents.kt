@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -31,9 +33,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
+import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
+import androidx.tv.material3.ButtonScale
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.OutlinedButton
+import androidx.tv.material3.OutlinedButtonDefaults
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
@@ -217,17 +224,17 @@ fun TvSystemCard(system: GameSystem, imageUrl: String?, onClick: () -> Unit, mod
 fun TvDiskBar(usage: StorageUsage, modifier: Modifier = Modifier) {
     if (!usage.known) return
     val color = if (usage.low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         LinearProgressIndicator(
             progress = { usage.usedFraction },
             color = color,
             trackColor = MaterialTheme.colorScheme.surfaceVariant,
             drawStopIndicator = {},
-            modifier = Modifier.width(160.dp).height(10.dp),
+            modifier = Modifier.width(100.dp).height(6.dp),
         )
         Text(
             stringResource(R.string.storage_free_of, formatSize(usage.free), formatSize(usage.total)),
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.labelMedium,
             color = if (usage.low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -276,6 +283,49 @@ fun Backdrop(url: String?, alignment: Alignment = Alignment.Center) {
                 .background(Brush.verticalGradient(0.35f to Color.Transparent, 0.75f to bg.copy(alpha = 0.9f), 1f to bg)),
         )
     }
+}
+
+/**
+ * Boutons de la TV : fond translucide (l'arrière-plan reste visible), opaque quand le bouton a le
+ * focus pour bien le repérer à distance.
+ */
+@Composable
+fun TvButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    scale: ButtonScale = ButtonDefaults.scale(),
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val on = MaterialTheme.colorScheme.onSurface
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        scale = scale,
+        colors = ButtonDefaults.colors(containerColor = on.copy(alpha = 0.25f), contentColor = on),
+        contentPadding = contentPadding,
+        content = content,
+    )
+}
+
+/** Bouton secondaire (contour) : fond plus léger que [TvButton], opaque avec le focus. */
+@Composable
+fun TvOutlinedButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val on = MaterialTheme.colorScheme.onSurface
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        colors = OutlinedButtonDefaults.colors(containerColor = on.copy(alpha = 0.1f), contentColor = on),
+        content = content,
+    )
 }
 
 val PosterWidth = 150.dp

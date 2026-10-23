@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -45,6 +47,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +58,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Icon
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
@@ -162,64 +166,40 @@ fun TvSystemsScreen(
         )
     }
 
-    Column(Modifier.fillMaxSize().padding(TvSafePadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.fillMaxSize().padding(TvSafePadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // En-tête compact : stockage et boutons petits, pour laisser la place aux systèmes.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(HeaderGap)) {
             TvDiskBar(usage)
-            OfflineBadge(Modifier.padding(start = 16.dp), size = 40.dp)
+            OfflineBadge(size = 24.dp)
             Spacer(Modifier.weight(1f))
             if (search.active) {
                 // Recherche en cours : modifier ou effacer
-                Button(onClick = { searchDialog = true }) {
-                    Icon(Icons.Filled.Search, null, modifier = IconSize)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.search_query, search.query))
-                }
-                Spacer(Modifier.width(SmallGap))
-                Button(onClick = { viewModel.setQuery("") }) {
-                    Icon(Icons.Filled.Close, null, modifier = IconSize)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.clear_search))
-                }
+                HeaderButton(Icons.Filled.Search, stringResource(R.string.search_query, search.query)) { searchDialog = true }
+                HeaderButton(Icons.Filled.Close, stringResource(R.string.clear_search)) { viewModel.setQuery("") }
             } else {
-                Button(onClick = { searchDialog = true }) {
-                    Icon(Icons.Filled.Search, null, modifier = IconSize)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.action_search))
-                }
+                HeaderButton(Icons.Filled.Search, stringResource(R.string.action_search)) { searchDialog = true }
             }
-            Spacer(Modifier.width(SmallGap))
             // Multijoueurs (profil connecté) : joueurs et lobbies.
             if (account.signedIn) {
-                Button(onClick = { showNetplay = true }) {
-                    Icon(Icons.Filled.Groups, null, modifier = IconSize)
-                    Spacer(Modifier.width(8.dp))
-                    val open = lobbyState.lobbies.size
-                    Text(if (open > 0) "${stringResource(R.string.netplay_title)} ($open)" else stringResource(R.string.netplay_title))
-                }
-                Spacer(Modifier.width(SmallGap))
+                val open = lobbyState.lobbies.size
+                HeaderButton(
+                    Icons.Filled.Groups,
+                    if (open > 0) "${stringResource(R.string.netplay_title)} ($open)" else stringResource(R.string.netplay_title),
+                ) { showNetplay = true }
             }
-            Button(onClick = viewModel::refresh) {
-                Icon(Icons.Filled.Refresh, null, modifier = IconSize)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.action_refresh))
-            }
-            Spacer(Modifier.width(SmallGap))
+            HeaderButton(Icons.Filled.Refresh, stringResource(R.string.action_refresh), onClick = viewModel::refresh)
             // Profil du joueur, à côté des paramètres : nom du profil une fois connecté.
             val account = accountState()
-            Button(onClick = onOpenProfile) {
-                Icon(
-                    Icons.Filled.AccountCircle, null, modifier = IconSize,
-                    tint = if (account.signedIn) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(if (account.signedIn) account.username else stringResource(R.string.profile_button))
-            }
-            Spacer(Modifier.width(SmallGap))
-            Button(onClick = onOpenSettings, modifier = Modifier.focusRequester(settingsFocus)) {
-                Icon(Icons.Filled.Settings, null, modifier = IconSize)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.action_settings))
-            }
+            HeaderButton(
+                Icons.Filled.AccountCircle,
+                if (account.signedIn) account.username else stringResource(R.string.profile_button),
+                tint = if (account.signedIn) MaterialTheme.colorScheme.primary else null,
+                onClick = onOpenProfile,
+            )
+            HeaderButton(
+                Icons.Filled.Settings, stringResource(R.string.action_settings),
+                modifier = Modifier.focusRequester(settingsFocus), onClick = onOpenSettings,
+            )
         }
         if (storageWarning) {
             TvBanner(stringResource(R.string.banner_storage), error = true)
@@ -273,6 +253,29 @@ fun TvSystemsScreen(
                 }
             }
         }
+    }
+}
+
+private val HeaderGap = 8.dp
+
+/** Bouton de l'en-tête des systèmes : petit (icône et texte réduits, hauteur 30 dp). */
+@Composable
+private fun HeaderButton(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    tint: Color? = null,
+    onClick: () -> Unit,
+) {
+    TvButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        scale = ButtonDefaults.scale(focusedScale = 1.05f),
+        modifier = modifier.height(30.dp),
+    ) {
+        Icon(icon, null, modifier = Modifier.size(16.dp), tint = tint ?: LocalContentColor.current)
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
     }
 }
 
