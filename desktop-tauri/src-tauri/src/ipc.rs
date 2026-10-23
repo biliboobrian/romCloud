@@ -93,7 +93,13 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
             launcher::choose(&str_arg(a, 0), &arg(a, 1), &arg(a, 2));
             Value::Null
         }
-        "launcher:play" => launcher::play(&arg(a, 0), &arg(a, 1), &arg(a, 2)).await?,
+        "launcher:play" => {
+            let result = launcher::play(&arg(a, 0), &arg(a, 1), &arg(a, 2)).await?;
+            if let Err(e) = api::remember_played(&arg(a, 1)) {
+                eprintln!("{e}"); // rangée des jeux téléchargés
+            }
+            result
+        }
         "launcher:resumable" => json!(launcher::resumable(&arg(a, 0), &arg(a, 1))),
         "launcher:resumeCore" => json!(launcher::resume_core(&arg(a, 0), &arg(a, 1))),
         "launcher:resumeDiscs" => launcher::resume_discs(&arg(a, 0), &arg(a, 1)),

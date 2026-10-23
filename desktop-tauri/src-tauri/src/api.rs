@@ -137,12 +137,31 @@ pub fn remember_downloaded(system: &Value, game: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Jeux téléchargés sur le PC, tous systèmes confondus (index des téléchargements), du plus récent
-/// au plus ancien ; jeux effacés depuis écartés.
+// Dernière partie lancée de chaque jeu (millisecondes) : rangée des jeux téléchargés.
+fn played_index() -> Value {
+    read_json(&cache_dir().join("played.json")).unwrap_or_else(|| json!({}))
+}
+
+/// Note une partie lancée maintenant.
+pub fn remember_played(game: &Value) -> Result<()> {
+    let id = id_key(game);
+    if id.is_empty() {
+        return Ok(());
+    }
+    let mut played = played_index();
+    played[id] = json!(paths::now_ms());
+    std::fs::create_dir_all(cache_dir())?;
+    std::fs::write(cache_dir().join("played.json"), serde_json::to_string(&played)?)?;
+    Ok(())
+}
+
+/// Jeux téléchargés sur le PC, tous systèmes confondus (index des téléchargements), du plus
+/// récemment joué ou téléchargé au plus ancien ; jeux effacés depuis écartés.
 pub fn downloaded_games() -> Vec<Value> {
     let index = downloaded_index();
     let systems = index.get("systems").and_then(Value::as_object).cloned().unwrap_or_default();
-    let mut games: Vec<(std::time::SystemTime, Value)> = index_values("games")
+    let played = played_index();
+    let mut games: Vec<(f64, Value)> = index_values("games")
         .into_iter()
         .filter_map(|game| {
             let system = systems.get(game.get("systemId").and_then(Value::as_str)?)?;
@@ -152,10 +171,12 @@ pub fn downloaded_games() -> Vec<Value> {
             // Date du téléchargement : fichier du jeu (jeu en dossier : marque de fin).
             let file = if library::is_folder(&game) { library::folder_marker(system, &game) } else { library::file_for(system, &game) };
             let modified = std::fs::metadata(file).and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
-            Some((modified, game))
+            let downloaded = modified.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0);
+            let last = played.get(id_key(&game)).and_then(Value::as_f64).unwrap_or(0.0);
+            Some((downloaded.max(last), game))
         })
         .collect();
-    games.sort_by(|a, b| b.0.cmp(&a.0));
+    games.sort_by(|a, b| b.0.total_cmp(&a.0));
     games.into_iter().map(|(_, game)| game).collect()
 }
 

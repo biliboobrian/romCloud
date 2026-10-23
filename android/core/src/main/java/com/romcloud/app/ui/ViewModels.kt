@@ -121,6 +121,7 @@ fun RomCloudApp.play(
     }
     return try {
         launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay, state, core, listDisk)
+        repository.rememberPlayed(game.id)
         // Émulateur externe : temps de jeu compté jusqu'au retour dans l'application (l'émulateur
         // intégré compte lui-même le temps de la partie affichée).
         if (player?.libretroCore == null) account.startExternalSession(game.id)
@@ -201,6 +202,7 @@ suspend fun RomCloudApp.joinNetplay(context: Context, peer: Peer): String? {
     }
     return try {
         launcher.launch(context, system, file, null, gameId = game.id, netplay = launch)
+        repository.rememberPlayed(game.id)
         null
     } catch (e: LaunchException) {
         e.message
@@ -302,17 +304,20 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
     fun system(id: String): GameSystem? = _state.value.systems.find { it.id == id }
 
     /**
-     * Jeux téléchargés (index des téléchargements, jeux effacés depuis écartés), du plus récent au
-     * plus ancien : rangée en tête de l'écran des systèmes. Affichage de l'écran, fin de téléchargement.
+     * Jeux téléchargés (index des téléchargements, jeux effacés depuis écartés), du plus récemment
+     * joué ou téléchargé au plus ancien : rangée en tête de l'écran des systèmes. Affichage de
+     * l'écran, retour dans l'application (après une partie), fin de téléchargement.
      */
     fun refreshLocalGames() {
         viewModelScope.launch {
             _localGames.value = withContext(Dispatchers.IO) {
+                val played = app.repository.lastPlayed()
                 app.repository.downloadedGames()
                     .filter { (system, game) -> app.library.isDownloaded(system, game) }
                     .sortedByDescending { (system, game) ->
                         // Date du téléchargement : fichier du jeu (jeu en dossier : marque de fin).
-                        (if (game.folder) app.library.folderMarker(system, game) else app.library.fileFor(system, game)).lastModified()
+                        val downloaded = (if (game.folder) app.library.folderMarker(system, game) else app.library.fileFor(system, game)).lastModified()
+                        maxOf(downloaded, played[game.id] ?: 0)
                     }
                     .map { it.second }
             }
