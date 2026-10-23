@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.view.WindowManager
 import com.romcloud.app.I18n
+import com.romcloud.app.data.Player
 import com.romcloud.app.data.Settings
 import com.romcloud.core.R
 import java.io.File
@@ -41,6 +42,18 @@ object Winlator {
 
     /** Nom affiché de l'application proposée à l'installation. */
     const val COMPANION_NAME = "RomCloud PC"
+
+    /** Nom affiché de chaque application de [APPS]. */
+    fun appName(pkg: String): String = when (pkg) {
+        COMPANION -> COMPANION_NAME
+        "com.winlator.cmod" -> "Winlator Cmod"
+        else -> "Winlator Cmod (Ludashi)"
+    }
+
+    /** Émulateurs d'un jeu PC dans la fiche du jeu : applications de [APPS], RomCloud PC d'abord. */
+    val PLAYERS: List<Player> = APPS.map { (pkg, activity) ->
+        Player(name = appName(pkg), uniqueId = "winlator:$pkg", amStartArguments = "-n $pkg/$activity")
+    }
 
     /** Lecteur du dossier des ROMs dans le conteneur, quand il n'est pas dans Téléchargements. */
     const val ROMS_DRIVE = 'R'
@@ -193,13 +206,14 @@ object Winlator {
     /**
      * Lance l'exécutable [exe] (dans le dossier du jeu [gameDir]) avec Winlator ; renvoie un conseil à
      * afficher (lecteur des ROMs à ajouter dans le conteneur, sauf [driveReady] : déjà ajouté par
-     * RomCloud), ou null. Ni RomCloud PC ni Winlator Cmod (ou seulement la version officielle, qui ne
-     * peut pas être lancée ainsi) : MissingEmulatorException, qui propose RomCloud PC (Release GitHub
-     * de RomCloud).
+     * RomCloud), ou null. Application [pkg] (choisie dans la fiche du jeu), sinon la première installée de
+     * [APPS] ; absente (ou aucune, la version officielle de Winlator ne peut pas être lancée ainsi) :
+     * MissingEmulatorException, qui la propose à l'installation (RomCloud PC par défaut).
      */
-    fun launch(activityContext: Context, title: String, gameDir: File, exe: String, romsRoot: File, driveReady: Boolean = false): String? {
-        val (pkg, activity) = installed(activityContext)
-            ?: throw MissingEmulatorException(MissingEmulator(COMPANION, COMPANION_NAME))
+    fun launch(activityContext: Context, title: String, gameDir: File, exe: String, romsRoot: File, driveReady: Boolean = false, pkg: String? = null): String? {
+        val app = if (pkg != null) APPS.find { it.first == pkg }?.takeIf { isInstalled(activityContext, pkg) } else installed(activityContext)
+        val (pkg, activity) = app
+            ?: throw MissingEmulatorException((pkg ?: COMPANION).let { MissingEmulator(it, appName(it)) })
         val target = File(gameDir, exe)
         if (!target.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, target.absolutePath))
         if (pkg == COMPANION) {

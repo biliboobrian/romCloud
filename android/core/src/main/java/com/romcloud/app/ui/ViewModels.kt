@@ -60,7 +60,7 @@ import java.io.File
 
 /** Problèmes qui empêchent de jouer à [game] avec l'émulateur externe choisi (voir GameIssues). */
 fun RomCloudApp.gameIssues(system: GameSystem, game: Game): List<GameIssue> {
-    val player = launcher.selectedPlayer(system, game.fileName)
+    val player = launcher.selectedPlayer(system, game.fileName, game.folder)
     val file = library.launchFile(system, game, player)
     return GameIssues.of(launcher, system, game.fileName, file, library.isDownloaded(system, game), game.folder)
 }
@@ -149,10 +149,12 @@ internal fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem,
     if (library.isAppPrivateDir()) return I18n.get(R.string.winlator_private_dir)
     val gameDir = library.fileFor(system, game)
     val romsRoot = File(settings.config.value.romsDir)
+    // Application choisie dans la fiche du jeu (RomCloud PC, Winlator Cmod…).
+    val chosen = launcher.selectedPlayer(system, game.fileName, folder = true)?.let(launcher::packageOf)
     var driveReady = false
     if (Winlator.needsRomsDrive(gameDir, exe, romsRoot)) {
         // RomCloud PC ajoute lui-même le lecteur des ROMs à son conteneur.
-        val installed = Winlator.installed(activity)?.first
+        val installed = chosen?.takeIf { Winlator.isInstalled(activity, it) }
         driveReady = installed == Winlator.COMPANION
         val pkg = installed?.takeIf { !driveReady }
         val authority = pkg?.let { WinlatorDrives.authority(activity, it) }
@@ -173,7 +175,7 @@ internal fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem,
         }
     }
     return try {
-        val hint = Winlator.launch(activity, game.title, gameDir, exe, romsRoot, driveReady)
+        val hint = Winlator.launch(activity, game.title, gameDir, exe, romsRoot, driveReady, chosen)
         account.startExternalSession(game.id)
         hint?.takeIf { !settings.winlatorDriveHintShown }?.also { settings.winlatorDriveHintShown = true }
     } catch (e: MissingEmulatorException) {
@@ -617,6 +619,8 @@ class GameDetailViewModel(
         val localPath: String? = null,
         val launchCommand: String? = null,
         val retroArchInfo: RetroArchInfo? = null,
+        /** Émulateur externe choisi, installé et ouvrable seul (RomCloud PC n'a pas d'écran d'accueil). */
+        val canOpenEmulator: Boolean = false,
         val bios: List<BiosFile> = emptyList(),
         val missingBios: List<BiosFile> = emptyList(),
         /** Partie sauvegardée dans l'émulateur intégré (sur le disque choisi) : « Reprendre » avant « Jouer ». */
@@ -690,11 +694,11 @@ class GameDetailViewModel(
         viewModelScope.launch {
             val (downloaded, players) = withContext(Dispatchers.IO) {
                 app.library.isDownloaded(system, game) to
-                    app.launcher.compatiblePlayers(system, game.fileName).map { it to app.launcher.isInstalled(it) }
+                    app.launcher.compatiblePlayers(system, game.fileName, game.folder).map { it to app.launcher.isInstalled(it) }
             }
             val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(s.bios) }
             val emulatorFiles = withContext(Dispatchers.IO) { runCatching { app.library.exportForEmulators(system) }.getOrDefault(emptyList()) }
-            val selected = app.launcher.selectedPlayer(system, game.fileName)
+            val selected = app.launcher.selectedPlayer(system, game.fileName, game.folder)
             val file = withContext(Dispatchers.IO) { app.library.launchFile(system, game, selected) }
             val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(system, file, selected) }
             val cores = systemCores(system, selected)
@@ -737,6 +741,7 @@ class GameDetailViewModel(
                     // Jeu PC : son exécutable, lancé avec Winlator.
                     launchCommand = if (game.folder) I18n.get(R.string.pc_exe) + "\n" + (game.exe ?: "—") else selected?.let { p -> app.launcher.describe(p, file) },
                     retroArchInfo = selected?.let(app.launcher::retroArchInfo),
+                    canOpenEmulator = selected?.takeIf { it.libretroCore == null }?.let(app.launcher::canOpen) == true,
                     missingBios = missingBios,
                     canResume = canResume,
                     discResume = discResume,

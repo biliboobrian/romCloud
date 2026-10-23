@@ -105,14 +105,20 @@ class GameLauncher(private val context: Context, private val settings: Settings)
     }
 
     /** Émulateurs compatibles avec ce fichier (regex acceptedFilenameRegex du modèle). */
-    fun compatiblePlayers(system: GameSystem, fileName: String): List<Player> =
-        PlayerFilter.compatible(system.players, fileName)
+    /** Jeu PC ([folder]) : applications Winlator (RomCloud PC, Winlator Cmod…). */
+    fun compatiblePlayers(system: GameSystem, fileName: String, folder: Boolean = false): List<Player> =
+        if (folder) Winlator.PLAYERS else PlayerFilter.compatible(system.players, fileName)
 
-    /** L'émulateur choisi par l'utilisateur s'il est compatible, sinon le premier compatible. */
-    fun selectedPlayer(system: GameSystem, fileName: String): Player? {
-        val compatible = compatiblePlayers(system, fileName)
+    /**
+     * L'émulateur choisi par l'utilisateur s'il est compatible, sinon le premier compatible (jeu PC :
+     * le premier installé).
+     */
+    fun selectedPlayer(system: GameSystem, fileName: String, folder: Boolean = false): Player? {
+        val compatible = compatiblePlayers(system, fileName, folder)
         val preferred = settings.preferredPlayer(system.id)
-        return compatible.find { it.uniqueId == preferred } ?: compatible.firstOrNull()
+        return compatible.find { it.uniqueId == preferred }
+            ?: compatible.takeIf { folder }?.firstOrNull(::isInstalled)
+            ?: compatible.firstOrNull()
     }
 
     /** Paquet Android de l'émulateur (option -n ou -p du modèle). */
@@ -133,6 +139,13 @@ class GameLauncher(private val context: Context, private val settings: Settings)
      * Ouvre l'émulateur externe seul, sans jeu (réglages, installation d'un jeu dans Vita3K…) :
      * son écran d'accueil, ou celui pour TV.
      */
+    /** L'émulateur externe est-il installé et ouvrable seul (écran d'accueil) ? */
+    fun canOpen(player: Player): Boolean {
+        val pkg = packageOf(player)?.takeIf(::isPackageInstalled) ?: return false
+        val pm = context.packageManager
+        return (pm.getLaunchIntentForPackage(pkg) ?: pm.getLeanbackLaunchIntentForPackage(pkg)) != null
+    }
+
     fun openEmulator(activityContext: Context, player: Player) {
         val pkg = packageOf(player) ?: throw LaunchException(I18n.get(R.string.err_unknown_package))
         if (!isPackageInstalled(pkg)) throw MissingEmulatorException(MissingEmulator(pkg, player.name))

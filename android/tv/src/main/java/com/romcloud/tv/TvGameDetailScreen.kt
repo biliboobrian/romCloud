@@ -318,7 +318,7 @@ fun TvGameDetailScreen(
                         }
                     }
                     // Émulateur externe installé : ouvert seul (réglages, installation d'un jeu dans Vita3K…).
-                    if (selected != null && installed && selected.libretroCore == null) {
+                    if (selected != null && state.canOpenEmulator) {
                         SecondaryButton(stringResource(R.string.action_open_emulator, selected.name), Icons.AutoMirrored.Filled.OpenInNew) {
                             viewModel.openEmulator(activity)?.let(onMessage)
                         }
