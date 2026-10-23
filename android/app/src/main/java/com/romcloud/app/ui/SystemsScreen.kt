@@ -71,6 +71,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -314,18 +315,30 @@ private fun SystemCard(system: GameSystem, imageUrl: String?, localSize: Long, o
             Modifier.fillMaxWidth().clickable(onClick = onClick),
             colors = CardDefaults.cardColors(containerColor = system.backgroundColor ?: MaterialTheme.colorScheme.surfaceContainerHigh),
         ) {
-            imageUrl?.let { url ->
-                AsyncImage(
-                    model = url,
-                    contentDescription = system.name,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        // Fond de l'image un peu plus clair que la carte, comme sous Windows.
-                        .background(Color.White.copy(alpha = 0.06f))
-                        .padding(8.dp),
-                )
+            // Toutes les cartes de même taille : zone de l'image toujours là (nom court sans image).
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    // Fond de l'image un peu plus clair que la carte, comme sous Windows.
+                    .background(Color.White.copy(alpha = 0.06f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (imageUrl != null) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = system.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().padding(8.dp),
+                    )
+                } else {
+                    Text(
+                        system.shortname.uppercase(),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             Column(Modifier.padding(16.dp)) {
                 Text(
@@ -340,14 +353,16 @@ private fun SystemCard(system: GameSystem, imageUrl: String?, localSize: Long, o
                     pluralString(R.plurals.games_count, system.gameCount, system.gameCount) + " · " + formatSize(system.totalSize),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                if (localSize > 0) {
-                    Text(
-                        stringResource(R.string.storage_on_device, formatSize(localSize)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                // Ligne toujours réservée (vide sans jeu sur l'appareil) : cartes de même hauteur.
+                Text(
+                    if (localSize > 0) stringResource(R.string.storage_on_device, formatSize(localSize)) else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
             }
         }
     }
