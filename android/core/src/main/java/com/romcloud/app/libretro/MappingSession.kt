@@ -63,6 +63,11 @@ internal class MappingSession(
     private var candidate: Pair<Int, Float>? = null
     /** Après une touche : attendre que tous les axes soient revenus au repos. */
     private var settling = false
+    /** Axes bougés pendant l'appui en cours (une gâchette peut bouger deux axes et envoyer une touche). */
+    private val pressAxes = mutableSetOf<Int>()
+    /** Axes bougés avec un bouton déjà attribué : jamais repris pour une autre étape. */
+    private val claimedAxes = mutableSetOf<Int>()
+    private var axesAtRest = true
 
     /** Traite une touche ; true si l'évènement vient d'une manette (il ne doit pas aller plus loin). */
     fun onKey(event: KeyEvent): Boolean {
@@ -83,14 +88,15 @@ internal class MappingSession(
             KeyEvent.ACTION_UP -> heldKeys -= code
             else -> return true
         }
-        if (ignoredReleases.remove(code)) return true
+        if (ignoredReleases.remove(code)) return endPress()
         val current = step ?: return true
         when {
             code == lastKey -> skip()
             current.stick != null -> Unit
-            code in keys -> message = R.string.pad_already_used
+            code in keys -> reject()
             else -> {
                 keys[code] = current.retroKey
+                claimedAxes += pressAxes
                 lastKey = code
                 settling = true
                 done += current
@@ -98,7 +104,23 @@ internal class MappingSession(
                 next()
             }
         }
+        return endPress()
+    }
+
+    /** Appui fini (touches relâchées, axes au repos) : ses axes sont oubliés. */
+    private fun endPress(): Boolean {
+        if (heldKeys.isEmpty() && axesAtRest) pressAxes.clear()
         return true
+    }
+
+    /**
+     * Bouton déjà attribué : refusé, avec les axes bougés par le même appui (gâchette qui envoie
+     * aussi une touche), jusqu'au retour au repos.
+     */
+    private fun reject() {
+        message = R.string.pad_already_used
+        candidate = null
+        settling = true
     }
 
     /** Traite un mouvement d'axe (gâchettes, sticks) ; true s'il vient d'une manette. */
@@ -115,20 +137,28 @@ internal class MappingSession(
             rest.getOrPut(axis) { event.getAxisValue(axis).roundToInt().coerceIn(-1, 1).toFloat() }
         }
         fun delta(axis: Int) = event.getAxisValue(axis) - (rest[axis] ?: 0f)
+        // Stick gauche demandé : ses axes (X / Y en général) sont permis ; sinon jamais pris.
+        val ignored = if (current.stick?.left == true) HAT_AXES else IGNORED_AXES
+        pressAxes += axesOfDevice.filter { it !in ignored && abs(delta(it)) > 0.6f }
+        axesAtRest = axesOfDevice.all { abs(delta(it)) < 0.3f }
+        handleMotion(current, axesOfDevice, ignored, ::delta)
+        return endPress()
+    }
 
+    private fun handleMotion(current: MappingStep, axesOfDevice: List<Int>, ignored: List<Int>, delta: (Int) -> Float) {
         if (settling) {
-            if (axesOfDevice.all { abs(delta(it)) < 0.3f }) settling = false
-            return true
+            if (axesAtRest) settling = false
+            return
         }
         val pending = candidate
         if (pending == null) {
-            // Stick gauche demandé : ses axes (X / Y en général) sont permis ; sinon jamais pris.
-            val ignored = if (current.stick?.left == true) HAT_AXES else IGNORED_AXES
-            val used = axes.map { it.axis } + listOfNotNull(rightX?.first, rightY?.first, leftX?.first, leftY?.first) + ignored
-            val axis = axesOfDevice.filter { it !in used }.maxByOrNull { abs(delta(it)) } ?: return true
+            val used = axes.map { it.axis } + listOfNotNull(rightX?.first, rightY?.first, leftX?.first, leftY?.first) + claimedAxes + ignored
+            val axis = axesOfDevice.filter { it !in used }.maxByOrNull { abs(delta(it)) } ?: return
             if (abs(delta(axis)) > 0.6f) candidate = axis to sign(delta(axis))
         } else if (abs(delta(pending.first)) < 0.3f) {
             val (axis, direction) = pending
+            // Même appui qu'un bouton déjà attribué (touche de la gâchette, autre axe de la gâchette) : refusé.
+            if (current.stick == null && (heldKeys.any { it in keys } || pressAxes.any { it in claimedAxes })) return reject()
             when (current.stick) {
                 StickAxis.X -> rightX = axis to (direction < 0)
                 StickAxis.Y -> rightY = axis to (direction < 0)
@@ -136,6 +166,7 @@ internal class MappingSession(
                 StickAxis.LEFT_Y -> leftY = axis to (direction < 0)
                 null -> {
                     axes += AxisButton(axis, rest[axis] ?: 0f, direction, current.retroKey)
+                    claimedAxes += pressAxes
                     // Certaines manettes envoient aussi une touche pour la gâchette : même bouton.
                     heldKeys.filterNot { it in keys }.forEach { keys[it] = current.retroKey }
                     ignoredReleases += heldKeys
@@ -146,7 +177,6 @@ internal class MappingSession(
             assigned += current to axisName(axis, direction.takeIf { current.stick == null })
             next()
         }
-        return true
     }
 
     fun skip() = next()

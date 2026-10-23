@@ -12,7 +12,7 @@
 #include <string>
 
 struct PadServiceArgs {
-  std::string options, keysFile, buttons, lang = "fr";
+  std::string options, keysFile, buttons, lang = "fr", padStyle;
 };
 
 /** Tourne jusqu'à la fin de l'entrée standard (application fermée) ou la commande « quit ». */

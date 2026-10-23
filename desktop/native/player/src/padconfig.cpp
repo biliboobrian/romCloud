@@ -129,6 +129,16 @@ static const PadSpot* spotOf(const std::vector<PadSpot>& spots, const PadStep& s
   return step.id < sizeof(names) / sizeof(names[0]) ? find(names[step.id]) : nullptr;
 }
 
+std::vector<PadSpotPos> padStepSpots(const std::string& style, const std::vector<PadStep>& steps) {
+  std::vector<PadSpotPos> out(steps.size());
+  auto spots = kPadSpots.find(consolePadImageName(style));
+  if (spots == kPadSpots.end()) return out;
+  for (size_t i = 0; i < steps.size(); i++) {
+    if (const PadSpot* s = spotOf(spots->second, steps[i])) out[i] = {s->x, s->y, s->r};
+  }
+  return out;
+}
+
 void drawPadImage(Canvas& c, SDL_Surface* image, int x, int y, int w, int h) {
   if (!image) return;
   c.image(x, y, w, h, static_cast<const uint8_t*>(image->pixels), image->w, image->h, image->pitch);
@@ -407,6 +417,7 @@ bool PadConfig::usesAxis(int axis) const {
   const PadStep* current = step_ < steps_.size() ? &steps_[step_] : nullptr;
   const bool leftStep = current && (current->stick == 'X' || current->stick == 'Y');
   if (!leftStep && leftStick_.count(axis)) return true;
+  if (claimedAxes_.count(axis)) return true;
   for (size_t i = 0; i < assigned_.size(); i++) {
     if (axisOf(assigned_[i]) != axis) continue;
     // Direction opposée du même axe du stick (C◀ après C▶) : même axe permis.
@@ -422,21 +433,33 @@ void PadConfig::onButton(int button, bool down) {
     return;
   }
   held_.erase(button);
-  if (ignoredReleases_.erase(button)) return;
-  if (step_ >= steps_.size()) return;
-  std::string source = "b" + std::to_string(button);
-  if (source == lastButton_) {
-    next();
-  } else if (steps_[step_].stick && !steps_[step_].half) {
-    // Stick : seul un axe convient.
-  } else if (std::find(assigned_.begin(), assigned_.end(), source) != assigned_.end()) {
-    message_ = tr_("pad_already_used");
-  } else {
-    assign(source);
-    lastButton_ = source;
-    settling_ = true;
-    next();
+  if (!ignoredReleases_.erase(button) && step_ < steps_.size()) {
+    std::string source = "b" + std::to_string(button);
+    if (source == lastButton_) {
+      next();
+    } else if (steps_[step_].stick && !steps_[step_].half) {
+      // Stick : seul un axe convient.
+    } else if (std::find(assigned_.begin(), assigned_.end(), source) != assigned_.end()) {
+      reject();
+    } else {
+      assign(source);
+      claimedAxes_.insert(pressAxes_.begin(), pressAxes_.end());
+      lastButton_ = source;
+      settling_ = true;
+      next();
+    }
   }
+  endPress();
+}
+
+void PadConfig::reject() {
+  message_ = tr_("pad_already_used");
+  candidateAxis_ = -1;
+  settling_ = true;
+}
+
+void PadConfig::endPress() {
+  if (held_.empty() && axesAtRest_) pressAxes_.clear();
 }
 
 void PadConfig::onHat(int hat, Uint8 value) {
@@ -464,10 +487,21 @@ void PadConfig::onHat(int hat, Uint8 value) {
 void PadConfig::onAxes() {
   if (step_ >= steps_.size()) return;
   const int axes = SDL_GetNumJoystickAxes(joystick_);
+  const bool leftStep = steps_[step_].stick == 'X' || steps_[step_].stick == 'Y';
+  axesAtRest_ = true;
+  for (int i = 0; i < axes; i++) {
+    const float d = std::fabs(delta(i));
+    if (d > 0.6f && (leftStep || !leftStick_.count(i))) pressAxes_.insert(i);
+    axesAtRest_ = axesAtRest_ && d < 0.3f;
+  }
+  onAxesMoved();
+  endPress();
+}
+
+void PadConfig::onAxesMoved() {
+  const int axes = SDL_GetNumJoystickAxes(joystick_);
   if (settling_) {
-    bool still = true;
-    for (int i = 0; i < axes; i++) still = still && std::fabs(delta(i)) < 0.3f;
-    if (still) settling_ = false;
+    if (axesAtRest_) settling_ = false;
     return;
   }
   if (candidateAxis_ < 0) {
@@ -482,6 +516,14 @@ void PadConfig::onAxes() {
     return;
   }
   if (std::fabs(delta(candidateAxis_)) >= 0.3f) return;
+  // Même appui qu'un bouton déjà attribué (bouton de la gâchette, autre axe de la gâchette) : refusé.
+  if (!steps_[step_].stick) {
+    bool taken = std::any_of(pressAxes_.begin(), pressAxes_.end(), [&](int a) { return claimedAxes_.count(a) > 0; });
+    for (int b : held_) {
+      taken = taken || std::find(assigned_.begin(), assigned_.end(), "b" + std::to_string(b)) != assigned_.end();
+    }
+    if (taken) return reject();
+  }
   // Axe revenu au repos : attribué. Stick (poussé vers la droite ou le bas) : axe entier, inversé
   // s'il diminue ; bouton ou gâchette : moitié de l'axe, ou axe entier s'il repose à une extrémité.
   const int axis = candidateAxis_;
@@ -499,6 +541,7 @@ void PadConfig::onAxes() {
     return;
   }
   assign(source);
+  if (!steps_[step_].stick) claimedAxes_.insert(pressAxes_.begin(), pressAxes_.end());
   // Certaines manettes envoient aussi un bouton pour la gâchette : son relâchement ne compte pas.
   ignoredReleases_.insert(held_.begin(), held_.end());
   lastButton_.clear();

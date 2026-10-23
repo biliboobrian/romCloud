@@ -22,7 +22,9 @@
 //   order 2,0       joueurs : la manette du joueur 3 devient le joueur 1, celle du joueur 1 le joueur 2…
 //   quit
 // Sorties (JSON, une par ligne) :
-//   {"type":"steps","steps":[libellés]}                       boutons de la console, dans l'ordre
+//   {"type":"steps","steps":[libellés],"art":"snes","spots":[[x,y,r]|null]}
+//                       boutons de la console, dans l'ordre ; illustration de sa manette (--pad-style) et
+//                       repère de chaque étape dessus (pixels de l'image)
 //   {"type":"pads","pads":[{port,name,kind,elements}|{port,saved:true}|{port}]}
 //                       manette de chaque joueur ; elements : élément de chaque étape (padStepElements)
 //   {"type":"press","port":0,"button":"a"}                  bouton appuyé (choix des joueurs)
@@ -98,7 +100,15 @@ int runPadService(const PadServiceArgs& args) {
   const std::vector<PadStep> steps = PadConfig::stepsFor(args.buttons, tr);
   std::vector<std::string> labels;
   for (const auto& step : steps) labels.push_back(step.label);
-  emit("{\"type\":\"steps\",\"steps\":" + jsonList(labels) + "}");
+  // Repère de chaque étape sur l'illustration de la manette de la console (x, y, rayon ; null : aucun).
+  std::string spots = "[";
+  const std::vector<PadSpotPos> positions = padStepSpots(args.padStyle, steps);
+  for (size_t i = 0; i < positions.size(); i++) {
+    const PadSpotPos& p = positions[i];
+    spots += (i ? "," : "") + (p.r ? "[" + std::to_string(p.x) + "," + std::to_string(p.y) + "," + std::to_string(p.r) + "]" : std::string("null"));
+  }
+  spots += "]";
+  emit("{\"type\":\"steps\",\"steps\":" + jsonList(labels) + ",\"art\":" + json(consolePadImageName(args.padStyle)) + ",\"spots\":" + spots + "}");
 
   std::string lastPads;
   auto emitPads = [&] {

@@ -2745,6 +2745,23 @@
     paintPadModal();
   }
 
+  /**
+   * Illustration de la manette de la console pendant sa configuration (comme dans le menu du jeu) :
+   * repère de la couleur de l'application sur le bouton demandé, vert sur ceux déjà attribués,
+   * discret sur les autres ; vide sans illustration ou sans repère.
+   */
+  function padArt(p, w) {
+    if (!p.art || !p.spots?.some(Boolean)) return '';
+    const circles = p.spots.map((spot, i) => {
+      if (!spot) return '';
+      const [x, y, r] = spot;
+      if (w.device && i === w.step) return `<circle class="current" cx="${x}" cy="${y}" r="${r + 1.5}"/><circle class="ring" cx="${x}" cy="${y}" r="${r + 3}"/>`;
+      return `<circle class="${w.assigned[i] ? 'done' : 'idle'}" cx="${x}" cy="${y}" r="${r + 1.5}"/>`;
+    }).join('');
+    // Partie de l'image où est la manette (sans le fond autour), comme le moteur.
+    return `<svg class="pad-art" viewBox="10 55 271 190"><image href="pads/${esc(p.art)}.webp" width="291" height="306"/>${circles}</svg>`;
+  }
+
   function paintPadModal() {
     const p = S.pads;
     const order = $('#padOrderBody');
@@ -2763,8 +2780,9 @@
     if (!wizard || !w) return;
     const image = consolePadImage(p.system);
     const current = p.steps[w.step];
-    wizard.innerHTML = `<div class="pad-wizard">
-        ${image ? `<div class="pad-tile big"><img src="${image}" alt=""></div>` : ''}
+    const art = padArt(p, w);
+    wizard.innerHTML = `<div class="pad-wizard${art ? ' with-art' : ''}">
+        ${art || (image ? `<div class="pad-tile big"><img src="${image}" alt=""></div>` : '')}
         <div class="grow">
           <p class="pad-prompt">${esc(w.device ? t('pads.press', { button: current || '' }) : t('pads.pressAny'))}</p>
           ${w.device ? `<p class="muted small">${esc(t('pads.configuring', { name: w.device }))}</p>` : ''}
@@ -2937,7 +2955,7 @@
     const p = S.pads;
     if (!p.key) return;
     if (e.type === 'press') return onPadPress(e);
-    if (e.type === 'steps') p.steps = e.steps;
+    if (e.type === 'steps') Object.assign(p, { steps: e.steps, art: e.art, spots: e.spots || [] });
     else if (e.type === 'pads') p.pads = e.pads;
     else if (e.type === 'wizard') p.wizard = e;
     else if (e.type === 'wizardDone') {

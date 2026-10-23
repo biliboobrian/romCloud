@@ -99,6 +99,15 @@ body.systems-screen { --bg: #000; background: linear-gradient(135deg, #2e1a6b 0%
 .pad-tile.big { width: 200px; flex-shrink: 0; }
 .pad-layout, .pad-wizard { display: flex; gap: 18px; align-items: flex-start; }
 .pad-layout .grow, .pad-wizard .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+/* Configuration : manette de la console en grand, bouton demandé repéré. */
+.pad-wizard.with-art { flex-direction: column; align-items: stretch; }
+.pad-art { display: block; width: 100%; max-width: 440px; margin: 0 auto; }
+.pad-art image { image-rendering: pixelated; }
+.pad-art circle { fill: none; }
+.pad-art circle.current { fill: color-mix(in srgb, var(--accent) 40%, transparent); }
+.pad-art circle.ring { stroke: var(--accent); stroke-width: 2; }
+.pad-art circle.done { stroke: #46d26e; stroke-width: 1.6; }
+.pad-art circle.idle { stroke: rgba(255, 255, 255, 0.45); stroke-width: 0.7; }
 .pad-binds { border-collapse: collapse; width: 100%; font-size: 13px; }
 .pad-binds th { text-align: left; color: var(--muted); font-weight: 600; padding: 0 8px 6px 0; }
 .pad-binds td { padding: 4px 8px 4px 0; border-top: 1px solid var(--border); }

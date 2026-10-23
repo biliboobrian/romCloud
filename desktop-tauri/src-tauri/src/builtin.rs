@@ -238,6 +238,8 @@ pub fn pad_service_args(system: &Value, core: &str) -> Vec<String> {
         keys_file().to_string_lossy().into_owned(),
         "--buttons".into(),
         keyboard::console_buttons(system_key, core, &language),
+        "--pad-style".into(),
+        keyboard::console_pad(system_key, core).to_string(),
         "--lang".into(),
         language,
     ]
