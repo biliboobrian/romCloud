@@ -108,10 +108,12 @@ fun OfflineBadge(modifier: Modifier = Modifier, size: Dp = 32.dp) {
 @Composable
 fun SystemBadge(system: GameSystem?, imageUrl: String?, modifier: Modifier = Modifier, height: Dp = 22.dp) {
     if (system == null) return
+    // Fond : couleur du système (réglages du serveur), sinon noir translucide.
+    val background = system.backgroundColor ?: Color.Black.copy(alpha = 0.72f)
     Box(
         modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(Color.Black.copy(alpha = 0.72f))
+            .background(background)
             .padding(horizontal = 6.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -125,7 +127,7 @@ fun SystemBadge(system: GameSystem?, imageUrl: String?, modifier: Modifier = Mod
         } else {
             Text(
                 system.shortname.uppercase(),
-                color = Color.White,
+                color = if (system.backgroundColor != null) contentColorOn(background) else Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = (height.value * 0.55f).sp,
                 maxLines = 1,

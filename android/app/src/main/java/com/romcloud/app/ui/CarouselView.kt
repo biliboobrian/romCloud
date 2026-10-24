@@ -421,6 +421,8 @@ private fun OverlayCircle(modifier: Modifier = Modifier, size: Dp = 36.dp, conte
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        // Couleur translucide inconnue de contentColorFor : icônes (« i ») dans la couleur du texte.
+        contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = modifier.padding(6.dp).size(size),
     ) {
         Box(contentAlignment = Alignment.Center) { content() }

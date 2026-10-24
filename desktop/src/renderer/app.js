@@ -885,7 +885,7 @@
         ${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : esc(game.title)}
         <div class="overlay status" data-status="${game.id}">${statusHtml(st)}</div>
         <button class="overlay info-btn" data-info="${game.id}" title="${esc(t('action.details'))}">${icon('info', 18)}</button>
-        ${badge && system ? `<div class="overlay badge">${logo ? `<img src="${esc(logo)}" alt="${esc(system.name)}">` : esc(system.shortname.toUpperCase())}</div>` : ''}
+        ${badge && system ? `<div class="overlay badge"${/^#[0-9a-f]{6}$/i.test(system.color || '') ? ` style="background:${system.color}"` : ''}>${logo ? `<img src="${esc(logo)}" alt="${esc(system.name)}">` : esc(system.shortname.toUpperCase())}</div>` : ''}
         ${cardBarsHtml(game.id, st)}
       </div>
       <div class="title">${esc(game.title)}${multiBadge(game)}</div>
@@ -2293,7 +2293,7 @@
 
   // Notes de chaque source combinées par le serveur (« LaunchBox ★★★★☆ (120 votes) »).
   function ratingsText(ratings) {
-    const name = { screenscraper: 'ScreenScraper', launchbox: 'LaunchBox', press: t('info.press') };
+    const name = { screenscraper: 'ScreenScraper', launchbox: 'LaunchBox', steam: 'Steam', press: t('info.press') };
     return (ratings || []).filter((r) => r.rating != null).map((r) => [
       name[r.source] || r.source,
       starsText(r.rating),
