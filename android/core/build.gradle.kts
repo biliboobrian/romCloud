@@ -43,6 +43,7 @@ dependencies {
     api(libs.kotlinx.serialization.json)
     api(libs.okhttp)
     api(libs.coil.compose)
+    implementation(libs.xz)
     implementation(project(":libretrodroid"))
     testImplementation(libs.junit)
 }

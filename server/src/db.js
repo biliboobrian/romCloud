@@ -232,6 +232,8 @@ if (!gameColumns.includes('extra_exes_chosen')) db.exec('ALTER TABLE games ADD C
 // clair) ; packed_size, taille à télécharger (archives et fichiers restés en clair) ; folder_files,
 // nombre de fichiers du jeu. Mis à jour au scan.
 if (!gameColumns.includes('folder_files')) db.exec('ALTER TABLE games ADD COLUMN folder_files INTEGER');
+// Format des archives du jeu PC compressé : xz, zip (compressions d'avant le xz) ou mixed.
+if (!gameColumns.includes('pack_format')) db.exec('ALTER TABLE games ADD COLUMN pack_format TEXT');
 if (!gameColumns.includes('packed_files')) db.exec('ALTER TABLE games ADD COLUMN packed_files INTEGER NOT NULL DEFAULT 0');
 if (!gameColumns.includes('packed_size')) db.exec('ALTER TABLE games ADD COLUMN packed_size INTEGER');
 // Captures d'écran 2 à 4 (« screenshot » : la première).

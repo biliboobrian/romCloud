@@ -176,10 +176,10 @@ fun GameDetailScreen(
             // ---- Action principale : télécharger / progression / jouer ----
             when (val d = downloads[game.id]) {
                 is DownloadState.Running -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    LinearProgressIndicator(progress = { d.progress }, modifier = Modifier.fillMaxWidth())
+                    DownloadBars(d, Modifier.fillMaxWidth())
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            stringResource(R.string.downloading_progress, formatSize(d.bytes), formatSize(d.total)),
+                            downloadProgressText(d),
                             style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
                         )
                         TextButton(onClick = viewModel::cancel) { Text(stringResource(R.string.action_cancel)) }

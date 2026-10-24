@@ -453,7 +453,8 @@ private fun GameRow(
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (status is LocalStatus.Downloading) {
                 Text(
-                    stringResource(R.string.bytes_progress, formatSize(status.state.bytes), formatSize(status.state.total)),
+                    if (status.state.unpackTotal > 0) downloadProgressText(status.state)
+                    else stringResource(R.string.bytes_progress, formatSize(status.state.bytes), formatSize(status.state.total)),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
                 )
             }

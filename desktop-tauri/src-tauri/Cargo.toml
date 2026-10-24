@@ -24,6 +24,8 @@ native-tls = "0.2"
 tokio-native-tls = "0.3"
 futures-util = "0.3"
 zip = { version = "9", default-features = false, features = ["deflate"] }
+# Jeux PC compressés en xz par le serveur : décompression (blocs en parallèle).
+lzma-rust2 = { version = "0.22", default-features = false, features = ["std", "xz", "optimization"] }
 hex = "0.4"
 base64 = "0.23"
 # Sauvegardes et Ã©tats compressÃ©s avant l'envoi (gzip), dÃ©compressÃ©s Ã  la rÃ©ception.
@@ -38,6 +40,10 @@ filetime = "0.2"
 urlencoding = "2"
 # Archives .7z de RPCS3 (PlayStation 3 du moteur intÃ©grÃ©, voir managed.rs).
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["util"] }
+
+[dev-dependencies]
+# Tests : archives xz écrites comme celles du serveur.
+lzma-rust2 = { version = "0.22", default-features = false, features = ["std", "xz", "encoder"] }
 
 [profile.release]
 opt-level = "s"

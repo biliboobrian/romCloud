@@ -1,5 +1,7 @@
 package com.romcloud.tv
 
+import com.romcloud.app.ui.downloadProgressText
+import com.romcloud.app.ui.DownloadBars
 import com.romcloud.app.data.MediaUrl
 import com.romcloud.app.data.MediaSize
 import androidx.compose.ui.window.Dialog
@@ -178,8 +180,8 @@ fun TvGameDetailScreen(
                 // État local
                 when {
                     download is DownloadState.Running -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        LinearProgressIndicator(progress = { download.progress }, modifier = Modifier.fillMaxWidth(0.7f))
-                        Text(stringResource(R.string.downloading_progress, formatSize(download.bytes), formatSize(download.total)))
+                        DownloadBars(download, Modifier.fillMaxWidth(0.7f), height = 6.dp)
+                        Text(downloadProgressText(download))
                     }
                     download is DownloadState.Failed ->
                         Text(stringResource(R.string.download_failed, download.message), color = MaterialTheme.colorScheme.error)

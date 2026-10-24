@@ -14,9 +14,8 @@ import { diskUsage } from './disk-usage.js';
 import { clearDownloads, downloadStats, listDownloads, trackDownload } from './download-logs.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { profileStats } from './profile-stats.js';
-import { fileInFolder, readPackManifest } from './folder-games.js';
-import { queueFolderPack } from './folder-pack.js';
-import { readZipEntries, zipEntryStream } from './zip.js';
+import { fileInFolder, packExtension, readPackManifest } from './folder-games.js';
+import { packedStream, queueFolderPack } from './folder-pack.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
 import { setGroup } from './groups.js';
@@ -470,23 +469,25 @@ api.get('/games/:id/file', (req, res, next) => {
     const rel = String(req.query.path).replace(/\\/g, '/');
     let file = fileInFolder(dir, rel);
     let name = path.posix.basename(rel);
-    // Jeu compressé (folder-pack.js) : archive « X.zip » du fichier, envoyée telle quelle avec
-    // ?packed=1 (applications récentes, qui la décompressent) ; sinon décompressée à la volée
-    // (anciennes applications, sans reprise du téléchargement).
+    // Jeu compressé (folder-pack.js) : archive « X.xz » (ou « X.zip ») du fichier, envoyée telle
+    // quelle avec ?packed=1 (applications récentes, qui la décompressent ; reprise possible) ; sinon
+    // décompressée à la volée (anciennes applications, sans reprise du téléchargement).
     const packed = readPackManifest(dir)[rel];
-    if (packed && !fs.existsSync(file) && fs.existsSync(`${file}.zip`)) {
-      file = `${file}.zip`;
+    const archive = packed && `${file}${packExtension(packed.format)}`;
+    if (packed && !fs.existsSync(file) && fs.existsSync(archive)) {
+      file = archive;
+      // Applications d'avant le xz : elles ne demandent ?packed=1 que pour les archives zip.
       if (req.query.packed !== '1') {
-        const entry = readZipEntries(file)[0];
-        if (!entry) throw new HttpError(404, 'errors.fileNotFound');
         if (packed.size >= FOLDER_LOG_MIN_BYTES) {
           logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: `${row.file_name}/${rel}`, fileSize: packed.size });
         }
+        const stream = packedStream(archive, packed.format === 'xz' ? 'xz' : 'zip');
         res.set({ 'Content-Type': 'application/octet-stream', 'Content-Length': String(packed.size), 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` });
-        zipEntryStream(file, entry).on('error', () => res.destroy()).pipe(res);
+        res.on('close', () => stream.destroy());
+        stream.on('error', () => res.destroy()).pipe(res);
         return;
       }
-      name += '.zip';
+      name += packExtension(packed.format);
     }
     const size = fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0;
     // Journal : seulement les gros fichiers (un jeu en compte parfois des milliers).
@@ -506,8 +507,8 @@ api.get('/games/:id/file', (req, res, next) => {
 // Jeu en dossier (PC) : ses fichiers ({ path, size }), à télécharger un par un, et ses exécutables.
 api.get('/games/:id/files', (req, res) => res.json(gameFolderFiles(requireGameRow(req.params.id))));
 
-// Jeu PC : compression fichier par fichier ({ mode: "zip" }) ou retour en clair ({ mode: "flat" }),
-// en tâche de fond (voir /jobs).
+// Jeu PC : compression fichier par fichier en xz ({ mode: "xz" ; « zip » accepté, même effet) ou
+// retour en clair ({ mode: "flat" }), en tâche de fond (voir /jobs).
 api.post('/games/:id/pack', (req, res) => {
   const job = queueFolderPack(req.params.id, req.body?.mode);
   res.status(202).json({ job });

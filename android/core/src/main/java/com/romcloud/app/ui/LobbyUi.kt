@@ -419,9 +419,10 @@ fun LobbyContent(app: RomCloudApp, onChooseGame: () -> Unit, onMessage: (String)
                 val running = game?.let { downloads[it.id] } as? DownloadState.Running
                 if (running != null) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        LinearProgressIndicator(progress = { running.progress }, drawStopIndicator = {}, modifier = Modifier.fillMaxWidth())
+                        DownloadBars(running, Modifier.fillMaxWidth())
                         Text(
-                            stringResource(R.string.tv_downloading_percent, (running.progress * 100).toInt()),
+                            if (running.unpackTotal > 0) downloadProgressText(running)
+                            else stringResource(R.string.tv_downloading_percent, (running.progress * 100).toInt()),
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }

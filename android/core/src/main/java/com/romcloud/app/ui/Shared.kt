@@ -11,6 +11,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -146,6 +149,43 @@ fun formatSize(bytes: Long): String {
         i++
     }
     return if (i == 0) "$bytes ${units[0]}" else String.format(Locale.getDefault(), "%.1f %s", value, units[i])
+}
+
+/**
+ * Barre du téléchargement et, collée dessous, celle de la décompression (jeu PC compressé : archives
+ * décompressées une à une pendant le téléchargement ; jeu jouable une fois cette barre pleine).
+ */
+@Composable
+fun DownloadBars(state: DownloadState.Running, modifier: Modifier = Modifier, height: Dp = 4.dp) {
+    Column(modifier) {
+        LinearProgressIndicator(
+            progress = { state.progress },
+            modifier = Modifier.fillMaxWidth().height(height),
+            drawStopIndicator = {},
+            gapSize = 0.dp,
+        )
+        if (state.unpackTotal > 0) {
+            val color = MaterialTheme.colorScheme.tertiary
+            LinearProgressIndicator(
+                progress = { state.unpackProgress },
+                modifier = Modifier.fillMaxWidth().height(height * 0.75f),
+                color = color,
+                trackColor = color.copy(alpha = 0.25f),
+                drawStopIndicator = {},
+                gapSize = 0.dp,
+            )
+        }
+    }
+}
+
+/** Progression écrite sous les barres : octets reçus, puis décompressés (jeu PC compressé). */
+@Composable
+fun downloadProgressText(state: DownloadState.Running): String = when {
+    state.unpacking -> stringResource(R.string.unpacking_playable) + " " +
+        stringResource(R.string.unpacking_progress, formatSize(state.unpackBytes), formatSize(state.unpackTotal))
+    state.unpackTotal > 0 -> stringResource(R.string.downloading_progress, formatSize(state.bytes), formatSize(state.total)) + " · " +
+        stringResource(R.string.unpacking_progress, formatSize(state.unpackBytes), formatSize(state.unpackTotal))
+    else -> stringResource(R.string.downloading_progress, formatSize(state.bytes), formatSize(state.total))
 }
 
 /** Taille du jeu ; jeu PC compressé : taille installée et taille à télécharger (« 12 Go (zip : 8 Go) »). */

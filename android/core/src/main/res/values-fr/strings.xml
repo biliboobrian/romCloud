@@ -101,6 +101,9 @@
     <string name="downloading_text">« %1$s » est en cours de téléchargement. Voulez-vous l’annuler ?</string>
     <string name="cancel_download">Annuler le téléchargement</string>
     <string name="downloading_progress">Téléchargement… %1$s / %2$s</string>
+    <string name="unpacking_progress">Décompression %1$s / %2$s</string>
+    <string name="unpacking_playable">Décompression des derniers fichiers… le jeu sera jouable à la fin</string>
+    <string name="notif_unpacking">%1$s — décompression</string>
     <string name="download_failed">Échec du téléchargement : %1$s</string>
     <string name="download_with_size">Télécharger (%1$s)</string>
     <string name="downloaded_snackbar">« %1$s » est téléchargé</string>
@@ -484,11 +487,11 @@
     <string name="info_analog">Stick analogique</string>
     <string name="info_file">Fichier</string>
     <string name="info_size">Taille</string>
-    <string name="info_size_zip">Taille à télécharger (zip)</string>
+    <string name="info_size_zip">Taille à télécharger (compressé)</string>
     <string name="info_compression">Compression</string>
-    <string name="info_compression_zip">Zip (une archive par fichier, décompressée à la réception)</string>
-    <string name="info_compression_partial">Zip, en partie</string>
-    <string name="size_flat_zip">%1$s (zip : %2$s)</string>
+    <string name="info_compression_zip">%1$s (une archive par fichier, décompressée à la réception)</string>
+    <string name="info_compression_partial">%1$s, en partie</string>
+    <string name="size_flat_zip">%1$s (compressé : %2$s)</string>
     <string name="info_parts">Autres fichiers</string>
     <string name="storage_on_device">Sur l’appareil : %1$s</string>
     <string name="storage_free">%1$s libres</string>

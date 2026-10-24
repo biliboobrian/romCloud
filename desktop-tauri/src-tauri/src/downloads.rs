@@ -91,8 +91,16 @@ pub fn start(system: Value, game: Value, options: Value) {
             }
             if include_rom && library::is_folder(&game) {
                 let before = done;
-                fetch_folder(&server, &system, &game, &cancelled, |bytes, folder_total| {
-                    notify(&game_id, Some(json!({ "status": "running", "bytes": before + bytes, "total": before + folder_total, "title": title })), None)
+                fetch_folder(&server, &system, &game, &cancelled, |p| {
+                    let state = json!({
+                        "status": "running",
+                        "bytes": before + p.bytes,
+                        "total": before + p.total,
+                        "unpackBytes": p.unpack_bytes,
+                        "unpackTotal": p.unpack_total,
+                        "title": title,
+                    });
+                    notify(&game_id, Some(state), None)
                 })
                 .await?;
                 std::fs::write(library::folder_marker(&system, &game), n(&game, "size").to_string())?;
@@ -165,72 +173,104 @@ pub fn dismiss_error(game_id: &Value) {
     }
 }
 
-/// Fichiers d'un jeu PC téléchargés en même temps.
-const FOLDER_PARALLEL: usize = 3;
-/// Archives reçues en attente de décompression au plus (au-delà, les téléchargements attendent).
-const UNZIP_QUEUE: usize = 1;
+/// Marge gardée libre sur le disque pendant l'installation d'un jeu PC.
+const SPACE_MARGIN: u64 = 64 * 1024 * 1024;
 
-/// Fichier d'un jeu PC (`GET /api/games/{id}/files`) ; compressé par le serveur : `zip_size`, taille de son archive.
+/**
+ * Fichier d'un jeu PC (`GET /api/games/{id}/files`) ; compressé par le serveur : `format` de son
+ * archive (« xz », ou « zip » pour les compressions d'avant le xz) et sa taille `archive_size`.
+ */
 #[derive(Clone)]
 struct FolderFile {
     path: String,
     size: u64,
-    zip_size: Option<u64>,
+    archive_size: Option<u64>,
+    format: &'static str,
 }
 
 impl FolderFile {
     fn from_json(v: &Value) -> Self {
-        FolderFile { path: s(v, "path").to_string(), size: n(v, "size"), zip_size: v.get("zipSize").and_then(Value::as_u64) }
+        let archive_size = v.get("packedSize").or_else(|| v.get("zipSize")).and_then(Value::as_u64);
+        let format = if v.get("format").and_then(Value::as_str) == Some("xz") { "xz" } else { "zip" };
+        FolderFile { path: s(v, "path").to_string(), size: n(v, "size"), archive_size, format }
+    }
+
+    fn packed(&self) -> bool {
+        self.archive_size.is_some()
     }
 
     /// Octets à télécharger.
     fn download_size(&self) -> u64 {
-        self.zip_size.unwrap_or(self.size)
+        self.archive_size.unwrap_or(self.size)
     }
 }
 
 /**
- * Place nécessaire pour installer `todo` (fichiers absents du PC) : leur taille décompressée, plus
- * les archives présentes en même temps sur le disque (en téléchargement, en attente et en
- * décompression), comptées parmi les plus grosses.
+ * Place nécessaire pour installer `todo` (fichiers absents du PC) : leur taille décompressée et la
+ * plus grosse archive (téléchargée pendant qu'une autre se décompresse ; si la décompression prend
+ * du retard, les téléchargements attendent la place libérée, voir `must_wait`).
  */
 fn needed_bytes(todo: &[FolderFile]) -> u64 {
-    let mut zips: Vec<u64> = todo.iter().filter_map(|f| f.zip_size).collect();
-    zips.sort_unstable_by(|a, b| b.cmp(a));
-    todo.iter().map(|f| f.size).sum::<u64>() + zips.iter().take(FOLDER_PARALLEL + UNZIP_QUEUE + 1).sum::<u64>()
-}
-
-/// Archive d'un fichier, à côté de lui (« X.zip »).
-fn zip_path(target: &Path) -> PathBuf {
-    target.with_file_name(format!("{}.zip", target.file_name().unwrap_or_default().to_string_lossy()))
+    todo.iter().map(|f| f.size).sum::<u64>() + todo.iter().filter_map(|f| f.archive_size).max().unwrap_or(0) + SPACE_MARGIN
 }
 
 /**
- * Décompresse `zip` (archive d'un seul fichier) vers `target` (via un fichier temporaire), vérifié par
- * sa taille (et son CRC32, par la bibliothèque zip) ; l'archive est ensuite supprimée, abîmée aussi
- * (téléchargée de nouveau au prochain essai).
+ * Téléchargement de `next` à retarder : la place libre ne suffit pas pour lui (son archive, ou le
+ * fichier lui-même) et pour les fichiers pas encore écrits (`pending` : en attente de décompression,
+ * en décompression, à télécharger).
  */
-fn unzip_file(zip: &Path, target: &Path, size: u64, cancelled: &AtomicBool) -> Result<()> {
-    let temp = target.with_file_name(format!("{}.unzip", target.file_name().unwrap_or_default().to_string_lossy()));
+fn must_wait(next: &FolderFile, pending: u64, free: u64) -> bool {
+    free < pending + next.archive_size.unwrap_or(0) + SPACE_MARGIN
+}
+
+/// Archive d'un fichier, à côté de lui (« X.xz » ou « X.zip »).
+fn archive_path(target: &Path, format: &str) -> PathBuf {
+    target.with_file_name(format!("{}.{format}", target.file_name().unwrap_or_default().to_string_lossy()))
+}
+
+/**
+ * Décompresse `archive` (« xz » : blocs décompressés en parallèle ; « zip » : un seul fichier) vers
+ * `target` (via un fichier temporaire), vérifié par sa taille (et l'empreinte de l'archive : CRC64
+ * du xz, CRC32 du zip) ; l'archive est ensuite supprimée, abîmée aussi (téléchargée de nouveau au
+ * prochain essai). `on_bytes` reçoit les octets décompressés depuis le début.
+ */
+fn unpack_file(archive: &Path, format: &str, target: &Path, size: u64, cancelled: &AtomicBool, on_bytes: impl Fn(u64)) -> Result<()> {
+    let temp = target.with_file_name(format!("{}.unpack", target.file_name().unwrap_or_default().to_string_lossy()));
     let result = (|| -> Result<()> {
-        let mut archive = zip::ZipArchive::new(std::fs::File::open(zip)?).map_err(|e| AppError::msg(format!("zip : {e}")))?;
-        let mut entry = archive.by_index(0).map_err(|e| AppError::msg(format!("zip : {e}")))?;
-        let mut out = std::io::BufWriter::with_capacity(1 << 18, std::fs::File::create(&temp)?);
-        let mut buf = vec![0u8; 1 << 18];
+        let file = std::fs::File::open(archive)?;
+        let mut out = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(&temp)?);
+        let mut buf = vec![0u8; 1 << 20];
         let mut written = 0u64;
-        loop {
-            if cancelled.load(Ordering::SeqCst) {
-                return Err(AppError::msg("cancelled"));
+        let mut copy = |reader: &mut dyn Read| -> Result<()> {
+            let mut last = Instant::now();
+            loop {
+                if cancelled.load(Ordering::SeqCst) {
+                    return Err(AppError::msg("cancelled"));
+                }
+                let read = reader.read(&mut buf)?;
+                if read == 0 {
+                    return Ok(());
+                }
+                out.write_all(&buf[..read])?;
+                written += read as u64;
+                if last.elapsed() > Duration::from_millis(200) {
+                    last = Instant::now();
+                    on_bytes(written);
+                }
             }
-            let read = entry.read(&mut buf)?;
-            if read == 0 {
-                break;
-            }
-            out.write_all(&buf[..read])?;
-            written += read as u64;
+        };
+        if format == "xz" {
+            let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).min(8) as u32;
+            let mut reader = lzma_rust2::XzReaderMt::new(file, false, workers).map_err(|e| AppError::msg(format!("xz : {e}")))?;
+            copy(&mut reader)?;
+        } else {
+            let mut zip = zip::ZipArchive::new(file).map_err(|e| AppError::msg(format!("zip : {e}")))?;
+            let mut entry = zip.by_index(0).map_err(|e| AppError::msg(format!("zip : {e}")))?;
+            copy(&mut entry)?;
         }
         out.flush()?;
         drop(out);
+        on_bytes(written);
         if written != size {
             return Err(AppError::new("errors.wrongSize", json!({ "got": written, "expected": size })));
         }
@@ -240,18 +280,28 @@ fn unzip_file(zip: &Path, target: &Path, size: u64, cancelled: &AtomicBool) -> R
     })();
     let _ = std::fs::remove_file(&temp);
     if result.is_ok() || !cancelled.load(Ordering::SeqCst) {
-        let _ = std::fs::remove_file(zip);
+        let _ = std::fs::remove_file(archive);
     }
     result
 }
 
+/// Progression d'un jeu PC : octets reçus, total à télécharger, octets décompressés, total à décompresser.
+#[derive(Clone, Copy, Default)]
+struct FolderProgress {
+    bytes: u64,
+    total: u64,
+    unpack_bytes: u64,
+    unpack_total: u64,
+}
+
 /**
- * Jeu PC (jeu en dossier) : ses fichiers, `FOLDER_PARALLEL` à la fois et les plus lourds d'abord,
- * ceux déjà complets gardés (reprise) ; jeu compressé par le serveur : archives décompressées une à
- * une dès leur réception, pendant que les suivantes se téléchargent. Refusé d'avance s'il n'y a pas
- * assez de place. `progress` reçoit les octets reçus et le total à télécharger.
+ * Jeu PC (jeu en dossier) : ses fichiers un par un, les plus lourds d'abord, ceux déjà complets
+ * gardés (reprise) ; jeu compressé : chaque archive reçue part dans une file de décompression (une à
+ * la fois) qui avance pendant les téléchargements suivants ; le jeu est jouable une fois la file
+ * vide. Refusé d'avance s'il n'y a pas assez de place ; si la décompression prend du retard au point
+ * de manquer de place, le téléchargement suivant l'attend.
  */
-async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Arc<AtomicBool>, progress: impl Fn(u64, u64)) -> Result<()> {
+async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Arc<AtomicBool>, progress: impl Fn(FolderProgress)) -> Result<()> {
     let folder = library::file_for(system, game);
     let id = game.get("id").map(key).unwrap_or_default();
     let listing: Value = serde_json::from_str(&api::request(&format!("/api/games/{id}/files"), None).await?)?;
@@ -260,63 +310,104 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
     let complete = |f: &FolderFile| std::fs::metadata(target_of(f)).map(|m| m.is_file() && m.len() == f.size).unwrap_or(false);
     let mut todo: Vec<FolderFile> = files.iter().filter(|f| !complete(f)).cloned().collect();
     todo.sort_by(|a, b| b.download_size().cmp(&a.download_size()));
+    let free = || crate::paths::disk_space(&folder).map(|(free, _)| free);
     let needed = needed_bytes(&todo);
-    if let Some((free, _)) = crate::paths::disk_space(&folder) {
+    if let Some(free) = free() {
         if free < needed {
             return Err(AppError::new("errors.notEnoughSpace", json!({ "neededBytes": needed, "freeBytes": free })));
         }
     }
+
     let total: u64 = files.iter().map(FolderFile::download_size).sum();
     let received = AtomicU64::new(total - todo.iter().map(FolderFile::download_size).sum::<u64>());
-    let in_flight: Mutex<HashMap<String, u64>> = Mutex::new(HashMap::new());
-    let report = || progress(received.load(Ordering::SeqCst) + in_flight.lock().unwrap().values().sum::<u64>(), total);
+    let current = AtomicU64::new(0);
+    let unpack_total: u64 = todo.iter().filter(|f| f.packed()).map(|f| f.size).sum();
+    let unpacked = Arc::new(AtomicU64::new(0));
+    let unpacking = Arc::new(AtomicU64::new(0));
+    // Octets encore à écrire sur le disque (fichiers en clair) ; archives en attente ou en décompression.
+    let pending = Arc::new(AtomicU64::new(todo.iter().map(|f| f.size).sum()));
+    let queued = Arc::new(AtomicU64::new(0));
+    let report = || {
+        progress(FolderProgress {
+            bytes: received.load(Ordering::SeqCst) + current.load(Ordering::SeqCst),
+            total,
+            unpack_bytes: unpacked.load(Ordering::SeqCst) + unpacking.load(Ordering::SeqCst),
+            unpack_total,
+        })
+    };
     report();
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<(FolderFile, PathBuf)>(UNZIP_QUEUE);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(FolderFile, PathBuf)>();
     let downloads = async {
         let tx = tx;
-        let (received, in_flight, report, target_of, id) = (&received, &in_flight, &report, &target_of, &id);
-        let mut running = futures_util::stream::iter(todo.into_iter().map(|file| {
-            let tx = tx.clone();
-            async move {
-                let target = target_of(&file);
-                let zip = zip_path(&target);
-                let packed = file.zip_size.is_some();
-                // Archive déjà reçue (téléchargement interrompu pendant la décompression) : décompressée seulement.
-                let received_zip = packed && std::fs::metadata(&zip).map(|m| m.len() == file.download_size()).unwrap_or(false);
-                if !received_zip {
-                    let url = format!("{server}/api/games/{id}/file?path={}{}", urlencoding::encode(&file.path), if packed { "&packed=1" } else { "" });
-                    fetch_to(&url, if packed { &zip } else { &target }, file.download_size(), cancelled, |bytes| {
-                        in_flight.lock().unwrap().insert(file.path.clone(), bytes);
-                        report();
-                    })
-                    .await?;
+        for file in todo {
+            // Décompression en retard et disque presque plein : attente de la place libérée.
+            while let Some(free) = free() {
+                let waiting = pending.load(Ordering::SeqCst).saturating_sub(unpacking.load(Ordering::SeqCst));
+                if !must_wait(&file, waiting, free) {
+                    break;
                 }
-                in_flight.lock().unwrap().remove(&file.path);
-                received.fetch_add(file.download_size(), Ordering::SeqCst);
-                report();
-                if packed {
-                    tx.send((file, target)).await.map_err(|_| AppError::msg("cancelled"))?;
+                if queued.load(Ordering::SeqCst) == 0 {
+                    return Err(AppError::new("errors.notEnoughSpace", json!({ "neededBytes": waiting + file.archive_size.unwrap_or(0), "freeBytes": free })));
                 }
-                Ok::<(), AppError>(())
+                if cancelled.load(Ordering::SeqCst) {
+                    return Err(AppError::msg("cancelled"));
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
             }
-        }))
-        .buffer_unordered(FOLDER_PARALLEL);
-        while let Some(result) = running.next().await {
-            result?;
+            let target = target_of(&file);
+            let archive = archive_path(&target, file.format);
+            // Archive déjà reçue (téléchargement interrompu pendant la décompression) : décompressée seulement.
+            let received_archive = file.packed() && std::fs::metadata(&archive).map(|m| m.len() == file.download_size()).unwrap_or(false);
+            if !received_archive {
+                let url = format!("{server}/api/games/{id}/file?path={}{}", urlencoding::encode(&file.path), if file.packed() { "&packed=1" } else { "" });
+                fetch_to(&url, if file.packed() { &archive } else { &target }, file.download_size(), cancelled, |bytes| {
+                    current.store(bytes, Ordering::SeqCst);
+                    report();
+                })
+                .await?;
+            }
+            current.store(0, Ordering::SeqCst);
+            received.fetch_add(file.download_size(), Ordering::SeqCst);
+            if file.packed() {
+                queued.fetch_add(1, Ordering::SeqCst);
+                tx.send((file, target)).map_err(|_| AppError::msg("cancelled"))?;
+            } else {
+                pending.fetch_sub(file.size, Ordering::SeqCst);
+            }
+            report();
         }
         Ok::<(), AppError>(())
     };
-    let unzips = async {
+    let unpacks = async {
         while let Some((file, target)) = rx.recv().await {
-            let cancelled = cancelled.clone();
-            tokio::task::spawn_blocking(move || unzip_file(&zip_path(&target), &target, file.size, &cancelled))
-                .await
-                .map_err(|e| AppError::msg(e.to_string()))??;
+            let (cancelled, unpacking_bytes) = (cancelled.clone(), unpacking.clone());
+            tokio::task::spawn_blocking(move || {
+                unpack_file(&archive_path(&target, file.format), file.format, &target, file.size, &cancelled, |bytes| unpacking_bytes.store(bytes, Ordering::SeqCst))
+            })
+            .await
+            .map_err(|e| AppError::msg(e.to_string()))??;
+            unpacking.store(0, Ordering::SeqCst);
+            unpacked.fetch_add(file.size, Ordering::SeqCst);
+            pending.fetch_sub(file.size, Ordering::SeqCst);
+            queued.fetch_sub(1, Ordering::SeqCst);
+            report();
         }
         Ok::<(), AppError>(())
     };
-    tokio::try_join!(downloads, unzips)?;
+    // Progression de la décompression (elle avance dans son propre fil) : affichée régulièrement.
+    let ticker = async {
+        loop {
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            if unpacking.load(Ordering::SeqCst) > 0 {
+                report();
+            }
+        }
+    };
+    tokio::select! {
+        result = async { tokio::try_join!(downloads, unpacks) } => { result?; }
+        _ = ticker => {}
+    }
     Ok(())
 }
 
@@ -324,54 +415,66 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
 mod tests {
     use super::*;
 
-    fn file(path: &str, size: u64, zip_size: Option<u64>) -> FolderFile {
-        FolderFile { path: path.into(), size, zip_size }
+    fn file(path: &str, size: u64, archive_size: Option<u64>) -> FolderFile {
+        FolderFile { path: path.into(), size, archive_size, format: "xz" }
     }
 
     #[test]
-    fn place_pour_les_fichiers_decompresses_et_les_archives_sur_le_disque() {
-        let todo = [
-            file("a.dat", 100, None),
-            file("big.pak", 10_000, Some(6_000)),
-            file("mid.pak", 5_000, Some(4_000)),
-            file("x1", 50, Some(10)),
-            file("x2", 50, Some(10)),
-            file("x3", 50, Some(10)),
-            file("x4", 50, Some(10)),
-        ];
-        // 15 300 décompressés + les 5 plus grosses archives (3 en téléchargement, 1 en attente, 1 en décompression).
-        assert_eq!(needed_bytes(&todo), 15_300 + 6_000 + 4_000 + 30);
-        assert_eq!(needed_bytes(&todo[..1]), 100);
+    fn place_pour_les_fichiers_decompresses_et_la_plus_grosse_archive() {
+        let todo = [file("a.dat", 100, None), file("big.pak", 10_000, Some(6_000)), file("mid.pak", 5_000, Some(4_000))];
+        assert_eq!(needed_bytes(&todo), 15_100 + 6_000 + SPACE_MARGIN);
+        let mb = 1024 * 1024;
+        assert!(must_wait(&todo[1], 100 * mb, 100 * mb));
+        assert!(!must_wait(&todo[1], 100 * mb, 200 * mb));
+        // Serveur d'avant le xz : zipSize, format zip.
+        let old = FolderFile::from_json(&json!({ "path": "x", "size": 10, "zipSize": 4 }));
+        assert_eq!((old.archive_size, old.format), (Some(4), "zip"));
+        let new = FolderFile::from_json(&json!({ "path": "x", "size": 10, "packedSize": 3, "format": "xz" }));
+        assert_eq!((new.archive_size, new.format), (Some(3), "xz"));
     }
 
     #[test]
-    fn archive_decompressee_puis_supprimee() {
-        let dir = std::env::temp_dir().join(format!("romcloud-unzip-{}", std::process::id()));
+    fn archives_xz_et_zip_decompressees_puis_supprimees() {
+        let dir = std::env::temp_dir().join(format!("romcloud-unpack-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let data: Vec<u8> = (0..300_000u32).map(|i| (i % 97) as u8).collect();
+        let data: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
+        let cancelled = AtomicBool::new(false);
+
+        // xz en plusieurs blocs (comme xz -T du serveur).
         let target = dir.join("level1.pak");
-        let zip = zip_path(&target);
-        assert_eq!(zip.file_name().unwrap(), "level1.pak.zip");
+        let archive = archive_path(&target, "xz");
+        assert_eq!(archive.file_name().unwrap(), "level1.pak.xz");
         {
-            let mut writer = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
-            writer.start_file("level1.pak", zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated)).unwrap();
+            let mut options = lzma_rust2::XzOptions::with_preset(6);
+            options.set_block_size(std::num::NonZeroU64::new(1_000_000));
+            let mut writer = lzma_rust2::XzWriter::new(std::fs::File::create(&archive).unwrap(), options).unwrap();
             writer.write_all(&data).unwrap();
             writer.finish().unwrap();
         }
-        let cancelled = AtomicBool::new(false);
-        unzip_file(&zip, &target, data.len() as u64, &cancelled).unwrap();
+        unpack_file(&archive, "xz", &target, data.len() as u64, &cancelled, |_| {}).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), data);
-        assert!(!zip.exists());
+        assert!(!archive.exists());
+
+        // zip des compressions d'avant le xz.
+        let old = dir.join("old.dat");
+        {
+            let mut writer = zip::ZipWriter::new(std::fs::File::create(archive_path(&old, "zip")).unwrap());
+            writer.start_file("old.dat", zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated)).unwrap();
+            writer.write_all(&data).unwrap();
+            writer.finish().unwrap();
+        }
+        unpack_file(&archive_path(&old, "zip"), "zip", &old, data.len() as u64, &cancelled, |_| {}).unwrap();
+        assert_eq!(std::fs::read(&old).unwrap(), data);
+
         // Taille différente : erreur, archive supprimée (téléchargée de nouveau).
         let bad = dir.join("bad.bin");
         {
-            let mut writer = zip::ZipWriter::new(std::fs::File::create(zip_path(&bad)).unwrap());
-            writer.start_file("bad.bin", zip::write::SimpleFileOptions::default()).unwrap();
+            let mut writer = lzma_rust2::XzWriter::new(std::fs::File::create(archive_path(&bad, "xz")).unwrap(), lzma_rust2::XzOptions::with_preset(1)).unwrap();
             writer.write_all(b"abc").unwrap();
             writer.finish().unwrap();
         }
-        assert!(unzip_file(&zip_path(&bad), &bad, 99, &cancelled).is_err());
-        assert!(!bad.exists() && !zip_path(&bad).exists());
+        assert!(unpack_file(&archive_path(&bad, "xz"), "xz", &bad, 99, &cancelled, |_| {}).is_err());
+        assert!(!bad.exists() && !archive_path(&bad, "xz").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -150,6 +150,8 @@ data class Game(
     val packed: String = "flat",
     /** Taille à télécharger du jeu PC (archives comprises) ; [size] : sa taille une fois installé. */
     val packedSize: Long? = null,
+    /** Format des archives du jeu PC compressé : « xz », « zip » ou « mixed » ; null : aucune. */
+    val packFormat: String? = null,
 ) {
     /** Jeu PC dont des fichiers sont téléchargés compressés : tailles compressée et installée différentes. */
     val zipped: Boolean get() = folder && packed != "flat" && packedSize != null
@@ -184,14 +186,28 @@ data class GameLink(val label: String, val url: String)
 
 /**
  * Fichier d'un jeu en dossier (PC) : chemin dans son dossier (« Bin/Game.exe ») et taille ;
- * compressé par le serveur : taille de son archive [zipSize] et [crc32] du fichier décompressé.
+ * compressé par le serveur : [format] de son archive (« xz », « zip »), sa taille [packedSize]
+ * ([zipSize] pour les serveurs d'avant le xz) et [crc32] du fichier décompressé.
  */
 @Serializable
-data class FolderFile(val path: String, val size: Long, val zipSize: Long? = null, val crc32: String? = null) {
-    val packed: Boolean get() = zipSize != null
+data class FolderFile(
+    val path: String,
+    val size: Long,
+    val zipSize: Long? = null,
+    val crc32: String? = null,
+    val format: String? = null,
+    val packedSize: Long? = null,
+) {
+    val packed: Boolean get() = archiveSize != null
+
+    /** Taille de l'archive (fichier compressé), null en clair. */
+    val archiveSize: Long? get() = packedSize ?: zipSize
+
+    /** Format de l'archive : « xz » ou « zip ». */
+    val archiveFormat: String get() = if (format == "xz") "xz" else "zip"
 
     /** Octets à télécharger. */
-    val downloadSize: Long get() = zipSize ?: size
+    val downloadSize: Long get() = archiveSize ?: size
 }
 
 /** Fichiers d'un jeu en dossier (`GET /api/games/{id}/files`). */

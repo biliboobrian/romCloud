@@ -104,6 +104,9 @@
     <string name="downloading_text">“%1$s” is being downloaded. Do you want to cancel it?</string>
     <string name="cancel_download">Cancel the download</string>
     <string name="downloading_progress">Downloading… %1$s / %2$s</string>
+    <string name="unpacking_progress">Unpacking %1$s / %2$s</string>
+    <string name="unpacking_playable">Unpacking the last files… the game will be playable when it is done</string>
+    <string name="notif_unpacking">%1$s — unpacking</string>
     <string name="download_failed">Download failed: %1$s</string>
     <string name="download_with_size">Download (%1$s)</string>
     <string name="downloaded_snackbar">“%1$s” is downloaded</string>
@@ -493,11 +496,11 @@
     <string name="info_analog">Analog stick</string>
     <string name="info_file">File</string>
     <string name="info_size">Size</string>
-    <string name="info_size_zip">Download size (zip)</string>
+    <string name="info_size_zip">Download size (compressed)</string>
     <string name="info_compression">Compression</string>
-    <string name="info_compression_zip">Zip (one archive per file, unzipped as it arrives)</string>
-    <string name="info_compression_partial">Zip, partly</string>
-    <string name="size_flat_zip">%1$s (zip: %2$s)</string>
+    <string name="info_compression_zip">%1$s (one archive per file, unpacked as it arrives)</string>
+    <string name="info_compression_partial">%1$s, partly</string>
+    <string name="size_flat_zip">%1$s (compressed: %2$s)</string>
     <string name="info_parts">Other files</string>
     <string name="storage_on_device">On this device: %1$s</string>
     <string name="storage_free">%1$s free</string>

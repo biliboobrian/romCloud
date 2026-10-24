@@ -19,17 +19,32 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 sealed interface DownloadState {
     val title: String
 
-    data class Running(override val title: String, val bytes: Long, val total: Long) : DownloadState {
+    /**
+     * Téléchargement : [bytes] reçus sur [total] ; jeu PC compressé : [unpackBytes] décompressés sur
+     * [unpackTotal] (0 : rien à décompresser), le jeu est jouable une fois tout décompressé.
+     */
+    data class Running(
+        override val title: String,
+        val bytes: Long,
+        val total: Long,
+        val unpackBytes: Long = 0,
+        val unpackTotal: Long = 0,
+    ) : DownloadState {
         val progress: Float get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else 0f
+        val unpackProgress: Float get() = if (unpackTotal > 0) (unpackBytes.toFloat() / unpackTotal).coerceIn(0f, 1f) else 0f
+
+        /** Tout est reçu, la décompression continue. */
+        val unpacking: Boolean get() = unpackTotal > 0 && bytes >= total && unpackBytes < unpackTotal
     }
 
     data class Failed(override val title: String, val message: String) : DownloadState
@@ -93,8 +108,8 @@ class Downloader(
                 // Clés et firmware importés par l'émulateur externe (Eden) : là où son sélecteur les trouve.
                 if (bios.isNotEmpty()) runCatching { library.exportForEmulators(system) }
                 if (includeRom && game.folder) {
-                    fetchFolder(system, game, done) { bytes, folderTotal ->
-                        _states.update { it + (game.id to DownloadState.Running(game.title, bytes, done + folderTotal)) }
+                    fetchFolder(system, game, done) { bytes, folderTotal, unpackBytes, unpackTotal ->
+                        _states.update { it + (game.id to DownloadState.Running(game.title, bytes, done + folderTotal, unpackBytes, unpackTotal)) }
                     }
                     library.folderMarker(system, game).writeText(game.size.toString())
                 } else if (includeRom) {
@@ -128,54 +143,93 @@ class Downloader(
     }
 
     /**
-     * Jeu en dossier (PC) : ses fichiers, [FolderInstall.PARALLEL] à la fois et les plus lourds
-     * d'abord, ceux déjà complets gardés (reprise) ; jeu compressé : archives décompressées une à une
-     * dès leur réception, pendant que les suivantes se téléchargent. Refusé d'avance s'il n'y a pas
-     * assez de place. [progress] reçoit les octets reçus (avec les [before] déjà comptés) et le total à télécharger.
+     * Jeu en dossier (PC) : ses fichiers un par un, les plus lourds d'abord, ceux déjà complets gardés
+     * (reprise) ; jeu compressé : chaque archive reçue part dans une file de décompression (une à la
+     * fois) qui avance pendant les téléchargements suivants ; le jeu est jouable une fois la file vide.
+     * Refusé d'avance s'il n'y a pas assez de place ; si la décompression prend du retard au point de
+     * manquer de place, le téléchargement suivant l'attend. [progress] reçoit les octets reçus (avec les
+     * [before] déjà comptés), le total à télécharger, puis les octets décompressés et le total à décompresser.
      */
-    private suspend fun fetchFolder(system: GameSystem, game: Game, before: Long, progress: (Long, Long) -> Unit) = coroutineScope {
+    private suspend fun fetchFolder(
+        system: GameSystem,
+        game: Game,
+        before: Long,
+        progress: (bytes: Long, total: Long, unpackBytes: Long, unpackTotal: Long) -> Unit,
+    ) = coroutineScope {
         val files = api.folderFiles(game.id)
         val complete = { f: FolderFile -> library.folderFile(system, game, f.path).let { it.isFile && it.length() == f.size } }
         val todo = FolderInstall.order(files.filterNot(complete))
+        val folder = library.fileFor(system, game)
         val needed = FolderInstall.neededBytes(todo)
-        val free = library.freeBytes(library.fileFor(system, game))
+        val free = library.freeBytes(folder)
         if (free in 0 until needed) {
             throw java.io.IOException(I18n.get(R.string.err_not_enough_space, formatSize(needed), formatSize(free)))
         }
         val total = files.sumOf { it.downloadSize }
-        val received = java.util.concurrent.atomic.AtomicLong(before + total - todo.sumOf { it.downloadSize })
-        val inFlight = ConcurrentHashMap<String, Long>()
-        val report = { progress(received.get() + inFlight.values.sum(), total) }
-        report()
-        // Archives reçues, décompressées une à une.
-        val unzipQueue = Channel<Pair<FolderFile, File>>(FolderInstall.UNZIP_QUEUE)
-        val unzipper = launch {
-            for ((file, target) in unzipQueue) FolderInstall.unzip(FolderInstall.zipFile(target), target, file.size, file.crc32) { isActive }
+        val received = AtomicLong(before + total - todo.sumOf { it.downloadSize })
+        val current = AtomicLong(0)
+        val unpackTotal = todo.filter { it.packed }.sumOf { it.size }
+        val unpacked = AtomicLong(0)
+        val unpacking = AtomicLong(0)
+        val reportNow = { progress(received.get() + current.get(), total, unpacked.get() + unpacking.get(), unpackTotal) }
+        // Progression de la décompression : quelques fois par seconde (elle avance par petits morceaux).
+        val lastReport = AtomicLong(0)
+        val report = {
+            val now = System.currentTimeMillis()
+            if (now - lastReport.get() >= 200) {
+                lastReport.set(now)
+                reportNow()
+            }
         }
-        val work = Channel<FolderFile>(Channel.UNLIMITED)
-        todo.forEach { work.trySend(it) }
-        work.close()
-        List(FolderInstall.PARALLEL) {
-            launch {
-                for (file in work) {
-                    val target = library.folderFile(system, game, file.path)
-                    val zip = FolderInstall.zipFile(target)
-                    // Archive déjà reçue (téléchargement interrompu pendant la décompression) : décompressée seulement.
-                    if (!(file.packed && zip.isFile && zip.length() == file.zipSize)) {
-                        fetch(api.folderFileUrl(game.id, file.path, file.packed), if (file.packed) zip else target, file.downloadSize) { bytes ->
-                            inFlight[file.path] = bytes
-                            report()
-                        }
-                    }
-                    inFlight.remove(file.path)
-                    received.addAndGet(file.downloadSize)
+        // Octets encore à écrire sur le disque (fichiers en clair) ; archives en attente ou en décompression.
+        val pendingBytes = AtomicLong(todo.sumOf { it.size })
+        val queued = AtomicInteger(0)
+        reportNow()
+
+        val unpackQueue = Channel<Pair<FolderFile, File>>(Channel.UNLIMITED)
+        val unpacker = launch {
+            for ((file, target) in unpackQueue) {
+                FolderInstall.unpack(FolderInstall.archiveFile(target, file.archiveFormat), file.archiveFormat, target, file.size, file.crc32) { bytes ->
+                    unpacking.set(bytes)
                     report()
-                    if (file.packed) unzipQueue.send(file to target)
+                }
+                unpacking.set(0)
+                unpacked.addAndGet(file.size)
+                pendingBytes.addAndGet(-file.size)
+                queued.decrementAndGet()
+                reportNow()
+            }
+        }
+        for (file in todo) {
+            // Décompression en retard et disque presque plein : attente de la place libérée.
+            while (FolderInstall.mustWait(file, pendingBytes.get() - unpacking.get(), library.freeBytes(folder))) {
+                if (queued.get() == 0) {
+                    val left = library.freeBytes(folder)
+                    throw java.io.IOException(I18n.get(R.string.err_not_enough_space, formatSize(pendingBytes.get() + (file.archiveSize ?: 0)), formatSize(left)))
+                }
+                delay(500)
+            }
+            val target = library.folderFile(system, game, file.path)
+            val archive = FolderInstall.archiveFile(target, file.archiveFormat)
+            // Archive déjà reçue (téléchargement interrompu pendant la décompression) : décompressée seulement.
+            if (!(file.packed && archive.isFile && archive.length() == file.archiveSize)) {
+                fetch(api.folderFileUrl(game.id, file.path, file.packed), if (file.packed) archive else target, file.downloadSize) { bytes ->
+                    current.set(bytes)
+                    report()
                 }
             }
-        }.joinAll()
-        unzipQueue.close()
-        unzipper.join()
+            current.set(0)
+            received.addAndGet(file.downloadSize)
+            if (file.packed) {
+                queued.incrementAndGet()
+                unpackQueue.send(file to target)
+            } else {
+                pendingBytes.addAndGet(-file.size)
+            }
+            reportNow()
+        }
+        unpackQueue.close()
+        unpacker.join()
     }
 
     private suspend fun fetch(url: String, target: File, size: Long, progress: (Long) -> Unit) =

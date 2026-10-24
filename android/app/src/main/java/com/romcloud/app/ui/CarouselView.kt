@@ -393,10 +393,7 @@ fun GameCard(
                 Box(Modifier.align(Alignment.BottomEnd).padding(6.dp)) { badge() }
             }
             if (status is LocalStatus.Downloading) {
-                LinearProgressIndicator(
-                    progress = { status.state.progress },
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                )
+                DownloadBars(status.state, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
             }
         }
         Row(Modifier.padding(top = 6.dp, start = 2.dp, end = 2.dp)) {

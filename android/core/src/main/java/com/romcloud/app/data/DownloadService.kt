@@ -46,10 +46,13 @@ class DownloadService : Service() {
                         stopSelf()
                         return@collectLatest
                     }
-                    val bytes = running.sumOf { it.bytes }
-                    val total = running.sumOf { it.total }
+                    // Tout est reçu, jeux PC encore en décompression : progression de la décompression.
+                    val unpacking = running.all { it.unpacking }
+                    val bytes = running.sumOf { if (unpacking) it.unpackBytes else it.bytes }
+                    val total = running.sumOf { if (unpacking) it.unpackTotal else it.total }
                     val percent = if (total > 0) (bytes * 100 / total).toInt() else 0
-                    val text = if (running.size == 1) running[0].title else I18n.get(R.string.notif_games_running, running.size)
+                    val title = if (running.size == 1) running[0].title else I18n.get(R.string.notif_games_running, running.size)
+                    val text = if (unpacking) I18n.get(R.string.notif_unpacking, title) else title
                     notify(buildNotification(text, percent, total <= 0))
                 }
             }
