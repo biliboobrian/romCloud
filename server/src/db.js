@@ -135,6 +135,18 @@ db.exec(`
     PRIMARY KEY (user_id, game_id)
   );
 
+  -- Parties une à une (historique du profil) ; playtime en garde le total par jeu.
+  CREATE TABLE IF NOT EXISTS play_sessions (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id   INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    seconds   INTEGER NOT NULL,
+    ended_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    device    TEXT,
+    platform  TEXT
+  );
+  CREATE INDEX IF NOT EXISTS play_sessions_user ON play_sessions(user_id, ended_at);
+
   CREATE TABLE IF NOT EXISTS saves (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

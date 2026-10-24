@@ -88,6 +88,15 @@ body.systems-screen { --bg: #000; background: linear-gradient(135deg, #2e1a6b 0%
 .profile-head { display: flex; align-items: center; gap: 14px; }
 .profile-head svg { color: var(--accent); }
 .profile-head h4 { font-size: 18px; }
+/* Statistiques du profil : chiffres, puis listes (appareils, jeux, parties). */
+.profile-stats { display: flex; flex-direction: column; gap: 8px; }
+.profile-stats h4 { margin-top: 6px; }
+.stat-figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat-figure { display: flex; flex-direction: column; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); text-align: center; }
+.stat-figure strong { font-size: 18px; }
+.stat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.stat-list li { display: flex; flex-direction: column; min-width: 0; }
+.stat-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pads { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 70%, transparent); }
 .pad-players { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .pad-player { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

@@ -92,8 +92,13 @@ fun ProfileScreen(viewModel: ProfileViewModel, onBack: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (account.signedIn) SignedIn(viewModel, account)
-                else SignInForm(viewModel)
+                if (account.signedIn) {
+                    SignedIn(viewModel, account)
+                    val stats by viewModel.stats.collectAsStateWithLifecycle()
+                    ProfileStatsSection(stats)
+                } else {
+                    SignInForm(viewModel)
+                }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (state.busy) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
             }

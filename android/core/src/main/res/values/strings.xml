@@ -751,4 +751,23 @@
     <string name="vita_license_local">License saved on this device (empty the field and save to go back to the server’s one).</string>
     <string name="vita_license_hint">.pkg files are encrypted: their license (text often starting with “KO5i”) is taken from your own console (NoNpDrm, PKGj).</string>
     <string name="netplay_host_left">%1$s left the game: the game is closed.</string>
+    <string name="stats_title">Statistics</string>
+    <string name="stats_playtime">play time</string>
+    <string name="stats_sessions">sessions</string>
+    <string name="stats_games_played">different games</string>
+    <string name="stats_games_downloaded">games downloaded</string>
+    <string name="stats_devices">By device</string>
+    <string name="stats_unknown_device">Unknown device</string>
+    <string name="stats_device_playtime">%1$s played</string>
+    <plurals name="stats_device_games">
+        <item quantity="one">%1$d game downloaded</item>
+        <item quantity="other">%1$d games downloaded</item>
+    </plurals>
+    <string name="stats_top_games">Most played games</string>
+    <plurals name="stats_game_sessions">
+        <item quantity="one">%1$d session</item>
+        <item quantity="other">%1$d sessions</item>
+    </plurals>
+    <string name="stats_history">Recent sessions</string>
+    <string name="stats_history_empty">No session recorded yet (sessions are listed from this version on).</string>
 </resources>

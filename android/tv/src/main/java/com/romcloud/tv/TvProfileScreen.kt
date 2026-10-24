@@ -57,6 +57,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.romcloud.app.data.Account
+import com.romcloud.app.ui.ProfileStatsSection
 import com.romcloud.app.ui.ProfileViewModel
 import com.romcloud.core.R
 
@@ -87,6 +88,8 @@ fun TvProfileScreen(viewModel: ProfileViewModel, onMessage: (String) -> Unit) {
         Text(stringResource(R.string.profile_title), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         if (account.signedIn) {
             SignedIn(viewModel, account)
+            val stats by viewModel.stats.collectAsStateWithLifecycle()
+            Column(Modifier.fillMaxWidth(0.8f), verticalArrangement = Arrangement.spacedBy(16.dp)) { ProfileStatsSection(stats) }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(48.dp)) {
                 LoginForm(viewModel, Modifier.weight(1f))

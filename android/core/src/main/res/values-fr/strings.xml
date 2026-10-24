@@ -742,4 +742,23 @@
     <string name="vita_license_local">Licence enregistrée sur cet appareil (videz le champ et enregistrez pour revenir à celle du serveur).</string>
     <string name="vita_license_hint">Les .pkg sont chiffrés : leur licence (texte qui commence souvent par « KO5i ») se tire de votre propre console (NoNpDrm, PKGj).</string>
     <string name="netplay_host_left">%1$s a quitté la partie : le jeu est fermé.</string>
+    <string name="stats_title">Statistiques</string>
+    <string name="stats_playtime">temps de jeu</string>
+    <string name="stats_sessions">parties</string>
+    <string name="stats_games_played">jeux différents</string>
+    <string name="stats_games_downloaded">jeux téléchargés</string>
+    <string name="stats_devices">Par appareil</string>
+    <string name="stats_unknown_device">Appareil inconnu</string>
+    <string name="stats_device_playtime">%1$s de jeu</string>
+    <plurals name="stats_device_games">
+        <item quantity="one">%1$d jeu téléchargé</item>
+        <item quantity="other">%1$d jeux téléchargés</item>
+    </plurals>
+    <string name="stats_top_games">Jeux les plus joués</string>
+    <plurals name="stats_game_sessions">
+        <item quantity="one">%1$d partie</item>
+        <item quantity="other">%1$d parties</item>
+    </plurals>
+    <string name="stats_history">Dernières parties</string>
+    <string name="stats_history_empty">Aucune partie notée pour l’instant (les parties sont listées à partir de cette version).</string>
 </resources>

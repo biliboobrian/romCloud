@@ -13,6 +13,7 @@ import { config, screenscraperEnabled } from './config.js';
 import { diskUsage } from './disk-usage.js';
 import { clearDownloads, downloadStats, listDownloads, trackDownload } from './download-logs.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
+import { profileStats } from './profile-stats.js';
 import { fileInFolder } from './folder-games.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
@@ -660,8 +661,10 @@ api.get('/account/stream/receivers', signedIn, (req, res) => res.json(accounts.l
 
 api.get('/account/playtime', signedIn, (req, res) => res.json(accounts.listPlaytime(req.auth.user.id)));
 api.post('/account/playtime', signedIn, (req, res) => {
-  res.json(accounts.addPlaytime(req.auth.user.id, req.body?.gameId, req.body?.seconds));
+  res.json(accounts.addPlaytime(req.auth.user.id, req.body?.gameId, req.body?.seconds, accounts.clientInfo(req), req.body?.at));
 });
+// Statistiques du profil : temps de jeu, jeux téléchargés par appareil, jeux les plus joués, dernières parties.
+api.get('/account/stats', signedIn, (req, res) => res.json(profileStats(req.auth.user.id)));
 
 api.get('/account/saves', signedIn, (req, res) => res.json(accounts.listSaves(req.auth.user.id, req.query.gameId)));
 /**
