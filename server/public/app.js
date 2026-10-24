@@ -738,6 +738,10 @@ function fillGameDialog(game, bust = '') {
   $('#gameUninstallField').classList.toggle('hidden', !game.folder);
   form.elements.uninstallExe.disabled = !game.folder;
   $('#gameExtraField').classList.toggle('hidden', !game.folder);
+  // Jeu PC : jeu de la boutique Steam (AppID), pour le scraping.
+  $('#gameSteamField').classList.toggle('hidden', !game.folder);
+  form.elements.steamAppId.disabled = !game.folder;
+  form.elements.steamAppId.value = game.steamAppId ?? '';
   if (game.folder) fillGameExe(game);
   fillGamePack(game);
   const statusText = {

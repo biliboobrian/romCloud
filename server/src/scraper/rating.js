@@ -1,7 +1,8 @@
 // Note d'un jeu en étoiles entières (0 à 5) à partir des notes trouvées par le scraping :
 //  - screenscraper : note de ScreenScraper (sur 20) ;
 //  - launchbox : note de la communauté LaunchBox Games DB (sur 5, au moins 3 votes) ;
-//  - press : notes de la presse relevées par Wikidata (Metacritic, GameRankings, Famitsu, IGN…, sur 100).
+//  - press : notes de la presse relevées par Wikidata (Metacritic, GameRankings, Famitsu, IGN…, sur 100) ;
+//  - steam : part des avis positifs des joueurs de la boutique Steam (sur 100, au moins 10 avis).
 // Chaque source se tasse à sa façon (communauté LaunchBox : médiane 3,5/5 et seulement 6 % des jeux
 // au-dessus de 4,5) : un simple arrondi ne donnerait presque jamais 5 étoiles. Chaque note est donc
 // convertie en étoiles avec le barème de sa source, puis les étoiles des sources sont moyennées.
@@ -19,6 +20,8 @@ export const SCALES = {
   screenscraper: [8, 11, 14, 17],
   launchbox: [2.4, 3.0, 3.7, 4.2],
   press: [45, 60, 75, 85],
+  // Steam : « plutôt positives » à partir de 70 %, « très positives » à partir de 80 %.
+  steam: [50, 70, 82, 92],
 };
 
 /** Étoiles (1 à 5) d'une note [score] de la source [source] selon son barème ; null sans barème ou sans note. */
