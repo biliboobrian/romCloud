@@ -185,6 +185,9 @@ class ApiClient(private val settings: Settings, val platform: String) {
 
     suspend fun gamesRaw(systemId: String): String = get("/api/systems/$systemId/games")
 
+    /** Fiche d'un jeu (avec ses parties). */
+    suspend fun gameRaw(id: Long): String = get("/api/games/$id")
+
     /** Recherche dans tous les systèmes. */
     suspend fun searchRaw(query: String): String = get("/api/search?q=" + URLEncoder.encode(query, "UTF-8"))
 

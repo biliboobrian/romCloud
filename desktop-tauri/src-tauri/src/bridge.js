@@ -94,6 +94,7 @@
     library: {
       downloaded: call('library:downloaded'),
       downloadedGames: call('library:downloadedGames'),
+      refreshDownloaded: call('library:refreshDownloaded'),
       path: call('library:path'),
       remove: call('library:remove'),
       runExtra: call('library:runExtra'),
