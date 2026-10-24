@@ -366,8 +366,8 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
             account::upload_changed(&game_id, &other, &vec![("sram", path)], started - 2000.0).await;
         }
         if code != 0 {
-            let log = last_log(&base);
-            account::report_error(&format!("player:{core}"), &format!("romcloud-player exit code {code}"), log.clone());
+            let log = last_log(&base, 4000);
+            account::report_error(&format!("player:{core}"), &format!("romcloud-player exit code {code}"), last_log(&base, 20_000));
             events::emit(
                 "player:crashed",
                 json!({
@@ -394,11 +394,11 @@ fn copy_if_newer(from: &Path, to: &Path) {
     let _ = std::fs::copy(from, to);
 }
 
-/// Fin du journal du moteur (jointe à l'erreur signalée quand il s'arrête sur une erreur).
-fn last_log(base: &Path) -> Option<String> {
+/// Fin du journal du moteur, [max] caractères (jointe à l'erreur signalée quand il s'arrête sur une erreur).
+fn last_log(base: &Path, max: usize) -> Option<String> {
     let text = std::fs::read_to_string(base.join("player.log")).ok()?;
     let chars: Vec<char> = text.chars().collect();
-    Some(chars[chars.len().saturating_sub(4000)..].iter().collect())
+    Some(chars[chars.len().saturating_sub(max)..].iter().collect())
 }
 
 #[cfg(test)]

@@ -530,6 +530,36 @@
     if (S.route.name === 'game') renderGame();
   }
 
+  /** Rapport d'erreur (paramètres) : description et journaux, envoyés au serveur après confirmation (gardés hors ligne). */
+  function showReport() {
+    const root = modal({
+      title: t('report.title'),
+      body: `<p class="muted">${esc(t('report.confirm'))}</p>
+        <label>${esc(t('report.description'))}<textarea id="reportText" rows="4"></textarea></label>
+        <label class="check"><input type="checkbox" id="reportLogs" checked> ${esc(t('report.withLogs'))}</label>`,
+      buttons: [
+        { label: t('app.cancel'), kind: 'ghost' },
+        {
+          label: t('report.confirmSend'),
+          kind: 'primary',
+          keepOpen: true,
+          onClick: async (close) => {
+            for (const btn of $$('.foot .btn', root)) btn.disabled = true;
+            try {
+              const result = await call(rc.account.sendReport, $('#reportText', root).value, $('#reportLogs', root).checked);
+              toast(t(result.sent ? 'report.sent' : 'report.queued'));
+              close();
+            } catch (err) {
+              toast(err.message, { type: 'error' });
+              for (const btn of $$('.foot .btn', root)) btn.disabled = false;
+            }
+          },
+        },
+      ],
+    });
+    $('#reportText', root).focus();
+  }
+
   function confirmResetCore(systemId, core) {
     modal({
       title: t('crash.resetTitle', { core }),
@@ -2835,8 +2865,6 @@
 
       <h3>${esc(t('report.section'))}</h3>
       <p class="muted">${esc(t('report.hint'))}</p>
-      <label>${esc(t('report.description'))}<textarea id="reportText" rows="4"></textarea></label>
-      <label class="check"><input type="checkbox" id="reportLogs" checked> ${esc(t('report.withLogs'))}</label>
       <div class="line"><button class="btn" id="reportBtn">${esc(t('report.send'))}</button></div>
 
       <h3>${esc(t('settings.display'))}</h3>
@@ -2905,20 +2933,7 @@
       S.settings = await call(rc.settings.save, { hideUnidentified: e.target.checked });
       S.games = { ...S.games, systemId: null, list: [] };
     };
-    // Rapport d'erreur envoyé au serveur (gardé hors ligne).
-    $('#reportBtn').onclick = async (e) => {
-      const button = e.currentTarget;
-      button.disabled = true;
-      try {
-        const result = await call(rc.account.sendReport, $('#reportText').value, $('#reportLogs').checked);
-        toast(t(result.sent ? 'report.sent' : 'report.queued'));
-        $('#reportText').value = '';
-      } catch (err) {
-        toast(err.message, { type: 'error' });
-      } finally {
-        button.disabled = false;
-      }
-    };
+    $('#reportBtn').onclick = showReport;
     $('#autoUploadStates').onchange = async (e) => {
       S.settings = await call(rc.settings.save, { autoUploadStates: e.target.checked });
     };

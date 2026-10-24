@@ -527,13 +527,48 @@ pub async fn saves(game_id: &Value) -> Vec<Value> {
 
 /// Signale une erreur à l'administration (sans effet si le serveur est injoignable).
 pub fn report_error(context: &str, message: &str, details: Option<String>) {
-    if message.is_empty() || settings::get_str("serverUrl").is_empty() {
+    if message.is_empty() {
+        return;
+    }
+    remember_error(context, message);
+    if settings::get_str("serverUrl").is_empty() {
         return;
     }
     let body = error_body(context, message, details);
     tauri::async_runtime::spawn(async move {
         send_error(body).await;
     });
+}
+
+/// Erreurs récentes de l'application (journal joint au rapport envoyé par l'utilisateur).
+static RECENT_ERRORS: std::sync::Mutex<std::collections::VecDeque<String>> = std::sync::Mutex::new(std::collections::VecDeque::new());
+const MAX_RECENT_ERRORS: usize = 100;
+
+fn remember_error(context: &str, message: &str) {
+    let line = format!("{} [{context}] {}", utc_now(), message.lines().next().unwrap_or(""));
+    if let Ok(mut list) = RECENT_ERRORS.lock() {
+        if list.len() >= MAX_RECENT_ERRORS {
+            list.pop_front();
+        }
+        list.push_back(line);
+    }
+}
+
+/// Heure (UTC) d'une ligne du journal : « 2026-10-24 18:03:12 UTC ».
+fn utc_now() -> String {
+    let secs = (paths::now_ms() / 1000.0) as i64;
+    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    // Jours depuis 1970 -> date (algorithme de Howard Hinnant).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02} UTC", rem / 3600, rem % 3600 / 60, rem % 60)
 }
 
 /// Détail d'un rapport (journal joint) : limite du serveur.
@@ -594,8 +629,8 @@ fn tail(path: &Path, max: usize) -> Option<String> {
 }
 
 /**
- * Rapport envoyé par l'utilisateur (paramètres) : sa description, ce PC et, si [with_logs], le
- * journal du moteur intégré (dernière partie). Renvoie { sent } : faux s'il attend le serveur.
+ * Rapport envoyé par l'utilisateur (paramètres) : sa description, ce PC et, si [with_logs], les
+ * erreurs récentes de l'application et le journal du moteur intégré (dernière partie). Renvoie { sent } : faux s'il attend le serveur.
  */
 pub async fn send_report(description: &str, with_logs: bool) -> Value {
     let mut details = format!(
@@ -610,6 +645,15 @@ pub async fn send_report(description: &str, with_logs: bool) -> Value {
         details.push_str(&format!("\n--- Description ---\n{}\n", description.trim()));
     }
     if with_logs {
+        details.push_str("\n--- Erreurs récentes de RomCloud (cette session) ---\n");
+        let recent = RECENT_ERRORS.lock().map(|l| l.iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
+        if recent.is_empty() {
+            details.push_str("(aucune)\n");
+        }
+        for line in recent {
+            details.push_str(&line);
+            details.push('\n');
+        }
         let log = paths::user_data().join("libretro").join("player.log");
         details.push_str("\n--- Journal du moteur intégré (dernière partie) ---\n");
         details.push_str(&tail(&log, 150_000).unwrap_or_else(|| "(aucun)\n".into()));

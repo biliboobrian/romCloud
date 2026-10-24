@@ -260,6 +260,11 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                 crash = it
                 app.account.reportError("libretro-crash:${it.core}", "${it.game} (${it.core})", it.text.take(20000))
             }
+            // Jeu PC planté dans RomCloud PC (Wine ou l'application) : signalé au serveur.
+            withContext(Dispatchers.IO) { com.romcloud.app.launch.Winlator.takeCompanionCrash(activity) }?.let { (title, text) ->
+                app.account.reportError("romcloud-pc-crash", title, text)
+                launch { snackbar.showSnackbar(I18n.get(R.string.pc_crash_reported, title)) }
+            }
         }
     }
     crash?.let { report ->

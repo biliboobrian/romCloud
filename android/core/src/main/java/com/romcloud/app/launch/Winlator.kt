@@ -194,7 +194,37 @@ object Winlator {
             .putExtra("settings", settings)
         val caller = activityContext as? Activity ?: throw LaunchException(I18n.get(R.string.err_launch_refused, COMPANION_NAME))
         caller.startActivityForResult(intent, COMPANION_REQUEST)
+        // Plantage de la partie à relever au retour dans RomCloud ([takeCompanionCrash]).
+        prefs(activityContext).edit().putBoolean(KEY_WATCH, true).apply()
     }
+
+    /** Journaux de RomCloud PC (LogsProvider, appelant vérifié par sa signature). */
+    private const val LOGS = "content://$COMPANION.logs"
+    private const val KEY_WATCH = "watchCompanion"
+
+    private fun prefs(context: Context) = context.getSharedPreferences("romcloud-pc", Context.MODE_PRIVATE)
+
+    /** Méthode [method] du fournisseur de journaux de RomCloud PC ; null : absent (version sans journaux) ou refusé. */
+    private fun companionCall(context: Context, method: String): Bundle? =
+        if (!isInstalled(context, COMPANION)) null
+        else runCatching { context.contentResolver.call(android.net.Uri.parse(LOGS), method, null, null) }.getOrNull()
+
+    /**
+     * Plantage de la dernière partie lancée par RomCloud PC (Wine ou l'application) : titre et rapport,
+     * rendu une seule fois ; null sinon, ou si la partie continue. RomCloud PC n'est interrogé qu'après
+     * le lancement d'un jeu par RomCloud.
+     */
+    fun takeCompanionCrash(context: Context): Pair<String, String>? {
+        if (!prefs(context).getBoolean(KEY_WATCH, false)) return null
+        val result = companionCall(context, "pending")
+        if (result?.getBoolean("running") == true) return null
+        prefs(context).edit().remove(KEY_WATCH).apply()
+        val title = result?.getString("title") ?: return null
+        return title to result.getString("text").orEmpty()
+    }
+
+    /** Journal de la dernière partie dans RomCloud PC (rapport envoyé par l'utilisateur) ; null : pas installé. */
+    fun companionLog(context: Context): String? = companionCall(context, "log")?.getString("text")
 
     /** Application Winlator installée qui accepte les raccourcis : paquet et activité, ou null. */
     fun installed(context: Context): Pair<String, String>? =

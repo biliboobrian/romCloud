@@ -124,6 +124,12 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Journaux de la dernière partie pour RomCloud (appelant signé avec la même clé, vérifié par le fournisseur). -->
+        <provider
+            android:name="com.romcloud.wine.LogsProvider"
+            android:authorities="com.romcloud.wine.logs"
+            android:exported="true" />
+
         <!-- Provider for Winlator’s DocumentProvider or similar usage -->
         <provider
             android:name=".core.WinlatorFilesProvider"
