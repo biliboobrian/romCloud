@@ -141,6 +141,10 @@
   const mainGenre = (g) => (g.genre || '').split(/[,/;]/)[0].trim() || null;
   // Taille du jeu et de ses parties (disques, mises à jour, DLC téléchargés avec lui).
   const gameSize = (game) => game.totalSize ?? game.size;
+  // Jeu PC compressé par le serveur (une archive par fichier) : taille installée et taille à télécharger.
+  const zipped = (game) => Boolean(game.folder && game.packed && game.packed !== 'flat' && game.packedSize != null);
+  const sizeLabel = (game) =>
+    zipped(game) ? t('size.flatZip', { size: formatSize(gameSize(game)), zip: formatSize(game.packedSize) }) : formatSize(gameSize(game));
 
   // ---------------------------------------------------------------------------
   // Statut local des jeux (téléchargé, en cours, échec)
@@ -853,7 +857,7 @@
         <div class="progress${st.kind === 'running' ? '' : ' hidden'}" data-progress="${game.id}"><div style="width:${Math.round((st.progress || 0) * 100)}%"></div></div>
       </div>
       <div class="title">${esc(game.title)}${multiBadge(game)}</div>
-      <div class="meta">${esc([year(game), partsSummary(game), formatSize(gameSize(game))].filter(Boolean).join(' · '))}</div>
+      <div class="meta">${esc([year(game), partsSummary(game), sizeLabel(game)].filter(Boolean).join(' · '))}</div>
     </div>`;
   }
 
@@ -1075,7 +1079,7 @@
         return `<div class="list-row" data-card="${g.id}">
           <div class="thumb">${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : ''}</div>
           <div class="main"><div class="t">${esc(g.title)}${multiBadge(g)}</div>
-            <div class="muted">${esc([year(g), g.genre, partsSummary(g), formatSize(gameSize(g))].filter(Boolean).join(' · '))}</div></div>
+            <div class="muted">${esc([year(g), g.genre, partsSummary(g), sizeLabel(g)].filter(Boolean).join(' · '))}</div></div>
           <div class="status" data-status="${g.id}">${statusHtml(statusOf(g, S.games.downloaded))}</div>
           ${isLobbyHost()
             ? (playKind(g) ? `<button class="btn primary" data-lobby-set="${g.id}">${icon('group', 18)} ${esc(t('lobby.setGame'))}</button>` : '')
@@ -1233,7 +1237,7 @@
       <div class="cover-lg">${cover ? `<img src="${esc(cover)}" alt="">` : ''}</div>
       <div class="text">
         <h2>${esc(game.title)}</h2>
-        <div class="muted">${esc([year(game), mainGenre(game), game.players ? `${game.players} 👤` : null, partsSummary(game), formatSize(gameSize(game))].filter(Boolean).join('  ·  '))}</div>
+        <div class="muted">${esc([year(game), mainGenre(game), game.players ? `${game.players} 👤` : null, partsSummary(game), sizeLabel(game)].filter(Boolean).join('  ·  '))}</div>
         ${statusLine}
         ${playtimeHtml(game)}
         ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
@@ -2129,7 +2133,7 @@
     const root = modal({
       title: t('download.title'),
       body: `<p>${esc(t('download.text', { title: game.title }))}</p>
-        <p class="muted">${esc(game.fileName)}${game.parts?.length ? ` + ${esc(partsSummary(game, true))}` : ''} · ${esc(formatSize(gameSize(game)))}</p>
+        <p class="muted">${esc(game.fileName)}${game.parts?.length ? ` + ${esc(partsSummary(game, true))}` : ''} · ${esc(sizeLabel(game))}</p>
         ${lastError ? `<p class="bad">${esc(t('download.lastError', { error: lastError }))}</p>` : ''}
         <label class="check"><input type="checkbox" id="launchAfter" checked> ${esc(t('download.launchAfter'))}</label>
         ${missing.length ? `<label class="check"><input type="checkbox" id="withBios" checked> ${esc(t('bios.downloadToo', { n: missing.length, size: biosSize(missing) }))}</label>` : ''}`,
@@ -2291,6 +2295,7 @@
       [t('info.file'), game.fileName],
       [t('info.parts'), partsText(game)],
       [t('info.size'), formatSize(gameSize(game))],
+      ...(zipped(game) ? [[t('info.sizeZip'), formatSize(game.packedSize)], [t('info.compression'), t(game.packed === 'zip' ? 'info.compressionZip' : 'info.compressionPartial')]] : []),
       ['CRC32', game.crc32 && game.crc32.toUpperCase()],
       ['MD5', game.md5],
       ...(d.links || []).map((l) => [l.label, l.url.replace(/^https?:\/\//, '').split('/')[0], l.url]),
@@ -2410,7 +2415,7 @@
         <button class="btn" id="folderBtn">${icon('folder', 18)} ${esc(t('detail.showInFolder'))}</button>
         <button class="btn danger" id="deleteBtn">${icon('trash', 18)} ${esc(t('detail.delete'))}</button>`;
     } else {
-      actions = `${joinBtns}<button class="btn primary big" id="downloadBtn">${icon('cloud')} ${esc(st.kind === 'failed' ? t('app.retry') : t('download.withSize', { size: formatSize(gameSize(game)) }))}</button>`;
+      actions = `${joinBtns}<button class="btn primary big" id="downloadBtn">${icon('cloud')} ${esc(st.kind === 'failed' ? t('app.retry') : t('download.withSize', { size: sizeLabel(game) }))}</button>`;
     }
 
     main.innerHTML = `<div class="detail">

@@ -1,12 +1,26 @@
 // Jeux en dossiers (système « jeux en dossiers », PC Windows) : chaque sous-dossier du système est un
 // jeu, téléchargé fichier par fichier par les applications (liste : chemin et taille) et lancé par
-// son exécutable, choisi dans la fiche du jeu (sinon deviné au scan).
+// son exécutable, choisi dans la fiche du jeu (sinon deviné au scan). Jeu compressé (folder-pack.js) :
+// chaque fichier « X » rangé dans sa propre archive « X.zip », listée dans le manifeste du dossier.
 import fs from 'node:fs';
 import path from 'node:path';
 import { HttpError } from './http-error.js';
 
 // Fichiers ignorés dans le dossier d'un jeu : envois en cours et fichiers système de Windows / macOS.
-const IGNORED_RE = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$|\.(part|tmp|upload)$/i;
+const IGNORED_RE = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$|\.(part|tmp|upload)$|^\.romcloud-packed\.json$/i;
+
+/** Manifeste d'un jeu compressé, à la racine de son dossier : { files: { chemin: { size, crc32, mtime } } }. */
+export const PACK_MANIFEST = '.romcloud-packed.json';
+
+/** Fichiers compressés du dossier [dir] (chemin d'origine -> { size, crc32, mtime }) ; vide sans manifeste. */
+export function readPackManifest(dir) {
+  try {
+    const files = JSON.parse(fs.readFileSync(path.join(dir, PACK_MANIFEST), 'utf8')).files;
+    return files && typeof files === 'object' ? files : {};
+  } catch {
+    return {};
+  }
+}
 
 // Exécutables qui ne lancent pas le jeu : installation, désinstallation, prérequis, rapports d'erreur.
 const NOT_GAME_RE = new RegExp(
@@ -19,8 +33,13 @@ const NOT_GAME_RE = new RegExp(
   'i',
 );
 
-/** Fichiers du dossier [dir] (sous-dossiers compris) : { path (séparateur « / »), size, mtime }, triés par chemin. */
+/**
+ * Fichiers du dossier [dir] (sous-dossiers compris) : { path (séparateur « / »), size, mtime }, triés
+ * par chemin. Fichier compressé : chemin et taille d'origine, et zipSize (taille de « X.zip »),
+ * crc32, packed: true ; s'il existe aussi en clair (compression interrompue), le fichier en clair.
+ */
 export function folderFiles(dir) {
+  const manifest = readPackManifest(dir);
   const files = [];
   const walk = (sub) => {
     for (const entry of fs.readdirSync(path.join(dir, sub), { withFileTypes: true })) {
@@ -28,21 +47,32 @@ export function folderFiles(dir) {
       if (entry.isDirectory()) walk(rel);
       else if (entry.isFile() && !IGNORED_RE.test(rel)) {
         const stat = fs.statSync(path.join(dir, rel));
-        files.push({ path: rel, size: stat.size, mtime: Math.floor(stat.mtimeMs) });
+        const packed = rel.toLowerCase().endsWith('.zip') ? manifest[rel.slice(0, -4)] : undefined;
+        if (packed) {
+          files.push({ path: rel.slice(0, -4), size: packed.size, mtime: Math.floor(stat.mtimeMs), zipSize: stat.size, crc32: packed.crc32, packed: true });
+        } else {
+          files.push({ path: rel, size: stat.size, mtime: Math.floor(stat.mtimeMs) });
+        }
       }
     }
   };
   walk('');
-  return files.sort((a, b) => a.path.localeCompare(b.path));
+  const flat = new Set(files.filter((f) => !f.packed).map((f) => f.path));
+  return files.filter((f) => !f.packed || !flat.has(f.path)).sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** Taille totale et date la plus récente des fichiers d'un jeu en dossier (détection des changements au scan). */
-export function folderStats(dir) {
-  const files = folderFiles(dir);
+/**
+ * Taille totale (fichiers en clair) et date la plus récente des fichiers d'un jeu en dossier
+ * (détection des changements au scan) ; packedSize : taille à télécharger (archives des fichiers
+ * compressés, les autres tels quels), packed : nombre de fichiers compressés.
+ */
+export function folderStats(dir, files = folderFiles(dir)) {
   return {
     size: files.reduce((n, f) => n + f.size, 0),
     mtime: files.reduce((m, f) => Math.max(m, f.mtime), 0),
     count: files.length,
+    packedSize: files.reduce((n, f) => n + (f.packed ? f.zipSize : f.size), 0),
+    packed: files.filter((f) => f.packed).length,
   };
 }
 

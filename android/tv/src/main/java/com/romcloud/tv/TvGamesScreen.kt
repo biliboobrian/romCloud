@@ -75,6 +75,7 @@ import com.romcloud.app.ui.RowLabels
 import com.romcloud.app.ui.carouselRows
 import com.romcloud.app.ui.criteriaSections
 import com.romcloud.app.ui.formatSize
+import com.romcloud.app.ui.gameSizeLabel
 import com.romcloud.app.ui.gamePlaytime
 import com.romcloud.app.ui.partsSummary
 import com.romcloud.app.ui.pickFeatured
@@ -340,7 +341,7 @@ private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean, t
             together?.let { TogetherBadge(it, size = 32.dp) }
         }
         Text(
-            listOfNotNull(game.year, game.genre, game.players?.let { stringResource(R.string.players_count, it) }, partsSummary(game), formatSize(game.fullSize)).joinToString("  ·  "),
+            listOfNotNull(game.year, game.genre, game.players?.let { stringResource(R.string.players_count, it) }, partsSummary(game), gameSizeLabel(game)).joinToString("  ·  "),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -79,6 +79,13 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         return StorageUsage(sizes, stat?.availableBytes ?: -1, stat?.totalBytes ?: -1)
     }
 
+    /** Espace libre de la partition de [file] (dossier pas encore créé : son premier dossier existant) ; -1 si inconnu. */
+    fun freeBytes(file: File): Long {
+        var dir: File? = file
+        while (dir != null && !dir.exists()) dir = dir.parentFile
+        return dir?.let { runCatching { StatFs(it.absolutePath).availableBytes }.getOrNull() } ?: -1
+    }
+
     /** Emplacement d'un BIOS : <dossier BIOS>/<chemin relatif, sous-dossiers compris>. */
     fun biosFile(bios: BiosFile) = File(
         settings.config.value.biosDir,

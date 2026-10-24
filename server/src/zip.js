@@ -1,9 +1,10 @@
 import fs from 'node:fs';
+import { Readable } from 'node:stream';
 import zlib from 'node:zlib';
 
 // Archives .zip sans dépendance : lecture du répertoire central (nom, tailles, CRC32 de chaque
 // fichier, ZIP64 compris), extraction des fichiers stockés ou compressés (« deflate ») ; écriture
-// d'archives sans compression (ZIP64 : fichiers et archives de plus de 4 Go).
+// d'archives sans compression ou compressées (ZIP64 : fichiers et archives de plus de 4 Go).
 
 const EOCD = 0x06054b50;
 const EOCD64 = 0x06064b50;
@@ -97,6 +98,25 @@ function dataStart(fd, entry) {
   return entry.offset + 30 + header.readUInt16LE(26) + header.readUInt16LE(28);
 }
 
+/**
+ * Contenu d'un fichier de l'archive en flux (décompressé ; CRC32 non vérifié) : pour les gros
+ * fichiers, lus sans tout charger en mémoire.
+ */
+export function zipEntryStream(file, entry) {
+  if (entry.method !== 0 && entry.method !== 8) throw new Error(`zip: compression ${entry.method} non prise en charge (${entry.name})`);
+  const fd = fs.openSync(file, 'r');
+  let start;
+  try {
+    start = dataStart(fd, entry);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const raw = entry.compressedSize
+    ? fs.createReadStream(file, { start, end: start + entry.compressedSize - 1 })
+    : Readable.from([]);
+  return entry.method === 0 ? raw : raw.pipe(zlib.createInflateRaw());
+}
+
 /** Contenu d'un fichier de l'archive (vérifié par son CRC32) ; lève une erreur sinon. */
 export function readZipEntry(file, entry) {
   const fd = fs.openSync(file, 'r');
@@ -151,8 +171,10 @@ function dosTime(date) {
 }
 
 /**
- * Écriture d'une archive sans compression, en ZIP64 (tailles et emplacements sur 64 bits) : dossiers
- * (« nom/ ») et fichiers de taille connue d'avance, dont le CRC32 est écrit une fois les données écrites.
+ * Écriture d'une archive en ZIP64 (tailles et emplacements sur 64 bits) : dossiers (« nom/ ») et
+ * fichiers de taille connue d'avance, dont le CRC32 est écrit une fois les données écrites ; stockés
+ * sans compression (writeData), ou compressés (« deflate ») au fil de l'eau : données d'origine
+ * passées à addRaw, données compressées à writeCompressed, taille compressée écrite par endFile.
  */
 export class ZipWriter {
   constructor(file) {
@@ -168,13 +190,14 @@ export class ZipWriter {
     this.position += buf.length;
   }
 
-  /** En-tête local (tailles dans le champ ZIP64) ; CRC32 complété par endFile. */
-  begin(name, size) {
+  /** En-tête local (tailles dans le champ ZIP64) ; CRC32 et taille compressée complétés par endFile. */
+  begin(name, size, method = 0) {
     const nameBuf = Buffer.from(name, 'utf8');
     const header = Buffer.alloc(30 + nameBuf.length + 20);
     header.writeUInt32LE(LOCAL, 0);
     header.writeUInt16LE(45, 4); // version 4.5 : ZIP64
     header.writeUInt16LE(0x0800, 6); // noms en UTF-8
+    header.writeUInt16LE(method, 8);
     header.writeUInt16LE(this.time, 10);
     header.writeUInt16LE(this.date, 12);
     header.writeUInt32LE(MAX32, 18);
@@ -187,7 +210,7 @@ export class ZipWriter {
     header.writeUInt16LE(16, extra + 2);
     header.writeBigUInt64LE(BigInt(size), extra + 4);
     header.writeBigUInt64LE(BigInt(size), extra + 12);
-    const entry = { name, nameBuf, size, offset: this.position, crc: 0, written: 0 };
+    const entry = { name, nameBuf, size, method, offset: this.position, crc: 0, written: 0, compressedSize: method ? 0 : size };
     this.write(header);
     return entry;
   }
@@ -196,25 +219,46 @@ export class ZipWriter {
     this.entries.push(this.begin(name, 0));
   }
 
-  beginFile(name, size) {
-    return this.begin(name, size);
+  /** Fichier de [size] octets ; { deflate: true } : compressé. */
+  beginFile(name, size, { deflate = false } = {}) {
+    return this.begin(name, size, deflate ? 8 : 0);
   }
 
   writeData(entry, chunk) {
-    entry.crc = zlib.crc32(chunk, entry.crc);
-    entry.written += chunk.length;
-    if (entry.written > entry.size) throw new Error(`zip: taille dépassée (${entry.name})`);
+    this.addRaw(entry, chunk);
     this.write(chunk);
   }
 
-  /** Fin du fichier : CRC32 écrit dans l'en-tête local ; renvoie { size, crc32 }. */
+  /** Données d'origine d'un fichier compressé (CRC32 et taille), sans les écrire. */
+  addRaw(entry, chunk) {
+    entry.crc = zlib.crc32(chunk, entry.crc);
+    entry.written += chunk.length;
+    if (entry.written > entry.size) throw new Error(`zip: taille dépassée (${entry.name})`);
+  }
+
+  /** Données compressées d'un fichier (« deflate »), écrites telles quelles. */
+  writeCompressed(entry, chunk) {
+    entry.compressedSize += chunk.length;
+    this.write(chunk);
+  }
+
+  /**
+   * Fin du fichier : CRC32 (et taille compressée) écrits dans l'en-tête local ; renvoie
+   * { size, crc32 } (et compressedSize pour un fichier compressé).
+   */
   endFile(entry) {
     if (entry.written !== entry.size) throw new Error(`zip: taille incorrecte (${entry.name})`);
     const crc = Buffer.alloc(4);
     crc.writeUInt32LE(entry.crc >>> 0);
     fs.writeSync(this.fd, crc, 0, 4, entry.offset + 14);
+    if (entry.method) {
+      const compressed = Buffer.alloc(8);
+      compressed.writeBigUInt64LE(BigInt(entry.compressedSize));
+      fs.writeSync(this.fd, compressed, 0, 8, entry.offset + 30 + entry.nameBuf.length + 12);
+    }
     this.entries.push(entry);
-    return { size: entry.size, crc32: (entry.crc >>> 0).toString(16).padStart(8, '0') };
+    const crc32 = (entry.crc >>> 0).toString(16).padStart(8, '0');
+    return entry.method ? { size: entry.size, compressedSize: entry.compressedSize, crc32 } : { size: entry.size, crc32 };
   }
 
   /** Répertoire central, enregistrements de fin (ZIP64 et classique), puis fermeture. */
@@ -226,6 +270,7 @@ export class ZipWriter {
       header.writeUInt16LE(45, 4);
       header.writeUInt16LE(45, 6);
       header.writeUInt16LE(0x0800, 8);
+      header.writeUInt16LE(e.method ?? 0, 10);
       header.writeUInt16LE(this.time, 12);
       header.writeUInt16LE(this.date, 14);
       header.writeUInt32LE(e.crc >>> 0, 16);
@@ -240,7 +285,7 @@ export class ZipWriter {
       header.writeUInt16LE(ZIP64_EXTRA, extra);
       header.writeUInt16LE(24, extra + 2);
       header.writeBigUInt64LE(BigInt(e.size), extra + 4);
-      header.writeBigUInt64LE(BigInt(e.size), extra + 12);
+      header.writeBigUInt64LE(BigInt(e.compressedSize ?? e.size), extra + 12);
       header.writeBigUInt64LE(BigInt(e.offset), extra + 20);
       this.write(header);
     }

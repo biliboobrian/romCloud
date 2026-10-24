@@ -236,7 +236,7 @@ private fun HeroBanner(
                     )
                     together?.let { TogetherBadge(it, size = 24.dp) }
                 }
-                val meta = listOfNotNull(game.year, game.mainGenre, partsSummary(game), formatSize(game.fullSize)).joinToString(" · ")
+                val meta = listOfNotNull(game.year, game.mainGenre, partsSummary(game), gameSizeLabel(game)).joinToString(" · ")
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 PlaytimeLabel(gamePlaytime(game.id))
                 if (!compact) game.description?.let { HeroDescription(it, maxLines = 3) }
@@ -411,7 +411,7 @@ fun GameCard(
             together?.let { TogetherBadge(it, Modifier.padding(start = 4.dp, top = 1.dp), size = 16.dp) }
         }
         Text(
-            listOfNotNull(game.year, formatSize(game.fullSize)).joinToString(" · "),
+            listOfNotNull(game.year, gameSizeLabel(game)).joinToString(" · "),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 2.dp),

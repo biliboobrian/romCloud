@@ -14,7 +14,9 @@ import { diskUsage } from './disk-usage.js';
 import { clearDownloads, downloadStats, listDownloads, trackDownload } from './download-logs.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { profileStats } from './profile-stats.js';
-import { fileInFolder } from './folder-games.js';
+import { fileInFolder, readPackManifest } from './folder-games.js';
+import { queueFolderPack } from './folder-pack.js';
+import { readZipEntries, zipEntryStream } from './zip.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
 import { setGroup } from './groups.js';
@@ -464,13 +466,34 @@ api.get('/games/:id/file', (req, res, next) => {
   const row = requireGameRow(req.params.id);
   if (row.is_folder) {
     if (req.query.path === undefined) throw new HttpError(400, 'errors.folderGamePath');
-    const file = fileInFolder(gameFilePath(row), req.query.path);
+    const dir = gameFilePath(row);
+    const rel = String(req.query.path).replace(/\\/g, '/');
+    let file = fileInFolder(dir, rel);
+    let name = path.posix.basename(rel);
+    // Jeu compressé (folder-pack.js) : archive « X.zip » du fichier, envoyée telle quelle avec
+    // ?packed=1 (applications récentes, qui la décompressent) ; sinon décompressée à la volée
+    // (anciennes applications, sans reprise du téléchargement).
+    const packed = readPackManifest(dir)[rel];
+    if (packed && !fs.existsSync(file) && fs.existsSync(`${file}.zip`)) {
+      file = `${file}.zip`;
+      if (req.query.packed !== '1') {
+        const entry = readZipEntries(file)[0];
+        if (!entry) throw new HttpError(404, 'errors.fileNotFound');
+        if (packed.size >= FOLDER_LOG_MIN_BYTES) {
+          logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: `${row.file_name}/${rel}`, fileSize: packed.size });
+        }
+        res.set({ 'Content-Type': 'application/octet-stream', 'Content-Length': String(packed.size), 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` });
+        zipEntryStream(file, entry).on('error', () => res.destroy()).pipe(res);
+        return;
+      }
+      name += '.zip';
+    }
     const size = fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0;
     // Journal : seulement les gros fichiers (un jeu en compte parfois des milliers).
     if (size >= FOLDER_LOG_MIN_BYTES) {
-      logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: `${row.file_name}/${req.query.path}`, fileSize: size });
+      logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: `${row.file_name}/${rel}`, fileSize: size });
     }
-    return res.download(file, path.posix.basename(String(req.query.path)), { dotfiles: 'allow' }, (err) => {
+    return res.download(file, name, { dotfiles: 'allow' }, (err) => {
       if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
     });
   }
@@ -482,6 +505,13 @@ api.get('/games/:id/file', (req, res, next) => {
 
 // Jeu en dossier (PC) : ses fichiers ({ path, size }), à télécharger un par un, et ses exécutables.
 api.get('/games/:id/files', (req, res) => res.json(gameFolderFiles(requireGameRow(req.params.id))));
+
+// Jeu PC : compression fichier par fichier ({ mode: "zip" }) ou retour en clair ({ mode: "flat" }),
+// en tâche de fond (voir /jobs).
+api.post('/games/:id/pack', (req, res) => {
+  const job = queueFolderPack(req.params.id, req.body?.mode);
+  res.status(202).json({ job });
+});
 
 const MEDIA_TYPES = ['boxart', ...SCREENSHOT_TYPES];
 

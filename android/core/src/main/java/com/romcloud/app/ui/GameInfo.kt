@@ -80,6 +80,11 @@ fun gameFacts(game: Game): List<GameFact> {
             "$label : ${p.fileName} (${formatSize(p.size)})"
         })
         add(stringResource(R.string.info_size), formatSize(game.fullSize))
+        // Jeu PC compressé par le serveur : archives téléchargées puis décompressées.
+        if (game.zipped) {
+            add(stringResource(R.string.info_size_zip), formatSize(game.packedSize ?: game.fullSize))
+            add(stringResource(R.string.info_compression), stringResource(if (game.packed == "zip") R.string.info_compression_zip else R.string.info_compression_partial))
+        }
         add("CRC32", game.crc32?.uppercase())
         add("MD5", game.md5)
         for (link in d.links) {

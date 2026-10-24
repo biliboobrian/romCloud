@@ -77,6 +77,7 @@ import com.romcloud.app.ui.RetroArchHelpDialog
 import com.romcloud.app.ui.ScreenshotGallery
 import com.romcloud.app.ui.StateHistoryList
 import com.romcloud.app.ui.formatSize
+import com.romcloud.app.ui.gameSizeLabel
 import com.romcloud.app.ui.gameFacts
 import com.romcloud.app.ui.gamePlaytime
 import com.romcloud.app.ui.partsSummary
@@ -166,7 +167,7 @@ fun TvGameDetailScreen(
                         game.players?.let { stringResource(R.string.players_count, it) },
                         game.stars?.let { stringResource(R.string.rating_short, starsText(it)) },
                         partsSummary(game),
-                        formatSize(game.fullSize),
+                        gameSizeLabel(game),
                     ).joinToString("  ·  "),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -288,7 +289,7 @@ fun TvGameDetailScreen(
                         }
                         else -> ActionButton(
                             if (download is DownloadState.Failed) stringResource(R.string.action_retry)
-                            else stringResource(R.string.download_with_size, formatSize(game.fullSize)),
+                            else stringResource(R.string.download_with_size, gameSizeLabel(game)),
                             Icons.Filled.CloudDownload,
                             primary,
                         ) { viewModel.download() }
