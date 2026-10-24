@@ -74,6 +74,17 @@ class FolderInstallTest {
             assertEquals(data.size.toLong(), last)
             assertFalse(archive.exists())
 
+            // Pendant le téléchargement : un seul fil, priorité très basse, remise normale à la fin.
+            val low = File(dir, "low.pak")
+            xzOf(FolderInstall.archiveFile(low, "xz"), data, blocks = 4)
+            val before = Thread.currentThread().priority
+            val downloading = java.util.concurrent.atomic.AtomicBoolean(true)
+            FolderInstall.unpack(FolderInstall.archiveFile(low, "xz"), "xz", low, data.size.toLong(), null, downloading::get) {
+                if (it > data.size / 2) downloading.set(false) // téléchargement terminé en cours de route
+            }
+            assertArrayEquals(data, low.readBytes())
+            assertEquals(before, Thread.currentThread().priority)
+
             // Taille annoncée différente : erreur, archive supprimée (téléchargée de nouveau).
             val bad = File(dir, "bad.bin")
             xzOf(FolderInstall.archiveFile(bad, "xz"), data, blocks = 1)

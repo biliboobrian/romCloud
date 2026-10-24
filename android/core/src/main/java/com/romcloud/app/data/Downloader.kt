@@ -186,10 +186,12 @@ class Downloader(
         val queued = AtomicInteger(0)
         reportNow()
 
+        // Téléchargement du jeu en cours : décompression en priorité très basse (voir FolderInstall.unpack).
+        val downloading = java.util.concurrent.atomic.AtomicBoolean(true)
         val unpackQueue = Channel<Pair<FolderFile, File>>(Channel.UNLIMITED)
         val unpacker = launch {
             for ((file, target) in unpackQueue) {
-                FolderInstall.unpack(FolderInstall.archiveFile(target, file.archiveFormat), file.archiveFormat, target, file.size, file.crc32) { bytes ->
+                FolderInstall.unpack(FolderInstall.archiveFile(target, file.archiveFormat), file.archiveFormat, target, file.size, file.crc32, downloading::get) { bytes ->
                     unpacking.set(bytes)
                     report()
                 }
@@ -228,6 +230,8 @@ class Downloader(
             }
             reportNow()
         }
+        // Tout est reçu : la décompression repasse en priorité normale.
+        downloading.set(false)
         unpackQueue.close()
         unpacker.join()
     }
