@@ -258,6 +258,7 @@
     <string name="err_api_key">Clé d’API invalide ou manquante</string>
     <string name="err_server">Erreur serveur %1$d</string>
     <string name="err_wrong_size">Taille incorrecte (%1$d / %2$d octets), réessayez</string>
+    <string name="err_not_enough_space">Pas assez de place pour installer ce jeu : %1$s nécessaires, %2$s libres</string>
     <string name="err_rename">Impossible de renommer le fichier téléchargé</string>
     <string name="err_no_server">Aucun serveur configuré</string>
     <string name="err_invalid_address">Adresse invalide</string>
@@ -483,6 +484,11 @@
     <string name="info_analog">Stick analogique</string>
     <string name="info_file">Fichier</string>
     <string name="info_size">Taille</string>
+    <string name="info_size_zip">Taille à télécharger (zip)</string>
+    <string name="info_compression">Compression</string>
+    <string name="info_compression_zip">Zip (une archive par fichier, décompressée à la réception)</string>
+    <string name="info_compression_partial">Zip, en partie</string>
+    <string name="size_flat_zip">%1$s (zip : %2$s)</string>
     <string name="info_parts">Autres fichiers</string>
     <string name="storage_on_device">Sur l’appareil : %1$s</string>
     <string name="storage_free">%1$s libres</string>

@@ -36,6 +36,7 @@ import com.romcloud.app.data.Player
 import com.romcloud.app.ui.CriteriaSection
 import com.romcloud.app.ui.GameCriteria
 import com.romcloud.app.ui.formatSize
+import com.romcloud.app.ui.gameSizeLabel
 import com.romcloud.core.R
 
 /** Donne le focus à l'élément dès l'ouverture de la fenêtre (utilisation à la télécommande). */
@@ -64,7 +65,7 @@ fun DownloadDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.tv_download_text))
                 Text(
-                    "${game.fileName} · ${formatSize(game.fullSize)}",
+                    "${game.fileName} · ${gameSizeLabel(game)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

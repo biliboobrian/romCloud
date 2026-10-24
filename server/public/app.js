@@ -282,6 +282,7 @@ function renderGames() {
       <div class="game-info">
         <div class="game-title" title="${escapeHtml(g.fileName)}">${escapeHtml(g.title)}</div>
         ${g.parts?.length ? `<div class="game-badge">${escapeHtml(partsSummary(g))}</div>` : ''}
+        ${g.folder && g.packed && g.packed !== 'flat' ? `<div class="game-badge">${escapeHtml(t(g.packed === 'zip' ? 'pack.badgeZip' : 'pack.badgePartial'))}</div>` : ''}
         <div class="game-sub"><span>${formatSize(g.totalSize ?? g.size)}${g.releaseDate ? ` · ${escapeHtml(g.releaseDate.slice(0, 4))}` : ''}</span>
           <span class="dot ${g.scrapeStatus}" title="${escapeHtml(t(`status.${g.scrapeStatus}`))}"></span></div>
       </div>
@@ -738,6 +739,7 @@ function fillGameDialog(game, bust = '') {
   form.elements.uninstallExe.disabled = !game.folder;
   $('#gameExtraField').classList.toggle('hidden', !game.folder);
   if (game.folder) fillGameExe(game);
+  fillGamePack(game);
   const statusText = {
     none: t('game.never'),
     ok: t('game.scrapedVia', { source: game.scrapeSource }),
@@ -761,6 +763,27 @@ function fillGameDialog(game, bust = '') {
   // Jeu en dossier : téléchargé fichier par fichier par les applications, pas de lien unique.
   $('#gameDownload').classList.toggle('hidden', Boolean(game.folder));
   renderGameParts(game);
+}
+
+/**
+ * Jeu PC : compression (un .zip par fichier, téléchargés en parallèle et décompressés par les
+ * applications) ou retour en clair, en tâche de fond ; tailles compressée et installée.
+ */
+function fillGamePack(game) {
+  $('#gamePack').classList.toggle('hidden', !game.folder);
+  if (!game.folder) return;
+  const packed = game.packed ?? 'flat';
+  $('#gamePackInfo').textContent = t(`pack.state.${packed}`, { size: formatSize(game.size), packedSize: formatSize(game.packedSize ?? game.size) });
+  const button = $('#gamePackBtn');
+  button.textContent = t(packed === 'zip' ? 'pack.unpack' : 'pack.pack');
+  button.onclick = () =>
+    guard(async () => {
+      const mode = packed === 'zip' ? 'flat' : 'zip';
+      if (!confirm(t(mode === 'zip' ? 'pack.confirmPack' : 'pack.confirmUnpack', { title: game.title }))) return;
+      const { job } = await api(`/games/${game.id}/pack`, { method: 'POST', body: { mode } });
+      toast(t(job ? 'pack.queued' : 'pack.alreadyQueued'));
+      refreshJobs();
+    });
 }
 
 /**

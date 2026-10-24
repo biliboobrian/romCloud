@@ -143,7 +143,16 @@ data class Game(
     val folder: Boolean = false,
     /** Exécutable du jeu en dossier, chemin dans son dossier (« Bin/Game.exe ») ; null : aucun choisi. */
     val exe: String? = null,
+    /**
+     * Jeu PC compressé par le serveur : « zip » (un .zip par fichier, décompressé à la réception),
+     * « partial » (une partie des fichiers) ou « flat » (en clair).
+     */
+    val packed: String = "flat",
+    /** Taille à télécharger du jeu PC (archives comprises) ; [size] : sa taille une fois installé. */
+    val packedSize: Long? = null,
 ) {
+    /** Jeu PC dont des fichiers sont téléchargés compressés : tailles compressée et installée différentes. */
+    val zipped: Boolean get() = folder && packed != "flat" && packedSize != null
     /** Fichiers du jeu : le fichier principal puis ses parties. */
     val files: List<GamePart> get() = listOf(GamePart(id, fileName, size)) + parts
 
@@ -173,13 +182,21 @@ data class AgeRating(val type: String? = null, val text: String)
 @Serializable
 data class GameLink(val label: String, val url: String)
 
-/** Fichier d'un jeu en dossier (PC) : chemin dans son dossier (« Bin/Game.exe ») et taille. */
+/**
+ * Fichier d'un jeu en dossier (PC) : chemin dans son dossier (« Bin/Game.exe ») et taille ;
+ * compressé par le serveur : taille de son archive [zipSize] et [crc32] du fichier décompressé.
+ */
 @Serializable
-data class FolderFile(val path: String, val size: Long)
+data class FolderFile(val path: String, val size: Long, val zipSize: Long? = null, val crc32: String? = null) {
+    val packed: Boolean get() = zipSize != null
+
+    /** Octets à télécharger. */
+    val downloadSize: Long get() = zipSize ?: size
+}
 
 /** Fichiers d'un jeu en dossier (`GET /api/games/{id}/files`). */
 @Serializable
-data class FolderListing(val files: List<FolderFile> = emptyList(), val exe: String? = null)
+data class FolderListing(val files: List<FolderFile> = emptyList(), val exe: String? = null, val packed: String = "flat")
 
 /** Partie d'un jeu : [kind] disc (avec son numéro [index]), update ou dlc ; vide pour le fichier principal. */
 @Serializable

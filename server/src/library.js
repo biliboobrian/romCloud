@@ -86,7 +86,18 @@ export function rowToGame(row, parts = []) {
     // Jeu en dossier (PC Windows) : fichiers listés par /games/:id/files, lancé par [exe].
     // uninstallExe : désinstalleur lancé quand le jeu est supprimé du PC (null : aucun).
     // extraExes : autres exécutables (prérequis : DirectX, Visual C++…) proposés par l'application Windows.
-    ...(row.is_folder ? { folder: true, exe: row.exe ?? null, uninstallExe: row.uninstall_exe || null, extraExes: extraExesOf(row) } : {}),
+    // packed : « zip » (tous les fichiers compressés, un .zip par fichier), « partial » (une partie)
+    // ou « flat » (en clair) ; packedSize : taille à télécharger (size : taille une fois installé).
+    ...(row.is_folder
+      ? {
+          folder: true,
+          exe: row.exe ?? null,
+          uninstallExe: row.uninstall_exe || null,
+          extraExes: extraExesOf(row),
+          packed: packState(row),
+          packedSize: row.packed_size ?? row.size,
+        }
+      : {}),
     groupMode: row.group_mode ?? null,
     crc32: row.crc32,
     md5: row.md5,
@@ -374,6 +385,9 @@ export function scanSystem(systemId) {
     // n'existent plus (désinstalleur « aucun » choisi dans la fiche : gardé).
     for (const row of db.prepare('SELECT id, file_name, exe, uninstall_exe, extra_exes, extra_exes_chosen FROM games WHERE system_id = ?').all(systemId)) {
       const files = folderFiles(path.join(dir, row.file_name));
+      // Compression (folder-pack.js) : fichiers compressés et taille à télécharger.
+      const stats = folderStats(null, files);
+      db.prepare('UPDATE games SET packed_files = ?, packed_size = ?, folder_files = ? WHERE id = ?').run(stats.packed, stats.packedSize, stats.count, row.id);
       const candidates = exeCandidates(files);
       if (!row.exe || !candidates.includes(row.exe)) db.prepare('UPDATE games SET exe = ? WHERE id = ?').run(candidates[0] ?? null, row.id);
       // Autres exécutables : devinés, ou ceux choisis qui existent encore.
@@ -391,17 +405,31 @@ export function scanSystem(systemId) {
   return result;
 }
 
-/** Fichiers d'un jeu en dossier ({ path, size }) et ses exécutables (le plus probable en premier). */
+/**
+ * Fichiers d'un jeu en dossier ({ path, size } ; compressé : zipSize et crc32 en plus, à demander
+ * avec ?packed=1) et ses exécutables (le plus probable en premier) ; packed : état de compression,
+ * packedSize : taille à télécharger.
+ */
 export function gameFolderFiles(row) {
   if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
   const files = folderFiles(gameFilePath(row));
+  const stats = folderStats(null, files);
   return {
-    files: files.map(({ path: p, size }) => ({ path: p, size })),
+    files: files.map(({ path: p, size, zipSize, crc32 }) => (zipSize === undefined ? { path: p, size } : { path: p, size, zipSize, crc32 })),
+    packed: stats.packed === 0 ? 'flat' : stats.packed === files.length ? 'zip' : 'partial',
+    size: stats.size,
+    packedSize: stats.packedSize,
     exes: exeCandidates(files),
     exe: row.exe ?? null,
     uninstallExe: row.uninstall_exe || null,
     extraExes: extraExesOf(row),
   };
+}
+
+/** Jeu PC compressé : « zip » (tous ses fichiers), « partial » (une partie) ou « flat » (aucun). */
+function packState(row) {
+  if (!row.packed_files) return 'flat';
+  return row.packed_files >= (row.folder_files ?? 0) ? 'zip' : 'partial';
 }
 
 /** Autres exécutables d'un jeu en dossier (colonne JSON), liste vide sans eux. */

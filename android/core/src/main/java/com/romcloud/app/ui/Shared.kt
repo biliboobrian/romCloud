@@ -1,5 +1,7 @@
 package com.romcloud.app.ui
 
+import com.romcloud.app.data.Game
+
 import androidx.annotation.PluralsRes
 import android.widget.Toast
 import androidx.compose.foundation.LocalIndication
@@ -145,6 +147,11 @@ fun formatSize(bytes: Long): String {
     }
     return if (i == 0) "$bytes ${units[0]}" else String.format(Locale.getDefault(), "%.1f %s", value, units[i])
 }
+
+/** Taille du jeu ; jeu PC compressé : taille installée et taille à télécharger (« 12 Go (zip : 8 Go) »). */
+fun gameSizeLabel(game: Game): String =
+    if (game.zipped) I18n.get(R.string.size_flat_zip, formatSize(game.fullSize), formatSize(game.packedSize ?: game.fullSize))
+    else formatSize(game.fullSize)
 
 /** Statut local d'un jeu, affiché à droite de chaque ligne de la liste. */
 sealed interface LocalStatus {

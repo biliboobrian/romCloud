@@ -485,6 +485,12 @@
       'errors.server': '{message}',
       'errors.download': 'Download error: {detail}',
       'errors.wrongSize': 'Wrong size ({got} / {expected} bytes), try again',
+      'errors.notEnoughSpace': 'Not enough space to install this game: {neededBytes} needed, {freeBytes} free',
+      'size.flatZip': '{size} (zip: {zip})',
+      'info.sizeZip': 'Download size (zip)',
+      'info.compression': 'Compression',
+      'info.compressionZip': 'Zip (one archive per file, unzipped as it arrives)',
+      'info.compressionPartial': 'Zip, partly',
       'errors.notDownloaded': 'The game is not downloaded',
       'errors.retroarchMissing': 'RetroArch not found: indicate the path of retroarch.exe in the Settings.',
       'errors.coreMissing': 'RetroArch core “{core}” not installed (Online Updater → Core Downloader).',
@@ -1019,6 +1025,12 @@
       'errors.server': '{message}',
       'errors.download': 'Erreur de téléchargement : {detail}',
       'errors.wrongSize': 'Taille incorrecte ({got} / {expected} octets), réessayez',
+      'errors.notEnoughSpace': 'Pas assez de place pour installer ce jeu : {neededBytes} nécessaires, {freeBytes} libres',
+      'size.flatZip': '{size} (zip : {zip})',
+      'info.sizeZip': 'Taille à télécharger (zip)',
+      'info.compression': 'Compression',
+      'info.compressionZip': 'Zip (une archive par fichier, décompressée à la réception)',
+      'info.compressionPartial': 'Zip, en partie',
       'errors.notDownloaded': 'Le jeu n’est pas téléchargé',
       'errors.retroarchMissing': 'RetroArch introuvable : indiquez le chemin de retroarch.exe dans les Paramètres.',
       'errors.coreMissing': 'Cœur RetroArch « {core} » non installé (Mise à jour en ligne → Télécharger des cœurs).',
@@ -1082,7 +1094,11 @@
   /** Message d'une erreur renvoyée par le processus principal. */
   function errorText(error) {
     if (!error) return '';
-    if (error.key && (dict[lang][error.key] || dict.en[error.key])) return t(error.key, error.vars);
+    if (error.key && (dict[lang][error.key] || dict.en[error.key])) {
+      // Variables « …Bytes » : tailles affichées dans l'unité qui convient (« 12,4 Go »).
+      const vars = Object.fromEntries(Object.entries(error.vars || {}).map(([k, v]) => [k, k.endsWith('Bytes') && typeof v === 'number' ? formatSize(v) : v]));
+      return t(error.key, vars);
+    }
     return error.message || String(error);
   }
 
