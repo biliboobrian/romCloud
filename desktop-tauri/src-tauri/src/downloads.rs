@@ -229,13 +229,50 @@ fn archive_path(target: &Path, format: &str) -> PathBuf {
 }
 
 /**
+ * Fil d'exécution courant en arrière-plan (Windows : priorité du processeur, du disque et de la
+ * mémoire très basse, THREAD_MODE_BACKGROUND) ou de nouveau normal ; remis normal à la fin.
+ */
+struct Background(bool);
+
+impl Background {
+    fn set(&mut self, on: bool) {
+        if self.0 == on {
+            return;
+        }
+        self.0 = on;
+        #[cfg(windows)]
+        {
+            #[link(name = "kernel32")]
+            extern "system" {
+                fn GetCurrentThread() -> isize;
+                fn SetThreadPriority(thread: isize, priority: i32) -> i32;
+            }
+            const THREAD_MODE_BACKGROUND_BEGIN: i32 = 0x0001_0000;
+            const THREAD_MODE_BACKGROUND_END: i32 = 0x0002_0000;
+            // SAFETY : pseudo-handle du fil courant, toujours valide.
+            unsafe { SetThreadPriority(GetCurrentThread(), if on { THREAD_MODE_BACKGROUND_BEGIN } else { THREAD_MODE_BACKGROUND_END }) };
+        }
+    }
+}
+
+impl Drop for Background {
+    fn drop(&mut self) {
+        self.set(false);
+    }
+}
+
+/**
  * Décompresse `archive` (« xz » : blocs décompressés en parallèle ; « zip » : un seul fichier) vers
  * `target` (via un fichier temporaire), vérifié par sa taille (et l'empreinte de l'archive : CRC64
  * du xz, CRC32 du zip) ; l'archive est ensuite supprimée, abîmée aussi (téléchargée de nouveau au
- * prochain essai). `on_bytes` reçoit les octets décompressés depuis le début.
+ * prochain essai). `on_bytes` reçoit les octets décompressés depuis le début. Tant que `downloading`
+ * (téléchargement du jeu en cours) : priorité très basse et un seul fil, pour ne pas ralentir le
+ * téléchargement ; ensuite, priorité normale.
  */
-fn unpack_file(archive: &Path, format: &str, target: &Path, size: u64, cancelled: &AtomicBool, on_bytes: impl Fn(u64)) -> Result<()> {
+fn unpack_file(archive: &Path, format: &str, target: &Path, size: u64, cancelled: &AtomicBool, downloading: &AtomicBool, on_bytes: impl Fn(u64)) -> Result<()> {
     let temp = target.with_file_name(format!("{}.unpack", target.file_name().unwrap_or_default().to_string_lossy()));
+    let mut background = Background(false);
+    background.set(downloading.load(Ordering::SeqCst));
     let result = (|| -> Result<()> {
         let file = std::fs::File::open(archive)?;
         let mut out = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(&temp)?);
@@ -247,6 +284,8 @@ fn unpack_file(archive: &Path, format: &str, target: &Path, size: u64, cancelled
                 if cancelled.load(Ordering::SeqCst) {
                     return Err(AppError::msg("cancelled"));
                 }
+                // Téléchargement terminé pendant la décompression : priorité normale.
+                background.set(downloading.load(Ordering::SeqCst));
                 let read = reader.read(&mut buf)?;
                 if read == 0 {
                     return Ok(());
@@ -259,7 +298,11 @@ fn unpack_file(archive: &Path, format: &str, target: &Path, size: u64, cancelled
                 }
             }
         };
-        if format == "xz" {
+        if format == "xz" && downloading.load(Ordering::SeqCst) {
+            // Pendant le téléchargement : un seul fil, en arrière-plan.
+            let mut reader = lzma_rust2::XzReader::new(std::io::BufReader::with_capacity(1 << 20, file), false);
+            copy(&mut reader)?;
+        } else if format == "xz" {
             let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).min(8) as u32;
             let mut reader = lzma_rust2::XzReaderMt::new(file, false, workers).map_err(|e| AppError::msg(format!("xz : {e}")))?;
             copy(&mut reader)?;
@@ -337,6 +380,8 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
     };
     report();
 
+    // Téléchargement du jeu en cours : décompression en arrière-plan (voir unpack_file).
+    let downloading = Arc::new(AtomicBool::new(true));
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(FolderFile, PathBuf)>();
     let downloads = async {
         let tx = tx;
@@ -377,13 +422,15 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
             }
             report();
         }
+        // Tout est reçu : la décompression repasse en priorité normale.
+        downloading.store(false, Ordering::SeqCst);
         Ok::<(), AppError>(())
     };
     let unpacks = async {
         while let Some((file, target)) = rx.recv().await {
-            let (cancelled, unpacking_bytes) = (cancelled.clone(), unpacking.clone());
+            let (cancelled, downloading, unpacking_bytes) = (cancelled.clone(), downloading.clone(), unpacking.clone());
             tokio::task::spawn_blocking(move || {
-                unpack_file(&archive_path(&target, file.format), file.format, &target, file.size, &cancelled, |bytes| unpacking_bytes.store(bytes, Ordering::SeqCst))
+                unpack_file(&archive_path(&target, file.format), file.format, &target, file.size, &cancelled, &downloading, |bytes| unpacking_bytes.store(bytes, Ordering::SeqCst))
             })
             .await
             .map_err(|e| AppError::msg(e.to_string()))??;
@@ -439,6 +486,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let data: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
         let cancelled = AtomicBool::new(false);
+        let downloading = AtomicBool::new(false);
 
         // xz en plusieurs blocs (comme xz -T du serveur).
         let target = dir.join("level1.pak");
@@ -451,9 +499,21 @@ mod tests {
             writer.write_all(&data).unwrap();
             writer.finish().unwrap();
         }
-        unpack_file(&archive, "xz", &target, data.len() as u64, &cancelled, |_| {}).unwrap();
+        unpack_file(&archive, "xz", &target, data.len() as u64, &cancelled, &downloading, |_| {}).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), data);
         assert!(!archive.exists());
+
+        // Pendant le téléchargement : un seul fil, en arrière-plan ; même résultat.
+        let low = dir.join("low.pak");
+        {
+            let mut options = lzma_rust2::XzOptions::with_preset(6);
+            options.set_block_size(std::num::NonZeroU64::new(1_000_000));
+            let mut writer = lzma_rust2::XzWriter::new(std::fs::File::create(archive_path(&low, "xz")).unwrap(), options).unwrap();
+            writer.write_all(&data).unwrap();
+            writer.finish().unwrap();
+        }
+        unpack_file(&archive_path(&low, "xz"), "xz", &low, data.len() as u64, &cancelled, &AtomicBool::new(true), |_| {}).unwrap();
+        assert_eq!(std::fs::read(&low).unwrap(), data);
 
         // zip des compressions d'avant le xz.
         let old = dir.join("old.dat");
@@ -463,7 +523,7 @@ mod tests {
             writer.write_all(&data).unwrap();
             writer.finish().unwrap();
         }
-        unpack_file(&archive_path(&old, "zip"), "zip", &old, data.len() as u64, &cancelled, |_| {}).unwrap();
+        unpack_file(&archive_path(&old, "zip"), "zip", &old, data.len() as u64, &cancelled, &downloading, |_| {}).unwrap();
         assert_eq!(std::fs::read(&old).unwrap(), data);
 
         // Taille différente : erreur, archive supprimée (téléchargée de nouveau).
@@ -473,7 +533,7 @@ mod tests {
             writer.write_all(b"abc").unwrap();
             writer.finish().unwrap();
         }
-        assert!(unpack_file(&archive_path(&bad, "xz"), "xz", &bad, 99, &cancelled, |_| {}).is_err());
+        assert!(unpack_file(&archive_path(&bad, "xz"), "xz", &bad, 99, &cancelled, &downloading, |_| {}).is_err());
         assert!(!bad.exists() && !archive_path(&bad, "xz").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }

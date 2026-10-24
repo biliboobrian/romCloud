@@ -3,6 +3,7 @@ package com.romcloud.app.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,16 +62,43 @@ object FolderInstall {
     fun archiveFile(target: File, format: String) = File(target.parentFile, "${target.name}.$format")
 
     /**
+     * Priorité du fil courant : très basse (téléchargement du jeu en cours, pour ne pas le
+     * ralentir) ou normale ; [restore] la remet comme avant.
+     */
+    private class Priority {
+        private val thread = Thread.currentThread()
+        private val initial = thread.priority
+        private var low = false
+
+        fun set(low: Boolean) {
+            if (low == this.low) return
+            this.low = low
+            thread.priority = if (low) Thread.MIN_PRIORITY else initial
+        }
+
+        fun restore() = set(false)
+    }
+
+    /**
      * Décompresse [archive] (format « xz » ou « zip ») vers [target] (via un fichier temporaire),
      * vérifié par sa taille ([crc32] aussi pour le zip ; le xz porte sa propre empreinte) ; l'archive
      * est ensuite supprimée (abîmée aussi, pour être téléchargée de nouveau). [progress] reçoit les
-     * octets décompressés depuis le début.
+     * octets décompressés depuis le début. Tant que [downloading] (téléchargement du jeu en cours) :
+     * priorité très basse et un seul fil, pour ne pas ralentir le téléchargement ; ensuite, normale.
      */
-    suspend fun unpack(archive: File, format: String, target: File, size: Long, crc32: String?, progress: (Long) -> Unit = {}) {
+    suspend fun unpack(
+        archive: File,
+        format: String,
+        target: File,
+        size: Long,
+        crc32: String?,
+        downloading: () -> Boolean = { false },
+        progress: (Long) -> Unit = {},
+    ) {
         val temp = File(target.parentFile, "${target.name}.unpack")
         try {
             withContext(Dispatchers.IO) {
-                if (format == "xz") unxz(archive, temp, size, progress) else unzip(archive, temp, size, crc32, progress)
+                if (format == "xz") unxz(archive, temp, size, downloading, progress) else unzip(archive, temp, size, crc32, downloading, progress)
             }
             if (target.exists()) target.delete()
             if (!temp.renameTo(target)) throw IOException("$format: impossible de renommer ${temp.name}")
@@ -85,9 +113,10 @@ object FolderInstall {
 
     /**
      * Archive xz : blocs indépendants (xz -T du serveur) décompressés en parallèle selon la mémoire
-     * de l'application et les cœurs du processeur, chacun écrit à sa place dans le fichier.
+     * de l'application et les cœurs du processeur, chacun écrit à sa place dans le fichier ; pendant
+     * le téléchargement, un seul fil (les autres attendent sa fin).
      */
-    private suspend fun unxz(archive: File, temp: File, size: Long, progress: (Long) -> Unit) {
+    private suspend fun unxz(archive: File, temp: File, size: Long, downloading: () -> Boolean, progress: (Long) -> Unit) {
         val blocks = SeekableXZInputStream(SeekableFileInputStream(archive)).use { xz ->
             if (xz.length() != size) throw IOException("xz: taille ${xz.length()} au lieu de $size (${archive.name})")
             xz.blockCount
@@ -102,26 +131,39 @@ object FolderInstall {
         val written = AtomicLong(0)
         val nextBlock = AtomicInteger(0)
         coroutineScope {
-            repeat(workers) {
+            repeat(workers) { worker ->
                 launch(Dispatchers.Default) {
                     SeekableXZInputStream(SeekableFileInputStream(archive)).use { xz ->
                         RandomAccessFile(temp, "rw").use { out ->
                             val channel = out.channel
                             val buffer = ByteArray(BUFFER)
                             while (true) {
+                                // Téléchargement en cours : seul le premier fil décompresse.
+                                if (worker > 0 && downloading()) {
+                                    if (nextBlock.get() >= blocks) break
+                                    delay(250)
+                                    continue
+                                }
                                 val block = nextBlock.getAndIncrement()
                                 if (block >= blocks) break
                                 xz.seekToBlock(block)
                                 var position = xz.getBlockPos(block)
                                 var left = xz.getBlockSize(block)
-                                while (left > 0) {
-                                    currentCoroutineContext().ensureActive()
-                                    val read = xz.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
-                                    if (read < 0) throw IOException("xz: archive tronquée (${archive.name})")
-                                    val data = ByteBuffer.wrap(buffer, 0, read)
-                                    while (data.hasRemaining()) position += channel.write(data, position)
-                                    left -= read
-                                    progress(written.addAndGet(read.toLong()))
+                                // Bloc décompressé sans suspension : priorité du fil réglée pour lui seul.
+                                val priority = Priority()
+                                try {
+                                    while (left > 0) {
+                                        currentCoroutineContext().ensureActive()
+                                        priority.set(downloading())
+                                        val read = xz.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                                        if (read < 0) throw IOException("xz: archive tronquée (${archive.name})")
+                                        val data = ByteBuffer.wrap(buffer, 0, read)
+                                        while (data.hasRemaining()) position += channel.write(data, position)
+                                        left -= read
+                                        progress(written.addAndGet(read.toLong()))
+                                    }
+                                } finally {
+                                    priority.restore()
                                 }
                             }
                         }
@@ -133,8 +175,9 @@ object FolderInstall {
     }
 
     /** Archive zip d'un seul fichier (stocké ou « deflate »), vérifiée par son CRC32. */
-    private suspend fun unzip(zip: File, temp: File, size: Long, crc32: String?, progress: (Long) -> Unit) {
+    private suspend fun unzip(zip: File, temp: File, size: Long, crc32: String?, downloading: () -> Boolean, progress: (Long) -> Unit) {
         val inflater = Inflater(true)
+        val priority = Priority()
         try {
             FileInputStream(zip).use { raw ->
                 val input = BufferedInputStream(raw, BUFFER)
@@ -150,6 +193,7 @@ object FolderInstall {
                     val buffer = ByteArray(BUFFER)
                     while (written < size) {
                         currentCoroutineContext().ensureActive()
+                        priority.set(downloading())
                         val read = data.read(buffer, 0, minOf(buffer.size.toLong(), size - written).toInt())
                         if (read < 0) break
                         out.write(buffer, 0, read)
@@ -164,6 +208,7 @@ object FolderInstall {
                 }
             }
         } finally {
+            priority.restore()
             inflater.end()
         }
     }
