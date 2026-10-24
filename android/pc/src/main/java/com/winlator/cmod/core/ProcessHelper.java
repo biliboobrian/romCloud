@@ -119,6 +119,7 @@ public abstract class ProcessHelper {
                 while ((line = reader.readLine()) != null) {
                     if (PRINT_DEBUG) System.out.println(line);
                     Log.i("Wine", line);
+                    com.romcloud.wine.SessionLog.onWineLine(line);
                     synchronized (debugCallbacks) {
                         if (!debugCallbacks.isEmpty()) {
                             for (Callback<String> callback : debugCallbacks) callback.call(line);

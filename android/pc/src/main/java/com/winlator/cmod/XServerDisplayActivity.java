@@ -968,6 +968,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     }
 
     public void exitApp() {
+        // RomCloud PC : partie quittée par le menu (plantage signalé par Wine gardé pour RomCloud).
+        com.romcloud.wine.SessionLog.end(this, -1);
 
         preloaderDialog.show(R.string.closing_app);
 
@@ -1728,7 +1730,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         // Pass final envVars to the launcher
         guestProgramLauncherComponent.setEnvVars(envVars);
-        guestProgramLauncherComponent.setTerminationCallback((status) -> finish());
+        guestProgramLauncherComponent.setTerminationCallback((status) -> {
+            // RomCloud PC : fin de la partie (plantage signalé par Wine gardé pour RomCloud).
+            com.romcloud.wine.SessionLog.end(this, status);
+            finish();
+        });
 
         // Add the launcher to our environment
         environment.addComponent(guestProgramLauncherComponent);

@@ -846,6 +846,11 @@ class Account(private val context: Context, private val api: ApiClient, private 
                         appendLine("--- Journal de la dernière partie (émulateur intégré) ---")
                         session.readLines().takeLast(300).forEach { appendLine(it) }
                     }
+                    com.romcloud.app.launch.Winlator.companionLog(context)?.let {
+                        appendLine()
+                        appendLine("--- RomCloud PC (jeux PC, Wine) ---")
+                        append(it)
+                    }
                 }
             }
         }
@@ -859,7 +864,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
         val process = ProcessBuilder("logcat", "-d", "-v", "time", "-t", "1500", "--pid=${android.os.Process.myPid()}")
             .redirectErrorStream(true)
             .start()
-        process.inputStream.bufferedReader().use { it.readText() }.takeLast(150_000)
+        process.inputStream.bufferedReader().use { it.readText() }.takeLast(100_000)
     }.getOrElse { "(journal indisponible : ${it.message})\n" }
 
     companion object {

@@ -208,6 +208,8 @@ public class LaunchActivity extends Activity {
             container.setDrives(drives(container.getDrives(), ROMS_DRIVE, romsDir.getAbsolutePath()));
             container.saveData();
             File shortcut = writeShortcut(container, intent.getStringExtra(EXTRA_TITLE), winePath(exe, downloads, romsDir), intent.getBundleExtra(EXTRA_SETTINGS));
+            // Journal de la partie (lu par RomCloud : plantage signalé au serveur, rapport d'erreur).
+            SessionLog.start(this, intent.getStringExtra(EXTRA_TITLE), exe.getAbsolutePath(), container.getWineVersion());
             runOnUiThread(() -> {
                 Intent game = new Intent(this, XServerDisplayActivity.class)
                         .putExtra("container_id", container.id)
