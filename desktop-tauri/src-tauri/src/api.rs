@@ -137,6 +137,70 @@ pub fn remember_downloaded(system: &Value, game: &Value) -> Result<()> {
     Ok(())
 }
 
+/**
+ * Fiches à jour (jaquette, titre… changés sur le serveur depuis le téléchargement) des éléments de
+ * `kind` (« systems » ou « games ») déjà notés dans l'index des jeux téléchargés ; les autres sont
+ * ignorés. Renvoie true si l'index a changé.
+ */
+fn update_downloaded(kind: &str, fresh: &[Value]) -> bool {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = LOCK.lock().unwrap();
+    let mut index = downloaded_index();
+    let mut changed = false;
+    if let Some(known) = index.get_mut(kind).and_then(Value::as_object_mut) {
+        for item in fresh {
+            if let Some(old) = known.get_mut(&id_key(item)) {
+                if old != item {
+                    *old = item.clone();
+                    changed = true;
+                }
+            }
+        }
+    }
+    if changed {
+        let _ = std::fs::create_dir_all(cache_dir());
+        if let Ok(text) = serde_json::to_string(&index) {
+            let _ = std::fs::write(cache_dir().join("downloaded.json"), text);
+        }
+    }
+    changed
+}
+
+/// Délai entre deux relectures des fiches des jeux téléchargés.
+const DOWNLOADED_REFRESH: Duration = Duration::from_secs(5 * 60);
+static DOWNLOADED_REFRESHED: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/**
+ * Fiches des jeux téléchargés relues sur le serveur (au plus toutes les 5 minutes, pas hors ligne) :
+ * rangée des jeux téléchargés de la page des systèmes à jour. Renvoie true si l'index a changé.
+ */
+pub async fn refresh_downloaded() -> bool {
+    if connectivity::ensure_online().is_err() {
+        return false;
+    }
+    {
+        let mut last = DOWNLOADED_REFRESHED.lock().unwrap();
+        if last.is_some_and(|t| t.elapsed() < DOWNLOADED_REFRESH) {
+            return false;
+        }
+        *last = Some(std::time::Instant::now());
+    }
+    let ids: Vec<String> = index_values("games").iter().map(id_key).filter(|id| !id.is_empty()).collect();
+    let fresh: Vec<Value> = futures_util::future::join_all(ids.iter().map(|id| async move {
+        let text = request(&format!("/api/games/{}", urlencoding::encode(id)), None).await.ok()?;
+        serde_json::from_str::<Value>(&text).ok()
+    }))
+    .await
+    .into_iter()
+    .flatten()
+    .collect();
+    // Serveur injoignable : nouvel essai au prochain affichage.
+    if fresh.is_empty() && !ids.is_empty() {
+        *DOWNLOADED_REFRESHED.lock().unwrap() = None;
+    }
+    update_downloaded("games", &fresh)
+}
+
 // Dernière partie lancée de chaque jeu (millisecondes) : rangée des jeux téléchargés.
 fn played_index() -> Value {
     read_json(&cache_dir().join("played.json")).unwrap_or_else(|| json!({}))
@@ -206,7 +270,11 @@ async fn with_downloaded(load: Result<(Value, bool)>, extra: Vec<Value>) -> Resu
 }
 
 pub async fn systems() -> Result<Value> {
-    with_downloaded(load_with_cache("systems.json", "/api/systems").await, index_values("systems")).await
+    let load = load_with_cache("systems.json", "/api/systems").await;
+    if let Ok((list, false)) = &load {
+        update_downloaded("systems", list.as_array().map(Vec::as_slice).unwrap_or_default());
+    }
+    with_downloaded(load, index_values("systems")).await
 }
 
 /// Jeu identifié par le scraping du serveur (statut « ok ») ; sans statut (ancien cache), identifié.
@@ -250,6 +318,10 @@ pub async fn games(system_id: &str) -> Result<Value> {
         &format!("/api/systems/{}/games", urlencoding::encode(system_id)),
     )
     .await;
+    // En ligne : fiches à jour notées dans l'index des jeux téléchargés (rangée de la page des systèmes).
+    if let Ok((list, false)) = &load {
+        update_downloaded("games", list.as_array().map(Vec::as_slice).unwrap_or_default());
+    }
     let extra = index_values("games").into_iter().filter(|g| g.get("systemId").and_then(Value::as_str) == Some(system_id)).collect();
     visible_games(with_downloaded(load, extra).await)
 }

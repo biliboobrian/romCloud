@@ -344,18 +344,22 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
      */
     fun refreshLocalGames() {
         viewModelScope.launch {
-            _localGames.value = withContext(Dispatchers.IO) {
-                val played = app.repository.lastPlayed()
-                app.repository.downloadedGames()
-                    .filter { (system, game) -> app.library.isDownloaded(system, game) }
-                    .sortedByDescending { (system, game) ->
-                        // Date du téléchargement : fichier du jeu (jeu en dossier : marque de fin).
-                        val downloaded = (if (game.folder) app.library.folderMarker(system, game) else app.library.fileFor(system, game)).lastModified()
-                        maxOf(downloaded, played[game.id] ?: 0)
-                    }
-                    .map { it.second }
-            }
+            _localGames.value = localGames()
+            // Fiches relues sur le serveur (jaquettes changées depuis le téléchargement) : rangée mise à jour.
+            if (app.repository.refreshDownloaded()) _localGames.value = localGames()
         }
+    }
+
+    private suspend fun localGames(): List<Game> = withContext(Dispatchers.IO) {
+        val played = app.repository.lastPlayed()
+        app.repository.downloadedGames()
+            .filter { (system, game) -> app.library.isDownloaded(system, game) }
+            .sortedByDescending { (system, game) ->
+                // Date du téléchargement : fichier du jeu (jeu en dossier : marque de fin).
+                val downloaded = (if (game.folder) app.library.folderMarker(system, game) else app.library.fileFor(system, game)).lastModified()
+                maxOf(downloaded, played[game.id] ?: 0)
+            }
+            .map { it.second }
     }
 
     /** Recalcule la place occupée (affichage de l'écran, fin de téléchargement, jeu supprimé). */

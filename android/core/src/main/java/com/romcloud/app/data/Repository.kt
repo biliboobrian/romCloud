@@ -2,6 +2,9 @@ package com.romcloud.app.data
 
 import com.romcloud.app.launch.LibretroPlayers
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -69,12 +72,50 @@ class Repository(
         api.json.decodeFromString(DownloadedIndex.serializer(), cacheFile(DOWNLOADED).readText())
     }.getOrDefault(DownloadedIndex())
 
+    private fun writeDownloadedIndex(index: DownloadedIndex) {
+        runCatching { cacheFile(DOWNLOADED).writeText(api.json.encodeToString(DownloadedIndex.serializer(), index)) }
+    }
+
     /** Note un jeu téléchargé (et son système) pour le lister hors ligne. */
     @Synchronized
     fun rememberDownloaded(system: GameSystem, game: Game) {
         val index = downloadedIndex()
-        val next = DownloadedIndex(index.systems + (system.id to system), index.games + (game.id to game))
-        runCatching { cacheFile(DOWNLOADED).writeText(api.json.encodeToString(DownloadedIndex.serializer(), next)) }
+        writeDownloadedIndex(DownloadedIndex(index.systems + (system.id to system), index.games + (game.id to game)))
+    }
+
+    /**
+     * Fiches à jour des jeux et systèmes déjà notés dans l'index des jeux téléchargés (jaquette,
+     * titre… changés sur le serveur depuis le téléchargement) ; les autres sont ignorés. Renvoie
+     * true si l'index a changé.
+     */
+    @Synchronized
+    private fun updateDownloaded(games: Collection<Game> = emptyList(), systems: Collection<GameSystem> = emptyList()): Boolean {
+        val index = downloadedIndex()
+        val freshGames = games.filter { game -> index.games[game.id].let { it != null && it != game } }
+        val freshSystems = systems.filter { system -> index.systems[system.id].let { it != null && it != system } }
+        if (freshGames.isEmpty() && freshSystems.isEmpty()) return false
+        writeDownloadedIndex(DownloadedIndex(index.systems + freshSystems.associateBy { it.id }, index.games + freshGames.associateBy { it.id }))
+        return true
+    }
+
+    @Volatile
+    private var downloadedRefreshedAt = 0L
+
+    /**
+     * Fiches des jeux téléchargés relues sur le serveur (au plus toutes les [DOWNLOADED_REFRESH_MS]) :
+     * rangée « Téléchargés » de l'écran des systèmes à jour. Renvoie true si l'index a changé.
+     */
+    suspend fun refreshDownloaded(): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - downloadedRefreshedAt < DOWNLOADED_REFRESH_MS) return false
+        downloadedRefreshedAt = now
+        val ids = withContext(Dispatchers.IO) { downloadedIndex().games.keys }
+        val fresh = coroutineScope {
+            ids.map { id -> async { runCatching { api.json.decodeFromString(Game.serializer(), api.gameRaw(id)) }.getOrNull() } }.awaitAll()
+        }.filterNotNull()
+        // Serveur injoignable : nouvel essai au prochain affichage.
+        if (fresh.isEmpty() && ids.isNotEmpty()) downloadedRefreshedAt = 0
+        return withContext(Dispatchers.IO) { updateDownloaded(games = fresh) }
     }
 
     private val playedSerializer = MapSerializer(Long.serializer(), Long.serializer())
@@ -133,6 +174,7 @@ class Repository(
         )
         systemsMemory.clear()
         loaded.data.forEach { systemsMemory[it.id] = it }
+        if (!loaded.offline) withContext(Dispatchers.IO) { updateDownloaded(systems = loaded.data) }
         return loaded
     }
 
@@ -147,6 +189,7 @@ class Repository(
             key = { it.id },
         )
         gamesMemory[systemId] = loaded.data
+        if (!loaded.offline) withContext(Dispatchers.IO) { updateDownloaded(games = loaded.data) }
         return visible(loaded)
     }
 
@@ -215,6 +258,9 @@ class Repository(
     private companion object {
         const val DOWNLOADED = "downloaded.json"
         const val PLAYED = "played.json"
+
+        /** Délai entre deux relectures des fiches des jeux téléchargés. */
+        const val DOWNLOADED_REFRESH_MS = 5 * 60_000L
     }
 }
 

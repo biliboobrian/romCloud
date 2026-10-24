@@ -815,12 +815,20 @@
     }
   }
 
-  /** Jeux téléchargés sur le PC (rangée de la page des systèmes), réaffichée si elle change. */
+  /**
+   * Jeux téléchargés sur le PC (rangée de la page des systèmes), réaffichée si elle change (jeux,
+   * ordre, ou fiche : jaquette, titre) ; puis fiches relues sur le serveur, rangée mise à jour.
+   */
   async function loadLocalGames() {
-    const games = await call(rc.library.downloadedGames).catch(() => []);
-    const same = games.length === S.localGames.length && games.every((g, i) => g.id === S.localGames[i].id);
-    S.localGames = games;
-    if (!same && S.route.name === 'systems' && !S.search.query.trim()) renderSystemsBody();
+    const show = async () => {
+      const games = await call(rc.library.downloadedGames).catch(() => []);
+      const sig = (list) => JSON.stringify(list.map((g) => [g.id, g.updatedAt, g.hasBoxart, g.title]));
+      const same = sig(games) === sig(S.localGames);
+      S.localGames = games;
+      if (!same && S.route.name === 'systems' && !S.search.query.trim()) renderSystemsBody();
+    };
+    await show();
+    if (await call(rc.library.refreshDownloaded).catch(() => false)) await show();
   }
 
   function renderSearchResults() {
