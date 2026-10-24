@@ -45,6 +45,7 @@ fun gameFacts(game: Game): List<GameFact> {
             val name = when (r.source) {
                 "screenscraper" -> "ScreenScraper"
                 "launchbox" -> "LaunchBox"
+                "steam" -> "Steam"
                 "press" -> press
                 else -> r.source
             }

@@ -23,12 +23,25 @@ export function acceptsFileName(system, name) {
   return !system.filenameRegex || new RegExp(system.filenameRegex).test(name);
 }
 
+/**
+ * Groupe de release en fin de nom d'un dossier de jeu PC : groupes connus (« -GOG », « -ElAmigos »),
+ * ou mot en capitales après un nom écrit à la façon des releases (mots séparés par des points ou
+ * des « _ » : « Rock.Bottom-TENOKE ») ; « Half-Life », « X-COM » restent tels quels.
+ */
+const RELEASE_GROUP_RE = new RegExp(
+  [
+    String.raw`-(?:GOG|ElAmigos|DARKSiDERS|TiNYiSO|SiMPLEX|DINOByTES|FitGirl|DODI|KaOs|P2P|Razor1911|RELOADED|SKIDROW|CODEX|PLAZA|EMPRESS|FLT|RUNE|TENOKE|DOGE|HOODLUM|PROPHET|CPY|GOLDBERG|I_KnoW)$`,
+    String.raw`(?<=^[^\s]{4,}[._][^\s]*)-[A-Z0-9]*[A-Z][A-Z0-9]{2,}$`,
+  ].join('|'),
+);
+
 export function titleFromFileName(fileName, { folder = false } = {}) {
   // Identifiant de contenu PS Vita / PSP (« EP0001-PCSB00040_00-ASPHALTINJECTION ») : son libellé.
   const label = contentIdLabel(fileName);
   if (label) return label;
-  // Dossier d'un jeu PC (« Mr. Robot ») : pas d'extension à retirer.
-  const base = folder ? fileName : fileName.replace(/\.[^.]+$/, '');
+  // Dossier d'un jeu PC (« Mr. Robot ») : pas d'extension à retirer ; nom de release
+  // (« Rock.Bottom-TENOKE », « Jeu_v1.2-GOG ») : groupe de release retiré.
+  const base = folder ? fileName.replace(RELEASE_GROUP_RE, '') : fileName.replace(/\.[^.]+$/, '');
   const bare = base.replace(/\s*[([][^)\]]*[)\]]/g, '');
   const cleaned = bare
     // Nom à la façon des releases, sans espace (« Minecraft.Dungeons.II ») : points entre les mots.
@@ -98,6 +111,8 @@ export function rowToGame(row, parts = []) {
           packedSize: row.packed_size ?? row.size,
           // Format des archives : « xz », « zip » (compressions d'avant le xz), « mixed » ; null : aucune.
           packFormat: row.packed_files ? row.pack_format || 'zip' : null,
+          // AppID Steam choisi dans la fiche (null : retrouvé par les fichiers du jeu ou son titre).
+          steamAppId: row.steam_app_id ?? null,
         }
       : {}),
     groupMode: row.group_mode ?? null,
@@ -205,6 +220,7 @@ const EDITABLE = {
   rap: 'rap',
   exe: 'exe',
   uninstallExe: 'uninstall_exe',
+  steamAppId: 'steam_app_id',
 };
 
 /** Licence zRIF (base64, « KO5ifR1dQ+eHBl… ») sans espaces ni retours à la ligne ; null si vide. */
@@ -233,6 +249,11 @@ export function updateGame(id, input) {
     if (key === 'rating' && value !== null) value = stars(value);
     if (key === 'zrif') value = normalizeZrif(value);
     if (key === 'rap') value = normalizeRap(value);
+    // AppID Steam : nombre, ou adresse de la boutique (« store.steampowered.com/app/4297840/… »).
+    if (key === 'steamAppId' && value !== null) {
+      value = /(?:^|\/app\/)(\d{1,10})(?:\/|$|\?)/.exec(String(value).trim())?.[1] ?? null;
+      if (!value) throw new HttpError(400, 'errors.invalidSteamAppId');
+    }
     if (key === 'exe') value = validateExe(id, value);
     // Désinstalleur : vide = aucun, gardé tel quel (pas deviné de nouveau au scan).
     if (key === 'uninstallExe') value = input[key] === '' || input[key] === null ? '' : validateExe(id, value);

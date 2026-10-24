@@ -234,6 +234,8 @@ if (!gameColumns.includes('extra_exes_chosen')) db.exec('ALTER TABLE games ADD C
 if (!gameColumns.includes('folder_files')) db.exec('ALTER TABLE games ADD COLUMN folder_files INTEGER');
 // Format des archives du jeu PC compressé : xz, zip (compressions d'avant le xz) ou mixed.
 if (!gameColumns.includes('pack_format')) db.exec('ALTER TABLE games ADD COLUMN pack_format TEXT');
+// Identifiant Steam (AppID) d'un jeu PC, choisi dans la fiche : jeu retrouvé dans la boutique Steam au scraping.
+if (!gameColumns.includes('steam_app_id')) db.exec('ALTER TABLE games ADD COLUMN steam_app_id TEXT');
 if (!gameColumns.includes('packed_files')) db.exec('ALTER TABLE games ADD COLUMN packed_files INTEGER NOT NULL DEFAULT 0');
 if (!gameColumns.includes('packed_size')) db.exec('ALTER TABLE games ADD COLUMN packed_size INTEGER');
 // Captures d'écran 2 à 4 (« screenshot » : la première).

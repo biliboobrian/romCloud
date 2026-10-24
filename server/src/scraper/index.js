@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { buffer } from 'node:stream/consumers';
 import { config, screenscraperEnabled } from '../config.js';
 import { I18nError } from '../i18n.js';
 import { db } from '../db.js';
@@ -23,6 +24,9 @@ import { scrapeScreenScraper, searchScreenScraper } from './screenscraper.js';
 import { scrapeLaunchBox } from './launchbox.js';
 import { expandAbbreviation } from './abbreviations.js';
 import { scrapeWikipedia, wikidataFacts } from './wikipedia.js';
+import { APPID_FILE_RE, appIdFromText, scrapeSteam } from './steam.js';
+import { folderFiles, packExtension } from '../folder-games.js';
+import { packedStream } from '../folder-pack.js';
 
 export { QuotaError } from './screenscraper.js';
 
@@ -47,6 +51,33 @@ async function downloadMedia(url, dir, baseName) {
 function addScreenshots(meta, ...urls) {
   const list = (meta.media.screenshots ||= []);
   for (const url of urls.flat()) if (url && !list.includes(url)) list.push(url);
+}
+
+/** Système des jeux PC (jeux en dossiers, Windows) : la boutique Steam les connaît. */
+function isPcSystem(system) {
+  return Boolean(system.folderGames) || ['windows', 'pc', 'win'].includes(String(system.id).toLowerCase()) || ['windows', 'pc', 'win'].includes(String(system.shortname).toLowerCase());
+}
+
+/**
+ * AppID Steam d'un jeu PC lu dans ses fichiers (« steam_appid.txt », .ini des émulateurs Steam ;
+ * fichiers compressés compris), le moins profond d'abord ; null sans eux.
+ */
+async function folderSteamAppId(row) {
+  const dir = gameFilePath(row);
+  const candidates = folderFiles(dir)
+    .filter((f) => APPID_FILE_RE.test(f.path) && f.size <= 64 * 1024)
+    .sort((a, b) => a.path.split('/').length - b.path.split('/').length);
+  for (const f of candidates) {
+    try {
+      const file = path.join(dir, ...f.path.split('/'));
+      const text = f.packed ? (await buffer(packedStream(`${file}${packExtension(f.format)}`, f.format))).toString('utf8') : fs.readFileSync(file, 'utf8');
+      const appId = appIdFromText(f.path, text);
+      if (appId) return appId;
+    } catch {
+      // Fichier illisible : le suivant.
+    }
+  }
+  return null;
 }
 
 function markStatus(id, status, source, error) {
@@ -83,7 +114,9 @@ export async function scrapeGame(gameId, source = 'auto') {
   }
   const lookupName = arcade ? `${arcade.name}.zip` : row.file_name;
   // Autre jeu zippé : les bases connaissent la ROM de l'archive (nom, taille, CRC), pas le .zip.
-  const inner = arcade ? null : zipMainEntry(gameFilePath(row));
+  const inner = arcade || row.is_folder ? null : zipMainEntry(gameFilePath(row));
+  // Titre tiré du nom du fichier (jeu PC : du dossier, sans « extension » à retirer : « Rock.Bottom »).
+  const fileTitle = titleFromFileName(row.file_name, { folder: Boolean(row.is_folder) });
 
   if (useSS) {
     try {
@@ -99,8 +132,8 @@ export async function scrapeGame(gameId, source = 'auto') {
       });
       // Inconnu par son fichier (homebrew, fichier renommé) : recherche par titre, puis par le titre
       // complet d'un sigle (« GTA Chinatown Wars »).
-      if (!meta && !arcade) meta = await searchScreenScraper({ system, title: titleFromFileName(row.file_name) });
-      const expanded = expandAbbreviation(titleFromFileName(row.file_name));
+      if (!meta && !arcade) meta = await searchScreenScraper({ system, title: fileTitle });
+      const expanded = expandAbbreviation(fileTitle);
       if (!meta && !arcade && expanded) meta = await searchScreenScraper({ system, title: expanded });
       if (meta) usedSources.push('screenscraper');
       if (meta?.ratingScore != null) ratings.set('screenscraper', { source: 'screenscraper', score: meta.ratingScore });
@@ -109,6 +142,29 @@ export async function scrapeGame(gameId, source = 'auto') {
         markStatus(row.id, 'error', 'screenscraper', err.message);
         throw err;
       }
+      errors.push(err.message);
+    }
+  }
+
+  // Boutique Steam (jeux PC) : par l'AppID du jeu (fiche, ou fichiers du jeu), sinon par son titre.
+  if (source !== 'screenscraper' && isPcSystem(system)) {
+    try {
+      const appId = row.steam_app_id || (row.is_folder ? await folderSteamAppId(row) : null);
+      const st = await scrapeSteam({ appId, titles: [meta?.title, row.title, fileTitle], languages: config.screenscraper.languages });
+      if (st) {
+        meta ||= { media: {} };
+        meta.title ||= st.title;
+        if (!row.description) meta.description ||= st.description;
+        for (const key of ['developer', 'publisher', 'genre', 'releaseDate']) meta[key] ||= st[key];
+        if (st.rating) ratings.set('steam', { source: 'steam', score: st.rating.score, count: st.rating.count });
+        meta.media.boxart ||= st.media.boxart;
+        meta.media.coverFallback ||= st.media.coverFallback;
+        meta.media.screenshot ||= st.media.screenshot;
+        addScreenshots(meta, st.media.screenshots);
+        meta.details = mergeDetails(meta.details, { links: [{ label: 'Steam', url: st.url }] });
+        usedSources.push('steam');
+      }
+    } catch (err) {
       errors.push(err.message);
     }
   }
@@ -177,7 +233,6 @@ export async function scrapeGame(gameId, source = 'auto') {
   };
   if (source !== 'screenscraper') {
     try {
-      const fileTitle = titleFromFileName(row.file_name);
       const lb = await scrapeLaunchBox({
         system,
         titles: [meta?.title, row.title, fileTitle, expandAbbreviation(row.title), expandAbbreviation(fileTitle), inner && titleFromLibretroName(inner.name)],
@@ -198,7 +253,7 @@ export async function scrapeGame(gameId, source = 'auto') {
         // Titre tiré du nom de fichier par les règles actuelles (jeu ajouté avec une version
         // précédente : auteur, version ou article encore dans son titre).
         // Sigle d'une série (« GTA Chinatown Wars ») : titre complet.
-        title: meta?.title || ((t) => expandAbbreviation(t) || t)(row.title === row.file_name.replace(/\.[^.]+$/, '') ? titleFromFileName(row.file_name) : row.title),
+        title: meta?.title || ((t) => expandAbbreviation(t) || t)(row.title === (row.is_folder ? row.file_name : row.file_name.replace(/\.[^.]+$/, '')) ? fileTitle : row.title),
         system: system.name,
         languages: config.screenscraper.languages,
         loose: unidentified,
