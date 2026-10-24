@@ -1,5 +1,6 @@
 package com.romcloud.tv
 
+import com.romcloud.app.ui.DownloadBars
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -117,10 +118,7 @@ fun TvGameCard(
                     Box(Modifier.align(Alignment.BottomEnd).padding(8.dp)) { badge() }
                 }
                 if (status is LocalStatus.Downloading) {
-                    LinearProgressIndicator(
-                        progress = { status.state.progress },
-                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                    )
+                    DownloadBars(status.state, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
                 }
             }
         }

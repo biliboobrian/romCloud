@@ -9,6 +9,9 @@ ENV NODE_ENV=production \
     DATA_DIR=/data \
     PORT=8080
 
+# xz (XZ Utils) : compression des jeux PC (folder-pack.js).
+RUN apk add --no-cache xz
+
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force

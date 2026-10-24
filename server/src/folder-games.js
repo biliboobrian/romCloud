@@ -1,7 +1,8 @@
 // Jeux en dossiers (système « jeux en dossiers », PC Windows) : chaque sous-dossier du système est un
 // jeu, téléchargé fichier par fichier par les applications (liste : chemin et taille) et lancé par
 // son exécutable, choisi dans la fiche du jeu (sinon deviné au scan). Jeu compressé (folder-pack.js) :
-// chaque fichier « X » rangé dans sa propre archive « X.zip », listée dans le manifeste du dossier.
+// chaque fichier « X » rangé dans sa propre archive, « X.xz » (xz) ou « X.zip » (compressions d'avant
+// le xz), listée dans le manifeste du dossier.
 import fs from 'node:fs';
 import path from 'node:path';
 import { HttpError } from './http-error.js';
@@ -9,10 +10,16 @@ import { HttpError } from './http-error.js';
 // Fichiers ignorés dans le dossier d'un jeu : envois en cours et fichiers système de Windows / macOS.
 const IGNORED_RE = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$|\.(part|tmp|upload)$|^\.romcloud-packed\.json$/i;
 
-/** Manifeste d'un jeu compressé, à la racine de son dossier : { files: { chemin: { size, crc32, mtime } } }. */
+/**
+ * Manifeste d'un jeu compressé, à la racine de son dossier : { files: { chemin: { size, crc32,
+ * mtime, format } } } ; format « xz » ou « zip » (absent : zip).
+ */
 export const PACK_MANIFEST = '.romcloud-packed.json';
 
-/** Fichiers compressés du dossier [dir] (chemin d'origine -> { size, crc32, mtime }) ; vide sans manifeste. */
+/** Archive d'un fichier compressé : extension selon son format (« .xz », « .zip »). */
+export const packExtension = (format) => (format === 'xz' ? '.xz' : '.zip');
+
+/** Fichiers compressés du dossier [dir] (chemin d'origine -> { size, crc32, mtime, format }) ; vide sans manifeste. */
 export function readPackManifest(dir) {
   try {
     const files = JSON.parse(fs.readFileSync(path.join(dir, PACK_MANIFEST), 'utf8')).files;
@@ -35,8 +42,9 @@ const NOT_GAME_RE = new RegExp(
 
 /**
  * Fichiers du dossier [dir] (sous-dossiers compris) : { path (séparateur « / »), size, mtime }, triés
- * par chemin. Fichier compressé : chemin et taille d'origine, et zipSize (taille de « X.zip »),
- * crc32, packed: true ; s'il existe aussi en clair (compression interrompue), le fichier en clair.
+ * par chemin. Fichier compressé : chemin et taille d'origine, packed: true, format (« xz » ou
+ * « zip »), packedSize (taille de son archive), crc32 ; zip : zipSize aussi (applications d'avant le
+ * xz). S'il existe aussi en clair (compression interrompue) : le fichier en clair.
  */
 export function folderFiles(dir) {
   const manifest = readPackManifest(dir);
@@ -47,9 +55,21 @@ export function folderFiles(dir) {
       if (entry.isDirectory()) walk(rel);
       else if (entry.isFile() && !IGNORED_RE.test(rel)) {
         const stat = fs.statSync(path.join(dir, rel));
-        const packed = rel.toLowerCase().endsWith('.zip') ? manifest[rel.slice(0, -4)] : undefined;
-        if (packed) {
-          files.push({ path: rel.slice(0, -4), size: packed.size, mtime: Math.floor(stat.mtimeMs), zipSize: stat.size, crc32: packed.crc32, packed: true });
+        const ext = /\.(xz|zip)$/i.exec(rel)?.[0];
+        const original = ext ? rel.slice(0, -ext.length) : null;
+        const packed = original ? manifest[original] : undefined;
+        if (packed && packExtension(packed.format) === ext.toLowerCase()) {
+          const format = packed.format === 'xz' ? 'xz' : 'zip';
+          files.push({
+            path: original,
+            size: packed.size,
+            mtime: Math.floor(stat.mtimeMs),
+            packed: true,
+            format,
+            packedSize: stat.size,
+            crc32: packed.crc32,
+            ...(format === 'zip' ? { zipSize: stat.size } : {}),
+          });
         } else {
           files.push({ path: rel, size: stat.size, mtime: Math.floor(stat.mtimeMs) });
         }
@@ -71,8 +91,10 @@ export function folderStats(dir, files = folderFiles(dir)) {
     size: files.reduce((n, f) => n + f.size, 0),
     mtime: files.reduce((m, f) => Math.max(m, f.mtime), 0),
     count: files.length,
-    packedSize: files.reduce((n, f) => n + (f.packed ? f.zipSize : f.size), 0),
+    packedSize: files.reduce((n, f) => n + (f.packed ? f.packedSize : f.size), 0),
     packed: files.filter((f) => f.packed).length,
+    // Format des archives : « xz », « zip », « mixed » (les deux) ; null sans fichier compressé.
+    format: packFormatOf(files),
   };
 }
 
@@ -123,4 +145,9 @@ export function fileInFolder(dir, rel) {
   const full = path.resolve(dir, clean);
   if (!full.startsWith(path.resolve(dir) + path.sep)) throw new HttpError(400, 'errors.invalidFilePath');
   return full;
+}
+
+function packFormatOf(files) {
+  const formats = new Set(files.filter((f) => f.packed).map((f) => f.format));
+  return formats.size === 0 ? null : formats.size > 1 ? 'mixed' : [...formats][0];
 }

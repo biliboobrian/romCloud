@@ -83,7 +83,12 @@ fun gameFacts(game: Game): List<GameFact> {
         // Jeu PC compressé par le serveur : archives téléchargées puis décompressées.
         if (game.zipped) {
             add(stringResource(R.string.info_size_zip), formatSize(game.packedSize ?: game.fullSize))
-            add(stringResource(R.string.info_compression), stringResource(if (game.packed == "zip") R.string.info_compression_zip else R.string.info_compression_partial))
+            val format = when (game.packFormat) {
+                "xz" -> "xz"
+                "mixed" -> "xz + zip"
+                else -> "zip"
+            }
+            add(stringResource(R.string.info_compression), stringResource(if (game.packed == "zip") R.string.info_compression_zip else R.string.info_compression_partial, format))
         }
         add("CRC32", game.crc32?.uppercase())
         add("MD5", game.md5)

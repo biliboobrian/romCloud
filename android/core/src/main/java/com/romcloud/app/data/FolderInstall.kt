@@ -1,5 +1,13 @@
 package com.romcloud.app.data
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.tukaani.xz.SeekableFileInputStream
+import org.tukaani.xz.SeekableXZInputStream
 import java.io.BufferedInputStream
 import java.io.DataInputStream
 import java.io.File
@@ -7,82 +15,156 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.CRC32
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
 
 /**
- * Installation d'un jeu PC (jeu en dossier) : fichiers téléchargés en parallèle, les plus lourds
- * d'abord ; jeu compressé par le serveur : chaque fichier arrive dans sa propre archive « X.zip »,
- * décompressée dès sa réception (une à la fois) pendant que les suivantes se téléchargent.
+ * Installation d'un jeu PC (jeu en dossier) : fichiers téléchargés un par un, les plus lourds
+ * d'abord ; jeu compressé par le serveur : chaque fichier arrive dans sa propre archive (« X.xz »,
+ * ou « X.zip » pour les compressions d'avant le xz), mise dans une file de décompression qui avance
+ * en même temps que les téléchargements, une archive à la fois.
  */
 object FolderInstall {
-    /** Fichiers téléchargés en même temps. */
-    const val PARALLEL = 3
+    /** Marge gardée libre sur le disque pendant l'installation. */
+    const val SPACE_MARGIN = 64L * 1024 * 1024
 
-    /** Archives reçues en attente de décompression au plus (au-delà, les téléchargements attendent). */
-    const val UNZIP_QUEUE = 1
+    private const val BUFFER = 256 * 1024
+
+    /** Mémoire d'un décodeur xz (dictionnaire de 64 Mo de xz -9e, et ses tampons). */
+    private const val XZ_DECODER_BYTES = 80L * 1024 * 1024
 
     /** Fichiers à télécharger, les plus lourds d'abord. */
     fun order(files: List<FolderFile>): List<FolderFile> = files.sortedByDescending { it.downloadSize }
 
     /**
      * Place nécessaire pour installer [todo] (fichiers absents de l'appareil) : leur taille
-     * décompressée, plus les archives présentes en même temps sur le disque (en téléchargement, en
-     * attente et en décompression), comptées parmi les plus grosses.
+     * décompressée et la plus grosse archive (téléchargée pendant qu'une autre se décompresse ; si la
+     * décompression prend du retard, les téléchargements attendent la place libérée, voir [mustWait]).
      */
     fun neededBytes(todo: List<FolderFile>): Long =
-        todo.sumOf { it.size } +
-            todo.mapNotNull { it.zipSize }.sortedDescending().take(PARALLEL + UNZIP_QUEUE + 1).sum()
-
-    /** Archive d'un fichier, à côté de lui. */
-    fun zipFile(target: File) = File(target.parentFile, "${target.name}.zip")
+        todo.sumOf { it.size } + (todo.mapNotNull { it.archiveSize }.maxOrNull() ?: 0) + SPACE_MARGIN
 
     /**
-     * Décompresse [zip] (archive d'un seul fichier, stocké ou « deflate ») vers [target] (via un
-     * fichier temporaire), vérifié par sa taille et son [crc32] ; l'archive est ensuite supprimée
-     * (abîmée aussi, pour être téléchargée de nouveau).
+     * Téléchargement de [next] à retarder : la place libre [free] ne suffit pas pour lui (son archive,
+     * ou le fichier lui-même) et pour les fichiers pas encore écrits ([pendingBytes] : en attente de
+     * décompression, en décompression, à télécharger) ; [free] négatif : place inconnue, pas d'attente.
      */
-    fun unzip(zip: File, target: File, size: Long, crc32: String?, isActive: () -> Boolean = { true }) {
-        val temp = File(target.parentFile, "${target.name}.unzip")
+    fun mustWait(next: FolderFile, pendingBytes: Long, free: Long): Boolean =
+        free >= 0 && free < pendingBytes + (next.archiveSize ?: 0) + SPACE_MARGIN
+
+    /** Archive d'un fichier, à côté de lui (« X.xz » ou « X.zip »). */
+    fun archiveFile(target: File, format: String) = File(target.parentFile, "${target.name}.$format")
+
+    /**
+     * Décompresse [archive] (format « xz » ou « zip ») vers [target] (via un fichier temporaire),
+     * vérifié par sa taille ([crc32] aussi pour le zip ; le xz porte sa propre empreinte) ; l'archive
+     * est ensuite supprimée (abîmée aussi, pour être téléchargée de nouveau). [progress] reçoit les
+     * octets décompressés depuis le début.
+     */
+    suspend fun unpack(archive: File, format: String, target: File, size: Long, crc32: String?, progress: (Long) -> Unit = {}) {
+        val temp = File(target.parentFile, "${target.name}.unpack")
+        try {
+            withContext(Dispatchers.IO) {
+                if (format == "xz") unxz(archive, temp, size, progress) else unzip(archive, temp, size, crc32, progress)
+            }
+            if (target.exists()) target.delete()
+            if (!temp.renameTo(target)) throw IOException("$format: impossible de renommer ${temp.name}")
+            archive.delete()
+        } catch (e: IOException) {
+            archive.delete()
+            throw e
+        } finally {
+            temp.delete()
+        }
+    }
+
+    /**
+     * Archive xz : blocs indépendants (xz -T du serveur) décompressés en parallèle selon la mémoire
+     * de l'application et les cœurs du processeur, chacun écrit à sa place dans le fichier.
+     */
+    private suspend fun unxz(archive: File, temp: File, size: Long, progress: (Long) -> Unit) {
+        val blocks = SeekableXZInputStream(SeekableFileInputStream(archive)).use { xz ->
+            if (xz.length() != size) throw IOException("xz: taille ${xz.length()} au lieu de $size (${archive.name})")
+            xz.blockCount
+        }
+        val workers = minOf(
+            blocks,
+            Runtime.getRuntime().availableProcessors(),
+            (Runtime.getRuntime().maxMemory() / 3 / XZ_DECODER_BYTES).toInt(),
+            4,
+        ).coerceAtLeast(1)
+        RandomAccessFile(temp, "rw").use { it.setLength(size) }
+        val written = AtomicLong(0)
+        val nextBlock = AtomicInteger(0)
+        coroutineScope {
+            repeat(workers) {
+                launch(Dispatchers.Default) {
+                    SeekableXZInputStream(SeekableFileInputStream(archive)).use { xz ->
+                        RandomAccessFile(temp, "rw").use { out ->
+                            val channel = out.channel
+                            val buffer = ByteArray(BUFFER)
+                            while (true) {
+                                val block = nextBlock.getAndIncrement()
+                                if (block >= blocks) break
+                                xz.seekToBlock(block)
+                                var position = xz.getBlockPos(block)
+                                var left = xz.getBlockSize(block)
+                                while (left > 0) {
+                                    currentCoroutineContext().ensureActive()
+                                    val read = xz.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                                    if (read < 0) throw IOException("xz: archive tronquée (${archive.name})")
+                                    val data = ByteBuffer.wrap(buffer, 0, read)
+                                    while (data.hasRemaining()) position += channel.write(data, position)
+                                    left -= read
+                                    progress(written.addAndGet(read.toLong()))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (written.get() != size) throw IOException("xz: contenu incorrect (${archive.name})")
+    }
+
+    /** Archive zip d'un seul fichier (stocké ou « deflate »), vérifiée par son CRC32. */
+    private suspend fun unzip(zip: File, temp: File, size: Long, crc32: String?, progress: (Long) -> Unit) {
         val inflater = Inflater(true)
         try {
             FileInputStream(zip).use { raw ->
-                val input = BufferedInputStream(raw, 256 * 1024)
+                val input = BufferedInputStream(raw, BUFFER)
                 val method = skipLocalHeader(input)
                 val data: InputStream = when (method) {
                     0 -> input
-                    8 -> InflaterInputStream(input, inflater, 256 * 1024)
+                    8 -> InflaterInputStream(input, inflater, BUFFER)
                     else -> throw IOException("zip: compression $method non prise en charge (${zip.name})")
                 }
                 val crc = CRC32()
                 var written = 0L
                 FileOutputStream(temp).use { out ->
-                    val buffer = ByteArray(256 * 1024)
+                    val buffer = ByteArray(BUFFER)
                     while (written < size) {
-                        if (!isActive()) throw java.util.concurrent.CancellationException()
+                        currentCoroutineContext().ensureActive()
                         val read = data.read(buffer, 0, minOf(buffer.size.toLong(), size - written).toInt())
                         if (read < 0) break
                         out.write(buffer, 0, read)
                         crc.update(buffer, 0, read)
                         written += read
+                        progress(written)
                     }
                 }
                 val got = "%08x".format(crc.value)
                 if (written != size || (crc32 != null && !got.equals(crc32, ignoreCase = true))) {
-                    throw IOException("zip: contenu incorrect (${target.name})")
+                    throw IOException("zip: contenu incorrect (${zip.name})")
                 }
             }
-            if (target.exists()) target.delete()
-            if (!temp.renameTo(target)) throw IOException("zip: impossible de renommer ${temp.name}")
-            zip.delete()
-        } catch (e: IOException) {
-            // Archive abîmée : supprimée, téléchargée de nouveau au prochain essai.
-            zip.delete()
-            throw e
         } finally {
             inflater.end()
-            temp.delete()
         }
     }
 

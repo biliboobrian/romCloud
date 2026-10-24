@@ -152,15 +152,42 @@
 
   function statusOf(game, downloaded) {
     const d = S.downloads[game.id];
-    if (d?.status === 'running') return { kind: 'running', progress: d.total ? d.bytes / d.total : 0, d };
+    // Jeu PC compressé : unpack, part décompressée (null : rien à décompresser) ; unpacking : tout est
+    // reçu, la décompression continue (jeu jouable à la fin).
+    if (d?.status === 'running') {
+      const unpack = d.unpackTotal ? d.unpackBytes / d.unpackTotal : null;
+      return { kind: 'running', progress: d.total ? d.bytes / d.total : 0, unpack, unpacking: unpack != null && d.bytes >= d.total && unpack < 1, d };
+    }
     if (d?.status === 'failed') return { kind: 'failed', error: errorText(d.error) };
     return downloaded.has(game.id) ? { kind: 'downloaded' } : { kind: 'remote' };
+  }
+
+  /**
+   * Barres en bas de la jaquette : téléchargement et, collée dessous, décompression (jeu PC
+   * compressé : archives décompressées une à une pendant le téléchargement).
+   */
+  function cardBarsHtml(gameId, st) {
+    const pct = (v) => `${Math.round((v || 0) * 100)}%`;
+    const running = st.kind === 'running';
+    const unpack = running && st.unpack != null;
+    return `<div class="progress-bars${running ? '' : ' hidden'}" data-progress="${gameId}">
+      <div class="progress"><div style="width:${pct(st.progress)}"></div></div>
+      ${unpack ? `<div class="progress unpack"><div style="width:${pct(st.unpack)}"></div></div>` : ''}</div>`;
+  }
+
+  /** Progression écrite sous les barres : octets reçus, puis décompressés (jeu PC compressé). */
+  function downloadProgressText(st) {
+    const d = st.d;
+    const unpack = st.unpack != null ? t('download.unpack', { bytes: formatSize(d.unpackBytes), total: formatSize(d.unpackTotal) }) : '';
+    if (st.unpacking) return `${t('download.unpackingPlayable')} ${unpack}`;
+    const received = t('download.progress', { bytes: formatSize(d.bytes), total: formatSize(d.total) });
+    return unpack ? `${received} · ${unpack}` : received;
   }
 
   function statusHtml(st) {
     switch (st.kind) {
       case 'downloaded': return `<span class="status-icon ok" title="${esc(t('status.downloaded'))}">${icon('check', 24)}</span>`;
-      case 'running': return `<span class="ring">${Math.round(st.progress * 100)}%</span>`;
+      case 'running': return `<span class="ring">${Math.round((st.unpacking ? st.unpack : st.progress) * 100)}%</span>`;
       case 'failed': return `<span class="status-icon error" title="${esc(t('status.failed', { error: st.error }))}">${icon('error', 22)}</span>`;
       default: return `<span class="status-icon remote" title="${esc(t('status.remote'))}">${icon('cloud', 22)}</span>`;
     }
@@ -173,10 +200,7 @@
     const downloaded = S.route.name === 'systems' ? S.search.downloaded : S.games.downloaded;
     const st = statusOf(game, downloaded);
     for (const el of $$(`[data-status="${gameId}"]`)) el.innerHTML = statusHtml(st);
-    for (const el of $$(`[data-progress="${gameId}"]`)) {
-      el.classList.toggle('hidden', st.kind !== 'running');
-      $('div', el).style.width = `${Math.round((st.progress || 0) * 100)}%`;
-    }
+    for (const el of $$(`[data-progress="${gameId}"]`)) el.outerHTML = cardBarsHtml(gameId, st);
     for (const el of $$(`[data-card="${gameId}"]`)) el.classList.toggle('remote', st.kind !== 'downloaded');
     if (S.route.name === 'game' && S.route.gameId === gameId) renderGame();
     if (S.route.name === 'games' && S.focusedGameId === gameId) renderHero();
@@ -862,7 +886,7 @@
         <div class="overlay status" data-status="${game.id}">${statusHtml(st)}</div>
         <button class="overlay info-btn" data-info="${game.id}" title="${esc(t('action.details'))}">${icon('info', 18)}</button>
         ${badge && system ? `<div class="overlay badge">${logo ? `<img src="${esc(logo)}" alt="${esc(system.name)}">` : esc(system.shortname.toUpperCase())}</div>` : ''}
-        <div class="progress${st.kind === 'running' ? '' : ' hidden'}" data-progress="${game.id}"><div style="width:${Math.round((st.progress || 0) * 100)}%"></div></div>
+        ${cardBarsHtml(game.id, st)}
       </div>
       <div class="title">${esc(game.title)}${multiBadge(game)}</div>
       <div class="meta">${esc([year(game), partsSummary(game), sizeLabel(game)].filter(Boolean).join(' · '))}</div>
@@ -1238,7 +1262,7 @@
     const st = statusOf(game, S.games.downloaded);
     const resume = canResume(game);
     const statusLine = st.kind === 'downloaded' ? `<span class="good">${esc(t('hero.ready'))}</span>`
-      : st.kind === 'running' ? `<span style="color:var(--accent)">${esc(t('hero.downloading', { p: Math.round(st.progress * 100) }))}</span>`
+      : st.kind === 'running' ? `<span style="color:var(--accent)">${esc(st.unpacking ? t('hero.unpacking', { p: Math.round(st.unpack * 100) }) : t('hero.downloading', { p: Math.round(st.progress * 100) }))}</span>`
       : st.kind === 'failed' ? `<span class="bad">${esc(t('status.failed', { error: st.error }))}</span>`
       : `<span class="muted">${esc(t('hero.toDownload'))}</span>`;
     hero.innerHTML = `
@@ -2303,7 +2327,7 @@
       [t('info.file'), game.fileName],
       [t('info.parts'), partsText(game)],
       [t('info.size'), formatSize(gameSize(game))],
-      ...(zipped(game) ? [[t('info.sizeZip'), formatSize(game.packedSize)], [t('info.compression'), t(game.packed === 'zip' ? 'info.compressionZip' : 'info.compressionPartial')]] : []),
+      ...(zipped(game) ? [[t('info.sizeZip'), formatSize(game.packedSize)], [t('info.compression'), t(game.packed === 'zip' ? 'info.compressionZip' : 'info.compressionPartial', { format: { xz: 'xz', mixed: 'xz + zip' }[game.packFormat] || 'zip' })]] : []),
       ['CRC32', game.crc32 && game.crc32.toUpperCase()],
       ['MD5', game.md5],
       ...(d.links || []).map((l) => [l.label, l.url.replace(/^https?:\/\//, '').split('/')[0], l.url]),
@@ -2402,8 +2426,9 @@
     // Ce jeu proposé par un autre appareil : partie rejointe (jeu téléchargé d'abord s'il manque).
     const joinBtns = hostsOf(game).map((p) => `<button class="btn primary big" data-join-peer="${esc(p.id)}">${icon(p.hosting.link ? 'link' : 'group')} ${esc(t(p.hosting.link ? 'link.joinPeer' : 'netplay.joinPeer', { name: peerName(p) }))}</button>`).join('');
     if (st.kind === 'running') {
-      actions = `<div style="flex:1"><div class="bar"><div style="width:${Math.round(st.progress * 100)}%"></div></div>
-        <p class="muted">${esc(t('download.progress', { bytes: formatSize(st.d.bytes), total: formatSize(st.d.total) }))}</p></div>
+      actions = `<div style="flex:1"><div class="bars"><div class="bar"><div style="width:${Math.round(st.progress * 100)}%"></div></div>
+        ${st.unpack != null ? `<div class="bar unpack"><div style="width:${Math.round(st.unpack * 100)}%"></div></div>` : ''}</div>
+        <p class="muted">${esc(downloadProgressText(st))}</p></div>
         <button class="btn" id="cancelBtn">${icon('close', 18)} ${esc(t('download.cancelPercent', { p: Math.round(st.progress * 100) }))}</button>`;
     } else if (isLobbyHost()) {
       // Hôte d'un lobby : ce jeu devient celui du lobby (téléchargé au lancement de la partie).

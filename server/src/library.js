@@ -96,6 +96,8 @@ export function rowToGame(row, parts = []) {
           extraExes: extraExesOf(row),
           packed: packState(row),
           packedSize: row.packed_size ?? row.size,
+          // Format des archives : « xz », « zip » (compressions d'avant le xz), « mixed » ; null : aucune.
+          packFormat: row.packed_files ? row.pack_format || 'zip' : null,
         }
       : {}),
     groupMode: row.group_mode ?? null,
@@ -387,7 +389,7 @@ export function scanSystem(systemId) {
       const files = folderFiles(path.join(dir, row.file_name));
       // Compression (folder-pack.js) : fichiers compressés et taille à télécharger.
       const stats = folderStats(null, files);
-      db.prepare('UPDATE games SET packed_files = ?, packed_size = ?, folder_files = ? WHERE id = ?').run(stats.packed, stats.packedSize, stats.count, row.id);
+      db.prepare('UPDATE games SET packed_files = ?, packed_size = ?, folder_files = ?, pack_format = ? WHERE id = ?').run(stats.packed, stats.packedSize, stats.count, stats.format, row.id);
       const candidates = exeCandidates(files);
       if (!row.exe || !candidates.includes(row.exe)) db.prepare('UPDATE games SET exe = ? WHERE id = ?').run(candidates[0] ?? null, row.id);
       // Autres exécutables : devinés, ou ceux choisis qui existent encore.
@@ -406,8 +408,8 @@ export function scanSystem(systemId) {
 }
 
 /**
- * Fichiers d'un jeu en dossier ({ path, size } ; compressé : zipSize et crc32 en plus, à demander
- * avec ?packed=1) et ses exécutables (le plus probable en premier) ; packed : état de compression,
+ * Fichiers d'un jeu en dossier ({ path, size } ; compressé : format (xz, zip), packedSize et crc32
+ * en plus, archive à demander avec ?packed=1 ; zip : zipSize aussi) et ses exécutables (le plus probable en premier) ; packed : état de compression,
  * packedSize : taille à télécharger.
  */
 export function gameFolderFiles(row) {
@@ -415,8 +417,11 @@ export function gameFolderFiles(row) {
   const files = folderFiles(gameFilePath(row));
   const stats = folderStats(null, files);
   return {
-    files: files.map(({ path: p, size, zipSize, crc32 }) => (zipSize === undefined ? { path: p, size } : { path: p, size, zipSize, crc32 })),
+    files: files.map(({ path: p, size, packed, format, packedSize, zipSize, crc32 }) =>
+      packed ? { path: p, size, format, packedSize, crc32, ...(zipSize !== undefined ? { zipSize } : {}) } : { path: p, size },
+    ),
     packed: stats.packed === 0 ? 'flat' : stats.packed === files.length ? 'zip' : 'partial',
+    packFormat: stats.format,
     size: stats.size,
     packedSize: stats.packedSize,
     exes: exeCandidates(files),

@@ -196,6 +196,11 @@ main { flex: 1; overflow-y: auto; position: relative; overflow-anchor: none; }
 .overlay.badge img { position: static; height: 22px; width: auto; max-width: 90px; object-fit: contain; }
 .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0, 0, 0, 0.5); }
 .progress > div { height: 100%; background: var(--accent); width: 0; transition: width 0.2s; }
+/* Jaquette : barre du téléchargement et, collée dessous, celle de la décompression (jeu PC compressé). */
+.progress-bars { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; }
+.progress-bars > .progress { position: static; }
+.progress.unpack { height: 3px; }
+.progress.unpack > div, .bar.unpack > div { background: var(--unpack, #f2b04a); }
 .progress.update-progress { position: relative; height: 8px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
 .status-icon.ok { color: var(--ok); }
 .status-icon.remote { color: var(--muted); }
@@ -303,6 +308,10 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .shot-viewer .next { right: 24px; transform: translateY(-50%) scaleX(-1); }
 .shot-viewer .count { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 14px; }
 .bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; max-width: 520px; }
+/* Fiche : barres du téléchargement et de la décompression collées l'une à l'autre. */
+.bars { max-width: 520px; border-radius: 3px; overflow: hidden; }
+.bars > .bar { border-radius: 0; }
+.bar.unpack { height: 4px; }
 .bar > div { height: 100%; background: var(--accent); }
 
 /* ---- Paramètres ---- */
