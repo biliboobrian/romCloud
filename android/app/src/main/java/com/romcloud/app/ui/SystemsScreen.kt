@@ -334,6 +334,7 @@ private fun SystemCard(system: GameSystem, imageUrl: String?, localSize: Long, o
                 } else {
                     Text(
                         system.shortname.uppercase(),
+                        maxLines = 1,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -341,13 +342,15 @@ private fun SystemCard(system: GameSystem, imageUrl: String?, localSize: Long, o
                 }
             }
             Column(Modifier.padding(16.dp)) {
+                // Nombre de lignes fixé pour chaque texte : cartes de même hauteur.
                 Text(
                     system.shortname.uppercase(), style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     system.name, style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold, minLines = 2, maxLines = 2,
+                    fontWeight = FontWeight.SemiBold, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     pluralString(R.plurals.games_count, system.gameCount, system.gameCount) + " · " + formatSize(system.totalSize),
