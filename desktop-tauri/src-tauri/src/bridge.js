@@ -151,6 +151,7 @@
       logout: call('account:logout'),
       setAvatar: call('account:setAvatar'),
       playtime: call('account:playtime'),
+      stats: call('account:stats'),
       uploadPending: call('account:uploadPending'),
       reportError: call('account:reportError'),
       onUpdate: on('account:update'),

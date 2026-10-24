@@ -6,6 +6,7 @@ import com.romcloud.app.I18n
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.Account
 import com.romcloud.app.data.PairRequest
+import com.romcloud.app.data.ProfileStats
 import com.romcloud.core.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -13,6 +14,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -45,8 +48,17 @@ class ProfileViewModel(private val app: RomCloudApp) : ViewModel() {
 
     private var pairJob: Job? = null
 
+    /** Statistiques du profil connecté (null : sans profil, hors ligne ou en cours de chargement). */
+    val stats = MutableStateFlow<ProfileStats?>(null)
+
     init {
         viewModelScope.launch { app.account.refresh() }
+        // Chargées à l'ouverture de l'écran et à chaque connexion.
+        viewModelScope.launch {
+            app.account.state.map { it.signedIn }.distinctUntilChanged().collect { signedIn ->
+                stats.value = if (signedIn) app.account.stats() else null
+            }
+        }
     }
 
     private fun run(block: suspend () -> Unit) {

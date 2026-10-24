@@ -45,6 +45,35 @@ private data class MeResponse(val user: AccountUser, val avatars: List<String> =
 @Serializable
 data class PlaytimeEntry(val gameId: Long, val seconds: Long, val sessions: Int = 0, val lastPlayedAt: String? = null)
 
+/** Statistiques du profil (GET /api/account/stats). */
+@Serializable
+data class ProfileStats(
+    val totals: Totals = Totals(),
+    val devices: List<Device> = emptyList(),
+    val topGames: List<TopGame> = emptyList(),
+    val history: List<Session> = emptyList(),
+) {
+    @Serializable
+    data class Totals(val seconds: Long = 0, val sessions: Int = 0, val gamesPlayed: Int = 0, val gamesDownloaded: Int = 0)
+
+    /** Appareil du profil : jeux téléchargés (distincts) et temps de jeu dessus. */
+    @Serializable
+    data class Device(
+        val device: String? = null, val platform: String? = null, val games: Int = 0, val downloads: Int = 0,
+        val bytes: Long = 0, val lastDownloadAt: String? = null, val seconds: Long = 0, val sessions: Int = 0,
+    )
+
+    @Serializable
+    data class TopGame(val gameId: Long, val title: String? = null, val systemId: String? = null, val seconds: Long = 0, val sessions: Int = 0, val lastPlayedAt: String? = null)
+
+    /** Partie de l'historique ; [endedAt] : « 2026-10-24 18:03:12 » (UTC). */
+    @Serializable
+    data class Session(
+        val gameId: Long, val title: String? = null, val systemId: String? = null, val seconds: Long = 0,
+        val endedAt: String = "", val device: String? = null, val platform: String? = null,
+    )
+}
+
 @Serializable
 data class OnlineSave(
     val gameId: Long,
@@ -431,6 +460,14 @@ class Account(private val context: Context, private val api: ApiClient, private 
         }.getOrDefault(emptyList())
     }
 
+    /** Statistiques du profil (temps de jeu, jeux téléchargés par appareil, dernières parties) ; null : sans profil ou hors ligne. */
+    suspend fun stats(): ProfileStats? {
+        if (token == null) return null
+        return runCatching {
+            json.decodeFromString(ProfileStats.serializer(), execute(request("/api/account/stats"), 15))
+        }.getOrNull()
+    }
+
     // -------------------------------------------------------------------------
     // Temps de jeu
     // -------------------------------------------------------------------------
@@ -441,7 +478,8 @@ class Account(private val context: Context, private val api: ApiClient, private 
      */
     fun recordPlaytime(gameId: Long, seconds: Long, sendNow: Boolean = true) {
         if (token == null || gameId <= 0 || seconds < MIN_PLAY_SECONDS) return
-        enqueue("play-${System.currentTimeMillis()}-${System.nanoTime()}", "$gameId:$seconds")
+        // Fin de la partie jointe : historique du profil juste même si la partie part plus tard.
+        enqueue("play-${System.currentTimeMillis()}-${System.nanoTime()}", "$gameId:$seconds:${System.currentTimeMillis()}")
         _playtime.value = _playtime.value + (gameId to ((_playtime.value[gameId] ?: 0) + seconds))
         if (sendNow) scope.launch { refresh() }
     }
@@ -675,12 +713,13 @@ class Account(private val context: Context, private val api: ApiClient, private 
                         val parts = runCatching { entry.readText().split(':') }.getOrNull()
                         val gameId = parts?.getOrNull(0)?.toLongOrNull()
                         val seconds = parts?.getOrNull(1)?.toLongOrNull()
+                        val endedAt = parts?.getOrNull(2)?.toLongOrNull()
                         if (gameId == null || seconds == null) {
                             entry.delete()
                             continue
                         }
                         try {
-                            execute(request("/api/account/playtime").post(jsonBody("gameId" to gameId, "seconds" to seconds)))
+                            execute(request("/api/account/playtime").post(jsonBody("gameId" to gameId, "seconds" to seconds, "at" to endedAt)))
                             entry.delete()
                         } catch (e: ApiException) {
                             // Refus du serveur (jeu supprimé…) : abandonné.

@@ -308,12 +308,21 @@ async fn flush_playtime() {
     settings::save(json!({ "pendingPlaytime": left }));
 }
 
+/// Statistiques du profil (temps de jeu, jeux téléchargés par appareil, dernières parties) ; null sans profil ou hors ligne.
+pub async fn stats() -> Value {
+    if session().is_none() {
+        return Value::Null;
+    }
+    get("/api/account/stats", 15000).await.unwrap_or(Value::Null)
+}
+
 /// Ajoute une partie au temps de jeu du jeu (profil connecté).
 pub async fn add_playtime(game_id: Value, seconds: f64) {
     if session().is_none() || seconds < MIN_PLAY_SECONDS {
         return;
     }
-    let entry = json!({ "gameId": game_id, "seconds": seconds.round() as i64 });
+    // Fin de la partie jointe : historique du profil juste même si elle part plus tard (hors ligne).
+    let entry = json!({ "gameId": game_id, "seconds": seconds.round() as i64, "at": paths::now_ms().round() as i64 });
     flush_playtime().await;
     if let Err(e) = post("/api/account/playtime", entry.clone()).await {
         if e.is("errors.unreachable") {

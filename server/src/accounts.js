@@ -324,14 +324,27 @@ function requireGame(gameId) {
 }
 
 /** Ajoute une partie (durée en secondes) au temps de jeu du jeu. */
-export function addPlaytime(userId, gameId, seconds) {
+/**
+ * Ajoute une partie de [seconds] au temps de jeu du jeu et à l'historique du profil, avec l'appareil
+ * ([client]) ; [at] : fin de la partie (ms ou ISO), pour une partie gardée hors ligne puis envoyée
+ * plus tard (30 jours au plus, sinon maintenant).
+ */
+export function addPlaytime(userId, gameId, seconds, client = {}, at = null) {
   const id = requireGame(gameId);
   const s = Math.round(Number(seconds));
   if (!Number.isFinite(s) || s <= 0) throw new HttpError(400, 'errors.invalidDuration');
-  db.prepare(`INSERT INTO playtime (user_id, game_id, seconds, sessions) VALUES (?, ?, ?, 1)
-              ON CONFLICT (user_id, game_id) DO UPDATE SET seconds = seconds + excluded.seconds,
-                sessions = sessions + 1, last_played_at = datetime('now')`)
-    .run(userId, id, Math.min(s, MAX_PLAY_SECONDS));
+  const played = Math.min(s, MAX_PLAY_SECONDS);
+  const end = new Date(Number(at) || at || Date.now());
+  const recent = !Number.isNaN(end.getTime()) && end.getTime() <= Date.now() + 60_000 && end.getTime() > Date.now() - 30 * 86400_000;
+  const endedAt = (recent ? end : new Date()).toISOString().replace('T', ' ').slice(0, 19);
+  transaction(() => {
+    db.prepare(`INSERT INTO playtime (user_id, game_id, seconds, sessions) VALUES (?, ?, ?, 1)
+                ON CONFLICT (user_id, game_id) DO UPDATE SET seconds = seconds + excluded.seconds,
+                  sessions = sessions + 1, last_played_at = datetime('now')`)
+      .run(userId, id, played);
+    db.prepare('INSERT INTO play_sessions (user_id, game_id, seconds, ended_at, device, platform) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(userId, id, played, endedAt, client.device ?? null, client.platform ?? null);
+  });
   return playtimeOf(userId, id);
 }
 

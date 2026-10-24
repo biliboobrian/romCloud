@@ -331,6 +331,38 @@
     if (S.route.name === 'game' && !$('#modalRoot').innerHTML) renderGame();
   }
 
+  const PLATFORMS = { android: 'Android', androidtv: 'Android TV', windows: 'Windows' };
+
+  /**
+   * Statistiques du profil : totaux, jeux téléchargés et temps de jeu par appareil, jeux les plus
+   * joués et dernières parties (dates du serveur en UTC, affichées à l'heure du PC).
+   */
+  function profileStatsHtml(stats) {
+    const date = (utc) => new Date(`${utc.replace(' ', 'T')}Z`).toLocaleString(window.I18N.language, { dateStyle: 'medium', timeStyle: 'short' });
+    const line = (title, detail) => `<li><strong>${esc(title)}</strong><span class="muted small">${esc(detail)}</span></li>`;
+    const join = (...parts) => parts.filter(Boolean).join(' · ');
+    const { totals } = stats;
+    const figure = (value, label) => `<div class="stat-figure"><strong>${esc(value)}</strong><span class="muted small">${esc(label)}</span></div>`;
+    return `<h4>${esc(t('stats.title'))}</h4>
+      <div class="stat-figures">
+        ${figure(formatDuration(totals.seconds), t('stats.playtime'))}
+        ${figure(String(totals.sessions), t('stats.sessions'))}
+        ${figure(String(totals.gamesPlayed), t('stats.gamesPlayed'))}
+        ${figure(String(totals.gamesDownloaded), t('stats.gamesDownloaded'))}
+      </div>
+      ${stats.devices.length ? `<h4>${esc(t('stats.devices'))}</h4><ul class="stat-list">${stats.devices.map((d) => line(
+        join(d.device || t('stats.unknownDevice'), PLATFORMS[d.platform] || d.platform),
+        join(t('stats.deviceGames', { n: d.games }), d.seconds > 0 && t('stats.devicePlaytime', { time: formatDuration(d.seconds) })),
+      )).join('')}</ul>` : ''}
+      ${stats.topGames.length ? `<h4>${esc(t('stats.topGames'))}</h4><ul class="stat-list">${stats.topGames.map((g) => line(
+        g.title || `#${g.gameId}`, join(formatDuration(g.seconds), t('stats.gameSessions', { n: g.sessions })),
+      )).join('')}</ul>` : ''}
+      <h4>${esc(t('stats.history'))}</h4>
+      ${stats.history.length ? `<ul class="stat-list">${stats.history.slice(0, 20).map((h) => line(
+        h.title || `#${h.gameId}`, join(date(h.endedAt), h.device, formatDuration(h.seconds)),
+      )).join('')}</ul>` : `<p class="muted small">${esc(t('stats.historyEmpty'))}</p>`}`;
+  }
+
   function openProfile(tab = 'login') {
     if (S.account.signedIn) {
       const a = S.account;
@@ -346,12 +378,18 @@
             <button class="avatar-choice${a.avatar ? '' : ' selected'}" data-avatar="" title="${esc(t('profile.noAvatar'))}">${icon('user', 22)}</button>
             ${avatars.map((v) => `<button class="avatar-choice${v === a.avatar ? ' selected' : ''}" data-avatar="${esc(v)}">${esc(v)}</button>`).join('')}
           </div>` : ''}
-          <p class="muted">${esc(t('profile.cloudHint'))}</p>`,
+          <p class="muted">${esc(t('profile.cloudHint'))}</p>
+          <div id="profileStats" class="profile-stats"></div>`,
         buttons: [
           { label: t('profile.logout'), kind: 'danger', left: true, onClick: async () => { await call(rc.account.logout); toast(t('profile.loggedOut')); } },
           { label: t('app.close'), kind: 'primary' },
         ],
       });
+      $('.modal', root).classList.add('wide');
+      call(rc.account.stats).then((stats) => {
+        const el = $('#profileStats', root);
+        if (stats && el) el.innerHTML = profileStatsHtml(stats);
+      }).catch(() => {});
       // Avatar choisi : enregistré sur le serveur, affiché à côté du nom dans les lobbies.
       for (const el of $$('[data-avatar]', root)) {
         el.onclick = async () => {
