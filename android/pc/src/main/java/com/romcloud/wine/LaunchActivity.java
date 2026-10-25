@@ -71,9 +71,17 @@ public class LaunchActivity extends Activity {
     /**
      * Version de Proton (réglage « wineVersion » de [EXTRA_SETTINGS], un conteneur par version) ; par
      * défaut arm64ec : Wine natif ARM, seul le code x86 du jeu traduit par FEX (jeux .NET compris,
-     * qui plantent sous Box64 avec Proton x86_64).
+     * qui plantent sous Box64 avec Proton x86_64). Jeux Unity IL2CPP : Proton x86_64 ([UNITY_WINE]).
      */
     public static final String SETTING_WINE = "wineVersion";
+
+    /**
+     * Proton des jeux Unity compilés en IL2CPP (UnityPlayer.dll et GameAssembly.dll) : x86_64, tout
+     * traduit par Box64 (BOX64_UNITYPLAYER). En arm64ec, ils se bloquent avant ou sur l'écran titre
+     * (Castlevania: Belmont's Curse, Unity 2022.3 : rendu ou chargement qui ne s'achève jamais),
+     * quels que soient le pilote Vulkan et la version de DXVK.
+     */
+    private static final String UNITY_WINE = "proton-9.0-x86_64";
 
     /** Profil de commandes à l'écran « RomCloud Xbox » (assets/romcloud/xbox.icp) : manette Xbox tactile. */
     private static final int XBOX_PROFILE = 100;
@@ -195,7 +203,8 @@ public class LaunchActivity extends Activity {
             installXboxProfile();
             Intent launch = getIntent();
             Bundle requested = launch.getBundleExtra(EXTRA_SETTINGS);
-            String wineVersion = requested != null && requested.getString(SETTING_WINE) != null ? requested.getString(SETTING_WINE) : DEFAULT_WINE;
+            String wineVersion = requested != null && requested.getString(SETTING_WINE) != null ? requested.getString(SETTING_WINE)
+                    : isUnityIl2cpp(new File(launch.getStringExtra(EXTRA_EXE)).getParentFile()) ? UNITY_WINE : DEFAULT_WINE;
             Container container = container(wineVersion);
             if (container == null) {
                 fail(getString(R.string.romcloud_container_failed));
@@ -222,6 +231,11 @@ public class LaunchActivity extends Activity {
         } finally {
             PREPARING.unlock();
         }
+    }
+
+    /** Jeu Unity compilé en IL2CPP : UnityPlayer.dll et GameAssembly.dll à côté de l'exécutable. */
+    static boolean isUnityIl2cpp(File gameDir) {
+        return gameDir != null && new File(gameDir, "UnityPlayer.dll").isFile() && new File(gameDir, "GameAssembly.dll").isFile();
     }
 
     /**
