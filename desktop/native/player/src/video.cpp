@@ -332,7 +332,12 @@ void Video::destroy() {
     dropShared();
     vulkan::destroy();
   }
-  if (context_) SDL_GL_DestroyContext(context_);
+  if (context_) {
+    // Images du DLSS partagées avec OpenGL : rendues avant la fin du contexte.
+    SDL_GL_MakeCurrent(window_, context_);
+    dlss_.destroy();
+    SDL_GL_DestroyContext(context_);
+  }
   if (window_) SDL_DestroyWindow(window_);
   context_ = nullptr;
   window_ = nullptr;
@@ -804,6 +809,8 @@ std::vector<FilterParam> filterParams(Filter filter) {
     case Filter::Epx: list = {{"threshold", "fp_threshold", 0, 0.02f, 0.0f, 0.3f, 0.01f}}; break;
     case Filter::Xbr: list = {{"strength", "fp_strength", 0, 1.0f, 0.0f, 1.0f, 0.05f}, {"edge_softness", "fp_edge_softness", 1, 1.0f, 0.25f, 4.0f, 0.25f}}; break;
     case Filter::Fsr: list = {{"sharpness", "fp_sharpness", 0, 1.0f, 0.0f, 2.0f, 0.1f}}; break;
+    // DLSS : netteté RCAS sur l'image agrandie (aucune par défaut, comme le DLSS seul).
+    case Filter::Dlss: list = {{"sharpness", "fp_sharpness", 0, 0.0f, 0.0f, 2.0f, 0.1f}}; break;
     case Filter::Crt:
     case Filter::CrtMask: list = {scanlines, glow, {"mask", "fp_mask", 1, 0.0f, 0.0f, 0.6f, 0.05f}, curvature, crtSoftness, vignette}; break;
     case Filter::Lcd: list = {{"grid", "fp_grid", 0, 0.35f, 0.0f, 0.9f, 0.05f}, {"grid_width", "fp_grid_width", 1, 1.0f, 0.5f, 3.0f, 0.25f}, ghost(0.0f)}; break;
@@ -843,14 +850,15 @@ std::vector<FilterParam> filterParams(Filter filter) {
 }
 
 static const char* kFilterIds[kFilterCount] = {"pixels", "sharp", "soft", "smooth", "epx", "crt", "crtmask", "lcd",
-                                               "xbr", "fsr", "cut", "cut2", "cut3", "handheld", "dotmatrix"};
+                                               "xbr", "fsr", "cut", "cut2", "cut3", "handheld", "dotmatrix", "dlss"};
 static const char* kFilterLabels[kFilterCount] = {"filter_pixels", "filter_sharp", "filter_soft", "filter_smooth", "filter_epx",
                                                   "filter_crt", "filter_crtmask", "filter_lcd", "filter_xbr", "filter_fsr",
-                                                  "filter_cut", "filter_cut2", "filter_cut3", "filter_handheld", "filter_dotmatrix"};
-// Ordre du menu : lissages, agrandisseurs (Scale2x, xBR, CUT, FSR), puis imitations d'écrans.
+                                                  "filter_cut", "filter_cut2", "filter_cut3", "filter_handheld", "filter_dotmatrix",
+                                                  "filter_dlss"};
+// Ordre du menu : lissages, agrandisseurs (Scale2x, xBR, CUT, FSR, DLSS), puis imitations d'écrans.
 static const Filter kFilterOrder[kFilterListCount] = {Filter::Pixels, Filter::Sharp, Filter::Soft, Filter::Smooth, Filter::Epx,
                                                       Filter::Xbr, Filter::Cut, Filter::Cut2, Filter::Cut3, Filter::Fsr,
-                                                      Filter::Crt, Filter::Lcd, Filter::Handheld, Filter::DotMatrix};
+                                                      Filter::Dlss, Filter::Crt, Filter::Lcd, Filter::Handheld, Filter::DotMatrix};
 
 Filter filterAt(int index) { return kFilterOrder[std::clamp(index, 0, kFilterListCount - 1)]; }
 
@@ -866,7 +874,7 @@ const char* filterLabel(Filter filter) { return kFilterLabels[(int)filter]; }
 
 const char* filterDescription(Filter filter) {
   static const char* keys[kFilterCount] = {"fd_pixels", "fd_sharp", "fd_soft", "fd_smooth", "fd_epx", "fd_crt", "fd_crtmask", "fd_lcd",
-                                           "fd_xbr", "fd_fsr", "fd_cut", "fd_cut2", "fd_cut3", "fd_handheld", "fd_dotmatrix"};
+                                           "fd_xbr", "fd_fsr", "fd_cut", "fd_cut2", "fd_cut3", "fd_handheld", "fd_dotmatrix", "fd_dlss"};
   return keys[(int)filter];
 }
 
@@ -1398,6 +1406,64 @@ bool Video::showShared(unsigned width, unsigned height) {
 // Affichage
 // ---------------------------------------------------------------------------
 
+bool Video::drawDlss(unsigned source, float u1, float vTop, float vBottom, float x1, float y1, float w, float h, int winW, int winH) {
+  // Taille de sortie dans le sens de l'image (écran tourné : côtés échangés), au plus 3x (mode Ultra
+  // Performance du DLSS) ; le reste de l'agrandissement est bilinéaire.
+  const bool turned = g.rotation & 1;
+  const float imageW = turned ? h : w, imageH = turned ? w : h;
+  const float fit = std::min({1.0f, 3.0f * frameWidth_ / imageW, 3.0f * frameHeight_ / imageH});
+  const int outW = (int)(imageW * fit + 0.5f), outH = (int)(imageH * fit + 0.5f);
+  // Rien à agrandir, ou image de démarrage minuscule (1x1 de certains cœurs) : FSR.
+  if (outW <= (int)frameWidth_ || outH <= (int)frameHeight_ || frameWidth_ < 64 || frameHeight_ < 64) return false;
+  if (!dlss_.resize((int)frameWidth_, (int)frameHeight_, outW, outH) || !dlss_.lock(true)) return false;
+  if (!dlssFbo_) p_glGenFramebuffers(1, &dlssFbo_);
+
+  // Image du jeu recopiée telle quelle (pixels, couleurs d'origine) dans l'image d'entrée du DLSS.
+  auto drawQuad = [](const Vertex quad[4]) {
+    p_glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * 4, quad, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  };
+  p_glBindFramebuffer(GL_FRAMEBUFFER, dlssFbo_);
+  p_glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dlss_.inputTexture(), 0);
+  glViewport(0, 0, (GLsizei)frameWidth_, (GLsizei)frameHeight_);
+  p_glUniform1i(uniformMode_, (int)Filter::Pixels);
+  p_glUniform4f(uniformColor_, 1.0f, 1.0f, 1.0f, 1.0f);
+  const Vertex copy[4] = {{-1, 1, 0, vTop}, {-1, -1, 0, vBottom}, {1, 1, u1, vTop}, {1, -1, u1, vBottom}};
+  drawQuad(copy);
+  p_glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+  p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  dlss_.unlock(true);
+  glViewport(0, 0, winW, winH);
+  p_glUniform4f(uniformColor_, params_[8], params_[9], params_[10], params_[11]);
+  if (!dlss_.evaluate() || !dlss_.lock(false)) {
+    // État rétabli pour FSR à la place.
+    p_glUniform1i(uniformMode_, (int)Filter::Dlss);
+    glBindTexture(GL_TEXTURE_2D, source);
+    return false;
+  }
+
+  // Image agrandie dessinée à l'écran (haut de l'image en v = 1 : rendue par OpenGL), netteté RCAS
+  // (réglage à 0 : aucune), couleurs réglées ; rotation comme pour l'image du cœur.
+  glBindTexture(GL_TEXTURE_2D, dlss_.outputTexture());
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  p_glUniform1i(uniformMode_, 20);
+  p_glUniform2f(uniformSize_, (float)outW, (float)outH);
+  const float uv[4][2] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
+  const float pos[4][2] = {{-x1, y1}, {x1, y1}, {x1, -y1}, {-x1, -y1}};
+  const int k = (int)g.rotation;
+  auto corner = [&](int screen) {
+    const float* t = uv[(screen + k) % 4];
+    return Vertex{pos[screen][0], pos[screen][1], t[0], t[1]};
+  };
+  const Vertex out[4] = {corner(0), corner(3), corner(1), corner(2)};
+  drawQuad(out);
+  dlss_.unlock(false);
+  return true;
+}
+
 void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool swap, bool overlayChanged) {
   // Rétabli avant l'échange des tampons (fin de la portée).
   {
@@ -1478,10 +1544,13 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
       vTop = 0.0f;
       vBottom = v1;
     }
+    // DLSS prêt, sinon FSR à sa place (téléchargement en cours, pas de carte GeForce RTX).
+    const bool dlss = filter_ == Filter::Dlss && dlss_.prepare() == Dlss::State::Ready;
+    const Filter shown = filter_ == Filter::Dlss && !dlss ? Filter::Fsr : filter_;
     // Passe préalable (lissage du tramage, rémanence, CUT) : image à la taille exacte du jeu, haut en
     // v = 0, à la place de celle du cœur.
-    const bool cut = filter_ == Filter::Cut || filter_ == Filter::Cut2 || filter_ == Filter::Cut3;
-    const bool lcd = filter_ == Filter::Lcd || filter_ == Filter::Handheld || filter_ == Filter::DotMatrix;
+    const bool cut = shown == Filter::Cut || shown == Filter::Cut2 || shown == Filter::Cut3;
+    const bool lcd = shown == Filter::Lcd || shown == Filter::Handheld || shown == Filter::DotMatrix;
     bool prepared = false;
     if ((cut || params_[kDeditherSlot] > 0.0f || (lcd && params_[kGhostSlot] > 0.0f)) &&
         runPrep(source, u1, vTop, vBottom, texW, texH)) {
@@ -1498,7 +1567,7 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
     glBindTexture(GL_TEXTURE_2D, source);
     // Pixels de l'écran par pixel de l'image (axes de l'image échangés par un quart de tour).
     float scaleX = ((g.rotation & 1) ? h : w) / frameWidth_, scaleY = ((g.rotation & 1) ? w : h) / frameHeight_;
-    p_glUniform1i(uniformMode_, (int)filter_);
+    p_glUniform1i(uniformMode_, (int)shown);
     p_glUniform2f(uniformSize_, texW, texH);
     p_glUniform2f(uniformScale_, scaleX, scaleY);
     // Réglages du filtre ; emplacement de l'image dans la fenêtre (pixels, origine en bas) : courbure.
@@ -1507,8 +1576,8 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
     p_glUniform4f(uniformColor_, params_[8], params_[9], params_[10], params_[11]);
     p_glUniform4f(uniformRect_, (winW - w) / 2.0f, (winH - h) / 2.0f, w, h);
     // Échantillons au centre des pixels (bicubique, EPX, LCD, pixels nets) : filtrage au plus proche.
-    bool nearest = filter_ == Filter::Pixels || filter_ == Filter::Soft || filter_ == Filter::Epx || filter_ == Filter::Lcd ||
-                   filter_ == Filter::Xbr || filter_ == Filter::Fsr || filter_ == Filter::Handheld || filter_ == Filter::DotMatrix;
+    bool nearest = shown == Filter::Pixels || shown == Filter::Soft || shown == Filter::Epx || shown == Filter::Lcd || shown == Filter::Xbr ||
+                   shown == Filter::Fsr || shown == Filter::Dlss || shown == Filter::Handheld || shown == Filter::DotMatrix;
     GLint filter = nearest ? GL_NEAREST : GL_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
@@ -1531,7 +1600,9 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
     if (cut && prepared && prepareCut()) {
       // CUT, CUT2, CUT3 : passes de LibretroDroid, la dernière dans le rectangle de l'image.
       drawCut(quad, std::min(scaleX, scaleY));
-    } else if (filter_ == Filter::Fsr && preparePostTarget(outW, outH)) {
+    } else if (dlss && drawDlss(source, u1, vTop, vBottom, x1, y1, w, h, winW, winH)) {
+      // DLSS dessiné ; sinon (image non agrandie, erreur) FSR ci-dessous.
+    } else if ((shown == Filter::Fsr || shown == Filter::Dlss) && preparePostTarget(outW, outH)) {
       // FSR 1 : agrandissement (EASU) dans une image à la taille de l'affichage, puis netteté (RCAS)
       // en la dessinant à l'écran.
       p_glBindFramebuffer(GL_FRAMEBUFFER, postFbo_);

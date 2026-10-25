@@ -45,6 +45,7 @@ add_executable(romcloud-player WIN32
   src/core.cpp
   src/options.cpp
   src/video.cpp
+  src/dlss.cpp
   src/vulkan.cpp
   src/audio.cpp
   src/input.cpp
@@ -62,7 +63,8 @@ add_executable(romcloud-player WIN32
   ../../../android/libretrodroid/src/main/cpp/shadermanager.cpp
 )
 target_include_directories(romcloud-player PRIVATE third_party src)
-target_link_libraries(romcloud-player PRIVATE SDL3::SDL3-static Vulkan::Headers opengl32 ws2_32 iphlpapi)
+# DLSS (dlss.cpp) : Direct3D 11, téléchargement et vérification de la signature de nvngx_dlss.dll.
+target_link_libraries(romcloud-player PRIVATE SDL3::SDL3-static Vulkan::Headers opengl32 ws2_32 iphlpapi d3d11 dxgi urlmon wintrust)
 target_compile_definitions(romcloud-player PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN VK_NO_PROTOTYPES)
 # Exécutable directement dans build/ (pas build/Release/ avec Visual Studio) : repris par l'installeur.
 set_target_properties(romcloud-player PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>")
