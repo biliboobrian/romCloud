@@ -737,6 +737,8 @@ void Player::runFrameAhead() {
 }
 
 void Player::present() {
+  // DLSS : téléchargement, prêt ou impossible (FSR à sa place).
+  if (const std::string message = video_.takeDlssMessage(); !message.empty()) toast(menu_.tr(message.c_str()));
   // Surimpression aux proportions de la fenêtre (360 lignes, texte à l'échelle de l'écran) ;
   // menu sur 480 lignes (deux colonnes : libellés plus longs) ; options du cœur sur 540 lignes :
   // texte 1,5 fois plus petit et plus d'options visibles.
@@ -851,6 +853,9 @@ int Player::run() {
   makeDirs(g.systemDir);
   makeDirs(args_.saveDir);
   makeDirs(args_.stateDir);
+  // nvngx_dlss.dll (filtre DLSS) à côté du dossier des BIOS : « libretro\dlss ».
+  const size_t slash = g.systemDir.find_last_of("\\/");
+  video_.setDlssDirectory(joinPath(slash == std::string::npos ? g.systemDir : g.systemDir.substr(0, slash), "dlss"));
   g.systemDir = compatiblePath(g.systemDir);
   g.saveDir = compatiblePath(args_.saveDir);
   g.options.load(args_.options);

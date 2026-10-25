@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "dlss.h"
 #include "libretro.h"
 
 /**
@@ -18,13 +19,13 @@
  * Bilinear, Scale2x (EPX : contours du pixel art arrondis), CRT (lignes de balayage, masque RGB),
  * LCD (grille), xBR, FSR, CUT, CUT2 et CUT3 (ceux de LibretroDroid, comme sous Android), écran de
  * GBA / GBC (couleurs corrigées, grille, rémanence), Game Boy (matrice de points, palette verte,
- * rémanence). Le rang sert de numéro de mode au shader (u_mode) ; CrtMask : ancien « CRT+ », lu
- * comme CRT (masque réglable dans CRT).
+ * rémanence), NVIDIA DLSS (dlss.h ; FSR à sa place sans carte GeForce RTX). Le rang sert de numéro
+ * de mode au shader (u_mode) ; CrtMask : ancien « CRT+ », lu comme CRT (masque réglable dans CRT).
  */
-enum class Filter { Pixels, Sharp, Soft, Smooth, Epx, Crt, CrtMask, Lcd, Xbr, Fsr, Cut, Cut2, Cut3, Handheld, DotMatrix };
-constexpr int kFilterCount = 15;
+enum class Filter { Pixels, Sharp, Soft, Smooth, Epx, Crt, CrtMask, Lcd, Xbr, Fsr, Cut, Cut2, Cut3, Handheld, DotMatrix, Dlss };
+constexpr int kFilterCount = 16;
 /** Shaders proposés dans la liste du menu. */
-constexpr int kFilterListCount = 14;
+constexpr int kFilterListCount = 15;
 /** Shader de rang [index] dans la liste du menu (lissages, agrandisseurs, écrans) et rang inverse. */
 Filter filterAt(int index);
 int filterIndex(Filter filter);
@@ -113,6 +114,10 @@ class Video {
     }
   }
   Filter filter() const { return filter_; }
+  /** Dossier de nvngx_dlss.dll (filtre DLSS). */
+  void setDlssDirectory(const std::string& dir) { dlss_.setDirectory(dir); }
+  /** Message du DLSS à montrer (clé du menu : téléchargement, prêt, échec), une fois ; vide sinon. */
+  std::string takeDlssMessage() { return dlss_.takeMessage(); }
   void setAspect(Aspect aspect) { aspect_ = aspect; }
   Aspect aspect() const { return aspect_; }
   SDL_Window* window() const { return window_; }
@@ -137,6 +142,12 @@ class Video {
   void draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool overlayChanged);
   void allocateHwFramebuffer();
   bool preparePostTarget(int width, int height);
+  /**
+   * DLSS : image du jeu ([source], coordonnées u1, vTop, vBottom) recopiée dans l'image d'entrée,
+   * agrandie (jusqu'à 3x), puis dessinée dans le rectangle de l'image (demi-taille [x1], [y1] en
+   * coordonnées normalisées, [w] x [h] pixels), netteté RCAS réglable ; faux si impossible (FSR).
+   */
+  bool drawDlss(unsigned source, float u1, float vTop, float vBottom, float x1, float y1, float w, float h, int winW, int winH);
   // Cœurs Vulkan : image partagée avec OpenGL (sans recopie), sinon recopiée (vulkan::readFrame).
   void setupInterop();
   bool showShared(unsigned width, unsigned height);
@@ -201,6 +212,9 @@ class Video {
   unsigned postFbo_ = 0, postTexture_ = 0;
   int postWidth_ = 0, postHeight_ = 0;
   bool postOk_ = false;
+  // DLSS : Direct3D 11 et NGX, images partagées ; framebuffer de l'image d'entrée.
+  Dlss dlss_;
+  unsigned dlssFbo_ = 0;
   int fboWidth_ = 0, fboHeight_ = 0;
 
   // Dernière image reçue.
