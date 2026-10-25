@@ -107,7 +107,9 @@ class Menu {
 
  private:
   enum class Screen { Main, Options, Keys, States, FilterSettings };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Resolution, Keys, Pad, Players, Disk, Filter, Aspect, RunAhead, Fullscreen, Sound, LeaveNetplay, SaveQuit, Quit };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Resolution, Textures, Keys, Pad, Players, Disk, Filter, Aspect, RunAhead, Fullscreen, Sound, LeaveNetplay, SaveQuit, Quit };
+  /** Amélioration réglée par l'entrée Resolution ou Textures. */
+  static Enhancement enhancementOf(Item item);
 
   /** Onglets des options : « Résolution » (options de résolution interne) puis ceux du cœur. */
   std::vector<CoreOptionGroup> optionTabs() const;
