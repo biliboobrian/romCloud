@@ -12,6 +12,7 @@
 
 #include "dlss.h"
 #include "libretro.h"
+#include "shaderchain.h"
 
 /**
  * Shader d'image (pixels de la console agrandis à l'écran) : Nearest (pixels bruts), Sharp Bilinear
@@ -148,6 +149,12 @@ class Video {
    * coordonnées normalisées, [w] x [h] pixels), netteté RCAS réglable ; faux si impossible (FSR).
    */
   bool drawDlss(unsigned source, float u1, float vTop, float vBottom, float x1, float y1, float w, float h, int winW, int winH);
+  /**
+   * xBR, version choisie au-delà du niveau 1 (préréglage de libretro, shaderchain.h) : image du jeu
+   * recopiée à sa taille exacte, passes du préréglage, puis image finale dessinée dans le rectangle de
+   * l'image (bicubique si elle n'est pas déjà à la taille de l'écran) ; faux si impossible (niveau 1).
+   */
+  bool drawChain(unsigned source, float u1, float vTop, float vBottom, float x1, float y1, float w, float h, int winW, int winH);
   // Cœurs Vulkan : image partagée avec OpenGL (sans recopie), sinon recopiée (vulkan::readFrame).
   void setupInterop();
   bool showShared(unsigned width, unsigned height);
@@ -215,6 +222,11 @@ class Video {
   // DLSS : Direct3D 11 et NGX, images partagées ; framebuffer de l'image d'entrée.
   Dlss dlss_;
   unsigned dlssFbo_ = 0;
+  // Préréglage de xBR : passes, image d'entrée à la taille du jeu, version de GLSL du contexte.
+  ShaderChain chain_;
+  unsigned chainFbo_ = 0, chainTexture_ = 0;
+  int chainWidth_ = 0, chainHeight_ = 0;
+  int glslVersion_ = 0;
   int fboWidth_ = 0, fboHeight_ = 0;
 
   // Dernière image reçue.
