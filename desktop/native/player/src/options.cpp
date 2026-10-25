@@ -110,6 +110,7 @@ void CoreOptions::declare(const retro_core_option_definition* us, const retro_co
     option.key = us->key;
     option.label = str(tr && tr->desc ? tr->desc : us->desc);
     if (option.label.empty()) option.label = option.key;
+    option.info = str(tr && tr->info ? tr->info : us->info);
     readValues(option, us->values, tr ? tr->values : nullptr);
     option.defaultVal = str(us->default_value);
     add(option);
@@ -143,6 +144,12 @@ void CoreOptions::declare(const retro_core_options_v2* us, const retro_core_opti
     }
     option.label = str(desc);
     if (option.label.empty()) option.label = option.key;
+    const char* info = tr && tr->info ? tr->info : d->info;
+    if (!option.category.empty()) {
+      if (d->info_categorized) info = d->info_categorized;
+      if (tr && tr->info_categorized) info = tr->info_categorized;
+    }
+    option.info = str(info);
     readValues(option, d->values, tr ? tr->values : nullptr);
     option.defaultVal = str(d->default_value);
     add(option);
@@ -233,6 +240,75 @@ std::vector<CoreOptionGroup> CoreOptions::groupsByKey() const {
     result.push_back({title, indices});
   }
   return result;
+}
+
+// Options de résolution interne, par ordre de préférence : clé exacte ([exact]) ou partie de clé (en
+// minuscules), et rendu dont elles dépendent ([whenKey] parmi [whenValues] séparées par « | » ; clé
+// absente : sans condition). Cœurs N64 : une option par rendu (ParaLLEl-RDP, GLideN64…).
+static const struct {
+  const char* pattern;
+  bool exact;
+  const char* whenKey;
+  const char* whenValues;
+} kResolutionKeys[] = {
+    {"mupen64plus-parallel-rdp-upscaling", true, "mupen64plus-rdp-plugin", "parallel"},
+    {"mupen64plus-EnableNativeResFactor", true, "mupen64plus-rdp-plugin", "gliden64"},
+    {"mupen64plus-43screensize", true, "mupen64plus-rdp-plugin", "gliden64"},
+    {"parallel-n64-upscaling", true, "parallel-n64-gfxplugin", "parallel|angrylion|auto"},
+    {"parallel-n64-gliden64-EnableNativeResFactor", true, "parallel-n64-gfxplugin", "gliden64"},
+    {"parallel-n64-screensize", true, "parallel-n64-gfxplugin", "gliden64|glide64|gln64|rice|auto"},
+    {"internal_resolution", false, nullptr, nullptr},  // Flycast, Beetle PSX HW, PPSSPP, DeSmuME
+    {"resolution_factor", false, nullptr, nullptr},    // Azahar, Citra
+    {"resolutionscale", false, nullptr, nullptr},      // SwanStation, DuckStation
+    {"upscale_multiplier", false, nullptr, nullptr},   // PCSX2
+    {"efb_scale", false, nullptr, nullptr},            // Dolphin
+    {"res_multi", false, nullptr, nullptr},            // Play!
+    {"opengl_resolution", false, nullptr, nullptr},    // melonDS
+    {"resolution_mode", false, nullptr, nullptr},      // Kronos, YabaSanshiro
+    {"mode7_hires", false, nullptr, nullptr},          // Snes9x : Mode 7 en haute résolution
+    {"mode7_scale", false, nullptr, nullptr},          // bsnes HD
+};
+
+int CoreOptions::resolutionRank(size_t index) const {
+  const CoreOption& o = options_[index];
+  const std::string key = lower(o.key);
+  for (int i = 0; i < (int)(sizeof(kResolutionKeys) / sizeof(kResolutionKeys[0])); i++) {
+    const auto& rule = kResolutionKeys[i];
+    if (rule.exact ? o.key != rule.pattern : key.find(rule.pattern) == std::string::npos) continue;
+    if (!rule.whenKey) return i;
+    const char* renderer = get(rule.whenKey);
+    if (!renderer) return i;
+    const std::string values = std::string("|") + rule.whenValues + "|";
+    return values.find(std::string("|") + renderer + "|") != std::string::npos ? i : i + kOtherRenderer;
+  }
+  return -1;
+}
+
+std::vector<size_t> CoreOptions::resolutionOptions() const {
+  std::vector<std::pair<int, size_t>> ranked;
+  for (size_t i = 0; i < options_.size(); i++) {
+    const int rank = resolutionRank(i);
+    if (rank >= 0) ranked.emplace_back(rank, i);
+  }
+  std::stable_sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+  std::vector<size_t> result;
+  for (const auto& [rank, index] : ranked) result.push_back(index);
+  return result;
+}
+
+int CoreOptions::mainResolution() const {
+  const std::vector<size_t> list = resolutionOptions();
+  if (list.empty() || resolutionRank(list.front()) >= kOtherRenderer) return -1;
+  return options_[list.front()].values.size() >= 2 ? (int)list.front() : -1;
+}
+
+bool CoreOptions::needsRestart(size_t index) const {
+  if (index >= options_.size()) return false;
+  const std::string text = lower(options_[index].label + " " + options_[index].info);
+  for (const char* word : {"restart", "redémarr", "reboot", "relancer", "relaunch"}) {
+    if (text.find(word) != std::string::npos) return true;
+  }
+  return false;
 }
 
 bool CoreOptions::takeUpdated() {

@@ -88,7 +88,7 @@ struct Args {
   bool netplayPackets = false, netplayMulti = false;
   std::vector<std::string> optionsForced;  // options imposées (liaison entre consoles)
   // Mode d'essai : fenêtre cachée, N images au plus vite, dernière image enregistrée en BMP.
-  std::string testFrames, screenshot, testSeconds, testOptions;
+  std::string testFrames, screenshot, testSeconds, testOptions, testSearch;
   std::string testLoadAt;  // essai : état chargé après N images (au lieu de la première)
   bool testWindow = false;  // essai dans une fenêtre visible : affichage et menu capturés
   bool testMenu = false;
@@ -97,6 +97,7 @@ struct Args {
   bool testPlayers = false;  // essai : écran des joueurs des manettes
   bool testFilterSettings = false;  // essai : écran « Image » (filtres et réglages)
   bool testStates = false;  // essai : historique des états (« Charger l'état »)
+  bool testKeyboard = false;  // essai : clavier à l'écran de la recherche dans les options
   bool testSaveState = false;  // essai : état enregistré après les N images
   bool testAudio = false;  // essai : amplitude maximale du son des N images
   bool testReload = false;  // essai : état rechargé en cours de partie, depuis le menu (« Charger l'état »)
@@ -112,6 +113,7 @@ Args parseArgs(int argc, char** argv) {
       {"--pad-images", &a.padImages},
       {"--test-frames", &a.testFrames}, {"--screenshot", &a.screenshot}, {"--test-seconds", &a.testSeconds},
       {"--test-options", &a.testOptions},  // essai : écran des options du cœur, onglet N
+      {"--test-search", &a.testSearch},    // essai : recherche dans les options du cœur
       {"--test-load-at", &a.testLoadAt},
       {"--netplay-join", &a.netplayJoin}, {"--netplay-peer", &a.netplayPeer}, {"--netplay-game", &a.netplayGame},
       {"--device-id", &a.deviceId},     {"--device-name", &a.deviceName},
@@ -135,6 +137,7 @@ Args parseArgs(int argc, char** argv) {
     else if (arg == "--test-players") a.testPlayers = true;
     else if (arg == "--test-filter-settings") a.testFilterSettings = true;
     else if (arg == "--test-states") a.testStates = true;
+    else if (arg == "--test-keyboard") a.testKeyboard = true;
     else if (arg == "--test-save-state") a.testSaveState = true;
     else if (arg == "--test-audio") a.testAudio = true;
     else if (arg == "--test-reload") a.testReload = true;
@@ -547,6 +550,11 @@ void Player::onMenuAction(MenuAction action) {
 
 /** Traite les évènements ; renvoie faux quand il faut quitter. */
 bool Player::handleEvents() {
+  // Options du cœur affichées : les lettres tapées au clavier y font une recherche.
+  if (menu_.acceptsText() != SDL_TextInputActive(video_.window())) {
+    if (menu_.acceptsText()) SDL_StartTextInput(video_.window());
+    else SDL_StopTextInput(video_.window());
+  }
   SDL_Event e;
   while (SDL_PollEvent(&e)) {
     input_.handleEvent(e);
@@ -587,6 +595,8 @@ bool Player::handleEvents() {
     switch (e.type) {
       case SDL_EVENT_QUIT: quit_ = true; break;
 
+      case SDL_EVENT_TEXT_INPUT: menu_.typeText(e.text.text); break;
+
       case SDL_EVENT_WINDOW_FOCUS_LOST:
         // Fenêtre quittée (Alt+Tab…) : le jeu se met en pause.
         if (args_.testSeconds.empty()) openMenu();
@@ -617,8 +627,15 @@ bool Player::handleEvents() {
           case SDLK_DOWN: nav = Nav::Down; break;
           case SDLK_LEFT: nav = Nav::Left; break;
           case SDLK_RIGHT: nav = Nav::Right; break;
-          case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_SPACE: nav = Nav::Confirm; break;
-          case SDLK_ESCAPE: case SDLK_BACKSPACE: case SDLK_F1: nav = Nav::Back; break;
+          case SDLK_RETURN: case SDLK_KP_ENTER: nav = Nav::Confirm; break;
+          // Recherche dans les options en cours : l'espace s'ajoute au texte (SDL_EVENT_TEXT_INPUT),
+          // retour arrière efface une lettre.
+          case SDLK_SPACE:
+            if (menu_.searching()) continue;
+            nav = Nav::Confirm;
+            break;
+          case SDLK_BACKSPACE: nav = menu_.searching() ? Nav::Erase : Nav::Back; break;
+          case SDLK_ESCAPE: case SDLK_F1: nav = Nav::Back; break;
           case SDLK_PAGEUP: nav = Nav::TabPrev; break;
           case SDLK_PAGEDOWN: nav = Nav::TabNext; break;
           case SDLK_TAB: nav = (e.key.mod & SDL_KMOD_SHIFT) ? Nav::TabPrev : Nav::TabNext; break;
@@ -648,6 +665,8 @@ bool Player::handleEvents() {
           case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: nav = Nav::Right; break;
           case SDL_GAMEPAD_BUTTON_SOUTH: nav = Nav::Confirm; break;  // bouton du bas
           case SDL_GAMEPAD_BUTTON_EAST: nav = Nav::Back; break;     // bouton de droite
+          case SDL_GAMEPAD_BUTTON_NORTH: nav = Nav::Search; break;  // bouton du haut (Y)
+          case SDL_GAMEPAD_BUTTON_WEST: nav = Nav::Erase; break;    // bouton de gauche (X)
           case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: nav = Nav::TabPrev; break;
           case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: nav = Nav::TabNext; break;
           default: continue;
@@ -916,15 +935,18 @@ int Player::run() {
     }
     bool saved = true;
     if (args_.testWindow) {
-      if (args_.testMenu || args_.testKeys || args_.testPad || args_.testPlayers || args_.testFilterSettings || args_.testStates || !args_.testOptions.empty()) menu_.open();
+      if (args_.testMenu || args_.testKeys || args_.testPad || args_.testPlayers || args_.testFilterSettings || args_.testStates || !args_.testOptions.empty() ||
+          !args_.testSearch.empty() || args_.testKeyboard) menu_.open();
       if (args_.testKeys) menu_.openKeys();
       if (args_.testStates) openStates();
       if (args_.testPad) startPadConfig();
       if (args_.testPlayers) startPlayers();
       if (args_.testFilterSettings) onMenuAction(MenuAction::ImageSettings);
-      if (!args_.testOptions.empty()) {
+      if (!args_.testOptions.empty() || !args_.testSearch.empty() || args_.testKeyboard) {
         menu_.openOptions();
         for (int i = atoi(args_.testOptions.c_str()); i > 0; i--) menu_.handle(Nav::TabNext, menuState());
+        menu_.typeText(args_.testSearch.c_str());
+        if (args_.testKeyboard) menu_.handle(Nav::Search, menuState());
       }
       present();  // image affichée (et menu), relue avant l'échange des tampons
       if (!args_.screenshot.empty()) {

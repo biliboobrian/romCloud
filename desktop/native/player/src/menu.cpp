@@ -64,8 +64,23 @@ static const struct {
      "Saved for this system. Some apply after restarting the game."},
     {"options_none", "Ce cœur n'a pas d'options.", "This core has no options."},
     {"options_reset", "Réinitialiser toutes les options", "Reset all options"},
+    {"options_reset_confirm", "Appuyez de nouveau sur A / Entrée pour tout réinitialiser", "Press A / Enter again to reset everything"},
     {"options_general", "Général", "General"},
-    {"options_tabs_hint", "LB / RB ou Pg. préc. / Pg. suiv. : onglet", "LB / RB or Page Up / Page Down: tab"},
+    {"options_resolution", "Résolution", "Resolution"},
+    {"options_tabs_hint", "LB / RB ou Pg. préc. / Pg. suiv. : onglet   Tapez du texte ou Y : rechercher",
+     "LB / RB or Page Up / Page Down: tab   Type text or Y: search"},
+    {"options_search_hint", "Tapez du texte ou Y : rechercher", "Type text or Y: search"},
+    {"search", "Recherche", "Search"},
+    {"search_count", "option(s)", "option(s)"},
+    {"search_none", "Aucune option ne correspond à la recherche.", "No option matches the search."},
+    {"search_hint", "A / gauche / droite : changer   Y : clavier   B / Échap : effacer",
+     "A / left / right: change   Y: keyboard   B / Esc: clear"},
+    {"kb_space", "Espace", "Space"},
+    {"kb_erase", "Effacer", "Erase"},
+    {"kb_done", "Terminer", "Done"},
+    {"kb_hint", "A : taper   X : effacer   Y / B : fermer le clavier", "A: type   X: erase   Y / B: close keyboard"},
+    {"resolution", "Résolution interne", "Internal resolution"},
+    {"resolution_restart", "S'applique au redémarrage du jeu (« Redémarrer le jeu »)", "Applies when the game restarts (\"Restart game\")"},
     {"state_saved", "État sauvegardé", "State saved"},
     {"state_loaded", "État chargé", "State loaded"},
     {"state_error", "Impossible de sauvegarder ou de charger l'état", "The state could not be saved or loaded"},
@@ -271,6 +286,190 @@ void Menu::openOptions() {
   optionTab_ = 0;
   optionSelected_ = 0;
   optionScroll_ = 0;
+  resetArmed_ = false;
+  query_.clear();
+  keyboard_ = false;
+}
+
+/** Texte en minuscules sans accents (Latin-1 en UTF-8 : « Résolution » -> « resolution »), pour la recherche. */
+static std::string fold(const std::string& s) {
+  // U+00C0 à U+00FF (0xC3 suivi de 0x80 à 0xBF) : lettre de base.
+  static const char kBase[] = "aaaaaaaceeeeiiiidnooooo*ouuuuytsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
+  std::string out;
+  for (size_t i = 0; i < s.size(); i++) {
+    const unsigned char c = (unsigned char)s[i];
+    if (c == 0xC3 && i + 1 < s.size()) out += kBase[(unsigned char)s[++i] & 0x3F];
+    else out += (char)std::tolower(c);
+  }
+  return out;
+}
+
+/** Mots de la recherche (séparés par des espaces), sans accents. */
+static std::vector<std::string> searchWords(const std::string& query) {
+  std::vector<std::string> words;
+  std::string word;
+  for (char c : fold(query) + " ") {
+    if (c != ' ') {
+      word += c;
+    } else if (!word.empty()) {
+      words.push_back(word);
+      word.clear();
+    }
+  }
+  return words;
+}
+
+std::vector<CoreOptionGroup> Menu::optionTabs() const {
+  std::vector<CoreOptionGroup> tabs;
+  std::vector<size_t> resolution = g.options.resolutionOptions();
+  if (!resolution.empty()) tabs.push_back({tr("options_resolution"), std::move(resolution)});
+  for (auto& group : g.options.groups()) {
+    if (group.title.empty()) group.title = tr("options_general");
+    tabs.push_back(std::move(group));
+  }
+  return tabs;
+}
+
+std::vector<size_t> Menu::shownOptions(const std::vector<CoreOptionGroup>& tabs) const {
+  if (query_.empty()) {
+    if (tabs.empty()) return {};
+    return tabs[(size_t)std::min(optionTab_, (int)tabs.size() - 1)].indices;
+  }
+  // Tous les mots dans le libellé, la clé, les onglets ou la description ; ceux trouvés dans le
+  // libellé d'abord, puis dans la clé ou les onglets, puis dans la description.
+  const auto& list = g.options.list();
+  std::vector<std::string> tabOf(list.size());
+  for (const auto& tab : tabs) {
+    for (size_t i : tab.indices) tabOf[i] += " " + tab.title;
+  }
+  const std::vector<std::string> words = searchWords(query_);
+  std::vector<std::pair<int, size_t>> found;
+  for (size_t i = 0; i < list.size(); i++) {
+    const std::string label = fold(list[i].label), named = label + " " + fold(list[i].key + " " + tabOf[i]);
+    const std::string all = named + " " + fold(list[i].info);
+    int score = 0;
+    for (const auto& word : words) {
+      if (label.find(word) != std::string::npos) continue;
+      if (named.find(word) != std::string::npos) score = std::max(score, 1);
+      else if (all.find(word) != std::string::npos) score = 2;
+      else score = 3;
+    }
+    if (score < 3) found.emplace_back(score, i);
+  }
+  std::stable_sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+  std::vector<size_t> result;
+  for (const auto& [score, index] : found) result.push_back(index);
+  return result;
+}
+
+void Menu::typeText(const char* utf8) {
+  if (!acceptsText() || !utf8) return;
+  std::string text = utf8;
+  if (query_.empty()) text.erase(0, text.find_first_not_of(' '));  // pas d'espace au début
+  if (text.empty() || query_.size() + text.size() > 40) return;
+  query_ += text;
+  optionSelected_ = 0;
+  optionScroll_ = 0;
+  resetArmed_ = false;
+}
+
+void Menu::eraseLetter() {
+  if (query_.empty()) return;
+  // Dernier caractère UTF-8 (octets de suite 10xxxxxx compris).
+  size_t end = query_.size() - 1;
+  while (end > 0 && ((unsigned char)query_[end] & 0xC0) == 0x80) end--;
+  query_.erase(end);
+  optionSelected_ = 0;
+  optionScroll_ = 0;
+}
+
+// Clavier à l'écran (manette) : quatre lignes de dix caractères, puis Espace, Effacer, Terminer.
+static const char* const kKeyboardRows[] = {"abcdefghij", "klmnopqrst", "uvwxyz0123", "456789:.-/"};
+constexpr int kKeyboardLetterRows = 4, kKeyboardCols = 10;
+/** Touche spéciale (0 à 2) sous la colonne [col], et colonne au milieu de chacune. */
+static int keyboardSpecial(int col) { return col * 3 / kKeyboardCols; }
+static const int kKeyboardSpecialCol[] = {1, 5, 8};
+
+MenuAction Menu::handleKeyboard(Nav nav) {
+  const bool special = keyboardRow_ == kKeyboardLetterRows;
+  switch (nav) {
+    case Nav::Up: keyboardRow_ = (keyboardRow_ + kKeyboardLetterRows) % (kKeyboardLetterRows + 1); break;
+    case Nav::Down: keyboardRow_ = (keyboardRow_ + 1) % (kKeyboardLetterRows + 1); break;
+    case Nav::Left:
+    case Nav::Right: {
+      const int step = nav == Nav::Left ? -1 : 1;
+      if (special) keyboardCol_ = kKeyboardSpecialCol[(keyboardSpecial(keyboardCol_) + step + 3) % 3];
+      else keyboardCol_ = (keyboardCol_ + step + kKeyboardCols) % kKeyboardCols;
+      break;
+    }
+    case Nav::Confirm:
+      if (!special) {
+        const char letter[2] = {kKeyboardRows[keyboardRow_][keyboardCol_], 0};
+        typeText(letter);
+      } else if (keyboardSpecial(keyboardCol_) == 0) {
+        typeText(" ");
+      } else if (keyboardSpecial(keyboardCol_) == 1) {
+        eraseLetter();
+      } else {
+        keyboard_ = false;
+      }
+      break;
+    case Nav::Erase: eraseLetter(); break;
+    case Nav::Back:
+    case Nav::Search: keyboard_ = false; break;
+    default: break;
+  }
+  return MenuAction::None;
+}
+
+MenuAction Menu::handleOptions(Nav nav) {
+  if (keyboard_) return handleKeyboard(nav);
+  const auto tabs = optionTabs();
+  const int tabCount = std::max(1, (int)tabs.size());
+  optionTab_ = std::min(optionTab_, tabCount - 1);
+  const std::vector<size_t> shown = shownOptions(tabs);
+  const bool search = !query_.empty();
+  const int count = (int)shown.size() + (search ? 0 : 1);  // + « Réinitialiser » (hors recherche)
+  optionSelected_ = std::clamp(optionSelected_, 0, std::max(0, count - 1));
+  const bool armed = resetArmed_;
+  resetArmed_ = false;
+  switch (nav) {
+    case Nav::Up: if (count) optionSelected_ = (optionSelected_ + count - 1) % count; break;
+    case Nav::Down: if (count) optionSelected_ = (optionSelected_ + 1) % count; break;
+    case Nav::TabPrev:
+    case Nav::TabNext:
+      if (search) break;
+      optionTab_ = (optionTab_ + (nav == Nav::TabPrev ? tabCount - 1 : 1)) % tabCount;
+      optionSelected_ = 0;
+      optionScroll_ = 0;
+      break;
+    case Nav::Search:
+      keyboard_ = true;
+      keyboardRow_ = keyboardCol_ = 0;
+      break;
+    case Nav::Erase: eraseLetter(); break;
+    case Nav::Left:
+    case Nav::Right:
+    case Nav::Confirm:
+      if (optionSelected_ < (int)shown.size()) {
+        g.options.cycle(shown[(size_t)optionSelected_], nav == Nav::Left ? -1 : 1);
+      } else if (nav == Nav::Confirm && count) {
+        // Deux appuis : un seul effacerait par mégarde toutes les options choisies.
+        if (armed) g.options.resetAll();
+        else resetArmed_ = true;
+      }
+      break;
+    case Nav::Back:
+      if (search) {
+        query_.clear();
+        optionSelected_ = 0;
+        optionScroll_ = 0;
+      } else {
+        screen_ = Screen::Main;
+      }
+      break;
+  }
+  return MenuAction::None;
 }
 
 void Menu::openStates(std::vector<std::string> rows) {
@@ -291,6 +490,8 @@ void Menu::openKeys() {
 std::vector<Menu::Item> Menu::items(const MenuState& state) const {
   std::vector<Item> list = {Item::Resume, Item::SaveState};
   if (!state.together) list.insert(list.end(), {Item::LoadState, Item::Reset, Item::Options});
+  // Résolution interne du cœur (2x, 4x…) à portée de main, sans chercher dans ses options.
+  if (!state.together && g.options.mainResolution() >= 0) list.push_back(Item::Resolution);
   list.insert(list.end(), {Item::Keys, Item::Pad, Item::Players});
   if (state.diskCount > 1 && !state.together) list.push_back(Item::Disk);
   list.push_back(Item::Filter);
@@ -314,6 +515,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::LoadState: return tr("load_state");
     case Item::Reset: return tr("reset");
     case Item::Options: return tr("options");
+    case Item::Resolution: return tr("resolution");
     case Item::Keys: return tr("keys");
     case Item::Pad: return tr("pad_config");
     case Item::Players: return tr("players");
@@ -333,6 +535,10 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
 std::string Menu::itemValue(Item item, const MenuState& state) const {
   switch (item) {
     case Item::Disk: return std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
+    case Item::Resolution: {
+      const int index = g.options.mainResolution();
+      return index < 0 ? std::string() : "< " + g.options.list()[(size_t)index].display() + " >";
+    }
     case Item::Filter: return tr(state.filterLabel);
     case Item::Aspect: {
       static const char* names[] = {"aspect_core", "aspect_4_3", "aspect_16_9", "aspect_stretch"};
@@ -380,6 +586,8 @@ MenuAction Menu::handleFilterSettings(Nav nav) {
   switch (nav) {
     case Nav::Up: filterSelected_ = (filterSelected_ + count - 1) % count; break;
     case Nav::Down: filterSelected_ = (filterSelected_ + 1) % count; break;
+    case Nav::Search:
+    case Nav::Erase: break;
     case Nav::TabPrev:
     case Nav::TabNext:
       // LB / RB : filtre précédent ou suivant, d'où que soit le curseur.
@@ -537,39 +745,10 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
     }
     return MenuAction::None;
   }
-  if (screen_ == Screen::Options) {
-    const auto groups = g.options.groups();
-    const int tabs = std::max(1, (int)groups.size());
-    optionTab_ = std::min(optionTab_, tabs - 1);
-    const std::vector<size_t> none;
-    const std::vector<size_t>& shown = groups.empty() ? none : groups[(size_t)optionTab_].indices;
-    int count = (int)shown.size() + 1;  // + « Réinitialiser »
-    optionSelected_ = std::min(optionSelected_, count - 1);
-    switch (nav) {
-      case Nav::Up: optionSelected_ = (optionSelected_ + count - 1) % count; break;
-      case Nav::Down: optionSelected_ = (optionSelected_ + 1) % count; break;
-      case Nav::TabPrev:
-      case Nav::TabNext:
-        optionTab_ = (optionTab_ + (nav == Nav::TabPrev ? tabs - 1 : 1)) % tabs;
-        optionSelected_ = 0;
-        optionScroll_ = 0;
-        break;
-      case Nav::Left:
-      case Nav::Right:
-      case Nav::Confirm:
-        if (optionSelected_ == 0) {
-          if (nav == Nav::Confirm) g.options.resetAll();
-        } else {
-          g.options.cycle(shown[(size_t)optionSelected_ - 1], nav == Nav::Left ? -1 : 1);
-        }
-        break;
-      case Nav::Back: screen_ = Screen::Main; break;
-    }
-    return MenuAction::None;
-  }
+  if (screen_ == Screen::Options) return handleOptions(nav);
 
   // Entrées l'une sous l'autre : haut / bas changent d'entrée (disque, format d'image, run-ahead et
-  // plein écran changent avec A / Entrée).
+  // plein écran changent avec A / Entrée ; résolution interne aussi avec gauche / droite).
   int count = itemCount(state);
   selected_ = std::min(selected_, count - 1);
   Item item = itemAt(selected_, state);
@@ -579,8 +758,12 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
     case Nav::Back: return MenuAction::Resume;
     case Nav::TabPrev:
     case Nav::TabNext:
+    case Nav::Search:
+    case Nav::Erase: return MenuAction::None;
     case Nav::Left:
-    case Nav::Right: return MenuAction::None;
+    case Nav::Right:
+      if (item == Item::Resolution) g.options.cycle((size_t)g.options.mainResolution(), nav == Nav::Left ? -1 : 1);
+      return MenuAction::None;
     case Nav::Confirm:
       switch (item) {
         case Item::Resume: return MenuAction::Resume;
@@ -589,6 +772,9 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
         case Item::Reset: return MenuAction::Reset;
         case Item::Options:
           openOptions();
+          return MenuAction::None;
+        case Item::Resolution:
+          g.options.cycle((size_t)g.options.mainResolution(), 1);
           return MenuAction::None;
         case Item::Keys:
           openKeys();
@@ -651,8 +837,12 @@ void Menu::render(Canvas& c, const MenuState& state) const {
     c.text(x + 16, y, Canvas::fit(itemLabel(item, state), 1, width - 48 - valueWidth), 1, sel ? rgba(255, 255, 255) : kText);
     y += rowHeight;
   }
-  std::string hint = Canvas::fit(tr("main_hint"), 1, width - 24);
-  c.text(x + (width - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, kMuted);
+  // Résolution interne appliquée au redémarrage du jeu (selon le cœur) : dit à la place de l'aide.
+  const int resolution = g.options.mainResolution();
+  const bool restart = selected_ < count && itemAt(selected_, state) == Item::Resolution && resolution >= 0 &&
+                       g.options.needsRestart((size_t)resolution);
+  std::string hint = Canvas::fit(tr(restart ? "resolution_restart" : "main_hint"), 1, width - 24);
+  c.text(x + (width - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, restart ? kAccent : kMuted);
 }
 
 void Menu::renderStates(Canvas& c) const {
@@ -676,32 +866,91 @@ void Menu::renderStates(Canvas& c) const {
   c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, kMuted);
 }
 
+/** Texte réparti sur [maxLines] lignes au plus de [maxWidth] pixels (coupé avec « . » au-delà). */
+static std::vector<std::string> wrapText(const std::string& text, int maxWidth, size_t maxLines) {
+  std::vector<std::string> lines;
+  std::string line, word;
+  auto place = [&](const std::string& w) {
+    if (w.empty()) return;
+    if (line.empty() || Canvas::measure(line + " " + w, 1) <= maxWidth) {
+      line += (line.empty() ? "" : " ") + w;
+    } else {
+      lines.push_back(line);
+      line = w;
+    }
+  };
+  for (char ch : text + " ") {
+    if (ch == ' ' || ch == '\n' || ch == '\t') {
+      place(word);
+      word.clear();
+    } else {
+      word += ch;
+    }
+  }
+  if (!line.empty()) lines.push_back(line);
+  if (lines.size() > maxLines) {
+    lines.resize(maxLines);
+    lines.back() = Canvas::fit(lines.back() + " ...", 1, maxWidth - 8);
+  }
+  for (auto& l : lines) l = Canvas::fit(l, 1, maxWidth);
+  return lines;
+}
+
+void Menu::renderKeyboard(Canvas& c, int top) const {
+  const int cell = std::min(44, (c.width() - 48) / kKeyboardCols), left = (c.width() - cell * kKeyboardCols) / 2;
+  c.fill(0, top, c.width(), (kKeyboardLetterRows + 1) * 18 + 12, rgba(20, 21, 32, 235));
+  int y = top + 8;
+  for (int row = 0; row <= kKeyboardLetterRows; row++) {
+    for (int key = 0; key < (row < kKeyboardLetterRows ? kKeyboardCols : 3); key++) {
+      // Touches spéciales : colonnes 0 à 3, 4 à 6 et 7 à 9 (keyboardSpecial).
+      const int first = row < kKeyboardLetterRows ? key : key == 0 ? 0 : key == 1 ? 4 : 7;
+      const int span = row < kKeyboardLetterRows ? 1 : key == 0 ? 4 : 3;
+      const bool sel = keyboardRow_ == row && (row < kKeyboardLetterRows ? keyboardCol_ == key : keyboardSpecial(keyboardCol_) == key);
+      const std::string label = row < kKeyboardLetterRows ? std::string(1, kKeyboardRows[row][key])
+                                : tr(key == 0 ? "kb_space" : key == 1 ? "kb_erase" : "kb_done");
+      const int x = left + first * cell, w = span * cell - 4;
+      c.fill(x, y - 4, w, 16, sel ? kSelection : rgba(255, 255, 255, 28));
+      c.text(x + (w - Canvas::measure(label, 1)) / 2, y, label, 1, sel ? rgba(255, 255, 255) : kText);
+    }
+    y += 18;
+  }
+}
+
 void Menu::renderOptions(Canvas& c) const {
   const auto& list = g.options.list();
-  const auto groups = g.options.groups();
-  const int tab = std::min(optionTab_, std::max(0, (int)groups.size() - 1));
-  const std::vector<size_t> none;
-  const std::vector<size_t>& shown = groups.empty() ? none : groups[(size_t)tab].indices;
+  const auto tabs = optionTabs();
+  const int tab = std::min(optionTab_, std::max(0, (int)tabs.size() - 1));
+  const std::vector<size_t> shown = shownOptions(tabs);
+  const bool search = !query_.empty() || keyboard_;
   int y = 20;
   c.text(24, y, tr("options_title") + " — " + core_, 2, kText);
   y += 22;
   c.text(24, y, Canvas::fit(tr(list.empty() ? "options_none" : "options_hint"), 1, c.width() - 48), 1, kMuted);
   y += 18;
 
-  if (groups.size() > 1) {
+  if (search) {
+    // Barre de recherche : texte tapé (curseur à la fin), nombre d'options trouvées.
+    const std::string count = std::to_string(shown.size()) + " " + tr("search_count");
+    const int countWidth = Canvas::measure(count, 1);
+    c.fill(16, y - 4, c.width() - 32, 16, rgba(255, 255, 255, 28));
+    c.fill(16, y + 11, c.width() - 32, 2, kAccent);
+    const std::string text = tr("search") + " : " + query_ + "_";
+    c.text(24, y, Canvas::fit(text, 1, c.width() - 72 - countWidth), 1, rgba(255, 255, 255));
+    c.text(c.width() - 24 - countWidth, y, count, 1, kMuted);
+    y += 22;
+  } else if (tabs.size() > 1) {
     // Barre d'onglets, décalée pour que l'onglet affiché reste visible.
     std::vector<std::string> labels;
     std::vector<int> starts;
     int x = 0;
-    for (const auto& group : groups) {
-      labels.push_back((group.title.empty() ? tr("options_general") : group.title) + " (" +
-                       std::to_string(group.indices.size()) + ")");
+    for (const auto& group : tabs) {
+      labels.push_back(group.title + " (" + std::to_string(group.indices.size()) + ")");
       starts.push_back(x);
       x += Canvas::measure(labels.back(), 1) + 16;
     }
     const int left = 16, right = c.width() - 16;
     int shift = std::max(0, starts[(size_t)tab] + Canvas::measure(labels[(size_t)tab], 1) + 16 - (right - left));
-    for (size_t i = 0; i < groups.size(); i++) {
+    for (size_t i = 0; i < tabs.size(); i++) {
       int tx = left + starts[i] - shift, width = Canvas::measure(labels[i], 1) + 16;
       if (tx < left || tx + width > right) continue;
       bool sel = (int)i == tab;
@@ -712,32 +961,66 @@ void Menu::renderOptions(Canvas& c) const {
       c.text(tx + 6, y, labels[i], 1, sel ? rgba(255, 255, 255) : kMuted);
     }
     y += 16;
-    c.text(24, y, tr("options_tabs_hint"), 1, kMuted);
+    c.text(24, y, Canvas::fit(tr("options_tabs_hint"), 1, c.width() - 48), 1, kMuted);
+    y += 16;
+  } else if (!list.empty()) {
+    c.text(24, y, tr("options_search_hint"), 1, kMuted);
     y += 16;
   }
 
+  // Bas de l'écran : clavier à l'écran, sinon description de l'option choisie (deux lignes).
+  const int keyboardHeight = (kKeyboardLetterRows + 1) * 18 + 12;
+  const int keyboardTop = c.height() - 26 - keyboardHeight;
+  const int listBottom = keyboard_ ? keyboardTop - 4 : c.height() - 26 - 30;
   const int lineHeight = 14;
-  int visible = (c.height() - y - 26) / lineHeight;
-  int count = (int)shown.size() + 1;
+  const int visible = std::max(1, (listBottom - y) / lineHeight);
+  const int count = (int)shown.size() + (query_.empty() ? 1 : 0);
   if (optionSelected_ < optionScroll_) optionScroll_ = optionSelected_;
   if (optionSelected_ >= optionScroll_ + visible) optionScroll_ = optionSelected_ - visible + 1;
+  optionScroll_ = std::clamp(optionScroll_, 0, std::max(0, count - visible));
 
+  // Résultats de la recherche : onglet de chaque option après son libellé (celui du cœur, après
+  // l'onglet « Résolution »).
+  std::vector<std::string> tabOf(list.size());
+  for (const auto& group : tabs) {
+    for (size_t i : group.indices) tabOf[i] = group.title;
+  }
+  if (!query_.empty() && shown.empty()) c.text(24, y, tr("search_none"), 1, kMuted);
   for (int row = optionScroll_; row < std::min(count, optionScroll_ + visible); row++) {
-    bool sel = row == optionSelected_;
+    const bool sel = row == optionSelected_ && !keyboard_;
     if (sel) c.fill(16, y - 3, c.width() - 32, lineHeight, kSelection);
-    if (row == 0) {
-      c.text(24, y, tr("options_reset"), 1, sel ? rgba(255, 255, 255) : kAccent);
+    if (row == (int)shown.size()) {
+      c.text(24, y, tr(resetArmed_ ? "options_reset_confirm" : "options_reset"), 1, sel ? rgba(255, 255, 255) : kAccent);
     } else {
-      const CoreOption& o = list[shown[(size_t)row - 1]];
+      const CoreOption& o = list[shown[(size_t)row]];
       std::string value = "< " + o.display() + " >";
       int valueWidth = Canvas::measure(value, 1);
       int right = c.width() - 24;
       c.text(right - valueWidth, y, value, 1, o.value == o.defaultValue() ? kText : kAccent);
-      c.text(24, y, Canvas::fit(o.label, 1, right - valueWidth - 40), 1, sel ? rgba(255, 255, 255) : kText);
+      const int labelRoom = right - valueWidth - 40;
+      const std::string label = Canvas::fit(o.label, 1, labelRoom);
+      // Résolution d'un autre rendu que celui choisi (GLideN64 avec ParaLLEl-RDP…) : grisée.
+      const bool inactive = g.options.otherRenderer(shown[(size_t)row]);
+      const int labelWidth = c.text(24, y, label, 1, sel ? rgba(255, 255, 255) : inactive ? kMuted : kText);
+      if (!query_.empty() && !tabOf[shown[(size_t)row]].empty() && labelWidth + 40 < labelRoom) {
+        c.text(24 + labelWidth + 12, y, Canvas::fit(tabOf[shown[(size_t)row]], 1, labelRoom - labelWidth - 12), 1,
+               sel ? rgba(220, 220, 240) : kMuted);
+      }
     }
     y += lineHeight;
   }
-  std::string hint = tr("hint");
+
+  if (keyboard_) {
+    renderKeyboard(c, keyboardTop);
+  } else if (optionSelected_ < (int)shown.size()) {
+    const CoreOption& o = list[shown[(size_t)optionSelected_]];
+    int infoY = c.height() - 26 - 26;
+    for (const auto& line : wrapText(o.info, c.width() - 48, 2)) {
+      c.text(24, infoY, line, 1, kMuted);
+      infoY += 12;
+    }
+  }
+  std::string hint = Canvas::fit(tr(keyboard_ ? "kb_hint" : !query_.empty() ? "search_hint" : "hint"), 1, c.width() - 24);
   c.text((c.width() - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, kMuted);
 }
 

@@ -1,6 +1,6 @@
 // Menu du moteur (Échap, bouton central de la manette ou Start + Select) : reprendre, états de
-// sauvegarde, redémarrage, options du cœur (un onglet par type), touches du clavier,
-// configuration des manettes, joueurs des manettes, disque,
+// sauvegarde, redémarrage, options du cœur (un onglet par type, recherche), résolution interne,
+// touches du clavier, configuration des manettes, joueurs des manettes, disque,
 // image (filtre et ses réglages), format d'image, run-ahead, plein écran, sauvegarder et quitter, quitter.
 #pragma once
 
@@ -11,8 +11,11 @@
 #include <vector>
 
 #include "canvas.h"
+#include "options.h"
 
-enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext };
+// Search : recherche dans les options (bouton Y, clavier à l'écran) ; Erase : efface une lettre
+// (bouton X, retour arrière).
+enum class Nav { Up, Down, Left, Right, Confirm, Back, TabPrev, TabNext, Search, Erase };
 
 enum class MenuAction { None, Resume, SaveState, LoadState, LoadHistoryState, Reset, SaveQuit, Quit, ImageSettings, FilterChoice, NextAspect, ConfigurePad, Players, FilterParam, FilterDefaults, SoundSettings, ToggleFullscreen, DiskNext, DiskPrev, LeaveNetplay, NextRunAhead };
 
@@ -54,6 +57,12 @@ class Menu {
   bool inOptions() const { return open_ && screen_ != Screen::Main; }
   /** Écran des options du cœur, premier onglet. */
   void openOptions();
+  /** Écran des options du cœur : le texte tapé au clavier y sert à la recherche (SDL_StartTextInput). */
+  bool acceptsText() const { return open_ && screen_ == Screen::Options; }
+  /** Recherche en cours : retour arrière efface une lettre, Espace s'ajoute au texte. */
+  bool searching() const { return acceptsText() && !query_.empty(); }
+  /** Texte tapé (SDL_EVENT_TEXT_INPUT) ajouté à la recherche. */
+  void typeText(const char* utf8);
 
   /** Écran des touches du clavier. */
   void openKeys();
@@ -98,7 +107,16 @@ class Menu {
 
  private:
   enum class Screen { Main, Options, Keys, States, FilterSettings };
-  enum class Item { Resume, SaveState, LoadState, Reset, Options, Keys, Pad, Players, Disk, Filter, Aspect, RunAhead, Fullscreen, Sound, LeaveNetplay, SaveQuit, Quit };
+  enum class Item { Resume, SaveState, LoadState, Reset, Options, Resolution, Keys, Pad, Players, Disk, Filter, Aspect, RunAhead, Fullscreen, Sound, LeaveNetplay, SaveQuit, Quit };
+
+  /** Onglets des options : « Résolution » (options de résolution interne) puis ceux du cœur. */
+  std::vector<CoreOptionGroup> optionTabs() const;
+  /** Options affichées : résultats de la recherche, sinon celles de l'onglet. */
+  std::vector<size_t> shownOptions(const std::vector<CoreOptionGroup>& tabs) const;
+  MenuAction handleOptions(Nav nav);
+  MenuAction handleKeyboard(Nav nav);
+  void renderKeyboard(Canvas& canvas, int top) const;
+  void eraseLetter();
 
   std::vector<Item> items(const MenuState& state) const;
   int itemCount(const MenuState& state) const;
@@ -120,8 +138,12 @@ class Menu {
   int selected_ = 0;
   mutable int mainScroll_ = 0;
   int optionTab_ = 0;  // onglet (type d'options) affiché
-  int optionSelected_ = 0;
+  int optionSelected_ = 0;  // options, puis « Réinitialiser toutes les options » (hors recherche)
   mutable int optionScroll_ = 0;
+  bool resetArmed_ = false;  // « Réinitialiser » choisi une fois : le second appui confirme
+  std::string query_;        // recherche dans les options (vide : onglets)
+  bool keyboard_ = false;    // clavier à l'écran (manette) ouvert
+  int keyboardRow_ = 0, keyboardCol_ = 0;
   std::vector<std::pair<unsigned, std::string>> keyRows_;  // bouton RetroPad, nom (vide : nom par défaut)
   int keySelected_ = 0;  // 0 : « Touches par défaut », puis keyRows_
   bool waitingKey_ = false;

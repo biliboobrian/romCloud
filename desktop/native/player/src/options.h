@@ -20,6 +20,7 @@ struct CoreOption {
   std::vector<std::string> labels;  // libellés affichés des valeurs (vide : la valeur elle-même)
   std::string defaultVal;
   std::string category;  // clé de catégorie (options v2), vide sinon
+  std::string info;      // description donnée par le cœur (options v1/v2), vide sinon
   std::string value;
   const std::string& defaultValue() const { return defaultVal; }
   /** Libellé de la valeur en cours. */
@@ -60,6 +61,17 @@ class CoreOptions {
    * ordre alphabétique, et les options par libellé.
    */
   std::vector<CoreOptionGroup> groups() const;
+  /**
+   * Options de résolution interne (rendu du cœur à 2x, 4x… : Dolphin, PCSX2, Flycast, Beetle PSX…),
+   * celles du rendu choisi en premier (Mupen64Plus-Next, ParaLLEl N64 : une option par rendu).
+   */
+  std::vector<size_t> resolutionOptions() const;
+  /** Option de résolution interne du rendu choisi ; -1 si le cœur n'en a pas (ou pas pour ce rendu). */
+  int mainResolution() const;
+  /** Option de résolution d'un autre rendu que celui choisi (sans effet tant qu'il n'est pas choisi). */
+  bool otherRenderer(size_t index) const { return index < options_.size() && resolutionRank(index) >= kOtherRenderer; }
+  /** L'option ne s'applique qu'au redémarrage du jeu (d'après son libellé ou sa description). */
+  bool needsRestart(size_t index) const;
   /** Valeur suivante (ou précédente) d'une option ; mémorisée. */
   void cycle(size_t index, int direction);
   void resetAll();
@@ -77,6 +89,12 @@ class CoreOptions {
   void add(CoreOption option);
   std::vector<CoreOptionGroup> groupsByCategory() const;
   std::vector<CoreOptionGroup> groupsByKey() const;
+  /**
+   * Rang d'une option de résolution interne (petit : choisie d'abord ; kOtherRenderer et plus : autre
+   * rendu que celui choisi) ; -1 si ce n'en est pas une.
+   */
+  int resolutionRank(size_t index) const;
+  static constexpr int kOtherRenderer = 1000;
 
   std::string file_;
   std::map<std::string, std::string> saved_;
