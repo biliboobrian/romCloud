@@ -75,28 +75,22 @@ android {
 }
 
 dependencies {
-    // Dépendances de Winlator Cmod (mêmes versions).
+    // Dépendances de Winlator Cmod (interface aux versions d'origine ; inutilisées retirées :
+    // conscrypt, bouncycastle, openjsse, glide, junixsocket).
     implementation("androidx.appcompat:appcompat:1.4.0")
     implementation("androidx.preference:preference:1.2.1")
     implementation("com.google.android.material:material:1.6.1")
-    implementation("com.github.luben:zstd-jni:1.5.2-3@aar")
-    implementation("org.tukaani:xz:1.7")
-    implementation("org.apache.commons:commons-compress:1.20")
+    implementation("com.github.luben:zstd-jni:1.5.7-24@aar")
+    implementation(libs.xz)
+    implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("androidx.activity:activity-ktx:1.4.0")
     implementation("androidx.fragment:fragment-ktx:1.4.0")
     implementation(files("libs/MidiSynth/MidiSynth.jar"))
     implementation("androidx.recyclerview:recyclerview:1.2.0")
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    implementation("com.squareup.okhttp3:okhttp:4.9.3")
-    implementation("com.google.code.gson:gson:2.8.8")
-    implementation("org.conscrypt:conscrypt-android:2.5.2")
-    implementation("org.bouncycastle:bcprov-jdk15on:1.68")
-    implementation("org.openjsse:openjsse:1.1.7")
-    implementation("com.github.bumptech.glide:glide:4.11.0")
-    annotationProcessor("com.github.bumptech.glide:compiler:4.11.0")
-    implementation("com.kohlschutter.junixsocket:junixsocket-common:2.6.0")
-    implementation("com.kohlschutter.junixsocket:junixsocket-native-common:2.6.0")
+    implementation("com.squareup.retrofit2:retrofit:3.0.0")
+    implementation("com.squareup.retrofit2:converter-gson:3.0.0")
+    implementation(libs.okhttp)
+    implementation("com.google.code.gson:gson:2.15.0")
     implementation("com.google.android.flexbox:flexbox:3.0.0")
     testImplementation(libs.junit)
 }
