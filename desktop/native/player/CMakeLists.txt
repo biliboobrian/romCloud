@@ -40,12 +40,33 @@ FetchContent_Declare(
 set(VULKAN_HEADERS_ENABLE_MODULE OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(VulkanHeaders)
 
+# Shaders intégrés au programme (shaders/ : déclinaisons de xBR, shaderchain.cpp) : octets de chaque
+# fichier dans shaders_embedded.cpp, regénéré quand un fichier change ou s'ajoute.
+file(GLOB_RECURSE PLAYER_SHADERS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/shaders" CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.glsl" "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.glslp")
+list(SORT PLAYER_SHADERS)
+set(SHADER_ARRAYS "")
+set(SHADER_TABLE "")
+set(SHADER_COUNT 0)
+foreach(shader IN LISTS PLAYER_SHADERS)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}")
+  file(READ "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}" bytes HEX)
+  string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," bytes "${bytes}")
+  string(APPEND SHADER_ARRAYS "static const unsigned char kShader${SHADER_COUNT}[] = {${bytes}};\n")
+  string(APPEND SHADER_TABLE "    {\"${shader}\", kShader${SHADER_COUNT}, sizeof(kShader${SHADER_COUNT})},\n")
+  math(EXPR SHADER_COUNT "${SHADER_COUNT} + 1")
+endforeach()
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/shaders_embedded.cpp" @ONLY CONTENT
+     "// Généré par CMakeLists.txt depuis shaders/ : ne pas modifier.\n#include \"shaderchain.h\"\n\n${SHADER_ARRAYS}\nconst EmbeddedFile kEmbeddedShaders[] = {\n${SHADER_TABLE}};\nconst size_t kEmbeddedShaderCount = ${SHADER_COUNT};\n")
+
 add_executable(romcloud-player WIN32
   src/main.cpp
   src/core.cpp
   src/options.cpp
   src/video.cpp
   src/dlss.cpp
+  src/shaderchain.cpp
+  "${CMAKE_BINARY_DIR}/shaders_embedded.cpp"
   src/vulkan.cpp
   src/audio.cpp
   src/input.cpp

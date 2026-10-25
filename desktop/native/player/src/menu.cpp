@@ -119,7 +119,7 @@ static const struct {
     {"fd_crt", "Téléviseur cathodique : lignes de balayage, masque RGB.", "CRT television: scanlines, RGB mask."},
     {"fd_crtmask", "Téléviseur cathodique : lignes de balayage, masque RGB.", "CRT television: scanlines, RGB mask."},
     {"fd_lcd", "Écran de console portable : grille.", "Handheld console screen: grid."},
-    {"fd_xbr", "Contours redessinés en diagonale (niveau 1).", "Edges redrawn diagonally (level 1)."},
+    {"fd_xbr", "Contours lissés en diagonale, 17 versions.", "Diagonal edge smoothing, 17 versions."},
     {"fd_fsr", "AMD FidelityFX Super Resolution 1 (jeux en 3D).", "AMD FidelityFX Super Resolution 1 (3D games)."},
     {"fd_dlss", "IA NVIDIA DLSS (GeForce RTX), sinon FSR.", "NVIDIA DLSS AI (GeForce RTX), else FSR."},
     {"dlss_downloading", "Téléchargement de NVIDIA DLSS (59 Mo)… FSR en attendant", "Downloading NVIDIA DLSS (59 MB)… FSR meanwhile"},
@@ -145,6 +145,9 @@ static const struct {
     {"fp_ringing", "Netteté (C)", "Sharpness (C)"},
     {"fp_threshold", "Seuil des couleurs", "Color threshold"},
     {"fp_strength", "Force", "Strength"},
+    {"fp_version", "Version", "Version"},
+    {"fp_strength_lv1", "Force (lv1)", "Strength (lv1)"},
+    {"fp_edge_softness_lv1", "Douceur des contours (lv1)", "Edge softness (lv1)"},
     {"fp_edge_softness", "Douceur des contours", "Edge softness"},
     {"fp_ghosting", "Rémanence", "Ghosting"},
     {"fp_screen_colors", "Couleurs de l'écran", "Screen colors"},
@@ -653,6 +656,8 @@ static void renderFilterRow(Canvas& c, int x, int y, int width, const FilterRow&
   const int index = (int)std::lround(row.value - row.min);
   if (!row.choices.empty() && index >= 0 && index < (int)row.choices.size()) value = row.choices[(size_t)index];
   else if (row.integer) value = std::to_string((int)std::lround(row.value));
+  // Nom de choix long (versions de xBR) : coupé pour laisser le libellé et la barre.
+  value = Canvas::fit(value, 1, width * 45 / 100);
   const int valueWidth = std::max(46, Canvas::measure(value, 1));
   const int barWidth = std::min(220, width / 4), barX = x + width - barWidth - valueWidth - 10;
   const uint32_t color = sel ? rgba(255, 255, 255) : kText;

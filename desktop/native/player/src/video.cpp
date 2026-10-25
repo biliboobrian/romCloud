@@ -11,60 +11,17 @@
 #include <vector>
 
 #include "core.h"
+#include "glfunctions.h"
 #include "util.h"
 #include "vulkan.h"
 // Shaders CUT, CUT2 et CUT3 : mêmes sources que LibretroDroid (Android).
 #include "../../../../android/libretrodroid/src/main/cpp/shadermanager.h"
 
 // ---------------------------------------------------------------------------
-// Fonctions OpenGL (chargées à l'exécution : opengl32.dll n'exporte que l'OpenGL 1.1)
+// Fonctions OpenGL (chargées à l'exécution : opengl32.dll n'exporte que l'OpenGL 1.1 ; glfunctions.h)
 // ---------------------------------------------------------------------------
 
-#define GL_FUNCTIONS(X)                                                         \
-  X(PFNGLACTIVETEXTUREPROC, glActiveTexture)                                    \
-  X(PFNGLGENBUFFERSPROC, glGenBuffers)                                          \
-  X(PFNGLBINDBUFFERPROC, glBindBuffer)                                          \
-  X(PFNGLBUFFERDATAPROC, glBufferData)                                          \
-  X(PFNGLDELETEBUFFERSPROC, glDeleteBuffers)                                    \
-  X(PFNGLCREATESHADERPROC, glCreateShader)                                      \
-  X(PFNGLSHADERSOURCEPROC, glShaderSource)                                      \
-  X(PFNGLCOMPILESHADERPROC, glCompileShader)                                    \
-  X(PFNGLGETSHADERIVPROC, glGetShaderiv)                                        \
-  X(PFNGLGETSHADERINFOLOGPROC, glGetShaderInfoLog)                              \
-  X(PFNGLDELETESHADERPROC, glDeleteShader)                                      \
-  X(PFNGLCREATEPROGRAMPROC, glCreateProgram)                                    \
-  X(PFNGLATTACHSHADERPROC, glAttachShader)                                      \
-  X(PFNGLBINDATTRIBLOCATIONPROC, glBindAttribLocation)                          \
-  X(PFNGLLINKPROGRAMPROC, glLinkProgram)                                        \
-  X(PFNGLGETPROGRAMIVPROC, glGetProgramiv)                                      \
-  X(PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog)                            \
-  X(PFNGLDELETEPROGRAMPROC, glDeleteProgram)                                    \
-  X(PFNGLUSEPROGRAMPROC, glUseProgram)                                          \
-  X(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation)                          \
-  X(PFNGLUNIFORM1IPROC, glUniform1i)                                            \
-  X(PFNGLUNIFORM1FPROC, glUniform1f)                                            \
-  X(PFNGLUNIFORM2FPROC, glUniform2f)                                            \
-  X(PFNGLUNIFORM4FPROC, glUniform4f)                                            \
-  X(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer)                        \
-  X(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray)                \
-  X(PFNGLGENFRAMEBUFFERSPROC, glGenFramebuffers)                                \
-  X(PFNGLBINDFRAMEBUFFERPROC, glBindFramebuffer)                                \
-  X(PFNGLFRAMEBUFFERTEXTURE2DPROC, glFramebufferTexture2D)                      \
-  X(PFNGLCHECKFRAMEBUFFERSTATUSPROC, glCheckFramebufferStatus)                  \
-  X(PFNGLDELETEFRAMEBUFFERSPROC, glDeleteFramebuffers)                          \
-  X(PFNGLGENRENDERBUFFERSPROC, glGenRenderbuffers)                              \
-  X(PFNGLBINDRENDERBUFFERPROC, glBindRenderbuffer)                              \
-  X(PFNGLRENDERBUFFERSTORAGEPROC, glRenderbufferStorage)                        \
-  X(PFNGLFRAMEBUFFERRENDERBUFFERPROC, glFramebufferRenderbuffer)                \
-  X(PFNGLDELETERENDERBUFFERSPROC, glDeleteRenderbuffers)                          X(PFNGLBLENDFUNCSEPARATEPROC, glBlendFuncSeparate)
-
-// Facultatives (absentes des contextes OpenGL 2.1).
-#define GL_OPTIONAL_FUNCTIONS(X)                                                \
-  X(PFNGLGENVERTEXARRAYSPROC, glGenVertexArrays)                                \
-  X(PFNGLBINDVERTEXARRAYPROC, glBindVertexArray)                                \
-  X(PFNGLBINDSAMPLERPROC, glBindSampler)
-
-#define DECLARE(type, name) static type p_##name = nullptr;
+#define DECLARE(type, name) type p_##name = nullptr;
 GL_FUNCTIONS(DECLARE)
 GL_OPTIONAL_FUNCTIONS(DECLARE)
 #undef DECLARE
@@ -336,6 +293,7 @@ void Video::destroy() {
     // Images du DLSS partagées avec OpenGL : rendues avant la fin du contexte.
     SDL_GL_MakeCurrent(window_, context_);
     dlss_.destroy();
+    chain_.destroy();
     SDL_GL_DestroyContext(context_);
   }
   if (window_) SDL_DestroyWindow(window_);
@@ -807,7 +765,19 @@ std::vector<FilterParam> filterParams(Filter filter) {
     case Filter::Sharp: list = {{"softness", "fp_softness", 0, 1.0f, 0.5f, 4.0f, 0.25f}}; break;
     case Filter::Soft: list = {{"blur", "fp_blur", 0, 0.0f, 0.0f, 1.0f, 0.05f}, {"ringing", "fp_ringing", 1, 0.5f, 0.0f, 1.0f, 0.05f}}; break;
     case Filter::Epx: list = {{"threshold", "fp_threshold", 0, 0.02f, 0.0f, 0.3f, 0.01f}}; break;
-    case Filter::Xbr: list = {{"strength", "fp_strength", 0, 1.0f, 0.0f, 1.0f, 0.05f}, {"edge_softness", "fp_edge_softness", 1, 1.0f, 0.25f, 4.0f, 0.25f}}; break;
+    case Filter::Xbr: {
+      // Version : niveau 1 (shader du moteur, seul à avoir force et douceur), puis les préréglages de
+      // libretro (shaderchain.h).
+      static const std::string versions = [] {
+        std::string names = "xBR lv1";
+        for (const auto& name : ShaderChain::xbrPresets()) names += "|" + name;
+        return names;
+      }();
+      list = {{"version", "fp_version", 2, 0.0f, 0.0f, (float)ShaderChain::xbrPresets().size(), 1.0f, ParamFormat::Choice, versions.c_str()},
+              {"strength", "fp_strength_lv1", 0, 1.0f, 0.0f, 1.0f, 0.05f},
+              {"edge_softness", "fp_edge_softness_lv1", 1, 1.0f, 0.25f, 4.0f, 0.25f}};
+      break;
+    }
     case Filter::Fsr: list = {{"sharpness", "fp_sharpness", 0, 1.0f, 0.0f, 2.0f, 0.1f}}; break;
     // DLSS : netteté RCAS sur l'image agrandie (aucune par défaut, comme le DLSS seul).
     case Filter::Dlss: list = {{"sharpness", "fp_sharpness", 0, 0.0f, 0.0f, 2.0f, 0.1f}}; break;
@@ -1464,6 +1434,76 @@ bool Video::drawDlss(unsigned source, float u1, float vTop, float vBottom, float
   return true;
 }
 
+bool Video::drawChain(unsigned source, float u1, float vTop, float vBottom, float x1, float y1, float w, float h, int winW, int winH) {
+  // Version de GLSL des shaders de libretro : 1.50 (profil core), sinon 1.30 si le pilote la
+  // connaît (profil de compatibilité), 1.20 au-dessous.
+  if (!glslVersion_) {
+    const char* version = reinterpret_cast<const char*>(glGetString(GL_SHADING_LANGUAGE_VERSION));
+    const int supported = version ? (int)std::lround(atof(version) * 100) : 120;
+    glslVersion_ = coreProfile_ ? 150 : supported >= 130 ? 130 : 120;
+  }
+  const int fw = (int)frameWidth_, fh = (int)frameHeight_;
+  if (fw < 2 || fh < 2 || !chain_.load((int)std::lround(params_[2]) - 1, glslVersion_)) return false;
+  auto drawQuad = [](const Vertex quad[4]) {
+    p_glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * 4, quad, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  };
+  // Image du jeu recopiée telle quelle à sa taille exacte (haut en v = 1), entrée des passes.
+  if (fw != chainWidth_ || fh != chainHeight_) {
+    chainWidth_ = fw;
+    chainHeight_ = fh;
+    if (!makeTarget(chainFbo_, chainTexture_, fw, fh)) {
+      chainWidth_ = chainHeight_ = 0;
+      glBindTexture(GL_TEXTURE_2D, source);
+      return false;
+    }
+    glBindTexture(GL_TEXTURE_2D, source);
+  }
+  p_glBindFramebuffer(GL_FRAMEBUFFER, chainFbo_);
+  glViewport(0, 0, fw, fh);
+  p_glUniform1i(uniformMode_, (int)Filter::Pixels);
+  p_glUniform4f(uniformColor_, 1.0f, 1.0f, 1.0f, 1.0f);
+  const Vertex copy[4] = {{-1, 1, 0, vTop}, {-1, -1, 0, vBottom}, {1, 1, u1, vTop}, {1, -1, u1, vBottom}};
+  drawQuad(copy);
+
+  // Passes du préréglage ; image à l'écran dans le sens de l'image (écran tourné : côtés échangés).
+  const bool turned = g.rotation & 1;
+  const int viewW = (int)((turned ? h : w) + 0.5f), viewH = (int)((turned ? w : h) + 0.5f);
+  int outW = 0, outH = 0;
+  bool atViewport = false;
+  const unsigned out = chain_.run(chainTexture_, fw, fh, viewW, viewH, (unsigned)frameSerial_, outW, outH, atViewport);
+  p_glUseProgram(program_);
+  p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, winW, winH);
+  p_glUniform4f(uniformColor_, params_[8], params_[9], params_[10], params_[11]);
+  if (!out) {
+    p_glUniform1i(uniformMode_, (int)Filter::Xbr);
+    glBindTexture(GL_TEXTURE_2D, source);
+    return false;
+  }
+
+  // Image finale : déjà à la taille de l'écran (bilinéaire, sans effet), sinon agrandie en bicubique
+  // Catmull-Rom (B = 0, C = 0,5), à la place de la dernière passe jinc2 des préréglages Super-xBR.
+  glBindTexture(GL_TEXTURE_2D, out);
+  const GLint filter = atViewport ? GL_LINEAR : GL_NEAREST;
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+  p_glUniform1i(uniformMode_, (int)(atViewport ? Filter::Smooth : Filter::Soft));
+  p_glUniform2f(uniformSize_, (float)outW, (float)outH);
+  p_glUniform4f(uniformParams_, 0.0f, 0.5f, params_[2], params_[3]);
+  const float uv[4][2] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
+  const float pos[4][2] = {{-x1, y1}, {x1, y1}, {x1, -y1}, {-x1, -y1}};
+  const int k = (int)g.rotation;
+  auto corner = [&](int screen) {
+    const float* t = uv[(screen + k) % 4];
+    return Vertex{pos[screen][0], pos[screen][1], t[0], t[1]};
+  };
+  const Vertex quad[4] = {corner(0), corner(3), corner(1), corner(2)};
+  drawQuad(quad);
+  p_glUniform4f(uniformParams_, params_[0], params_[1], params_[2], params_[3]);
+  return true;
+}
+
 void Video::present(const uint8_t* overlay, int overlayWidth, int overlayHeight, bool swap, bool overlayChanged) {
   // Rétabli avant l'échange des tampons (fin de la portée).
   {
@@ -1602,6 +1642,8 @@ void Video::draw(const uint8_t* overlay, int overlayWidth, int overlayHeight, bo
       drawCut(quad, std::min(scaleX, scaleY));
     } else if (dlss && drawDlss(source, u1, vTop, vBottom, x1, y1, w, h, winW, winH)) {
       // DLSS dessiné ; sinon (image non agrandie, erreur) FSR ci-dessous.
+    } else if (shown == Filter::Xbr && params_[2] >= 0.5f && drawChain(source, u1, vTop, vBottom, x1, y1, w, h, winW, winH)) {
+      // Préréglage de xBR dessiné ; sinon (shader refusé) xBR niveau 1 ci-dessous.
     } else if ((shown == Filter::Fsr || shown == Filter::Dlss) && preparePostTarget(outW, outH)) {
       // FSR 1 : agrandissement (EASU) dans une image à la taille de l'affichage, puis netteté (RCAS)
       // en la dessinant à l'écran.
