@@ -242,39 +242,63 @@ std::vector<CoreOptionGroup> CoreOptions::groupsByKey() const {
   return result;
 }
 
-// Options de résolution interne, par ordre de préférence : clé exacte ([exact]) ou partie de clé (en
-// minuscules), et rendu dont elles dépendent ([whenKey] parmi [whenValues] séparées par « | » ; clé
-// absente : sans condition). Cœurs N64 : une option par rendu (ParaLLEl-RDP, GLideN64…).
+// Options des améliorations, par ordre de préférence : type (résolution, textures ou les deux), clé
+// exacte ([exact]) ou partie de clé (en minuscules), rendu dont elles dépendent ([whenKey] parmi
+// [whenValues] séparées par « | » ; clé absente : sans condition), option liée ([related] : choix du
+// rendu, montré dans l'onglet sans être l'option principale). Cœurs N64 : une option par rendu
+// (ParaLLEl-RDP, GLideN64…), textures seulement avec GLideN64.
+constexpr int kResolution = 1, kTextures = 2;
 static const struct {
+  int kinds;
   const char* pattern;
   bool exact;
   const char* whenKey;
   const char* whenValues;
-} kResolutionKeys[] = {
-    {"mupen64plus-parallel-rdp-upscaling", true, "mupen64plus-rdp-plugin", "parallel"},
-    {"mupen64plus-EnableNativeResFactor", true, "mupen64plus-rdp-plugin", "gliden64"},
-    {"mupen64plus-43screensize", true, "mupen64plus-rdp-plugin", "gliden64"},
-    {"parallel-n64-upscaling", true, "parallel-n64-gfxplugin", "parallel|angrylion|auto"},
-    {"parallel-n64-gliden64-EnableNativeResFactor", true, "parallel-n64-gfxplugin", "gliden64"},
-    {"parallel-n64-screensize", true, "parallel-n64-gfxplugin", "gliden64|glide64|gln64|rice|auto"},
-    {"internal_resolution", false, nullptr, nullptr},  // Flycast, Beetle PSX HW, PPSSPP, DeSmuME
-    {"resolution_factor", false, nullptr, nullptr},    // Azahar, Citra
-    {"resolutionscale", false, nullptr, nullptr},      // SwanStation, DuckStation
-    {"upscale_multiplier", false, nullptr, nullptr},   // PCSX2
-    {"efb_scale", false, nullptr, nullptr},            // Dolphin
-    {"res_multi", false, nullptr, nullptr},            // Play!
-    {"opengl_resolution", false, nullptr, nullptr},    // melonDS
-    {"resolution_mode", false, nullptr, nullptr},      // Kronos, YabaSanshiro
-    {"mode7_hires", false, nullptr, nullptr},          // Snes9x : Mode 7 en haute résolution
-    {"mode7_scale", false, nullptr, nullptr},          // bsnes HD
+  bool related;
+} kEnhancementKeys[] = {
+    {kResolution, "mupen64plus-parallel-rdp-upscaling", true, "mupen64plus-rdp-plugin", "parallel", false},
+    {kResolution, "mupen64plus-EnableNativeResFactor", true, "mupen64plus-rdp-plugin", "gliden64", false},
+    {kResolution, "mupen64plus-43screensize", true, "mupen64plus-rdp-plugin", "gliden64", false},
+    {kResolution, "parallel-n64-upscaling", true, "parallel-n64-gfxplugin", "parallel|angrylion|auto", false},
+    {kResolution, "parallel-n64-gliden64-EnableNativeResFactor", true, "parallel-n64-gfxplugin", "gliden64", false},
+    {kResolution, "parallel-n64-screensize", true, "parallel-n64-gfxplugin", "gliden64|glide64|gln64|rice|auto", false},
+    {kResolution, "internal_resolution", false, nullptr, nullptr, false},  // Flycast, Beetle PSX HW, PPSSPP, DeSmuME
+    {kResolution, "resolution_factor", false, nullptr, nullptr, false},    // Azahar, Citra
+    {kResolution, "resolutionscale", false, nullptr, nullptr, false},      // SwanStation, DuckStation
+    {kResolution, "upscale_multiplier", false, nullptr, nullptr, false},   // PCSX2
+    {kResolution, "efb_scale", false, nullptr, nullptr, false},            // Dolphin
+    {kResolution, "res_multi", false, nullptr, nullptr, false},            // Play!
+    {kResolution, "opengl_resolution", false, nullptr, nullptr, false},    // melonDS
+    {kResolution, "resolution_mode", false, nullptr, nullptr, false},      // Kronos, YabaSanshiro
+    {kResolution, "mode7_hires", false, nullptr, nullptr, false},          // Snes9x : Mode 7 en haute résolution
+    {kResolution, "mode7_scale", false, nullptr, nullptr, false},          // bsnes HD
+    // Textures agrandies (texte, interface, logos) : xBRZ, HQ4x, MMPX…
+    {kTextures, "mupen64plus-txEnhancementMode", true, "mupen64plus-rdp-plugin", "gliden64", false},
+    {kTextures, "mupen64plus-txFilterMode", true, "mupen64plus-rdp-plugin", "gliden64", false},
+    {kTextures, "parallel-n64-gliden64-txEnhancementMode", true, "parallel-n64-gfxplugin", "gliden64", false},
+    {kTextures, "parallel-n64-gliden64-txFilterMode", true, "parallel-n64-gfxplugin", "gliden64", false},
+    {kTextures, "texture_scaling_level", false, nullptr, nullptr, false},  // PPSSPP
+    {kTextures, "texture_shader", false, nullptr, nullptr, false},         // PPSSPP (MMPX, xBRZ)
+    {kTextures, "texture_scaling_type", false, nullptr, nullptr, false},   // PPSSPP
+    {kTextures, "texupscale", false, nullptr, nullptr, false},             // Flycast
+    {kTextures, "citra_texture_filter", false, nullptr, nullptr, false},   // Azahar, Citra
+    {kTextures, "beetle_psx_hw_filter", false, nullptr, nullptr, false},   // Beetle PSX HW (et exclusions)
+    {kTextures, "gpu_texturefilter", false, nullptr, nullptr, false},      // SwanStation
+    {kTextures, "gpu.texturefilter", false, nullptr, nullptr, false},      // DuckStation
+    // Choix du rendu des cœurs N64 : montré avec les options qui en dépendent.
+    {kResolution | kTextures, "mupen64plus-rdp-plugin", true, nullptr, nullptr, true},
+    {kResolution | kTextures, "parallel-n64-gfxplugin", true, nullptr, nullptr, true},
 };
 
-int CoreOptions::resolutionRank(size_t index) const {
+int CoreOptions::enhancementRank(Enhancement kind, size_t index) const {
   const CoreOption& o = options_[index];
   const std::string key = lower(o.key);
-  for (int i = 0; i < (int)(sizeof(kResolutionKeys) / sizeof(kResolutionKeys[0])); i++) {
-    const auto& rule = kResolutionKeys[i];
+  const int mask = kind == Enhancement::Resolution ? kResolution : kTextures;
+  for (int i = 0; i < (int)(sizeof(kEnhancementKeys) / sizeof(kEnhancementKeys[0])); i++) {
+    const auto& rule = kEnhancementKeys[i];
+    if (!(rule.kinds & mask)) continue;
     if (rule.exact ? o.key != rule.pattern : key.find(rule.pattern) == std::string::npos) continue;
+    if (rule.related) return kRelated + i;
     if (!rule.whenKey) return i;
     const char* renderer = get(rule.whenKey);
     if (!renderer) return i;
@@ -284,22 +308,31 @@ int CoreOptions::resolutionRank(size_t index) const {
   return -1;
 }
 
-std::vector<size_t> CoreOptions::resolutionOptions() const {
+std::vector<size_t> CoreOptions::enhancementOptions(Enhancement kind) const {
   std::vector<std::pair<int, size_t>> ranked;
+  bool own = false;  // au moins une option de l'amélioration (pas seulement le choix du rendu)
   for (size_t i = 0; i < options_.size(); i++) {
-    const int rank = resolutionRank(i);
-    if (rank >= 0) ranked.emplace_back(rank, i);
+    const int rank = enhancementRank(kind, i);
+    if (rank < 0) continue;
+    ranked.emplace_back(rank, i);
+    own = own || rank < kRelated || rank >= kOtherRenderer;
   }
+  if (!own) return {};
   std::stable_sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
   std::vector<size_t> result;
   for (const auto& [rank, index] : ranked) result.push_back(index);
   return result;
 }
 
-int CoreOptions::mainResolution() const {
-  const std::vector<size_t> list = resolutionOptions();
-  if (list.empty() || resolutionRank(list.front()) >= kOtherRenderer) return -1;
+int CoreOptions::mainEnhancement(Enhancement kind) const {
+  const std::vector<size_t> list = enhancementOptions(kind);
+  if (list.empty() || enhancementRank(kind, list.front()) >= kRelated) return -1;
   return options_[list.front()].values.size() >= 2 ? (int)list.front() : -1;
+}
+
+bool CoreOptions::otherRenderer(size_t index) const {
+  if (index >= options_.size()) return false;
+  return enhancementRank(Enhancement::Resolution, index) >= kOtherRenderer || enhancementRank(Enhancement::Textures, index) >= kOtherRenderer;
 }
 
 bool CoreOptions::needsRestart(size_t index) const {

@@ -81,7 +81,12 @@ static const struct {
     {"kb_done", "Terminer", "Done"},
     {"kb_hint", "A : taper   X : effacer   Y / B : fermer le clavier", "A: type   X: erase   Y / B: close keyboard"},
     {"resolution", "Résolution interne", "Internal resolution"},
+    {"textures", "Textures (texte, interface)", "Textures (text, HUD)"},
+    {"options_textures", "Textures", "Textures"},
+    {"other_renderer", "autre rendu", "other renderer"},
     {"resolution_restart", "S'applique au redémarrage du jeu (« Redémarrer le jeu »)", "Applies when the game restarts (\"Restart game\")"},
+    {"textures_hint", "Texte, interface et logos lissés (xBRZ, HQ4x, MMPX…)", "Smoother text, HUD and logos (xBRZ, HQ4x, MMPX…)"},
+    {"renderer_hint", "Pas avec ce rendu : A pour choisir le rendu (GLideN64…)", "Not with this renderer: A to pick the renderer (GLideN64…)"},
     {"state_saved", "État sauvegardé", "State saved"},
     {"state_loaded", "État chargé", "State loaded"},
     {"state_error", "Impossible de sauvegarder ou de charger l'état", "The state could not be saved or loaded"},
@@ -328,8 +333,10 @@ static std::vector<std::string> searchWords(const std::string& query) {
 
 std::vector<CoreOptionGroup> Menu::optionTabs() const {
   std::vector<CoreOptionGroup> tabs;
-  std::vector<size_t> resolution = g.options.resolutionOptions();
+  std::vector<size_t> resolution = g.options.enhancementOptions(Enhancement::Resolution);
   if (!resolution.empty()) tabs.push_back({tr("options_resolution"), std::move(resolution)});
+  std::vector<size_t> textures = g.options.enhancementOptions(Enhancement::Textures);
+  if (!textures.empty()) tabs.push_back({tr("options_textures"), std::move(textures)});
   for (auto& group : g.options.groups()) {
     if (group.title.empty()) group.title = tr("options_general");
     tabs.push_back(std::move(group));
@@ -493,12 +500,16 @@ void Menu::openKeys() {
   keyMessage_.clear();
 }
 
+Enhancement Menu::enhancementOf(Item item) { return item == Item::Textures ? Enhancement::Textures : Enhancement::Resolution; }
+
 /** Entrées du menu ; partie à plusieurs : rien qui ne changerait que cet appareil. */
 std::vector<Menu::Item> Menu::items(const MenuState& state) const {
   std::vector<Item> list = {Item::Resume, Item::SaveState};
   if (!state.together) list.insert(list.end(), {Item::LoadState, Item::Reset, Item::Options});
-  // Résolution interne du cœur (2x, 4x…) à portée de main, sans chercher dans ses options.
-  if (!state.together && g.options.mainResolution() >= 0) list.push_back(Item::Resolution);
+  // Résolution interne (2x, 4x…) et textures (texte, interface) à portée de main, sans chercher dans
+  // les options du cœur ; montrées aussi quand seul un autre rendu les propose (A : choix du rendu).
+  if (!state.together && !g.options.enhancementOptions(Enhancement::Resolution).empty()) list.push_back(Item::Resolution);
+  if (!state.together && !g.options.enhancementOptions(Enhancement::Textures).empty()) list.push_back(Item::Textures);
   list.insert(list.end(), {Item::Keys, Item::Pad, Item::Players});
   if (state.diskCount > 1 && !state.together) list.push_back(Item::Disk);
   list.push_back(Item::Filter);
@@ -523,6 +534,7 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
     case Item::Reset: return tr("reset");
     case Item::Options: return tr("options");
     case Item::Resolution: return tr("resolution");
+    case Item::Textures: return tr("textures");
     case Item::Keys: return tr("keys");
     case Item::Pad: return tr("pad_config");
     case Item::Players: return tr("players");
@@ -542,9 +554,10 @@ std::string Menu::itemLabel(Item item, const MenuState& state) const {
 std::string Menu::itemValue(Item item, const MenuState& state) const {
   switch (item) {
     case Item::Disk: return std::to_string(state.diskIndex + 1) + " / " + std::to_string(state.diskCount);
-    case Item::Resolution: {
-      const int index = g.options.mainResolution();
-      return index < 0 ? std::string() : "< " + g.options.list()[(size_t)index].display() + " >";
+    case Item::Resolution:
+    case Item::Textures: {
+      const int index = g.options.mainEnhancement(enhancementOf(item));
+      return index < 0 ? tr("other_renderer") : "< " + g.options.list()[(size_t)index].display() + " >";
     }
     case Item::Filter: return tr(state.filterLabel);
     case Item::Aspect: {
@@ -755,10 +768,23 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
   if (screen_ == Screen::Options) return handleOptions(nav);
 
   // Entrées l'une sous l'autre : haut / bas changent d'entrée (disque, format d'image, run-ahead et
-  // plein écran changent avec A / Entrée ; résolution interne aussi avec gauche / droite).
+  // plein écran changent avec A / Entrée ; résolution interne et textures aussi avec gauche / droite,
+  // ou A ouvre leur onglet quand le rendu choisi ne les propose pas).
   int count = itemCount(state);
   selected_ = std::min(selected_, count - 1);
   Item item = itemAt(selected_, state);
+  const bool enhancement = item == Item::Resolution || item == Item::Textures;
+  const int option = enhancement ? g.options.mainEnhancement(enhancementOf(item)) : -1;
+  if (enhancement && (nav == Nav::Left || nav == Nav::Right || nav == Nav::Confirm)) {
+    if (option >= 0) {
+      g.options.cycle((size_t)option, nav == Nav::Left ? -1 : 1);
+    } else if (nav == Nav::Confirm) {
+      // Onglet de l'amélioration (choix du rendu en tête) : Résolution puis Textures.
+      openOptions();
+      if (item == Item::Textures && !g.options.enhancementOptions(Enhancement::Resolution).empty()) optionTab_ = 1;
+    }
+    return MenuAction::None;
+  }
   switch (nav) {
     case Nav::Up: selected_ = (selected_ + count - 1) % count; return MenuAction::None;
     case Nav::Down: selected_ = (selected_ + 1) % count; return MenuAction::None;
@@ -768,9 +794,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
     case Nav::Search:
     case Nav::Erase: return MenuAction::None;
     case Nav::Left:
-    case Nav::Right:
-      if (item == Item::Resolution) g.options.cycle((size_t)g.options.mainResolution(), nav == Nav::Left ? -1 : 1);
-      return MenuAction::None;
+    case Nav::Right: return MenuAction::None;
     case Nav::Confirm:
       switch (item) {
         case Item::Resume: return MenuAction::Resume;
@@ -781,8 +805,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
           openOptions();
           return MenuAction::None;
         case Item::Resolution:
-          g.options.cycle((size_t)g.options.mainResolution(), 1);
-          return MenuAction::None;
+        case Item::Textures: return MenuAction::None;  // ci-dessus
         case Item::Keys:
           openKeys();
           return MenuAction::None;
@@ -840,16 +863,27 @@ void Menu::render(Canvas& c, const MenuState& state) const {
     const Item item = itemAt(i, state);
     const std::string value = Canvas::fit(itemValue(item, state), 1, (width - 32) / 2);
     const int valueWidth = value.empty() ? 0 : Canvas::measure(value, 1);
-    if (!value.empty()) c.text(x + width - 16 - valueWidth, y, value, 1, sel ? rgba(255, 255, 255) : kAccent);
-    c.text(x + 16, y, Canvas::fit(itemLabel(item, state), 1, width - 48 - valueWidth), 1, sel ? rgba(255, 255, 255) : kText);
+    // Amélioration d'un autre rendu que celui choisi : grisée.
+    const bool inactive = (item == Item::Resolution || item == Item::Textures) && g.options.mainEnhancement(enhancementOf(item)) < 0;
+    const uint32_t valueColor = sel ? rgba(255, 255, 255) : inactive ? kMuted : kAccent;
+    if (!value.empty()) c.text(x + width - 16 - valueWidth, y, value, 1, valueColor);
+    c.text(x + 16, y, Canvas::fit(itemLabel(item, state), 1, width - 48 - valueWidth), 1,
+           sel ? rgba(255, 255, 255) : inactive ? kMuted : kText);
     y += rowHeight;
   }
-  // Résolution interne appliquée au redémarrage du jeu (selon le cœur) : dit à la place de l'aide.
-  const int resolution = g.options.mainResolution();
-  const bool restart = selected_ < count && itemAt(selected_, state) == Item::Resolution && resolution >= 0 &&
-                       g.options.needsRestart((size_t)resolution);
-  std::string hint = Canvas::fit(tr(restart ? "resolution_restart" : "main_hint"), 1, width - 24);
-  c.text(x + (width - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, restart ? kAccent : kMuted);
+  // Aide de la résolution interne et des textures (redémarrage, rendu à choisir) à la place de l'aide.
+  const char* notice = nullptr;
+  if (selected_ < count) {
+    const Item item = itemAt(selected_, state);
+    if (item == Item::Resolution || item == Item::Textures) {
+      const int option = g.options.mainEnhancement(enhancementOf(item));
+      if (option < 0) notice = "renderer_hint";
+      else if (g.options.needsRestart((size_t)option)) notice = "resolution_restart";
+      else if (item == Item::Textures) notice = "textures_hint";
+    }
+  }
+  std::string hint = Canvas::fit(tr(notice ? notice : "main_hint"), 1, width - 24);
+  c.text(x + (width - Canvas::measure(hint, 1)) / 2, c.height() - 16, hint, 1, notice ? kAccent : kMuted);
 }
 
 void Menu::renderStates(Canvas& c) const {

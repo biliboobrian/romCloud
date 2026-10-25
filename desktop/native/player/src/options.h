@@ -27,6 +27,12 @@ struct CoreOption {
   std::string display() const;
 };
 
+/**
+ * Améliorations de l'image mises à portée de main (menu, onglet en tête des options) : résolution
+ * interne du rendu (2x, 4x…), agrandissement des textures (texte, interface : xBRZ, HQ4x, MMPX…).
+ */
+enum class Enhancement { Resolution, Textures };
+
 /** Onglet d'options : catégorie du cœur ou type d'options ; titre vide = options générales. */
 struct CoreOptionGroup {
   std::string title;
@@ -62,14 +68,15 @@ class CoreOptions {
    */
   std::vector<CoreOptionGroup> groups() const;
   /**
-   * Options de résolution interne (rendu du cœur à 2x, 4x… : Dolphin, PCSX2, Flycast, Beetle PSX…),
-   * celles du rendu choisi en premier (Mupen64Plus-Next, ParaLLEl N64 : une option par rendu).
+   * Options d'une amélioration : résolution interne (Dolphin, PCSX2, Flycast, Beetle PSX…) ou
+   * textures (GLideN64, PPSSPP, Flycast, Azahar, Beetle PSX, SwanStation…), celles du rendu choisi en
+   * premier (Mupen64Plus-Next, ParaLLEl N64 : une option par rendu), puis le choix du rendu.
    */
-  std::vector<size_t> resolutionOptions() const;
-  /** Option de résolution interne du rendu choisi ; -1 si le cœur n'en a pas (ou pas pour ce rendu). */
-  int mainResolution() const;
-  /** Option de résolution d'un autre rendu que celui choisi (sans effet tant qu'il n'est pas choisi). */
-  bool otherRenderer(size_t index) const { return index < options_.size() && resolutionRank(index) >= kOtherRenderer; }
+  std::vector<size_t> enhancementOptions(Enhancement kind) const;
+  /** Option principale de l'amélioration pour le rendu choisi ; -1 si le cœur n'en a pas (ou pas pour ce rendu). */
+  int mainEnhancement(Enhancement kind) const;
+  /** Option d'un autre rendu que celui choisi (sans effet tant qu'il n'est pas choisi). */
+  bool otherRenderer(size_t index) const;
   /** L'option ne s'applique qu'au redémarrage du jeu (d'après son libellé ou sa description). */
   bool needsRestart(size_t index) const;
   /** Valeur suivante (ou précédente) d'une option ; mémorisée. */
@@ -90,11 +97,12 @@ class CoreOptions {
   std::vector<CoreOptionGroup> groupsByCategory() const;
   std::vector<CoreOptionGroup> groupsByKey() const;
   /**
-   * Rang d'une option de résolution interne (petit : choisie d'abord ; kOtherRenderer et plus : autre
-   * rendu que celui choisi) ; -1 si ce n'en est pas une.
+   * Rang d'une option de l'amélioration (petit : choisie d'abord ; kRelated et plus : liée, comme le
+   * choix du rendu, jamais principale ; kOtherRenderer et plus : autre rendu que celui choisi) ;
+   * -1 si elle n'en fait pas partie.
    */
-  int resolutionRank(size_t index) const;
-  static constexpr int kOtherRenderer = 1000;
+  int enhancementRank(Enhancement kind, size_t index) const;
+  static constexpr int kRelated = 500, kOtherRenderer = 1000;
 
   std::string file_;
   std::map<std::string, std::string> saved_;
