@@ -167,6 +167,36 @@ fun EmulatorPickerDialog(
     )
 }
 
+/** Choix d'une valeur ([options] : valeur, libellé ; valeur null : automatique), [selected] mise en avant. */
+@Composable
+fun OptionPickerDialog(
+    title: String,
+    options: List<Pair<String?, String>>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val focus = rememberInitialFocus()
+    val current = options.find { it.first == selected } ?: options.first()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                items(options) { option ->
+                    ListItem(
+                        selected = option == current,
+                        onClick = { onSelect(option.first) },
+                        headlineContent = { androidx.tv.material3.Text(option.second) },
+                        modifier = if (option == current) Modifier.focusRequester(focus) else Modifier,
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+    )
+}
+
 @Composable
 fun ConfirmDialog(title: String, text: String, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val focus = rememberInitialFocus()

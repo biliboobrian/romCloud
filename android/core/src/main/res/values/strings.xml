@@ -779,4 +779,20 @@
     </plurals>
     <string name="stats_history">Recent sessions</string>
     <string name="stats_history_empty">No session recorded yet (sessions are listed from this version on).</string>
+    <!-- Réglages des jeux PC (fiche du jeu) -->
+    <string name="pc_settings_title">PC settings</string>
+    <string name="pc_settings_hint">Saved in your profile, applied at the next launch with RomCloud PC. Quality: Unity and Unreal Engine games.</string>
+    <string name="pc_setting_auto">Auto</string>
+    <string name="pc_setting_wine">Proton</string>
+    <string name="pc_wine_arm64ec">Proton 9.0 arm64ec (FEX)</string>
+    <string name="pc_wine_x86_64">Proton 9.0 x86_64 (Box64)</string>
+    <string name="pc_setting_driver">Graphics driver</string>
+    <string name="pc_driver_qualcomm">Qualcomm (device driver)</string>
+    <string name="pc_driver_download">%1$s (downloaded)</string>
+    <string name="pc_setting_dxvk">DXVK</string>
+    <string name="pc_setting_quality">Graphics quality at startup</string>
+    <string name="pc_quality_low">Low</string>
+    <string name="pc_quality_medium">Medium</string>
+    <string name="pc_quality_high">High</string>
+    <string name="pc_settings_not_saved">Settings not saved to your profile: %1$s</string>
 </resources>

@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.InputDevice;
 import android.view.ViewGroup;
@@ -20,6 +21,7 @@ import com.winlator.cmod.R;
 import com.winlator.cmod.XServerDisplayActivity;
 import com.winlator.cmod.container.Container;
 import com.winlator.cmod.container.ContainerManager;
+import com.winlator.cmod.contents.AdrenotoolsManager;
 import com.winlator.cmod.contents.ContentsManager;
 import com.winlator.cmod.core.WineInfo;
 import com.winlator.cmod.inputcontrols.ControllerManager;
@@ -41,6 +43,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantLock;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 /**
  * Point d'entrée de RomCloud (lancé pour un résultat, appelant signé avec la même clé) : lance le jeu PC [EXTRA_EXE] avec le moteur
@@ -82,6 +88,13 @@ public class LaunchActivity extends Activity {
      * quels que soient le pilote Vulkan et la version de DXVK.
      */
     private static final String UNITY_WINE = "proton-9.0-x86_64";
+
+    /** Qualité graphique au démarrage choisie dans RomCloud (low, medium, high : [qualityArgs]). */
+    static final String SETTING_QUALITY = "romcloudQuality";
+    /** Paquet AdrenoTools du pilote choisi dans RomCloud, s'il n'est pas inclus ([installDriver]). */
+    static final String SETTING_DRIVER_URL = "adrenotoolsDriverUrl";
+    /** Pilote par défaut sur Adreno (celui de RomCloud), si le pilote choisi n'a pas pu être installé. */
+    private static final String DEFAULT_DRIVER_CONFIG = "version=turnip25.3.0_R3_Auto;blacklistedExtensions=;maxDeviceMemory=0;adrenotoolsTurnip=1;frameSync=Normal";
 
     /** Profil de commandes à l'écran « RomCloud Xbox » (assets/romcloud/xbox.icp) : manette Xbox tactile. */
     private static final int XBOX_PROFILE = 100;
@@ -216,7 +229,18 @@ public class LaunchActivity extends Activity {
             File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
             container.setDrives(drives(container.getDrives(), ROMS_DRIVE, romsDir.getAbsolutePath()));
             container.saveData();
-            File shortcut = writeShortcut(container, intent.getStringExtra(EXTRA_TITLE), winePath(exe, downloads, romsDir), intent.getBundleExtra(EXTRA_SETTINGS));
+            // Réglages du jeu choisis dans RomCloud : pilote téléchargé installé, qualité graphique en
+            // arguments du jeu selon son moteur (réglages propres à RomCloud retirés du raccourci).
+            Bundle settings = requested != null ? new Bundle(requested) : new Bundle();
+            installDriver(settings);
+            String quality = qualityArgs(exe, settings.getString(SETTING_QUALITY));
+            settings.remove(SETTING_QUALITY);
+            settings.remove(SETTING_DRIVER_URL);
+            if (quality != null) {
+                String args = settings.getString("execArgs");
+                settings.putString("execArgs", args != null && !args.isEmpty() ? args + " " + quality : quality);
+            }
+            File shortcut = writeShortcut(container, intent.getStringExtra(EXTRA_TITLE), winePath(exe, downloads, romsDir), settings);
             // Journal de la partie (lu par RomCloud : plantage signalé au serveur, rapport d'erreur).
             SessionLog.start(this, intent.getStringExtra(EXTRA_TITLE), exe.getAbsolutePath(), container.getWineVersion());
             runOnUiThread(() -> {
@@ -231,6 +255,79 @@ public class LaunchActivity extends Activity {
         } finally {
             PREPARING.unlock();
         }
+    }
+
+    /**
+     * Pilote Vulkan choisi dans RomCloud qui n'est pas inclus (réglage [SETTING_DRIVER_URL] : paquet
+     * AdrenoTools) : téléchargé et installé au premier usage. Échec : pilote par défaut, le jeu se lance.
+     */
+    private void installDriver(Bundle settings) {
+        String url = settings.getString(SETTING_DRIVER_URL);
+        String id = driverId(settings.getString("graphicsDriverConfig"));
+        if (url == null || id == null) return;
+        AdrenotoolsManager drivers = new AdrenotoolsManager(this);
+        if (drivers.enumarateInstalledDrivers().contains(id)) return;
+        show(R.string.romcloud_driver_downloading, -1);
+        File zip = new File(getCacheDir(), "driver.zip");
+        try {
+            OkHttpClient client = new OkHttpClient.Builder().followRedirects(true).build();
+            try (Response response = client.newCall(new Request.Builder().url(url).build()).execute()) {
+                if (!response.isSuccessful() || response.body() == null) throw new IOException("HTTP " + response.code());
+                try (InputStream in = response.body().byteStream(); OutputStream out = new FileOutputStream(zip)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    for (int n; (n = in.read(buffer)) > 0; ) out.write(buffer, 0, n);
+                }
+            }
+            String installed = drivers.installDriver(Uri.fromFile(zip));
+            if (!id.equals(installed)) throw new IOException("pilote " + installed + " au lieu de " + id);
+        } catch (IOException e) {
+            Log.w("RomCloud", "Pilote " + id + " non installé, pilote par défaut : " + e.getMessage());
+            settings.putString("graphicsDriverConfig", DEFAULT_DRIVER_CONFIG);
+        } finally {
+            zip.delete();
+        }
+        show(R.string.romcloud_preparing, -1);
+    }
+
+    /** Pilote de « graphicsDriverConfig » (« version=…;… ») ; null sans pilote. */
+    static String driverId(String config) {
+        if (config == null) return null;
+        for (String part : config.split(";")) {
+            if (part.startsWith("version=")) return part.substring("version=".length());
+        }
+        return null;
+    }
+
+    /**
+     * Arguments du jeu [exe] pour la qualité graphique [quality] (low, medium, high) selon son moteur :
+     * Unity (niveau de qualité nommé Low, Medium ou High, ignoré si le jeu n'en a pas de ce nom), Unreal
+     * Engine (réglages sg.* de GameUserSettings.ini remplacés au démarrage) ; null sinon.
+     */
+    static String qualityArgs(File exe, String quality) {
+        int level = "low".equals(quality) ? 0 : "medium".equals(quality) ? 1 : "high".equals(quality) ? 2 : -1;
+        if (level < 0 || exe == null) return null;
+        File dir = exe.getParentFile();
+        if (dir != null && new File(dir, "UnityPlayer.dll").isFile()) return "-screen-quality " + new String[] {"Low", "Medium", "High"}[level];
+        if (isUnreal(exe)) {
+            StringBuilder args = new StringBuilder("-ini:GameUserSettings:[ScalabilityGroups]:sg.ResolutionQuality=" + new int[] {75, 90, 100}[level]);
+            for (String group : UNREAL_GROUPS) args.append(",[ScalabilityGroups]:").append(group).append('=').append(level);
+            return args.toString();
+        }
+        return null;
+    }
+
+    private static final String[] UNREAL_GROUPS = {"sg.ViewDistanceQuality", "sg.AntiAliasingQuality", "sg.ShadowQuality", "sg.PostProcessQuality",
+            "sg.TextureQuality", "sg.EffectsQuality", "sg.FoliageQuality", "sg.ShadingQuality"};
+
+    /**
+     * Jeu Unreal Engine : exécutable « …-Win64-Shipping.exe » (dossier Binaries/Win64), ou lanceur à la
+     * racine du jeu, à côté du dossier Engine.
+     */
+    static boolean isUnreal(File exe) {
+        String name = exe.getName().toLowerCase(java.util.Locale.ROOT);
+        if (name.endsWith("-shipping.exe")) return true;
+        File dir = exe.getParentFile();
+        return dir != null && new File(dir, "Engine/Binaries").isDirectory();
     }
 
     /** Jeu Unity compilé en IL2CPP : UnityPlayer.dll et GameAssembly.dll à côté de l'exécutable. */

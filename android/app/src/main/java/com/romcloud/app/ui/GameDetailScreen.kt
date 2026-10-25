@@ -79,6 +79,8 @@ import com.romcloud.app.netplay.Together
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.Player
+import com.romcloud.app.data.Settings
+import com.romcloud.app.launch.PcSettings
 import com.romcloud.app.data.StreamReceiver
 import com.romcloud.app.data.screenshotTypes
 import com.romcloud.app.data.starsText
@@ -424,6 +426,13 @@ fun GameDetailScreen(
                 )
             }
 
+            // Jeu PC : Proton, pilote graphique, DXVK et qualité graphique au démarrage.
+            state.pcSettings?.let { chosen ->
+                PcSettingsSection(chosen) { key, value ->
+                    viewModel.setPcSetting(key, value) { message -> scope.launch { snackbar.showSnackbar(message) } }
+                }
+            }
+
             // Émulateur intégré : manettes des joueurs et touches de la console.
             val builtinCore = state.selectedPlayer?.libretroCore
             val system = state.system
@@ -637,6 +646,44 @@ private fun PlayerSelector(
             Icon(Icons.Filled.Shop, null)
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.install_from_play_store))
+        }
+    }
+}
+
+/** Réglages d'un jeu PC ([PcSettings]) : une liste par réglage, « Auto » par défaut. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PcSettingsSection(chosen: Map<String, String>, onChange: (key: String, value: String?) -> Unit) {
+    val choices = remember { PcSettings.choices(adreno = Settings.isSnapdragon()) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.pc_settings_title), style = MaterialTheme.typography.titleSmall)
+        Text(
+            stringResource(R.string.pc_settings_hint),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        choices.forEach { choice ->
+            var expanded by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                OutlinedTextField(
+                    value = choice.labelOf(chosen[choice.key]),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(choice.title) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                )
+                ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    choice.options.forEach { (value, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                onChange(choice.key, value)
+                                expanded = false
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }

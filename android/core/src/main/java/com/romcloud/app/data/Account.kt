@@ -506,6 +506,48 @@ class Account(private val context: Context, private val api: ApiClient, private 
     }
 
     // -------------------------------------------------------------------------
+    // Réglages des jeux (jeux PC : Proton, Turnip, DXVK, qualité graphique)
+    // -------------------------------------------------------------------------
+
+    private val gameSettingsCache = context.getSharedPreferences("romcloud_game_settings", Context.MODE_PRIVATE)
+
+    private fun cacheGameSettings(gameId: Long, settings: Map<String, String>) {
+        val edit = gameSettingsCache.edit()
+        if (settings.isEmpty()) edit.remove(gameId.toString())
+        else edit.putString(gameId.toString(), buildJsonObject { for ((k, v) in settings) put(k, JsonPrimitive(v)) }.toString())
+        edit.apply()
+    }
+
+    /** Réglages du jeu gardés sur l'appareil (derniers lus ou choisis) : lancement sans attendre le serveur. */
+    fun cachedGameSettings(gameId: Long): Map<String, String> =
+        gameSettingsCache.getString(gameId.toString(), null)
+            ?.let { saved -> runCatching { json.parseToJsonElement(saved).jsonObject.mapValues { it.value.jsonPrimitive.content } }.getOrNull() }
+            .orEmpty()
+
+    /** Réglages du jeu choisis par le profil, relus sur le serveur (copie de l'appareil s'il est injoignable). */
+    suspend fun gameSettings(gameId: Long): Map<String, String> {
+        if (token == null) return cachedGameSettings(gameId)
+        return runCatching {
+            val obj = json.parseToJsonElement(execute(request("/api/account/game-settings?gameId=$gameId"), 10)).jsonObject
+            obj["settings"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty().also { cacheGameSettings(gameId, it) }
+        }.getOrElse { cachedGameSettings(gameId) }
+    }
+
+    /**
+     * Réglages du jeu ([settings] : ceux choisis, sans ceux par défaut) : gardés sur l'appareil, puis
+     * enregistrés dans le profil (ApiException si le serveur les refuse ou est injoignable).
+     */
+    suspend fun setGameSettings(gameId: Long, settings: Map<String, String>) {
+        cacheGameSettings(gameId, settings)
+        if (token == null) return
+        val body = buildJsonObject {
+            put("gameId", JsonPrimitive(gameId))
+            put("settings", buildJsonObject { for ((k, v) in settings) put(k, JsonPrimitive(v)) })
+        }.toString().toRequestBody(JSON)
+        execute(request("/api/account/game-settings").put(body), 10)
+    }
+
+    // -------------------------------------------------------------------------
     // Sauvegardes en ligne (émulateur intégré)
     // -------------------------------------------------------------------------
 

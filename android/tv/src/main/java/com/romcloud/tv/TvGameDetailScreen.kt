@@ -67,6 +67,7 @@ import com.romcloud.app.netplay.Together
 import com.romcloud.app.ui.togetherIcon
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
+import com.romcloud.app.launch.PcSettings
 import com.romcloud.app.data.screenshotTypes
 import com.romcloud.app.data.starsText
 import com.romcloud.app.ui.DownloadedGreen
@@ -113,6 +114,9 @@ fun TvGameDetailScreen(
         }
     }
     var pickEmulator by remember { mutableStateOf(false) }
+    // Jeu PC : réglage dont la liste est ouverte (Proton, pilote, DXVK, qualité).
+    var pickPcSetting by remember { mutableStateOf<String?>(null) }
+    val pcChoices = remember { PcSettings.choices(adreno = com.romcloud.app.data.Settings.isSnapdragon()) }
     var showRetroArchHelp by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var showStates by remember { mutableStateOf(false) }
@@ -333,6 +337,19 @@ fun TvGameDetailScreen(
                         SecondaryButton(stringResource(R.string.tv_delete_from_tv), Icons.Filled.Delete) { confirmDelete = true }
                     }
                 }
+                // Jeu PC : Proton, pilote graphique, DXVK et qualité graphique au démarrage (deux par ligne).
+                state.pcSettings?.let { chosen ->
+                    Text(stringResource(R.string.pc_settings_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    pcChoices.chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
+                            row.forEach { choice ->
+                                SecondaryButton("${choice.title} : ${choice.labelOf(chosen[choice.key])}", Icons.Filled.Settings) {
+                                    pickPcSetting = choice.key
+                                }
+                            }
+                        }
+                    }
+                }
                 if (state.players.isEmpty()) {
                     Text(
                         stringResource(R.string.tv_no_emulator),
@@ -369,6 +386,18 @@ fun TvGameDetailScreen(
                 pickEmulator = false
             },
             onDismiss = { pickEmulator = false },
+        )
+    }
+    pcChoices.find { it.key == pickPcSetting }?.let { choice ->
+        OptionPickerDialog(
+            title = choice.title,
+            options = choice.options,
+            selected = state.pcSettings?.get(choice.key),
+            onSelect = { value ->
+                viewModel.setPcSetting(choice.key, value, onMessage)
+                pickPcSetting = null
+            },
+            onDismiss = { pickPcSetting = null },
         )
     }
     state.retroArchInfo?.takeIf { showRetroArchHelp }?.let { info ->
