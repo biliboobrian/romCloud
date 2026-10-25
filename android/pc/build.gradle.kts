@@ -75,18 +75,19 @@ android {
 }
 
 dependencies {
-    // Dépendances de Winlator Cmod (interface aux versions d'origine ; inutilisées retirées :
+    // Dépendances de Winlator Cmod (inutilisées retirées :
     // conscrypt, bouncycastle, openjsse, glide, junixsocket).
-    implementation("androidx.appcompat:appcompat:1.4.0")
+    implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.preference:preference:1.2.1")
-    implementation("com.google.android.material:material:1.6.1")
+    implementation("com.google.android.material:material:1.14.0")
     implementation("com.github.luben:zstd-jni:1.5.7-24@aar")
     implementation(libs.xz)
     implementation("org.apache.commons:commons-compress:1.28.0")
-    implementation("androidx.activity:activity-ktx:1.4.0")
-    implementation("androidx.fragment:fragment-ktx:1.4.0")
+    implementation("androidx.activity:activity-ktx:1.13.0")
+    implementation("androidx.fragment:fragment-ktx:1.9.1")
     implementation(files("libs/MidiSynth/MidiSynth.jar"))
-    implementation("androidx.recyclerview:recyclerview:1.2.0")
+    implementation("androidx.recyclerview:recyclerview:1.4.0")
+    implementation("androidx.documentfile:documentfile:1.1.0")
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
     implementation("com.squareup.retrofit2:converter-gson:3.0.0")
     implementation(libs.okhttp)
