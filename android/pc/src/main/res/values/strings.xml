@@ -718,6 +718,7 @@ E.g. <b>META</b> for <i>META key</i>, \n
 
     <!-- RomCloud PC (LaunchActivity) -->
     <string name="romcloud_preparing">Starting the game…</string>
+    <string name="romcloud_driver_downloading">Downloading the graphics driver (first time only)…</string>
     <string name="romcloud_storage_access">Allow RomCloud PC to access all files so Windows can read your games, then come back.</string>
     <string name="romcloud_storage_denied">Without access to files, RomCloud PC cannot read your games.</string>
     <string name="romcloud_downloading">Downloading Windows files (about 700 MB, first time only)…</string>

@@ -175,7 +175,8 @@ internal fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem,
         }
     }
     return try {
-        val hint = Winlator.launch(activity, game.title, gameDir, exe, romsRoot, driveReady, chosen)
+        // Réglages du jeu (Proton, pilote, DXVK, qualité) gardés sur l'appareil par sa fiche.
+        val hint = Winlator.launch(activity, game.title, gameDir, exe, romsRoot, driveReady, chosen, account.cachedGameSettings(game.id))
         account.startExternalSession(game.id)
         hint?.takeIf { !settings.winlatorDriveHintShown }?.also { settings.winlatorDriveHintShown = true }
     } catch (e: MissingEmulatorException) {
@@ -653,6 +654,8 @@ class GameDetailViewModel(
         val vita: VitaInfo? = null,
         /** Problèmes qui empêchent de jouer avec l'émulateur externe choisi : « Configurer » au lieu de « Jouer ». */
         val issues: List<GameIssue> = emptyList(),
+        /** Jeu PC : réglages choisis dans sa fiche ([com.romcloud.app.launch.PcSettings]) ; null pour les autres jeux. */
+        val pcSettings: Map<String, String>? = null,
     ) {
         val canStream: Boolean get() = downloaded && selectedPlayer?.libretroCore != null && tvs.isNotEmpty()
 
@@ -673,8 +676,14 @@ class GameDetailViewModel(
             val system = app.repository.system(systemId)
             val game = app.repository.game(systemId, gameId)
             val bios = system?.let { app.repository.bios(it) }.orEmpty()
-            _state.value = UiState(loading = false, system = system, game = game, bios = bios)
+            // Jeu PC : réglages gardés sur l'appareil, puis relus dans le profil.
+            val pc = if (game?.folder == true) app.account.cachedGameSettings(gameId) else null
+            _state.value = UiState(loading = false, system = system, game = game, bios = bios, pcSettings = pc)
             refreshLocal()
+            if (pc != null) {
+                val fresh = app.account.gameSettings(gameId)
+                _state.update { it.copy(pcSettings = fresh) }
+            }
         }
         viewModelScope.launch {
             app.downloader.events.collect { if (it is DownloadEvent.Completed && it.system.id == systemId) refreshLocal() }
@@ -688,6 +697,20 @@ class GameDetailViewModel(
                 }
                 delay(TV_POLL_MS)
             }
+        }
+    }
+
+    /**
+     * Réglage [key] du jeu PC ([com.romcloud.app.launch.PcSettings]) : [value] null = automatique ;
+     * enregistré sur l'appareil et dans le profil ; [onError] : message si le profil ne l'a pas reçu.
+     */
+    fun setPcSetting(key: String, value: String?, onError: (String) -> Unit) {
+        val current = _state.value.pcSettings ?: return
+        val next = if (value == null) current - key else current + (key to value)
+        _state.update { it.copy(pcSettings = next) }
+        viewModelScope.launch {
+            runCatching { app.account.setGameSettings(gameId, next) }
+                .onFailure { onError(I18n.get(R.string.pc_settings_not_saved, it.message ?: it.javaClass.simpleName)) }
         }
     }
 

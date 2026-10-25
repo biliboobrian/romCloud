@@ -185,8 +185,8 @@ object Winlator {
      * Jeu [exe] lancé par RomCloud PC : exécutable, dossier des ROMs (son lecteur R:) et réglages du
      * jeu ; lancé pour un résultat depuis une activité (RomCloud PC vérifie la signature de l'appelant).
      */
-    private fun launchCompanion(activityContext: Context, activity: String, title: String, exe: File, romsRoot: File) {
-        val settings = Bundle().apply { deviceSettings(activityContext).forEach { (key, value) -> putString(key, value) } }
+    private fun launchCompanion(activityContext: Context, activity: String, title: String, exe: File, romsRoot: File, gameSettings: Map<String, String>) {
+        val settings = Bundle().apply { gameSettings.forEach { (key, value) -> putString(key, value) } }
         val intent = Intent().setClassName(COMPANION, activity)
             .putExtra("exe", exe.absolutePath)
             .putExtra("title", title)
@@ -238,21 +238,26 @@ object Winlator {
      * afficher (lecteur des ROMs à ajouter dans le conteneur, sauf [driveReady] : déjà ajouté par
      * RomCloud), ou null. Application [pkg] (choisie dans la fiche du jeu), sinon la première installée de
      * [APPS] ; absente (ou aucune, la version officielle de Winlator ne peut pas être lancée ainsi) :
-     * MissingEmulatorException, qui la propose à l'installation (RomCloud PC par défaut).
+     * MissingEmulatorException, qui la propose à l'installation (RomCloud PC par défaut). [chosen] :
+     * réglages du jeu choisis dans sa fiche ([PcSettings]).
      */
-    fun launch(activityContext: Context, title: String, gameDir: File, exe: String, romsRoot: File, driveReady: Boolean = false, pkg: String? = null): String? {
+    fun launch(
+        activityContext: Context, title: String, gameDir: File, exe: String, romsRoot: File, driveReady: Boolean = false, pkg: String? = null,
+        chosen: Map<String, String> = emptyMap(),
+    ): String? {
         val app = if (pkg != null) APPS.find { it.first == pkg }?.takeIf { isInstalled(activityContext, pkg) } else installed(activityContext)
         val (pkg, activity) = app
             ?: throw MissingEmulatorException((pkg ?: COMPANION).let { MissingEmulator(it, appName(it)) })
         val target = File(gameDir, exe)
         if (!target.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, target.absolutePath))
+        val settings = PcSettings.apply(deviceSettings(activityContext), chosen)
         if (pkg == COMPANION) {
-            launchCompanion(activityContext, activity, title, target, romsRoot)
+            launchCompanion(activityContext, activity, title, target, romsRoot, settings)
             return null
         }
         val (path, needsDrive) = winePath(target, downloadsDir(), romsRoot)
         val shortcut = File(gameDir, "romcloud.desktop")
-        shortcut.writeText(desktopEntry(title, path, deviceSettings(activityContext)))
+        shortcut.writeText(desktopEntry(title, path, settings))
         val intent = Intent().setClassName(pkg, activity)
             .putExtra("shortcut_path", shortcut.absolutePath)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)

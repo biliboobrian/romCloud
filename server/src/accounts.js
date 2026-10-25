@@ -360,6 +360,46 @@ export function listPlaytime(userId) {
 }
 
 // ---------------------------------------------------------------------------
+// Réglages des jeux
+// ---------------------------------------------------------------------------
+
+const MAX_SETTINGS = 20;
+const SETTING_KEY = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+const MAX_SETTING_LENGTH = 200;
+
+/** Réglages du jeu choisis par le profil ({} sans réglage). */
+export function gameSettingsOf(userId, gameId) {
+  const id = requireGame(gameId);
+  const r = db.prepare('SELECT settings FROM game_settings WHERE user_id = ? AND game_id = ?').get(userId, id);
+  return { gameId: id, settings: r ? JSON.parse(r.settings) : {} };
+}
+
+/**
+ * Remplace les réglages du jeu : { clé: valeur } (chaînes, 20 au plus) ; valeur vide ou nulle : réglage
+ * retiré (par défaut) ; aucun réglage : ligne supprimée.
+ */
+export function setGameSettings(userId, gameId, settings) {
+  const id = requireGame(gameId);
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new HttpError(400, 'errors.invalidSettings');
+  const kept = {};
+  for (const [key, value] of Object.entries(settings)) {
+    if (!SETTING_KEY.test(key)) throw new HttpError(400, 'errors.invalidSettings');
+    if (value === null || value === undefined || value === '') continue;
+    if (typeof value !== 'string' || value.length > MAX_SETTING_LENGTH) throw new HttpError(400, 'errors.invalidSettings');
+    kept[key] = value;
+  }
+  if (Object.keys(kept).length > MAX_SETTINGS) throw new HttpError(400, 'errors.invalidSettings');
+  if (Object.keys(kept).length === 0) {
+    db.prepare('DELETE FROM game_settings WHERE user_id = ? AND game_id = ?').run(userId, id);
+  } else {
+    db.prepare(`INSERT INTO game_settings (user_id, game_id, settings) VALUES (?, ?, ?)
+                ON CONFLICT (user_id, game_id) DO UPDATE SET settings = excluded.settings, updated_at = datetime('now')`)
+      .run(userId, id, JSON.stringify(kept));
+  }
+  return { gameId: id, settings: kept };
+}
+
+// ---------------------------------------------------------------------------
 // Sauvegardes en ligne
 // ---------------------------------------------------------------------------
 

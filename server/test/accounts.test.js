@@ -138,6 +138,24 @@ test('temps de jeu cumulé par jeu', () => {
   assert.equal(accounts.adminListUsers().find((u) => u.id === user.id).playSeconds, 1800);
 });
 
+test('réglages d’un jeu : par profil, valeurs vides retirées, refusés s’ils sont invalides', () => {
+  const { user } = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
+  assert.deepEqual(accounts.gameSettingsOf(user.id, gameId).settings, {});
+  const saved = accounts.setGameSettings(user.id, gameId, { wineVersion: 'proton-9.0-x86_64', turnip: '', dxvk: '2.4.1', quality: null });
+  assert.deepEqual(saved.settings, { wineVersion: 'proton-9.0-x86_64', dxvk: '2.4.1' });
+  assert.deepEqual(accounts.gameSettingsOf(user.id, gameId).settings, { wineVersion: 'proton-9.0-x86_64', dxvk: '2.4.1' });
+  // Autre profil : ses propres réglages.
+  const bob = accounts.createUser('bob-settings', 'secret1');
+  assert.deepEqual(accounts.gameSettingsOf(bob.id, gameId).settings, {});
+  // Tout remis par défaut : plus rien d'enregistré.
+  assert.deepEqual(accounts.setGameSettings(user.id, gameId, { dxvk: '' }).settings, {});
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM game_settings WHERE user_id = ?').get(user.id).n, 0);
+  assert.equal(status(() => accounts.setGameSettings(user.id, gameId, { 'bad key': 'x' })), 400);
+  assert.equal(status(() => accounts.setGameSettings(user.id, gameId, { dxvk: 3 })), 400);
+  assert.equal(status(() => accounts.setGameSettings(user.id, gameId, ['x'])), 400);
+  assert.equal(status(() => accounts.gameSettingsOf(user.id, 999999)), 404);
+});
+
 test('sauvegardes en ligne : enregistrées, relues, remplacées, supprimées', async () => {
   const { user } = accounts.authenticate(accounts.login('alice', 'secret1', phone).token, phone);
   assert.equal(status(() => accounts.getSave(user.id, gameId, 'snes9x', 'state')), 404);

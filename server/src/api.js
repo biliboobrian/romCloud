@@ -694,6 +694,11 @@ api.get('/account/playtime', signedIn, (req, res) => res.json(accounts.listPlayt
 api.post('/account/playtime', signedIn, (req, res) => {
   res.json(accounts.addPlaytime(req.auth.user.id, req.body?.gameId, req.body?.seconds, accounts.clientInfo(req), req.body?.at));
 });
+// Réglages d'un jeu choisis par le profil (jeux PC : Proton, Turnip, DXVK, qualité graphique).
+api.get('/account/game-settings', signedIn, (req, res) => res.json(accounts.gameSettingsOf(req.auth.user.id, req.query.gameId)));
+api.put('/account/game-settings', signedIn, (req, res) => {
+  res.json(accounts.setGameSettings(req.auth.user.id, req.body?.gameId, req.body?.settings));
+});
 // Statistiques du profil : temps de jeu, jeux téléchargés par appareil, jeux les plus joués, dernières parties.
 api.get('/account/stats', signedIn, (req, res) => res.json(profileStats(req.auth.user.id)));
 

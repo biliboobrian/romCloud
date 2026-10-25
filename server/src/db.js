@@ -147,6 +147,16 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS play_sessions_user ON play_sessions(user_id, ended_at);
 
+  -- Réglages d'un jeu choisis par le profil (jeux PC : Proton, pilote Turnip, DXVK, qualité
+  -- graphique), en JSON { clé: valeur } ; communs à ses appareils.
+  CREATE TABLE IF NOT EXISTS game_settings (
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id     INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    settings    TEXT NOT NULL,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, game_id)
+  );
+
   CREATE TABLE IF NOT EXISTS saves (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
