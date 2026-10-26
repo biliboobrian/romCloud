@@ -47,9 +47,17 @@ class PcSettingsTest {
     }
 
     @Test
+    fun imagesParSeconde() {
+        assertEquals("30", PcSettings.apply(base, mapOf(PcSettings.KEY_FPS to "30"))["romcloudFramerate"])
+        val withDxvk = PcSettings.apply(base, mapOf(PcSettings.KEY_FPS to "45", PcSettings.KEY_DXVK to "2.4.1"))
+        assertEquals("version=2.4.1,framerate=45,maxDeviceMemory=0,async=0,asyncCache=0,vkd3dVersion=2.12-0,vkd3dLevel=12_1", withDxvk["dxwrapperConfig"])
+        assertEquals("640x360", PcSettings.apply(mapOf("screenSize" to "1280x720"), mapOf(PcSettings.KEY_SCREEN to "360"))["screenSize"])
+    }
+
+    @Test
     fun valeursInconnuesIgnorees() {
         val chosen = mapOf(PcSettings.KEY_WINE to "proton-1.0", PcSettings.KEY_DRIVER to "inconnu", PcSettings.KEY_DXVK to "9.9",
-            PcSettings.KEY_QUALITY to "ultra", PcSettings.KEY_SCREEN to "4320")
+            PcSettings.KEY_QUALITY to "ultra", PcSettings.KEY_SCREEN to "4320", PcSettings.KEY_FPS to "1000")
         assertEquals(base, PcSettings.apply(base, chosen))
     }
 }

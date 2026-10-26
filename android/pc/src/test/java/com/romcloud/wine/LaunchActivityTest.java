@@ -48,7 +48,7 @@ public class LaunchActivityTest {
         assertTrue(args.contains(",[ScalabilityGroups]:sg.ShadowQuality=1"));
         assertFalse(args.contains(" "));
         String minimum = LaunchActivity.qualityArgs(new File(binaries, "Jeu-Win64-Shipping.exe"), "minimum");
-        assertTrue(minimum.startsWith("-ini:GameUserSettings:[ScalabilityGroups]:sg.ResolutionQuality=50,"));
+        assertTrue(minimum.startsWith("-ini:GameUserSettings:[ScalabilityGroups]:sg.ResolutionQuality=33,"));
         assertTrue(minimum.contains(",[ScalabilityGroups]:sg.ShadowQuality=0"));
         // Lanceur à la racine du jeu, à côté du dossier Engine.
         File root = folder.newFolder();
@@ -56,6 +56,14 @@ public class LaunchActivityTest {
         assertTrue(LaunchActivity.isUnreal(new File(root, "Jeu.exe")));
         // Autre moteur : rien.
         assertNull(LaunchActivity.qualityArgs(new File(game("Jeu.exe"), "Jeu.exe"), "low"));
+    }
+
+    @Test
+    public void limiteImagesParSecondeDansLaConfigurationDeDxvk() {
+        assertEquals("version=2.4.1,framerate=30,async=0", LaunchActivity.withFramerate("version=2.4.1,framerate=0,async=0", "30"));
+        assertEquals("version=2.4.1,framerate=45", LaunchActivity.withFramerate("version=2.4.1", "45"));
+        assertEquals("framerate=60,version=1", LaunchActivity.withFramerate("framerate=0,version=1", "60"));
+        assertEquals("framerate=30", LaunchActivity.withFramerate("", "30"));
     }
 
     @Test
