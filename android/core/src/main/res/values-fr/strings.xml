@@ -779,7 +779,7 @@
     <string name="stats_history_empty">Aucune partie notée pour l’instant (les parties sont listées à partir de cette version).</string>
     <!-- Réglages des jeux PC (fiche du jeu) -->
     <string name="pc_settings_title">Réglages PC</string>
-    <string name="pc_settings_hint">Enregistrés dans votre profil, appliqués au prochain lancement avec RomCloud PC. Résolution : écran Windows, au format de l’appareil. Qualité : jeux Unity et Unreal Engine.</string>
+    <string name="pc_settings_hint">Enregistrés dans votre profil, appliqués au prochain lancement avec RomCloud PC. Résolution : écran Windows, au format de l’appareil. Images par seconde : plafonnées par DXVK, moins de travail pour le processeur graphique. Qualité : jeux Unity et Unreal Engine.</string>
     <string name="pc_setting_auto">Auto</string>
     <string name="pc_setting_wine">Proton</string>
     <string name="pc_wine_arm64ec">Proton 9.0 arm64ec (FEX)</string>
@@ -789,6 +789,8 @@
     <string name="pc_driver_download">%1$s (téléchargé)</string>
     <string name="pc_setting_dxvk">DXVK</string>
     <string name="pc_setting_screen">Résolution de l’écran</string>
+    <string name="pc_setting_fps">Images par seconde (max.)</string>
+    <string name="pc_fps_value">%1$s i/s</string>
     <string name="pc_setting_quality">Qualité graphique au démarrage</string>
     <string name="pc_quality_minimum">Minimale</string>
     <string name="pc_quality_very_low">Très basse</string>

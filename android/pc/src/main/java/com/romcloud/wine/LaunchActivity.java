@@ -91,6 +91,8 @@ public class LaunchActivity extends Activity {
 
     /** Qualité graphique au démarrage choisie dans RomCloud ([QUALITIES] : [qualityArgs]). */
     static final String SETTING_QUALITY = "romcloudQuality";
+    /** Images par seconde au plus choisies dans RomCloud (limite de DXVK : [withFramerate]). */
+    static final String SETTING_FRAMERATE = "romcloudFramerate";
     /** Paquet AdrenoTools du pilote choisi dans RomCloud, s'il n'est pas inclus ([installDriver]). */
     static final String SETTING_DRIVER_URL = "adrenotoolsDriverUrl";
     /** Pilote par défaut sur Adreno (celui de RomCloud), si le pilote choisi n'a pas pu être installé. */
@@ -234,8 +236,17 @@ public class LaunchActivity extends Activity {
             Bundle settings = requested != null ? new Bundle(requested) : new Bundle();
             installDriver(settings);
             String quality = qualityArgs(exe, settings.getString(SETTING_QUALITY));
+            String framerate = settings.getString(SETTING_FRAMERATE);
             settings.remove(SETTING_QUALITY);
             settings.remove(SETTING_DRIVER_URL);
+            settings.remove(SETTING_FRAMERATE);
+            // Limite d'images par seconde : dans la configuration de DXVK du jeu (choisie dans
+            // RomCloud), sinon dans celle du conteneur.
+            if (framerate != null && framerate.matches("[1-9][0-9]{0,2}")) {
+                String config = settings.getString("dxwrapperConfig");
+                if (config == null || config.isEmpty()) config = container.getDXWrapperConfig();
+                settings.putString("dxwrapperConfig", withFramerate(config, framerate));
+            }
             if (quality != null) {
                 String args = settings.getString("execArgs");
                 settings.putString("execArgs", args != null && !args.isEmpty() ? args + " " + quality : quality);
@@ -321,8 +332,15 @@ public class LaunchActivity extends Activity {
     /** Qualités graphiques de RomCloud ([SETTING_QUALITY]), de la plus basse à la plus haute. */
     static final String[] QUALITIES = {"minimum", "verylow", "low", "medium", "high"};
     private static final String[] UNITY_QUALITIES = {"\"Very Low\"", "\"Very Low\"", "Low", "Medium", "High"};
-    /** Résolution de rendu (%) des jeux Unreal Engine pour chaque qualité. */
-    private static final int[] UNREAL_RESOLUTIONS = {50, 60, 75, 90, 100};
+    /** Résolution de rendu (%) des jeux Unreal Engine pour chaque qualité (interface toujours nette). */
+    private static final int[] UNREAL_RESOLUTIONS = {33, 50, 75, 90, 100};
+
+    /** Configuration de DXVK [config] (« version=…,framerate=0,… ») avec la limite [framerate]. */
+    static String withFramerate(String config, String framerate) {
+        if (config == null || config.isEmpty()) return "framerate=" + framerate;
+        if (config.matches("(^|.*,)framerate=[^,]*(,.*|$)")) return config.replaceFirst("(^|,)framerate=[^,]*", "$1framerate=" + framerate);
+        return config + ",framerate=" + framerate;
+    }
 
     private static final String[] UNREAL_GROUPS = {"sg.ViewDistanceQuality", "sg.AntiAliasingQuality", "sg.ShadowQuality", "sg.PostProcessQuality",
             "sg.TextureQuality", "sg.EffectsQuality", "sg.FoliageQuality", "sg.ShadingQuality"};

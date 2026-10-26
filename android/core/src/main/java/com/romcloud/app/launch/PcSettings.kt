@@ -7,8 +7,8 @@ import kotlin.math.roundToInt
 /**
  * Réglages d'un jeu PC choisis dans sa fiche (enregistrés dans le profil, [com.romcloud.app.data.Account.gameSettings]) :
  * version de Proton, pilote Vulkan (Turnip inclus dans RomCloud PC ou téléchargé, pilote Qualcomm),
- * version de DXVK, résolution de l'écran Windows et qualité graphique au démarrage (appliquée par
- * RomCloud PC selon le moteur du jeu : Unity, Unreal Engine). Réglage absent : choix automatique de
+ * version de DXVK, résolution de l'écran Windows, images par seconde au plus et qualité graphique au
+ * démarrage (appliquée par RomCloud PC selon le moteur du jeu : Unity, Unreal Engine). Réglage absent : choix automatique de
  * RomCloud (comportement par défaut).
  */
 object PcSettings {
@@ -18,6 +18,7 @@ object PcSettings {
     const val KEY_DXVK = "dxvk"
     const val KEY_QUALITY = "quality"
     const val KEY_SCREEN = "screen"
+    const val KEY_FPS = "fps"
 
     /** Versions de Proton de RomCloud PC (un conteneur par version). */
     val WINE_VERSIONS = listOf("proton-9.0-arm64ec", "proton-9.0-x86_64")
@@ -53,7 +54,10 @@ object PcSettings {
     val QUALITIES = listOf("minimum", "verylow", "low", "medium", "high")
 
     /** Hauteurs de l'écran Windows (lignes), largeur au format de l'écran de l'appareil. */
-    val SCREEN_HEIGHTS = listOf("480", "540", "720", "900", "1080")
+    val SCREEN_HEIGHTS = listOf("360", "480", "540", "720", "900", "1080")
+
+    /** Images par seconde au plus (limite de DXVK) : moins de travail pour le processeur graphique. */
+    val FRAMERATES = listOf("30", "45", "60")
 
     /** Liste d'un réglage dans la fiche du jeu : clé, titre, choix (valeur null : automatique, libellé). */
     data class Choice(val key: String, val title: String, val options: List<Pair<String?, String>>) {
@@ -76,6 +80,7 @@ object PcSettings {
             }) else null,
             Choice(KEY_DXVK, I18n.get(R.string.pc_setting_dxvk), listOf(auto) + DXVK_VERSIONS.map { it to it }),
             Choice(KEY_SCREEN, I18n.get(R.string.pc_setting_screen), listOf(auto) + SCREEN_HEIGHTS.map { it to "${it}p" }),
+            Choice(KEY_FPS, I18n.get(R.string.pc_setting_fps), listOf(auto) + FRAMERATES.map { it to I18n.get(R.string.pc_fps_value, it) }),
             Choice(KEY_QUALITY, I18n.get(R.string.pc_setting_quality), listOf(auto,
                 "minimum" to I18n.get(R.string.pc_quality_minimum), "verylow" to I18n.get(R.string.pc_quality_very_low),
                 "low" to I18n.get(R.string.pc_quality_low), "medium" to I18n.get(R.string.pc_quality_medium), "high" to I18n.get(R.string.pc_quality_high))),
@@ -86,8 +91,9 @@ object PcSettings {
      * Réglages de RomCloud PC (section « Extra Data » du raccourci) d'après les réglages [chosen] du jeu,
      * ajoutés à ceux de l'appareil [base] : Proton (« wineVersion »), pilote (« graphicsDriverConfig » et,
      * pour un pilote téléchargé, « adrenotoolsDriverUrl »), DXVK (« dxwrapperConfig »), résolution
-     * (« screenSize », au format de celle de l'appareil) et qualité (« romcloudQuality »). Valeur
-     * inconnue (version retirée de RomCloud) : ignorée.
+     * (« screenSize », au format de celle de l'appareil), images par seconde (« romcloudFramerate »,
+     * et dans « dxwrapperConfig » si DXVK est choisi, pour Winlator Cmod) et qualité
+     * (« romcloudQuality »). Valeur inconnue (version retirée de RomCloud) : ignorée.
      */
     fun apply(base: Map<String, String>, chosen: Map<String, String>): Map<String, String> {
         val result = LinkedHashMap(base)
@@ -97,10 +103,12 @@ object PcSettings {
             result["graphicsDriverConfig"] = "version=${driver.id};blacklistedExtensions=;maxDeviceMemory=0;adrenotoolsTurnip=${if (turnip) 1 else 0};frameSync=Normal"
             driver.url?.let { result["adrenotoolsDriverUrl"] = it }
         }
+        val fps = chosen[KEY_FPS]?.takeIf { it in FRAMERATES }
         chosen[KEY_DXVK]?.takeIf { it in DXVK_VERSIONS }?.let {
             result["dxwrapper"] = "dxvk"
-            result["dxwrapperConfig"] = "version=$it,framerate=0,maxDeviceMemory=0,async=0,asyncCache=0,vkd3dVersion=2.12-0,vkd3dLevel=12_1"
+            result["dxwrapperConfig"] = "version=$it,framerate=${fps ?: 0},maxDeviceMemory=0,async=0,asyncCache=0,vkd3dVersion=2.12-0,vkd3dLevel=12_1"
         }
+        fps?.let { result["romcloudFramerate"] = it }
         chosen[KEY_SCREEN]?.takeIf { it in SCREEN_HEIGHTS }?.let { result["screenSize"] = screenSize(base["screenSize"], it.toInt()) }
         chosen[KEY_QUALITY]?.takeIf { it in QUALITIES }?.let { result["romcloudQuality"] = it }
         return result
