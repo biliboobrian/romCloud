@@ -12,6 +12,7 @@ import android.os.Build
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import com.romcloud.app.data.BiosFile
+import com.romcloud.app.data.EmulatorReleases
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
@@ -31,7 +32,11 @@ open class LaunchException(message: String) : Exception(message)
 class MissingEmulatorException(val emulator: MissingEmulator) :
     LaunchException(I18n.get(R.string.err_emulator_not_installed, emulator.packageName))
 
-data class MissingEmulator(val packageName: String, val playerName: String?)
+/**
+ * Émulateur à installer, ou à mettre à jour ([installedVersion] : version installée, non nulle pour une
+ * mise à jour : [GameLauncher.manualUpdatePackage]).
+ */
+data class MissingEmulator(val packageName: String, val playerName: String?, val installedVersion: String? = null)
 
 /** Ce qu'il faut configurer dans RetroArch pour un modèle donné (guide « ⓘ » de la fiche du jeu). */
 data class RetroArchInfo(
@@ -102,6 +107,8 @@ class GameLauncher(private val context: Context, private val settings: Settings)
     private companion object {
         /** Extra lu par RetroActivityFuture : RetroArch appelle System.exit(0) dans onStop(). */
         const val RETROARCH_QUIT_EXTRA = "QUITFOCUS"
+        /** Installateur des applications du Google Play Store. */
+        const val PLAY_STORE = "com.android.vending"
     }
 
     /** Émulateurs compatibles avec ce fichier (regex acceptedFilenameRegex du modèle). */
@@ -134,6 +141,27 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
     private fun isPackageInstalled(pkg: String): Boolean =
         runCatching { context.packageManager.getPackageInfo(pkg, 0) }.isSuccess
+
+    /**
+     * Paquet de l'émulateur externe installé que l'utilisateur doit mettre à jour lui-même : APK publié
+     * sur un gestionnaire de versions ([EmulatorReleases.SOURCES], RomCloud PC, Winlator Cmod, Eden…)
+     * et non installé par le Play Store (qui le met à jour seul) ; null sinon.
+     */
+    fun manualUpdatePackage(player: Player): String? {
+        if (player.libretroCore != null) return null
+        val pkg = packageOf(player)?.takeIf { it in EmulatorReleases.SOURCES && isPackageInstalled(it) } ?: return null
+        return pkg.takeIf { installerOf(it) != PLAY_STORE }
+    }
+
+    /** Version installée du paquet (versionName), ou null. */
+    fun installedVersion(pkg: String): String? =
+        runCatching { context.packageManager.getPackageInfo(pkg, 0).versionName }.getOrNull()
+
+    private fun installerOf(pkg: String): String? = runCatching {
+        val pm = context.packageManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) pm.getInstallSourceInfo(pkg).installingPackageName
+        else @Suppress("DEPRECATION") pm.getInstallerPackageName(pkg)
+    }.getOrNull()
 
     /**
      * Ouvre l'émulateur externe seul, sans jeu (réglages, installation d'un jeu dans Vita3K…) :

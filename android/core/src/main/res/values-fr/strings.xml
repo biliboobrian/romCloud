@@ -315,6 +315,12 @@
     <string name="apk_install_failed">Échec de l’installation de %1$s : %2$s</string>
     <string name="apk_wrong_package">l’APK téléchargé installe %1$s au lieu de %2$s</string>
     <string name="apk_release_available">Dernière version sur %4$s : %1$s %2$s (%3$s).</string>
+    <string name="update_emulator_title">Mettre à jour %1$s</string>
+    <string name="update_emulator_installed">Version installée : %1$s.</string>
+    <string name="update_emulator_not_found">Dernière version introuvable (pas de réseau ?).</string>
+    <string name="update_emulator_up_to_date">Vous avez déjà la dernière version.</string>
+    <string name="action_update_emulator">Mettre à jour</string>
+    <string name="update_emulator">Mettre à jour l’émulateur</string>
     <string name="action_download_latest">Télécharger la dernière version</string>
     <string name="apk_no_installer">Aucun installateur d’applications sur cet appareil</string>
 

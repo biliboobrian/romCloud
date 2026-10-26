@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.AlertDialog
@@ -409,6 +410,9 @@ fun GameDetailScreen(
                     viewModel.installPlayer(player)?.let { scope.launch { snackbar.showSnackbar(it) } }
                 },
                 onInfo = if (state.retroArchInfo != null) ({ showRetroArchHelp = true }) else null,
+                onUpdate = if (state.canUpdateEmulator) ({ player ->
+                    viewModel.updatePlayer(player)?.let { scope.launch { snackbar.showSnackbar(it) } }
+                }) else null,
             )
             // Émulateur externe installé : ouvert seul (réglages, installation d'un jeu dans Vita3K…).
             state.selectedPlayer?.takeIf { state.canOpenEmulator }?.let { player ->
@@ -584,6 +588,7 @@ private fun PlayerSelector(
     viewModel: GameDetailViewModel,
     onInstall: (Player) -> Unit,
     onInfo: (() -> Unit)?,
+    onUpdate: ((Player) -> Unit)?,
 ) {
     if (state.players.isEmpty()) {
         Text(
@@ -633,6 +638,12 @@ private fun PlayerSelector(
                         },
                     )
                 }
+            }
+        }
+        // Émulateur installé hors Play Store (RomCloud PC, Winlator Cmod…) : mis à jour d'ici.
+        if (onUpdate != null && selected != null) {
+            IconButton(onClick = { onUpdate(selected) }) {
+                Icon(Icons.Filled.Refresh, stringResource(R.string.update_emulator), tint = MaterialTheme.colorScheme.primary)
             }
         }
         if (onInfo != null) {

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material.icons.filled.SportsEsports
@@ -314,6 +315,12 @@ fun TvGameDetailScreen(
                         SecondaryButton(stringResource(R.string.tv_emulator_value, state.selectedPlayer?.name ?: "—"), Icons.Filled.SportsEsports) {
                             pickEmulator = true
                         }
+                        // Émulateur installé hors Play Store (RomCloud PC, Winlator Cmod…) : mis à jour d'ici.
+                        state.selectedPlayer?.takeIf { state.canUpdateEmulator }?.let { player ->
+                            IconOnlyButton(Icons.Filled.Refresh, stringResource(R.string.update_emulator)) {
+                                viewModel.updatePlayer(player)?.let(onMessage)
+                            }
+                        }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
@@ -452,6 +459,14 @@ private fun SecondaryButton(label: String, icon: ImageVector, onClick: () -> Uni
         Icon(icon, null, modifier = IconSize)
         Spacer(Modifier.width(8.dp))
         Text(label)
+    }
+}
+
+/** Bouton réduit à son icône ([description] : lue par TalkBack). */
+@Composable
+private fun IconOnlyButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+    TvOutlinedButton(onClick = onClick) {
+        Icon(icon, description, modifier = IconSize)
     }
 }
 
