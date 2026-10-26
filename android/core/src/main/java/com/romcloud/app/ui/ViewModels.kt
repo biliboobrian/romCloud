@@ -626,6 +626,8 @@ class GameDetailViewModel(
         val retroArchInfo: RetroArchInfo? = null,
         /** Émulateur externe choisi, installé et ouvrable seul (RomCloud PC n'a pas d'écran d'accueil). */
         val canOpenEmulator: Boolean = false,
+        /** Émulateur externe choisi à mettre à jour soi-même (APK hors Play Store) : bouton de mise à jour. */
+        val canUpdateEmulator: Boolean = false,
         val bios: List<BiosFile> = emptyList(),
         val missingBios: List<BiosFile> = emptyList(),
         /** Partie sauvegardée dans l'émulateur intégré (sur le disque choisi) : « Reprendre » avant « Jouer ». */
@@ -769,6 +771,7 @@ class GameDetailViewModel(
                     launchCommand = if (game.folder) I18n.get(R.string.pc_exe) + "\n" + (game.exe ?: "—") else selected?.let { p -> app.launcher.describe(p, file) },
                     retroArchInfo = selected?.let(app.launcher::retroArchInfo),
                     canOpenEmulator = selected?.takeIf { it.libretroCore == null }?.let(app.launcher::canOpen) == true,
+                    canUpdateEmulator = selected?.let(app.launcher::manualUpdatePackage) != null,
                     missingBios = missingBios,
                     canResume = canResume,
                     discResume = discResume,
@@ -816,6 +819,13 @@ class GameDetailViewModel(
     fun installPlayer(player: Player): String? {
         val pkg = app.launcher.packageOf(player) ?: return I18n.get(R.string.err_unknown_package)
         app.missingEmulator.value = MissingEmulator(pkg, player.name)
+        return null
+    }
+
+    /** Propose la dernière version de l'émulateur externe installé ([GameLauncher.manualUpdatePackage]). */
+    fun updatePlayer(player: Player): String? {
+        val pkg = app.launcher.manualUpdatePackage(player) ?: return I18n.get(R.string.err_unknown_package)
+        app.missingEmulator.value = MissingEmulator(pkg, player.name, app.launcher.installedVersion(pkg).orEmpty())
         return null
     }
 

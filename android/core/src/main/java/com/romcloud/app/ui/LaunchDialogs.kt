@@ -116,8 +116,10 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
 
     // Émulateur absent : proposer la dernière version publiée par l'émulateur (Release GitHub ou
     // Forgejo), à défaut l'APK du serveur RomCloud (s'il en a un), ou le Google Play Store.
+    // Mise à jour d'un émulateur installé hors Play Store (installedVersion) : même dialogue, sans le Play Store.
     val missing by app.missingEmulator.collectAsStateWithLifecycle()
     missing?.let { emulator ->
+        val update = emulator.installedVersion
         val scope = rememberCoroutineScope()
         val unavailable = stringResource(R.string.play_store_unavailable)
         // null = recherche en cours.
@@ -130,18 +132,26 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         val serverApk = found?.takeIf { it.source == null }
         AlertDialog(
             onDismissRequest = { app.missingEmulator.value = null },
-            title = { Text(stringResource(R.string.missing_emulator_title)) },
+            title = {
+                Text(if (update != null) stringResource(R.string.update_emulator_title, emulator.playerName ?: emulator.packageName)
+                else stringResource(R.string.missing_emulator_title))
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        stringResource(
-                            R.string.missing_emulator_text,
-                            emulator.playerName ?: emulator.packageName,
-                            emulator.packageName,
-                        ),
-                    )
+                    if (update != null) {
+                        Text(stringResource(R.string.update_emulator_installed, update.ifEmpty { "?" }))
+                    } else {
+                        Text(
+                            stringResource(
+                                R.string.missing_emulator_text,
+                                emulator.playerName ?: emulator.packageName,
+                                emulator.packageName,
+                            ),
+                        )
+                    }
                     when {
                         apk == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                        update != null && found == null -> Text(stringResource(R.string.update_emulator_not_found), style = MaterialTheme.typography.bodySmall)
                         release != null -> Text(
                             stringResource(R.string.apk_release_available, release.label, release.versionName.orEmpty(), formatSize(release.size), release.source.orEmpty()),
                             color = MaterialTheme.colorScheme.primary,
@@ -152,12 +162,15 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                         )
                         else -> Text(stringResource(R.string.apk_not_on_server), style = MaterialTheme.typography.bodySmall)
                     }
+                    if (update != null && found?.versionName != null && found.versionName == update) {
+                        Text(stringResource(R.string.update_emulator_up_to_date), style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             },
             confirmButton = {
                 Row {
                     // Application absente du Play Store (Winlator) : seulement son APK.
-                    if (EmulatorReleases.SOURCES[emulator.packageName]?.playStore != false) {
+                    if (update == null && EmulatorReleases.SOURCES[emulator.packageName]?.playStore != false) {
                         TextButton(onClick = {
                             app.missingEmulator.value = null
                             try {
@@ -171,7 +184,13 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                         TextButton(onClick = {
                             app.missingEmulator.value = null
                             app.apkInstaller.install(activity, download)
-                        }) { Text(stringResource(if (release != null) R.string.action_download_latest else R.string.action_install_from_server)) }
+                        }) {
+                            Text(stringResource(when {
+                                update != null -> R.string.action_update_emulator
+                                release != null -> R.string.action_download_latest
+                                else -> R.string.action_install_from_server
+                            }))
+                        }
                     }
                 }
             },

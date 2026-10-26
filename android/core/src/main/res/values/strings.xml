@@ -322,6 +322,12 @@
     <string name="apk_install_failed">Installation of %1$s failed: %2$s</string>
     <string name="apk_wrong_package">the downloaded APK installs %1$s instead of %2$s</string>
     <string name="apk_release_available">Latest version on %4$s: %1$s %2$s (%3$s).</string>
+    <string name="update_emulator_title">Update %1$s</string>
+    <string name="update_emulator_installed">Installed version: %1$s.</string>
+    <string name="update_emulator_not_found">Latest version not found (no network?).</string>
+    <string name="update_emulator_up_to_date">You already have the latest version.</string>
+    <string name="action_update_emulator">Update</string>
+    <string name="update_emulator">Update the emulator</string>
     <string name="action_download_latest">Download the latest version</string>
     <string name="apk_no_installer">No app installer available on this device</string>
 
