@@ -23,10 +23,13 @@ import com.winlator.cmod.container.Container;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.contents.AdrenotoolsManager;
 import com.winlator.cmod.contents.ContentsManager;
+import com.winlator.cmod.box86_64.Box86_64Preset;
 import com.winlator.cmod.core.WineInfo;
+import com.winlator.cmod.fexcore.FEXCoreManager;
 import com.winlator.cmod.inputcontrols.ControllerManager;
 import com.winlator.cmod.inputcontrols.ControlsProfile;
 import com.winlator.cmod.inputcontrols.InputControlsManager;
+import com.winlator.cmod.xenvironment.ImageFs;
 import com.winlator.cmod.xenvironment.ImageFsInstaller;
 
 import org.json.JSONObject;
@@ -91,8 +94,12 @@ public class LaunchActivity extends Activity {
 
     /** Qualité graphique au démarrage choisie dans RomCloud ([QUALITIES] : [qualityArgs]). */
     static final String SETTING_QUALITY = "romcloudQuality";
-    /** Images par seconde au plus choisies dans RomCloud (limite de DXVK : [withFramerate]). */
+    /** Images par seconde au plus choisies dans RomCloud (limite de DXVK, dans sa configuration). */
     static final String SETTING_FRAMERATE = "romcloudFramerate";
+    /** Shaders compilés en arrière-plan (« async ») : DXVK async ou gplasync ([asyncDxvk]). */
+    static final String SETTING_SHADERS = "romcloudShaders";
+    /** Émulation du processeur : « intermediate » ou « performance » ([applyCpu]) ; absent : compatibilité. */
+    static final String SETTING_CPU = "romcloudCpu";
     /** Paquet AdrenoTools du pilote choisi dans RomCloud, s'il n'est pas inclus ([installDriver]). */
     static final String SETTING_DRIVER_URL = "adrenotoolsDriverUrl";
     /** Pilote par défaut sur Adreno (celui de RomCloud), si le pilote choisi n'a pas pu être installé. */
@@ -237,16 +244,29 @@ public class LaunchActivity extends Activity {
             installDriver(settings);
             String quality = qualityArgs(exe, settings.getString(SETTING_QUALITY));
             String framerate = settings.getString(SETTING_FRAMERATE);
+            boolean asyncShaders = "async".equals(settings.getString(SETTING_SHADERS));
+            String cpu = settings.getString(SETTING_CPU);
             settings.remove(SETTING_QUALITY);
             settings.remove(SETTING_DRIVER_URL);
             settings.remove(SETTING_FRAMERATE);
-            // Limite d'images par seconde : dans la configuration de DXVK du jeu (choisie dans
-            // RomCloud), sinon dans celle du conteneur.
-            if (framerate != null && framerate.matches("[1-9][0-9]{0,2}")) {
+            settings.remove(SETTING_SHADERS);
+            settings.remove(SETTING_CPU);
+            boolean arm64ec = container.getWineVersion().contains("arm64ec");
+            // Limite d'images par seconde, shaders en arrière-plan : dans la configuration de DXVK du
+            // jeu (choisie dans RomCloud), sinon dans celle du conteneur.
+            boolean limit = framerate != null && framerate.matches("[1-9][0-9]{0,2}");
+            if (limit || asyncShaders) {
                 String config = settings.getString("dxwrapperConfig");
                 if (config == null || config.isEmpty()) config = container.getDXWrapperConfig();
-                settings.putString("dxwrapperConfig", withFramerate(config, framerate));
+                if (limit) config = withConfig(config, "framerate", framerate);
+                if (asyncShaders) {
+                    config = withConfig(config, "version", asyncDxvk(configValue(config, "version"), arm64ec));
+                    config = withConfig(withConfig(config, "async", "1"), "asyncCache", "1");
+                    settings.putString("dxwrapper", "dxvk");
+                }
+                settings.putString("dxwrapperConfig", config);
             }
+            applyCpu(container, exe.getName(), arm64ec, cpu, settings);
             if (quality != null) {
                 String args = settings.getString("execArgs");
                 settings.putString("execArgs", args != null && !args.isEmpty() ? args + " " + quality : quality);
@@ -335,11 +355,58 @@ public class LaunchActivity extends Activity {
     /** Résolution de rendu (%) des jeux Unreal Engine pour chaque qualité (interface toujours nette). */
     private static final int[] UNREAL_RESOLUTIONS = {33, 50, 75, 90, 100};
 
-    /** Configuration de DXVK [config] (« version=…,framerate=0,… ») avec la limite [framerate]. */
-    static String withFramerate(String config, String framerate) {
-        if (config == null || config.isEmpty()) return "framerate=" + framerate;
-        if (config.matches("(^|.*,)framerate=[^,]*(,.*|$)")) return config.replaceFirst("(^|,)framerate=[^,]*", "$1framerate=" + framerate);
-        return config + ",framerate=" + framerate;
+    /** Configuration de DXVK [config] (« version=…,framerate=0,… ») avec [key] à [value]. */
+    static String withConfig(String config, String key, String value) {
+        if (config == null || config.isEmpty()) return key + "=" + value;
+        String pattern = "(^|,)" + java.util.regex.Pattern.quote(key) + "=[^,]*";
+        if (java.util.regex.Pattern.compile(pattern).matcher(config).find()) {
+            return config.replaceFirst(pattern, "$1" + java.util.regex.Matcher.quoteReplacement(key + "=" + value));
+        }
+        return config + "," + key + "=" + value;
+    }
+
+    /** Valeur de [key] dans la configuration de DXVK [config], ou null. */
+    static String configValue(String config, String key) {
+        if (config == null) return null;
+        for (String part : config.split(",")) {
+            if (part.startsWith(key + "=")) return part.substring(key.length() + 1);
+        }
+        return null;
+    }
+
+    /**
+     * Version de DXVK qui compile les shaders en arrière-plan, de la même famille que [version] :
+     * gardée si elle le fait déjà ; 1.x (celle par défaut, la plus compatible) : dxvk-async 1.10.3 ;
+     * 2.x : gplasync (arm64ec : celle compilée pour arm64ec).
+     */
+    static String asyncDxvk(String version, boolean arm64ec) {
+        if (version != null && version.contains("async")) return version;
+        if (version == null || version.startsWith("1.")) return "async-1.10.3";
+        return arm64ec ? "2.3.1-arm64ec-gplasync" : "2.4.1-gplasync";
+    }
+
+    /**
+     * Émulation du processeur choisie dans RomCloud ([cpu] : « intermediate », « performance » ; autre :
+     * compatibilité, le réglage de Winlator). Proton x86_64 : préréglage de Box64 du raccourci. Proton
+     * arm64ec : réglage de FEX propre à l'exécutable [exeName] (AppConfig), retiré en compatibilité.
+     */
+    private void applyCpu(Container container, String exeName, boolean arm64ec, String cpu, Bundle settings) {
+        boolean performance = "performance".equals(cpu);
+        boolean faster = performance || "intermediate".equals(cpu);
+        if (!arm64ec) {
+            if (faster) settings.putString("box64Preset", performance ? Box86_64Preset.PERFORMANCE : Box86_64Preset.INTERMEDIATE);
+            return;
+        }
+        ImageFs imageFs = ImageFs.find(new File(getFilesDir(), "imagefs"));
+        File config = new File(imageFs.home_path + "-" + container.id + "/.fex-emu/AppConfig/" + exeName + ".json");
+        if (!faster) {
+            config.delete();
+            return;
+        }
+        File parent = config.getParentFile();
+        if (parent != null) parent.mkdirs();
+        // TSO : ordre des accès à la mémoire comme sur x86 (lent) ; « Fast » : seulement le nécessaire.
+        FEXCoreManager.writeToConfigFile(config, performance ? "Fastest" : "Fast", "Enabled", "Fast");
     }
 
     private static final String[] UNREAL_GROUPS = {"sg.ViewDistanceQuality", "sg.AntiAliasingQuality", "sg.ShadowQuality", "sg.PostProcessQuality",

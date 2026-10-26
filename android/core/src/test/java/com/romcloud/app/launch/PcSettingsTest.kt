@@ -55,9 +55,17 @@ class PcSettingsTest {
     }
 
     @Test
+    fun shadersEtProcesseur() {
+        val result = PcSettings.apply(base, mapOf(PcSettings.KEY_SHADERS to "async", PcSettings.KEY_CPU to "performance"))
+        assertEquals("async", result["romcloudShaders"])
+        assertEquals("performance", result["romcloudCpu"])
+    }
+
+    @Test
     fun valeursInconnuesIgnorees() {
         val chosen = mapOf(PcSettings.KEY_WINE to "proton-1.0", PcSettings.KEY_DRIVER to "inconnu", PcSettings.KEY_DXVK to "9.9",
-            PcSettings.KEY_QUALITY to "ultra", PcSettings.KEY_SCREEN to "4320", PcSettings.KEY_FPS to "1000")
+            PcSettings.KEY_QUALITY to "ultra", PcSettings.KEY_SCREEN to "4320", PcSettings.KEY_FPS to "1000",
+            PcSettings.KEY_SHADERS to "x", PcSettings.KEY_CPU to "turbo")
         assertEquals(base, PcSettings.apply(base, chosen))
     }
 }
