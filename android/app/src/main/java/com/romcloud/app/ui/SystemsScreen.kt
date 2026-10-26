@@ -1,5 +1,8 @@
 package com.romcloud.app.ui
 
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import com.romcloud.app.data.MediaUrl
 import com.romcloud.app.data.MediaSize
 import android.app.Activity
@@ -275,6 +278,8 @@ fun SystemsScreen(
                 onRefresh = viewModel::refresh,
                 modifier = Modifier.fillMaxSize(),
             ) {
+                // Fin du défilement : la rangée de cartes la plus proche alignée en haut, visible en entier.
+                val gridState = rememberLazyGridState()
                 when {
                     state.systems.isEmpty() && state.loading -> Centered(stringResource(R.string.loading))
                     state.systems.isEmpty() && state.error != null -> Centered(
@@ -283,6 +288,8 @@ fun SystemsScreen(
                     )
                     state.systems.isEmpty() -> Centered(stringResource(R.string.no_systems))
                     else -> LazyVerticalGrid(
+                        state = gridState,
+                        flingBehavior = rememberSnapFlingBehavior(gridState, SnapPosition.Start),
                         columns = GridCells.Adaptive(160.dp),
                         contentPadding = PaddingValues(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -427,6 +434,7 @@ private fun SearchResults(
         null -> if (game.id in search.downloaded) LocalStatus.Downloaded else LocalStatus.Remote
     }
 
+    val gridState = rememberLazyGridState()
     when {
         search.results.isEmpty() && search.loading -> Centered(stringResource(R.string.loading))
         search.results.isEmpty() && search.error != null ->
@@ -435,6 +443,8 @@ private fun SearchResults(
             }
         search.results.isEmpty() -> Centered(stringResource(R.string.search_no_results, search.query))
         else -> LazyVerticalGrid(
+            state = gridState,
+            flingBehavior = rememberSnapFlingBehavior(gridState, SnapPosition.Start),
             columns = GridCells.Adaptive(116.dp),
             contentPadding = PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),

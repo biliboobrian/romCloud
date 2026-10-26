@@ -1,5 +1,7 @@
 package com.romcloud.app.ui
 
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import com.romcloud.app.data.MediaUrl
 import com.romcloud.app.data.MediaSize
 import androidx.compose.material.icons.filled.Groups
@@ -126,7 +128,13 @@ fun GamesCarousel(
         LaunchedEffect(rows.firstOrNull()?.title) {
             if (listState.firstVisibleItemIndex <= 1) listState.scrollToItem(0)
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
+        // Fin du défilement : la rangée la plus proche alignée en haut, visible en entier.
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            state = listState,
+            contentPadding = PaddingValues(bottom = 24.dp),
+            flingBehavior = rememberSnapFlingBehavior(listState, SnapPosition.Start),
+        ) {
             items(rows, key = { "row:" + it.title }) { row ->
                 Column(Modifier.padding(top = if (compact) 8.dp else 16.dp)) {
                     Text(

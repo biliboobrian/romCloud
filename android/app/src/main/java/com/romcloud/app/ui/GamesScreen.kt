@@ -1,5 +1,9 @@
 package com.romcloud.app.ui
 
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import com.romcloud.app.data.MediaUrl
 import com.romcloud.app.data.MediaSize
 import android.app.Activity
@@ -274,6 +278,9 @@ fun GamesScreen(
                 },
             ) {
                 val games = state.visibleGames.filter { fitsLobby(it, lobbyState) }
+                // Fin du défilement : la rangée de cartes la plus proche alignée en haut, visible en entier.
+                val gridState = rememberLazyGridState()
+                val listState = rememberLazyListState()
                 when {
                     state.games.isEmpty() && state.loading -> Centered(stringResource(R.string.loading))
                     state.games.isEmpty() && state.error != null ->
@@ -301,6 +308,8 @@ fun GamesScreen(
                         together = { viewModel.together(it, peers) },
                     )
                     state.grid -> LazyVerticalGrid(
+                        state = gridState,
+                        flingBehavior = rememberSnapFlingBehavior(gridState, SnapPosition.Start),
                         columns = GridCells.Adaptive(116.dp),
                         contentPadding = PaddingValues(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -318,7 +327,11 @@ fun GamesScreen(
                             )
                         }
                     }
-                    else -> LazyColumn(Modifier.fillMaxSize()) {
+                    else -> LazyColumn(
+                        Modifier.fillMaxSize(),
+                        state = listState,
+                        flingBehavior = rememberSnapFlingBehavior(listState, SnapPosition.Start),
+                    ) {
                         items(games, key = { it.id }) { game ->
                             GameRow(
                                 game = game,

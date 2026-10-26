@@ -3234,6 +3234,34 @@
     $('.topbar').classList.toggle('scrolled', e.target.scrollTop > 8 && !$('.carousel-head'));
   });
 
+  // Fin du défilement : la carte coupée par le haut (sous la bannière du carrousel : la rangée) est
+  // montrée en entier si plus de la moitié en est visible, sinon la suivante est remontée en haut.
+  let snapTimer = 0;
+  $('#main').addEventListener('onscrollend' in window ? 'scrollend' : 'scroll', () => {
+    clearTimeout(snapTimer);
+    snapTimer = setTimeout(snapCards, 'onscrollend' in window ? 0 : 160);
+  });
+
+  function snapCards() {
+    const main = $('#main');
+    const head = $('.carousel-head', main);
+    const items = $('.carousel', main) ? $$('.row', main) : $$('.system-card, .cards-grid .game-card, .list-row', main);
+    if (!items.length) return;
+    const top = main.getBoundingClientRect().top + (head ? head.offsetHeight : 0);
+    const boxes = items.map((el) => el.getBoundingClientRect());
+    const cut = boxes.find((r) => r.top < top - 1 && r.bottom > top + 1);
+    if (!cut) return;
+    let delta = cut.top - top;
+    if (cut.bottom - top < cut.height / 2) {
+      const next = Math.min(...boxes.filter((r) => r.top >= cut.bottom - 1).map((r) => r.top));
+      if (!Number.isFinite(next)) return;
+      delta = next - top;
+      // Bas de la page déjà atteint : la suivante ne peut pas monter plus haut.
+      if (main.scrollTop + delta > main.scrollHeight - main.clientHeight + 1) return;
+    }
+    main.scrollBy({ top: delta, behavior: 'smooth' });
+  }
+
   // ---------------------------------------------------------------------------
   // Mise à jour de l'application (vérifiée au chargement)
   // ---------------------------------------------------------------------------
