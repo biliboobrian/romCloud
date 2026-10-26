@@ -178,7 +178,8 @@ const SPACE_MARGIN: u64 = 64 * 1024 * 1024;
 
 /**
  * Fichier d'un jeu PC (`GET /api/games/{id}/files`) ; compressé par le serveur : `format` de son
- * archive (« xz », ou « zip » pour les compressions d'avant le xz) et sa taille `archive_size`.
+ * archive (« zst », ou « xz » et « zip » pour les compressions d'avant le zstd) et sa taille
+ * `archive_size`.
  */
 #[derive(Clone)]
 struct FolderFile {
@@ -191,7 +192,11 @@ struct FolderFile {
 impl FolderFile {
     fn from_json(v: &Value) -> Self {
         let archive_size = v.get("packedSize").or_else(|| v.get("zipSize")).and_then(Value::as_u64);
-        let format = if v.get("format").and_then(Value::as_str) == Some("xz") { "xz" } else { "zip" };
+        let format = match v.get("format").and_then(Value::as_str) {
+            Some("zst") => "zst",
+            Some("xz") => "xz",
+            _ => "zip",
+        };
         FolderFile { path: s(v, "path").to_string(), size: n(v, "size"), archive_size, format }
     }
 
@@ -223,7 +228,7 @@ fn must_wait(next: &FolderFile, pending: u64, free: u64) -> bool {
     free < pending + next.archive_size.unwrap_or(0) + SPACE_MARGIN
 }
 
-/// Archive d'un fichier, à côté de lui (« X.xz » ou « X.zip »).
+/// Archive d'un fichier, à côté de lui (« X.zst », « X.xz » ou « X.zip »).
 fn archive_path(target: &Path, format: &str) -> PathBuf {
     target.with_file_name(format!("{}.{format}", target.file_name().unwrap_or_default().to_string_lossy()))
 }
@@ -262,9 +267,9 @@ impl Drop for Background {
 }
 
 /**
- * Décompresse `archive` (« xz » : blocs décompressés en parallèle ; « zip » : un seul fichier) vers
- * `target` (via un fichier temporaire), vérifié par sa taille (et l'empreinte de l'archive : CRC64
- * du xz, CRC32 du zip) ; l'archive est ensuite supprimée, abîmée aussi (téléchargée de nouveau au
+ * Décompresse `archive` (« zst » ; « xz » : blocs décompressés en parallèle ; « zip » : un seul
+ * fichier) vers `target` (via un fichier temporaire), vérifié par sa taille (et l'empreinte de
+ * l'archive : XXH64 du zstd, CRC64 du xz, CRC32 du zip) ; l'archive est ensuite supprimée, abîmée aussi (téléchargée de nouveau au
  * prochain essai). `on_bytes` reçoit les octets décompressés depuis le début. Tant que `downloading`
  * (téléchargement du jeu en cours) : priorité très basse et un seul fil, pour ne pas ralentir le
  * téléchargement ; ensuite, priorité normale.
@@ -298,7 +303,19 @@ fn unpack_file(archive: &Path, format: &str, target: &Path, size: u64, cancelled
                 }
             }
         };
-        if format == "xz" && downloading.load(Ordering::SeqCst) {
+        if format == "zst" {
+            // Fenêtre des archives du serveur : 128 Mo (zstd -19 --long=27).
+            let reader = std::io::BufReader::with_capacity(1 << 20, file);
+            let mut decoder = ruzstd::decoding::StreamingDecoder::new_with_max_window_size(reader, 1 << 27)
+                .map_err(|e| AppError::msg(format!("zstd : {e}")))?;
+            copy(&mut decoder)?;
+            let frame = &decoder.decoder;
+            if let (Some(expected), Some(got)) = (frame.get_checksum_from_data(), frame.get_calculated_checksum()) {
+                if expected != got {
+                    return Err(AppError::msg("zstd : somme de contrôle incorrecte"));
+                }
+            }
+        } else if format == "xz" && downloading.load(Ordering::SeqCst) {
             // Pendant le téléchargement : un seul fil, en arrière-plan.
             let mut reader = lzma_rust2::XzReader::new(std::io::BufReader::with_capacity(1 << 20, file), false);
             copy(&mut reader)?;
@@ -347,7 +364,8 @@ struct FolderProgress {
 async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Arc<AtomicBool>, progress: impl Fn(FolderProgress)) -> Result<()> {
     let folder = library::file_for(system, game);
     let id = game.get("id").map(key).unwrap_or_default();
-    let listing: Value = serde_json::from_str(&api::request(&format!("/api/games/{id}/files"), None).await?)?;
+    // ?zst=1 : archives zstd lues par l'application (sinon listées en clair par le serveur).
+    let listing: Value = serde_json::from_str(&api::request(&format!("/api/games/{id}/files?zst=1"), None).await?)?;
     let files: Vec<FolderFile> = listing["files"].as_array().map(|a| a.iter().map(FolderFile::from_json).collect()).unwrap_or_default();
     let target_of = |f: &FolderFile| f.path.split('/').fold(folder.clone(), |path, part| path.join(part));
     let complete = |f: &FolderFile| std::fs::metadata(target_of(f)).map(|m| m.is_file() && m.len() == f.size).unwrap_or(false);
@@ -405,7 +423,7 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
             // Archive déjà reçue (téléchargement interrompu pendant la décompression) : décompressée seulement.
             let received_archive = file.packed() && std::fs::metadata(&archive).map(|m| m.len() == file.download_size()).unwrap_or(false);
             if !received_archive {
-                let url = format!("{server}/api/games/{id}/file?path={}{}", urlencoding::encode(&file.path), if file.packed() { "&packed=1" } else { "" });
+                let url = format!("{server}/api/games/{id}/file?path={}{}", urlencoding::encode(&file.path), if file.packed() { "&packed=1&zst=1" } else { "" });
                 fetch_to(&url, if file.packed() { &archive } else { &target }, file.download_size(), cancelled, |bytes| {
                     current.store(bytes, Ordering::SeqCst);
                     report();
@@ -476,17 +494,36 @@ mod tests {
         // Serveur d'avant le xz : zipSize, format zip.
         let old = FolderFile::from_json(&json!({ "path": "x", "size": 10, "zipSize": 4 }));
         assert_eq!((old.archive_size, old.format), (Some(4), "zip"));
-        let new = FolderFile::from_json(&json!({ "path": "x", "size": 10, "packedSize": 3, "format": "xz" }));
-        assert_eq!((new.archive_size, new.format), (Some(3), "xz"));
+        let xz = FolderFile::from_json(&json!({ "path": "x", "size": 10, "packedSize": 3, "format": "xz" }));
+        assert_eq!((xz.archive_size, xz.format), (Some(3), "xz"));
+        let zst = FolderFile::from_json(&json!({ "path": "x", "size": 10, "packedSize": 3, "format": "zst" }));
+        assert_eq!((zst.archive_size, zst.format), (Some(3), "zst"));
     }
 
     #[test]
-    fn archives_xz_et_zip_decompressees_puis_supprimees() {
+    fn archives_zstd_xz_et_zip_decompressees_puis_supprimees() {
         let dir = std::env::temp_dir().join(format!("romcloud-unpack-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let data: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
         let cancelled = AtomicBool::new(false);
         let downloading = AtomicBool::new(false);
+
+        // zstd (somme de contrôle comprise, comme celles du serveur).
+        let new = dir.join("new.pak");
+        let mut zst = Vec::new();
+        ruzstd::encoding::compress(&data[..], &mut zst, ruzstd::encoding::CompressionLevel::Fastest);
+        std::fs::write(archive_path(&new, "zst"), &zst).unwrap();
+        assert_eq!(archive_path(&new, "zst").file_name().unwrap(), "new.pak.zst");
+        unpack_file(&archive_path(&new, "zst"), "zst", &new, data.len() as u64, &cancelled, &downloading, |_| {}).unwrap();
+        assert_eq!(std::fs::read(&new).unwrap(), data);
+        assert!(!archive_path(&new, "zst").exists());
+        // Archive abîmée : erreur, archive supprimée.
+        let broken = dir.join("broken.pak");
+        let middle = zst.len() / 2;
+        zst[middle] ^= 0x55;
+        std::fs::write(archive_path(&broken, "zst"), &zst).unwrap();
+        assert!(unpack_file(&archive_path(&broken, "zst"), "zst", &broken, data.len() as u64, &cancelled, &downloading, |_| {}).is_err());
+        assert!(!broken.exists() && !archive_path(&broken, "zst").exists());
 
         // xz en plusieurs blocs (comme xz -T du serveur).
         let target = dir.join("level1.pak");

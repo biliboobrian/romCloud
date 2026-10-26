@@ -114,13 +114,16 @@ class ApiClient(private val settings: Settings, val platform: String) {
     /** Fichier d'un jeu ou d'une de ses parties (disque, mise à jour, DLC). */
     fun fileUrl(id: Long): String = url("/api/games/$id/file")
 
-    /** Fichier [path] du dossier d'un jeu en dossier (PC) ; [packed] : son archive (.zip, jeu compressé). */
+    /**
+     * Fichier [path] du dossier d'un jeu en dossier (PC) ; [packed] : son archive (jeu compressé ;
+     * zst=1 : archives zstd lues par l'application).
+     */
     fun folderFileUrl(id: Long, path: String, packed: Boolean = false): String =
-        url("/api/games/$id/file?path=${java.net.URLEncoder.encode(path, "UTF-8").replace("+", "%20")}${if (packed) "&packed=1" else ""}")
+        url("/api/games/$id/file?path=${java.net.URLEncoder.encode(path, "UTF-8").replace("+", "%20")}${if (packed) "&packed=1&zst=1" else ""}")
 
-    /** Fichiers d'un jeu en dossier (PC), à télécharger un par un. */
+    /** Fichiers d'un jeu en dossier (PC), à télécharger un par un (archives zstd comprises : zst=1). */
     suspend fun folderFiles(id: Long): List<FolderFile> =
-        json.decodeFromString(FolderListing.serializer(), get("/api/games/$id/files")).files
+        json.decodeFromString(FolderListing.serializer(), get("/api/games/$id/files?zst=1")).files
 
     private suspend fun get(path: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url(path)).build()

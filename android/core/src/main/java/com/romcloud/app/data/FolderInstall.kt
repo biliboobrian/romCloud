@@ -7,6 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.github.luben.zstd.ZstdInputStream
 import org.tukaani.xz.SeekableFileInputStream
 import org.tukaani.xz.SeekableXZInputStream
 import java.io.BufferedInputStream
@@ -26,8 +27,9 @@ import java.util.zip.InflaterInputStream
 
 /**
  * Installation d'un jeu PC (jeu en dossier) : fichiers téléchargés un par un, les plus lourds
- * d'abord ; jeu compressé par le serveur : chaque fichier arrive dans sa propre archive (« X.xz »,
- * ou « X.zip » pour les compressions d'avant le xz), mise dans une file de décompression qui avance
+ * d'abord ; jeu compressé par le serveur : chaque fichier arrive dans sa propre archive (« X.zst »,
+ * ou « X.xz » et « X.zip » pour les compressions d'avant le zstd), mise dans une file de
+ * décompression qui avance
  * en même temps que les téléchargements, une archive à la fois.
  */
 object FolderInstall {
@@ -58,7 +60,10 @@ object FolderInstall {
     fun mustWait(next: FolderFile, pendingBytes: Long, free: Long): Boolean =
         free >= 0 && free < pendingBytes + (next.archiveSize ?: 0) + SPACE_MARGIN
 
-    /** Archive d'un fichier, à côté de lui (« X.xz » ou « X.zip »). */
+    /** Fenêtre maximale des archives zstd du serveur (2^27 octets : zstd -19 --long=27). */
+    private const val ZSTD_WINDOW_LOG = 27
+
+    /** Archive d'un fichier, à côté de lui (« X.zst », « X.xz » ou « X.zip »). */
     fun archiveFile(target: File, format: String) = File(target.parentFile, "${target.name}.$format")
 
     /**
@@ -80,8 +85,9 @@ object FolderInstall {
     }
 
     /**
-     * Décompresse [archive] (format « xz » ou « zip ») vers [target] (via un fichier temporaire),
-     * vérifié par sa taille ([crc32] aussi pour le zip ; le xz porte sa propre empreinte) ; l'archive
+     * Décompresse [archive] (format « zst », « xz » ou « zip ») vers [target] (via un fichier
+     * temporaire), vérifié par sa taille ([crc32] aussi pour le zip ; zstd et xz portent leur propre
+     * empreinte) ; l'archive
      * est ensuite supprimée (abîmée aussi, pour être téléchargée de nouveau). [progress] reçoit les
      * octets décompressés depuis le début. Tant que [downloading] (téléchargement du jeu en cours) :
      * priorité très basse et un seul fil, pour ne pas ralentir le téléchargement ; ensuite, normale.
@@ -98,7 +104,11 @@ object FolderInstall {
         val temp = File(target.parentFile, "${target.name}.unpack")
         try {
             withContext(Dispatchers.IO) {
-                if (format == "xz") unxz(archive, temp, size, downloading, progress) else unzip(archive, temp, size, crc32, downloading, progress)
+                when (format) {
+                    "zst" -> unzstd(archive, temp, size, downloading, progress)
+                    "xz" -> unxz(archive, temp, size, downloading, progress)
+                    else -> unzip(archive, temp, size, crc32, downloading, progress)
+                }
             }
             if (target.exists()) target.delete()
             if (!temp.renameTo(target)) throw IOException("$format: impossible de renommer ${temp.name}")
@@ -172,6 +182,35 @@ object FolderInstall {
             }
         }
         if (written.get() != size) throw IOException("xz: contenu incorrect (${archive.name})")
+    }
+
+    /**
+     * Archive zstd : décodeur natif, un seul fil (plusieurs centaines de Mo/s, plus vite que le
+     * stockage de la plupart des appareils).
+     */
+    private suspend fun unzstd(archive: File, temp: File, size: Long, downloading: () -> Boolean, progress: (Long) -> Unit) {
+        val priority = Priority()
+        try {
+            ZstdInputStream(BufferedInputStream(FileInputStream(archive), BUFFER)).use { input ->
+                input.setLongMax(ZSTD_WINDOW_LOG)
+                FileOutputStream(temp).use { out ->
+                    val buffer = ByteArray(BUFFER)
+                    var written = 0L
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        priority.set(downloading())
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        out.write(buffer, 0, read)
+                        written += read
+                        progress(written)
+                    }
+                    if (written != size) throw IOException("zstd: taille $written au lieu de $size (${archive.name})")
+                }
+            }
+        } finally {
+            priority.restore()
+        }
     }
 
     /** Archive zip d'un seul fichier (stocké ou « deflate »), vérifiée par son CRC32. */

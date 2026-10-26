@@ -14,6 +14,7 @@ tvMaterial = "1.1.0"
 codeScanner = "16.1.0"
 zxing = "3.5.4"
 xz = "1.12"
+zstdJni = "1.5.7-24"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -37,8 +38,9 @@ androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecyc
 play-services-code-scanner = { group = "com.google.android.gms", name = "play-services-code-scanner", version.ref = "codeScanner" }
 # Génération du QR code de connexion (TV).
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
-# Décompression des jeux PC compressés en xz par le serveur.
+# Décompression des jeux PC compressés par le serveur : zstd (natif), xz des compressions d'avant.
 xz = { group = "org.tukaani", name = "xz", version.ref = "xz" }
+zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJni" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

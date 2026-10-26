@@ -433,13 +433,17 @@ export function scanSystem(systemId) {
  * en plus, archive à demander avec ?packed=1 ; zip : zipSize aussi) et ses exécutables (le plus probable en premier) ; packed : état de compression,
  * packedSize : taille à télécharger.
  */
-export function gameFolderFiles(row) {
+export function gameFolderFiles(row, { zst = false } = {}) {
   if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
   const files = folderFiles(gameFilePath(row));
   const stats = folderStats(null, files);
   return {
+    // Archives zstd : listées seulement pour les applications qui savent les lire ([zst]) ; pour les
+    // autres, fichiers en clair (décompressés à la volée par le serveur au téléchargement).
     files: files.map(({ path: p, size, packed, format, packedSize, zipSize, crc32 }) =>
-      packed ? { path: p, size, format, packedSize, crc32, ...(zipSize !== undefined ? { zipSize } : {}) } : { path: p, size },
+      packed && (zst || format !== 'zst')
+        ? { path: p, size, format, packedSize, crc32, ...(zipSize !== undefined ? { zipSize } : {}) }
+        : { path: p, size },
     ),
     packed: stats.packed === 0 ? 'flat' : stats.packed === files.length ? 'zip' : 'partial',
     packFormat: stats.format,

@@ -24,7 +24,9 @@ native-tls = "0.2"
 tokio-native-tls = "0.3"
 futures-util = "0.3"
 zip = { version = "9", default-features = false, features = ["deflate"] }
-# Jeux PC compressés en xz par le serveur : décompression (blocs en parallèle).
+# Jeux PC compressés par le serveur : zstd (décodeur en Rust, rien à compiler en C), xz des
+# compressions d'avant (blocs en parallèle).
+ruzstd = "0.9"
 lzma-rust2 = { version = "0.22", default-features = false, features = ["std", "xz", "optimization"] }
 hex = "0.4"
 base64 = "0.23"
@@ -51,3 +53,7 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# Décodeur zstd des jeux PC optimisé pour la vitesse (le reste : pour la taille) : +17 % de débit.
+[profile.release.package.ruzstd]
+opt-level = 3

@@ -44,6 +44,9 @@ dependencies {
     api(libs.okhttp)
     api(libs.coil.compose)
     implementation(libs.xz)
+    implementation(variantOf(libs.zstd.jni) { artifactType("aar") })
     implementation(project(":libretrodroid"))
     testImplementation(libs.junit)
+    // Tests sur la JVM : bibliothèque zstd du PC (Windows, Linux, macOS) à la place de celle d'Android.
+    testImplementation(libs.zstd.jni)
 }

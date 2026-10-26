@@ -85,8 +85,9 @@ fun gameFacts(game: Game): List<GameFact> {
         if (game.zipped) {
             add(stringResource(R.string.info_size_zip), formatSize(game.packedSize ?: game.fullSize))
             val format = when (game.packFormat) {
+                "zst" -> "zstd"
                 "xz" -> "xz"
-                "mixed" -> "xz + zip"
+                "mixed" -> "zstd + xz + zip"
                 else -> "zip"
             }
             add(stringResource(R.string.info_compression), stringResource(if (game.packed == "zip") R.string.info_compression_zip else R.string.info_compression_partial, format))
