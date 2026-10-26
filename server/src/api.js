@@ -14,7 +14,7 @@ import { diskUsage } from './disk-usage.js';
 import { clearDownloads, downloadStats, listDownloads, trackDownload } from './download-logs.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { profileStats } from './profile-stats.js';
-import { fileInFolder, packExtension, readPackManifest } from './folder-games.js';
+import { fileInFolder, packExtension, packFormat, readPackManifest } from './folder-games.js';
 import { packedStream, queueFolderPack } from './folder-pack.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
@@ -469,19 +469,20 @@ api.get('/games/:id/file', (req, res, next) => {
     const rel = String(req.query.path).replace(/\\/g, '/');
     let file = fileInFolder(dir, rel);
     let name = path.posix.basename(rel);
-    // Jeu compressé (folder-pack.js) : archive « X.xz » (ou « X.zip ») du fichier, envoyée telle
-    // quelle avec ?packed=1 (applications récentes, qui la décompressent ; reprise possible) ; sinon
-    // décompressée à la volée (anciennes applications, sans reprise du téléchargement).
+    // Jeu compressé (folder-pack.js) : archive « X.zst » (ou « X.xz », « X.zip ») du fichier, envoyée
+    // telle quelle avec ?packed=1 (applications récentes, qui la décompressent ; reprise possible) ;
+    // sinon décompressée à la volée (anciennes applications, sans reprise du téléchargement). Archive
+    // zstd : envoyée telle quelle seulement avec ?zst=1 aussi (applications qui savent la lire).
     const packed = readPackManifest(dir)[rel];
     const archive = packed && `${file}${packExtension(packed.format)}`;
     if (packed && !fs.existsSync(file) && fs.existsSync(archive)) {
       file = archive;
       // Applications d'avant le xz : elles ne demandent ?packed=1 que pour les archives zip.
-      if (req.query.packed !== '1') {
+      if (req.query.packed !== '1' || (packed.format === 'zst' && req.query.zst !== '1')) {
         if (packed.size >= FOLDER_LOG_MIN_BYTES) {
           logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: `${row.file_name}/${rel}`, fileSize: packed.size });
         }
-        const stream = packedStream(archive, packed.format === 'xz' ? 'xz' : 'zip');
+        const stream = packedStream(archive, packFormat(packed.format));
         res.set({ 'Content-Type': 'application/octet-stream', 'Content-Length': String(packed.size), 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` });
         res.on('close', () => stream.destroy());
         stream.on('error', () => res.destroy()).pipe(res);
@@ -504,10 +505,11 @@ api.get('/games/:id/file', (req, res, next) => {
   });
 });
 
-// Jeu en dossier (PC) : ses fichiers ({ path, size }), à télécharger un par un, et ses exécutables.
-api.get('/games/:id/files', (req, res) => res.json(gameFolderFiles(requireGameRow(req.params.id))));
+// Jeu en dossier (PC) : ses fichiers ({ path, size }), à télécharger un par un, et ses exécutables ;
+// ?zst=1 : application qui sait lire les archives zstd.
+api.get('/games/:id/files', (req, res) => res.json(gameFolderFiles(requireGameRow(req.params.id), { zst: req.query.zst === '1' })));
 
-// Jeu PC : compression fichier par fichier en xz ({ mode: "xz" ; « zip » accepté, même effet) ou
+// Jeu PC : compression fichier par fichier en zstd ({ mode: "zstd" ; « xz », « zip » acceptés, même effet) ou
 // retour en clair ({ mode: "flat" }), en tâche de fond (voir /jobs).
 api.post('/games/:id/pack', (req, res) => {
   const job = queueFolderPack(req.params.id, req.body?.mode);

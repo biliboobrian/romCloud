@@ -9,3 +9,7 @@
 
 # LibretroDroid : classes appelées depuis le code natif (JNI).
 -keep class com.swordfish.libretrodroid.** { *; }
+
+# zstd-jni : champs et méthodes lus par le code natif (JNI), décompression des jeux PC.
+-keep class com.github.luben.zstd.** { *; }
+-dontwarn com.github.luben.zstd.**

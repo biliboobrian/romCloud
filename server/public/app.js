@@ -770,27 +770,28 @@ function fillGameDialog(game, bust = '') {
 }
 
 /**
- * Jeu PC : compression en xz (une archive par fichier, téléchargées une à une et décompressées par
+ * Jeu PC : compression en zstd (une archive par fichier, téléchargées une à une et décompressées par
  * les applications) ou retour en clair, en tâche de fond ; état, format et tailles compressée et installée.
  */
 function fillGamePack(game) {
   $('#gamePack').classList.toggle('hidden', !game.folder);
   if (!game.folder) return;
   const packed = game.packed ?? 'flat';
-  const format = game.packFormat === 'mixed' ? 'xz + zip' : game.packFormat || 'zip';
+  const format = game.packFormat === 'mixed' ? t('pack.formatMixed') : { zst: 'zstd' }[game.packFormat] || game.packFormat || 'zip';
   $('#gamePackInfo').textContent = t(`pack.state.${packed}`, { size: formatSize(game.size), packedSize: formatSize(game.packedSize ?? game.size), format });
   const start = (mode) =>
     guard(async () => {
-      if (!confirm(t(mode === 'xz' ? 'pack.confirmPack' : 'pack.confirmUnpack', { title: game.title }))) return;
+      if (!confirm(t(mode === 'zstd' ? 'pack.confirmPack' : 'pack.confirmUnpack', { title: game.title }))) return;
       const { job } = await api(`/games/${game.id}/pack`, { method: 'POST', body: { mode } });
       toast(t(job ? 'pack.queued' : 'pack.alreadyQueued'));
       refreshJobs();
     });
-  // Compression : fichiers en clair et archives zip d'avant le xz ; décompression : s'il y a des archives.
+  // Compression : fichiers en clair et archives xz ou zip d'avant le zstd (converties) ; décompression :
+  // s'il y a des archives.
   const pack = $('#gamePackBtn');
-  pack.classList.toggle('hidden', packed === 'zip' && game.packFormat === 'xz');
-  pack.textContent = t(packed === 'flat' ? 'pack.pack' : 'pack.repack');
-  pack.onclick = () => start('xz');
+  pack.classList.toggle('hidden', packed === 'zip' && game.packFormat === 'zst');
+  pack.textContent = t(packed === 'flat' ? 'pack.pack' : packed === 'zip' ? 'pack.convert' : 'pack.repack');
+  pack.onclick = () => start('zstd');
   const unpack = $('#gameUnpackBtn');
   unpack.classList.toggle('hidden', packed === 'flat');
   unpack.textContent = t('pack.unpack');

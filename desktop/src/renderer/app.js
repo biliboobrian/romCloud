@@ -2327,7 +2327,7 @@
       [t('info.file'), game.fileName],
       [t('info.parts'), partsText(game)],
       [t('info.size'), formatSize(gameSize(game))],
-      ...(zipped(game) ? [[t('info.sizeZip'), formatSize(game.packedSize)], [t('info.compression'), t(game.packed === 'zip' ? 'info.compressionZip' : 'info.compressionPartial', { format: { xz: 'xz', mixed: 'xz + zip' }[game.packFormat] || 'zip' })]] : []),
+      ...(zipped(game) ? [[t('info.sizeZip'), formatSize(game.packedSize)], [t('info.compression'), t(game.packed === 'zip' ? 'info.compressionZip' : 'info.compressionPartial', { format: { zst: 'zstd', xz: 'xz', mixed: 'zstd + xz + zip' }[game.packFormat] || 'zip' })]] : []),
       ['CRC32', game.crc32 && game.crc32.toUpperCase()],
       ['MD5', game.md5],
       ...(d.links || []).map((l) => [l.label, l.url.replace(/^https?:\/\//, '').split('/')[0], l.url]),

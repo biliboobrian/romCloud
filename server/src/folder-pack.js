@@ -1,8 +1,9 @@
 // Compression des jeux PC (jeux en dossiers), demandée dans l'administration : chaque fichier « X »
-// du dossier rangé dans sa propre archive « X.xz » (xz -9e, le format qui fait gagner le plus de
-// place, voir xz.js), notée dans le manifeste du dossier (folder-games.js) ; les applications
-// téléchargent les archives une à une (les plus lourdes d'abord) et décompressent chacune dès sa
-// réception. Archives « X.zip » des compressions d'avant le xz : converties en xz, toujours lues.
+// du dossier rangé dans sa propre archive « X.zst » (zstd -19, meilleur rapport place / temps de
+// décompression, voir zstd.js), notée dans le manifeste du dossier (folder-games.js) ; les
+// applications téléchargent les archives une à une (les plus lourdes d'abord) et décompressent
+// chacune dès sa réception. Archives « X.xz » et « X.zip » des compressions d'avant le zstd :
+// converties en zstd, toujours lues.
 // Décompression : retour aux fichiers en clair. En tâche de fond (file des conversions) ;
 // interrompue, elle reprend où elle en était (manifeste écrit après chaque fichier).
 import fs from 'node:fs';
@@ -15,10 +16,11 @@ import { HttpError } from './http-error.js';
 import { token } from './i18n.js';
 import { enqueueConvert } from './jobs.js';
 import { gameFilePath, requireGameRow, scanSystem } from './library.js';
-import { xzAvailable, xzCompress, xzDecompressStream } from './xz.js';
+import { xzAvailable, xzDecompressStream } from './xz.js';
 import { ZipWriter, readZipEntries, zipEntryStream } from './zip.js';
+import { zstdAvailable, zstdCompress, zstdDecompressStream } from './zstd.js';
 
-/** Fichiers compressés ou décompressés en même temps (chaque xz utilise déjà plusieurs fils). */
+/** Fichiers compressés ou décompressés en même temps (chaque zstd utilise déjà plusieurs fils). */
 const CONCURRENCY = 2;
 
 function writeManifest(dir, files) {
@@ -62,10 +64,11 @@ export async function packFile(src, zip, onBytes = () => {}, signal) {
 }
 
 /**
- * Contenu d'origine d'un fichier compressé du jeu (« X.xz » ou « X.zip »), en flux ; [archive] :
+ * Contenu d'origine d'un fichier compressé du jeu (« X.zst », « X.xz » ou « X.zip »), en flux ; [archive] :
  * chemin de l'archive.
  */
 export function packedStream(archive, format, signal) {
+  if (format === 'zst') return zstdDecompressStream(archive, signal);
   if (format === 'xz') return xzDecompressStream(archive, signal);
   const entry = readZipEntries(archive)[0];
   if (!entry) throw new Error(`zip: archive illisible (${archive})`);
@@ -115,28 +118,30 @@ async function eachConcurrently(items, work) {
 }
 
 async function pack(job, dir, signal) {
-  if (!xzAvailable()) throw new HttpError(500, 'errors.xzMissing');
+  if (!zstdAvailable()) throw new HttpError(500, 'errors.zstdMissing');
   const manifest = readPackManifest(dir);
-  // Fichiers en clair et archives zip, les plus lourds d'abord ; « X.xz » déjà présent sans être
-  // une archive du jeu (fichier du jeu lui-même) : « X » reste tel quel.
+  // Fichiers en clair et archives xz ou zip, les plus lourds d'abord ; « X.zst » déjà présent sans
+  // être une archive du jeu (fichier du jeu lui-même) : « X » reste tel quel.
   const files = folderFiles(dir)
-    .filter((f) => f.format !== 'xz' && !(fs.existsSync(fileInFolder(dir, `${f.path}.xz`)) && !manifest[f.path]))
+    .filter((f) => f.format !== 'zst' && !(fs.existsSync(fileInFolder(dir, `${f.path}.zst`)) && !manifest[f.path]))
     .sort((a, b) => b.size - a.size);
+  // Archives xz à convertir : outil xz nécessaire pour les lire.
+  if (files.some((f) => f.format === 'xz') && !xzAvailable()) throw new HttpError(500, 'errors.xzMissing');
   job.total = files.reduce((n, f) => n + f.size, 0);
   job.done = 0;
   await eachConcurrently(files, async (f) => {
     const src = fileInFolder(dir, f.path);
-    const xz = `${src}.xz`;
-    const temp = `${xz}.part`;
-    // Archive zip : convertie sans passer par le fichier en clair.
+    const zst = `${src}.zst`;
+    const temp = `${zst}.part`;
+    // Archive xz ou zip : convertie sans passer par le fichier en clair.
     const source = f.packed ? `${src}${packExtension(f.format)}` : src;
     const stat = fs.statSync(source);
     try {
       const input = f.packed ? packedStream(source, f.format, signal) : fs.createReadStream(src);
-      const result = await xzCompress(input, temp, { onBytes: (n) => (job.done += n), signal });
-      if (result.size !== f.size || (f.crc32 && result.crc32 !== f.crc32)) throw new Error(`xz: contenu incorrect (${f.path})`);
-      fs.renameSync(temp, xz);
-      manifest[f.path] = { size: result.size, crc32: result.crc32, mtime: manifest[f.path]?.mtime ?? Math.floor(stat.mtimeMs), format: 'xz' };
+      const result = await zstdCompress(input, temp, { onBytes: (n) => (job.done += n), signal });
+      if (result.size !== f.size || (f.crc32 && result.crc32 !== f.crc32)) throw new Error(`zstd: contenu incorrect (${f.path})`);
+      fs.renameSync(temp, zst);
+      manifest[f.path] = { size: result.size, crc32: result.crc32, mtime: manifest[f.path]?.mtime ?? Math.floor(stat.mtimeMs), format: 'zst' };
       writeManifest(dir, manifest);
       fs.rmSync(source, { force: true });
     } finally {
@@ -149,6 +154,7 @@ async function unpack(job, dir, signal) {
   const manifest = readPackManifest(dir);
   const files = folderFiles(dir).filter((f) => f.packed).sort((a, b) => b.size - a.size);
   if (files.some((f) => f.format === 'xz') && !xzAvailable()) throw new HttpError(500, 'errors.xzMissing');
+  if (files.some((f) => f.format === 'zst') && !zstdAvailable()) throw new HttpError(500, 'errors.zstdMissing');
   job.total = files.reduce((n, f) => n + f.size, 0);
   job.done = 0;
   await eachConcurrently(files, async (f) => {
@@ -172,15 +178,15 @@ async function unpack(job, dir, signal) {
 }
 
 /**
- * Programme la compression en xz ([mode] « zip » : nom gardé pour l'API) ou la décompression
- * (« flat ») d'un jeu PC ; renvoie la tâche (null : déjà programmée). Fiche du jeu mise à jour par
+ * Programme la compression en zstd ([mode] « zstd » ; « xz » et « zip » : noms d'avant, même
+ * effet) ou la décompression (« flat ») d'un jeu PC ; renvoie la tâche (null : déjà programmée). Fiche du jeu mise à jour par
  * un scan du système à la fin.
  */
 export function queueFolderPack(gameId, mode) {
   const row = requireGameRow(gameId);
   if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
-  if (mode !== 'zip' && mode !== 'xz' && mode !== 'flat') throw new HttpError(400, 'errors.invalidPackMode');
-  if (mode !== 'flat' && !xzAvailable()) throw new HttpError(500, 'errors.xzMissing');
+  if (!['zstd', 'xz', 'zip', 'flat'].includes(mode)) throw new HttpError(400, 'errors.invalidPackMode');
+  if (mode !== 'flat' && !zstdAvailable()) throw new HttpError(500, 'errors.zstdMissing');
   const dir = gameFilePath(row);
   return enqueueConvert({
     key: `pack:${row.id}`,

@@ -1,5 +1,7 @@
 package com.romcloud.app.data
 
+import com.github.luben.zstd.Zstd
+import com.github.luben.zstd.ZstdOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -47,16 +49,49 @@ class FolderInstallTest {
             FolderFile("a.dat", 100),
             FolderFile("big.pak", 10_000, format = "xz", packedSize = 6_000),
             FolderFile("mid.pak", 5_000, zipSize = 4_000),
+            FolderFile("new.pak", 50, format = "zst", packedSize = 20),
         )
-        assertEquals(listOf("big.pak", "mid.pak", "a.dat"), FolderInstall.order(files).map { it.path })
+        assertEquals(listOf("big.pak", "mid.pak", "a.dat", "new.pak"), FolderInstall.order(files).map { it.path })
         assertEquals("xz", files[1].archiveFormat)
         assertEquals("zip", files[2].archiveFormat) // serveur d'avant le xz
-        assertEquals(15_100L + 6_000 + FolderInstall.SPACE_MARGIN, FolderInstall.neededBytes(files))
+        assertEquals("zst", files[3].archiveFormat)
+        assertEquals(15_150L + 6_000 + FolderInstall.SPACE_MARGIN, FolderInstall.neededBytes(files))
         // Attente : place libre insuffisante pour les fichiers pas encore écrits et l'archive suivante.
         val next = files[1]
         assertTrue(FolderInstall.mustWait(next, pendingBytes = 100 * mb, free = 100 * mb))
         assertFalse(FolderInstall.mustWait(next, pendingBytes = 100 * mb, free = 200 * mb))
         assertFalse(FolderInstall.mustWait(next, pendingBytes = 100 * mb, free = -1)) // place inconnue
+    }
+
+    @Test
+    fun `archive zstd decompressee, puis supprimee, abimee refusee et supprimee`() = runBlocking {
+        val dir = Files.createTempDirectory("folder-install").toFile()
+        try {
+            val data = ByteArray(3_000_000) { (it % 251).toByte() }
+            val target = File(dir, "level1.pak")
+            val archive = FolderInstall.archiveFile(target, "zst")
+            assertEquals("level1.pak.zst", archive.name)
+            // Comme le serveur : zstd -19 --long=27 (somme de contrôle comprise).
+            ZstdOutputStream(archive.outputStream(), 19).use { zst ->
+                zst.setLong(27)
+                zst.setChecksum(true)
+                zst.write(data)
+            }
+            var last = 0L
+            FolderInstall.unpack(archive, "zst", target, data.size.toLong(), null) { last = it }
+            assertArrayEquals(data, target.readBytes())
+            assertEquals(data.size.toLong(), last)
+            assertFalse(archive.exists())
+
+            val bad = File(dir, "bad.bin")
+            FolderInstall.archiveFile(bad, "zst").writeBytes(Zstd.compress(data).also { it[it.size / 2] = (it[it.size / 2] + 1).toByte() })
+            assertThrows(IOException::class.java) { runBlocking { FolderInstall.unpack(FolderInstall.archiveFile(bad, "zst"), "zst", bad, data.size.toLong(), null) } }
+            assertFalse(bad.exists())
+            assertFalse(FolderInstall.archiveFile(bad, "zst").exists())
+            assertTrue(dir.listFiles()!!.none { it.name.endsWith(".unpack") })
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     @Test

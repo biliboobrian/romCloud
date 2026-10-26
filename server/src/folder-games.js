@@ -1,8 +1,8 @@
 // Jeux en dossiers (système « jeux en dossiers », PC Windows) : chaque sous-dossier du système est un
 // jeu, téléchargé fichier par fichier par les applications (liste : chemin et taille) et lancé par
 // son exécutable, choisi dans la fiche du jeu (sinon deviné au scan). Jeu compressé (folder-pack.js) :
-// chaque fichier « X » rangé dans sa propre archive, « X.xz » (xz) ou « X.zip » (compressions d'avant
-// le xz), listée dans le manifeste du dossier.
+// chaque fichier « X » rangé dans sa propre archive, « X.zst » (zstd), ou « X.xz » et « X.zip »
+// (compressions d'avant le zstd), listée dans le manifeste du dossier.
 import fs from 'node:fs';
 import path from 'node:path';
 import { HttpError } from './http-error.js';
@@ -12,12 +12,15 @@ const IGNORED_RE = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$|\.(part|tmp|uplo
 
 /**
  * Manifeste d'un jeu compressé, à la racine de son dossier : { files: { chemin: { size, crc32,
- * mtime, format } } } ; format « xz » ou « zip » (absent : zip).
+ * mtime, format } } } ; format « zst », « xz » ou « zip » (absent : zip).
  */
 export const PACK_MANIFEST = '.romcloud-packed.json';
 
-/** Archive d'un fichier compressé : extension selon son format (« .xz », « .zip »). */
-export const packExtension = (format) => (format === 'xz' ? '.xz' : '.zip');
+/** Format d'une archive : « zst », « xz » ou « zip » (absent ou inconnu : zip, les premières compressions). */
+export const packFormat = (format) => (format === 'zst' || format === 'xz' ? format : 'zip');
+
+/** Archive d'un fichier compressé : extension selon son format (« .zst », « .xz », « .zip »). */
+export const packExtension = (format) => `.${packFormat(format)}`;
 
 /** Fichiers compressés du dossier [dir] (chemin d'origine -> { size, crc32, mtime, format }) ; vide sans manifeste. */
 export function readPackManifest(dir) {
@@ -42,8 +45,8 @@ const NOT_GAME_RE = new RegExp(
 
 /**
  * Fichiers du dossier [dir] (sous-dossiers compris) : { path (séparateur « / »), size, mtime }, triés
- * par chemin. Fichier compressé : chemin et taille d'origine, packed: true, format (« xz » ou
- * « zip »), packedSize (taille de son archive), crc32 ; zip : zipSize aussi (applications d'avant le
+ * par chemin. Fichier compressé : chemin et taille d'origine, packed: true, format (« zst », « xz »
+ * ou « zip »), packedSize (taille de son archive), crc32 ; zip : zipSize aussi (applications d'avant le
  * xz). S'il existe aussi en clair (compression interrompue) : le fichier en clair.
  */
 export function folderFiles(dir) {
@@ -55,11 +58,11 @@ export function folderFiles(dir) {
       if (entry.isDirectory()) walk(rel);
       else if (entry.isFile() && !IGNORED_RE.test(rel)) {
         const stat = fs.statSync(path.join(dir, rel));
-        const ext = /\.(xz|zip)$/i.exec(rel)?.[0];
+        const ext = /\.(zst|xz|zip)$/i.exec(rel)?.[0];
         const original = ext ? rel.slice(0, -ext.length) : null;
         const packed = original ? manifest[original] : undefined;
         if (packed && packExtension(packed.format) === ext.toLowerCase()) {
-          const format = packed.format === 'xz' ? 'xz' : 'zip';
+          const format = packFormat(packed.format);
           files.push({
             path: original,
             size: packed.size,
@@ -93,7 +96,7 @@ export function folderStats(dir, files = folderFiles(dir)) {
     count: files.length,
     packedSize: files.reduce((n, f) => n + (f.packed ? f.packedSize : f.size), 0),
     packed: files.filter((f) => f.packed).length,
-    // Format des archives : « xz », « zip », « mixed » (les deux) ; null sans fichier compressé.
+    // Format des archives : « zst », « xz », « zip », « mixed » (plusieurs) ; null sans fichier compressé.
     format: packFormatOf(files),
   };
 }
