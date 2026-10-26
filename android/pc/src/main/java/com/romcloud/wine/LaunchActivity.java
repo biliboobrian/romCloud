@@ -89,7 +89,7 @@ public class LaunchActivity extends Activity {
      */
     private static final String UNITY_WINE = "proton-9.0-x86_64";
 
-    /** Qualité graphique au démarrage choisie dans RomCloud (low, medium, high : [qualityArgs]). */
+    /** Qualité graphique au démarrage choisie dans RomCloud ([QUALITIES] : [qualityArgs]). */
     static final String SETTING_QUALITY = "romcloudQuality";
     /** Paquet AdrenoTools du pilote choisi dans RomCloud, s'il n'est pas inclus ([installDriver]). */
     static final String SETTING_DRIVER_URL = "adrenotoolsDriverUrl";
@@ -299,22 +299,30 @@ public class LaunchActivity extends Activity {
     }
 
     /**
-     * Arguments du jeu [exe] pour la qualité graphique [quality] (low, medium, high) selon son moteur :
-     * Unity (niveau de qualité nommé Low, Medium ou High, ignoré si le jeu n'en a pas de ce nom), Unreal
-     * Engine (réglages sg.* de GameUserSettings.ini remplacés au démarrage) ; null sinon.
+     * Arguments du jeu [exe] pour la qualité graphique [quality] ([QUALITIES]) selon son moteur : Unity
+     * (niveau de qualité nommé Very Low, Low, Medium ou High, ignoré si le jeu n'en a pas de ce nom ;
+     * minimum et verylow : Very Low), Unreal Engine (réglages sg.* de GameUserSettings.ini remplacés au
+     * démarrage, au plus bas niveau sous low, avec une résolution de rendu réduite) ; null sinon.
      */
     static String qualityArgs(File exe, String quality) {
-        int level = "low".equals(quality) ? 0 : "medium".equals(quality) ? 1 : "high".equals(quality) ? 2 : -1;
-        if (level < 0 || exe == null) return null;
+        int index = java.util.Arrays.asList(QUALITIES).indexOf(quality);
+        if (index < 0 || exe == null) return null;
         File dir = exe.getParentFile();
-        if (dir != null && new File(dir, "UnityPlayer.dll").isFile()) return "-screen-quality " + new String[] {"Low", "Medium", "High"}[level];
+        if (dir != null && new File(dir, "UnityPlayer.dll").isFile()) return "-screen-quality " + UNITY_QUALITIES[index];
         if (isUnreal(exe)) {
-            StringBuilder args = new StringBuilder("-ini:GameUserSettings:[ScalabilityGroups]:sg.ResolutionQuality=" + new int[] {75, 90, 100}[level]);
+            int level = Math.max(index - 2, 0);
+            StringBuilder args = new StringBuilder("-ini:GameUserSettings:[ScalabilityGroups]:sg.ResolutionQuality=" + UNREAL_RESOLUTIONS[index]);
             for (String group : UNREAL_GROUPS) args.append(",[ScalabilityGroups]:").append(group).append('=').append(level);
             return args.toString();
         }
         return null;
     }
+
+    /** Qualités graphiques de RomCloud ([SETTING_QUALITY]), de la plus basse à la plus haute. */
+    static final String[] QUALITIES = {"minimum", "verylow", "low", "medium", "high"};
+    private static final String[] UNITY_QUALITIES = {"\"Very Low\"", "\"Very Low\"", "Low", "Medium", "High"};
+    /** Résolution de rendu (%) des jeux Unreal Engine pour chaque qualité. */
+    private static final int[] UNREAL_RESOLUTIONS = {50, 60, 75, 90, 100};
 
     private static final String[] UNREAL_GROUPS = {"sg.ViewDistanceQuality", "sg.AntiAliasingQuality", "sg.ShadowQuality", "sg.PostProcessQuality",
             "sg.TextureQuality", "sg.EffectsQuality", "sg.FoliageQuality", "sg.ShadingQuality"};
