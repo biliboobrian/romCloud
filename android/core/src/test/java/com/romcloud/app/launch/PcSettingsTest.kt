@@ -40,8 +40,16 @@ class PcSettingsTest {
     }
 
     @Test
+    fun resolutionAuFormatDeLAppareil() {
+        assertEquals("2400x1080", PcSettings.apply(base, mapOf(PcSettings.KEY_SCREEN to "1080"))["screenSize"])
+        assertEquals("1066x480", PcSettings.apply(base, mapOf(PcSettings.KEY_SCREEN to "480"))["screenSize"])
+        assertEquals("960x540", PcSettings.apply(emptyMap(), mapOf(PcSettings.KEY_SCREEN to "540"))["screenSize"])
+    }
+
+    @Test
     fun valeursInconnuesIgnorees() {
-        val chosen = mapOf(PcSettings.KEY_WINE to "proton-1.0", PcSettings.KEY_DRIVER to "inconnu", PcSettings.KEY_DXVK to "9.9", PcSettings.KEY_QUALITY to "ultra")
+        val chosen = mapOf(PcSettings.KEY_WINE to "proton-1.0", PcSettings.KEY_DRIVER to "inconnu", PcSettings.KEY_DXVK to "9.9",
+            PcSettings.KEY_QUALITY to "ultra", PcSettings.KEY_SCREEN to "4320")
         assertEquals(base, PcSettings.apply(base, chosen))
     }
 }
