@@ -59,11 +59,23 @@ public class LaunchActivityTest {
     }
 
     @Test
-    public void limiteImagesParSecondeDansLaConfigurationDeDxvk() {
-        assertEquals("version=2.4.1,framerate=30,async=0", LaunchActivity.withFramerate("version=2.4.1,framerate=0,async=0", "30"));
-        assertEquals("version=2.4.1,framerate=45", LaunchActivity.withFramerate("version=2.4.1", "45"));
-        assertEquals("framerate=60,version=1", LaunchActivity.withFramerate("framerate=0,version=1", "60"));
-        assertEquals("framerate=30", LaunchActivity.withFramerate("", "30"));
+    public void reglagesDansLaConfigurationDeDxvk() {
+        assertEquals("version=2.4.1,framerate=30,async=0", LaunchActivity.withConfig("version=2.4.1,framerate=0,async=0", "framerate", "30"));
+        assertEquals("version=2.4.1,framerate=45", LaunchActivity.withConfig("version=2.4.1", "framerate", "45"));
+        assertEquals("framerate=60,version=1", LaunchActivity.withConfig("framerate=0,version=1", "framerate", "60"));
+        assertEquals("framerate=30", LaunchActivity.withConfig("", "framerate", "30"));
+        // « async » et « asyncCache » : clés distinctes.
+        assertEquals("version=1,async=1,asyncCache=0", LaunchActivity.withConfig("version=1,async=0,asyncCache=0", "async", "1"));
+        assertEquals("2.4.1", LaunchActivity.configValue("version=2.4.1,framerate=0", "version"));
+    }
+
+    @Test
+    public void versionDeDxvkPourLesShadersEnArrierePlan() {
+        assertEquals("async-1.10.3", LaunchActivity.asyncDxvk("1.10.1", true));
+        assertEquals("async-1.10.3", LaunchActivity.asyncDxvk(null, false));
+        assertEquals("2.4.1-gplasync", LaunchActivity.asyncDxvk("2.4.1", false));
+        assertEquals("2.3.1-arm64ec-gplasync", LaunchActivity.asyncDxvk("2.3.1-arm64ec", true));
+        assertEquals("2.4-gplasync", LaunchActivity.asyncDxvk("2.4-gplasync", false));
     }
 
     @Test

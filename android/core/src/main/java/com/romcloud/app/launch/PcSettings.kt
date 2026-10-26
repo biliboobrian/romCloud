@@ -19,6 +19,8 @@ object PcSettings {
     const val KEY_QUALITY = "quality"
     const val KEY_SCREEN = "screen"
     const val KEY_FPS = "fps"
+    const val KEY_SHADERS = "shaders"
+    const val KEY_CPU = "cpu"
 
     /** Versions de Proton de RomCloud PC (un conteneur par version). */
     val WINE_VERSIONS = listOf("proton-9.0-arm64ec", "proton-9.0-x86_64")
@@ -59,6 +61,9 @@ object PcSettings {
     /** Images par seconde au plus (limite de DXVK) : moins de travail pour le processeur graphique. */
     val FRAMERATES = listOf("30", "45", "60")
 
+    /** Émulation du processeur plus rapide que celle par défaut (compatibilité), au risque de plantages. */
+    val CPU_PRESETS = listOf("intermediate", "performance")
+
     /** Liste d'un réglage dans la fiche du jeu : clé, titre, choix (valeur null : automatique, libellé). */
     data class Choice(val key: String, val title: String, val options: List<Pair<String?, String>>) {
         /** Libellé de la valeur [value] (automatique si elle est absente ou inconnue). */
@@ -81,6 +86,10 @@ object PcSettings {
             Choice(KEY_DXVK, I18n.get(R.string.pc_setting_dxvk), listOf(auto) + DXVK_VERSIONS.map { it to it }),
             Choice(KEY_SCREEN, I18n.get(R.string.pc_setting_screen), listOf(auto) + SCREEN_HEIGHTS.map { it to "${it}p" }),
             Choice(KEY_FPS, I18n.get(R.string.pc_setting_fps), listOf(auto) + FRAMERATES.map { it to I18n.get(R.string.pc_fps_value, it) }),
+            Choice(KEY_SHADERS, I18n.get(R.string.pc_setting_shaders), listOf(null to I18n.get(R.string.pc_shaders_normal),
+                "async" to I18n.get(R.string.pc_shaders_async))),
+            Choice(KEY_CPU, I18n.get(R.string.pc_setting_cpu), listOf(null to I18n.get(R.string.pc_cpu_compatibility),
+                "intermediate" to I18n.get(R.string.pc_cpu_intermediate), "performance" to I18n.get(R.string.pc_cpu_performance))),
             Choice(KEY_QUALITY, I18n.get(R.string.pc_setting_quality), listOf(auto,
                 "minimum" to I18n.get(R.string.pc_quality_minimum), "verylow" to I18n.get(R.string.pc_quality_very_low),
                 "low" to I18n.get(R.string.pc_quality_low), "medium" to I18n.get(R.string.pc_quality_medium), "high" to I18n.get(R.string.pc_quality_high))),
@@ -93,7 +102,8 @@ object PcSettings {
      * pour un pilote téléchargé, « adrenotoolsDriverUrl »), DXVK (« dxwrapperConfig »), résolution
      * (« screenSize », au format de celle de l'appareil), images par seconde (« romcloudFramerate »,
      * et dans « dxwrapperConfig » si DXVK est choisi, pour Winlator Cmod) et qualité
-     * (« romcloudQuality »). Valeur inconnue (version retirée de RomCloud) : ignorée.
+     * (« romcloudQuality »), shaders en arrière-plan (« romcloudShaders ») et émulation du processeur
+     * (« romcloudCpu »), appliqués par RomCloud PC. Valeur inconnue (version retirée de RomCloud) : ignorée.
      */
     fun apply(base: Map<String, String>, chosen: Map<String, String>): Map<String, String> {
         val result = LinkedHashMap(base)
@@ -109,6 +119,8 @@ object PcSettings {
             result["dxwrapperConfig"] = "version=$it,framerate=${fps ?: 0},maxDeviceMemory=0,async=0,asyncCache=0,vkd3dVersion=2.12-0,vkd3dLevel=12_1"
         }
         fps?.let { result["romcloudFramerate"] = it }
+        chosen[KEY_SHADERS]?.takeIf { it == "async" }?.let { result["romcloudShaders"] = it }
+        chosen[KEY_CPU]?.takeIf { it in CPU_PRESETS }?.let { result["romcloudCpu"] = it }
         chosen[KEY_SCREEN]?.takeIf { it in SCREEN_HEIGHTS }?.let { result["screenSize"] = screenSize(base["screenSize"], it.toInt()) }
         chosen[KEY_QUALITY]?.takeIf { it in QUALITIES }?.let { result["romcloudQuality"] = it }
         return result
