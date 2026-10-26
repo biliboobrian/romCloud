@@ -145,6 +145,7 @@ class Menu {
   bool resetArmed_ = false;  // « Réinitialiser » choisi une fois : le second appui confirme
   std::string query_;        // recherche dans les options (vide : onglets)
   bool keyboard_ = false;    // clavier à l'écran (manette) ouvert
+  mutable bool together_ = false;  // partie à plusieurs (dernier état reçu) : avertissement des options
   int keyboardRow_ = 0, keyboardCol_ = 0;
   std::vector<std::pair<unsigned, std::string>> keyRows_;  // bouton RetroPad, nom (vide : nom par défaut)
   int keySelected_ = 0;  // 0 : « Touches par défaut », puis keyRows_

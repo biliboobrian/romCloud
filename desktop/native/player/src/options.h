@@ -52,6 +52,8 @@ class CoreOptions {
   void declare(const retro_core_option_definition* us, const retro_core_option_definition* local);
   /** RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2(_INTL) : options et catégories ; [local] facultatif. */
   void declare(const retro_core_options_v2* us, const retro_core_options_v2* local);
+  /** Option imposée ([setForced] : liaison, partie à plusieurs), non modifiable. */
+  bool isForced(const std::string& key) const { return forced_.count(key) != 0; }
   /** RETRO_ENVIRONMENT_GET_VARIABLE ; nullptr si la clé est inconnue. */
   const char* get(const std::string& key) const;
   /** RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE : vrai une fois après un changement. */

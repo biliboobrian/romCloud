@@ -472,6 +472,8 @@ class LibretroActivity : ComponentActivity() {
             }.orEmpty()
             // Jeu synchronisé : options qui diffèrent d'un appareil à l'autre coupées (meilleurs scores de FBNeo).
             val netplayOptions = if (netplayLaunch != null && link == null) NetplayRules.CORE_OPTIONS else emptyMap()
+            // Options imposées : masquées de l'écran des options (non modifiables pendant la partie).
+            lockedOptions = linkOptions.keys + netplayOptions.keys
             variables = (GameOptionDefaults.forGame(core, game) + optionsStore.load(systemId) + linkOptions + netplayOptions)
                 .map { (key, value) -> Variable(key, value) }.toTypedArray()
             preferLowLatencyAudio = true
@@ -1031,8 +1033,12 @@ class LibretroActivity : ComponentActivity() {
         return true
     }
 
+    /** Options du cœur imposées par la liaison ou la partie à plusieurs : ni affichées, ni réinitialisées. */
+    private var lockedOptions: Set<String> = emptySet()
+
     private fun readOptions(): List<CoreOption> =
         retroView?.getVariables().orEmpty()
+            .filter { it.key !in lockedOptions }
             .mapNotNull { v -> v.key?.let { CoreOption.parse(it, v.description, v.value.orEmpty()) } }
             .sortedBy { it.label.lowercase() }
 
@@ -1383,17 +1389,18 @@ class LibretroActivity : ComponentActivity() {
             // Entrées du menu (libellé, action), affichées sur deux colonnes ; « Reprendre » en premier.
             val items = buildList<Pair<String, () -> Unit>> {
                 add(stringResource(R.string.libretro_menu_resume) to ::closeMenu)
-                // Partie à plusieurs : charger un état, redémarrer ou changer une option ne se ferait que
-                // sur cet appareil (parties désynchronisées).
+                // Partie à plusieurs : charger un état, redémarrer ou changer de disque ne se ferait que sur
+                // cet appareil (parties désynchronisées). Options du cœur gardées (affichage surtout : leur
+                // écran prévient des autres).
                 val together = netplayPartner != null
                 if (gameReady) {
                     add(stringResource(R.string.libretro_menu_save_state) to ::saveState)
                     if (!together) {
                         add(stringResource(R.string.libretro_menu_load_state) to ::openStates)
                         add(stringResource(R.string.libretro_menu_reset) to ::reset)
-                        add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
-                        if (diskCount >= 2) add(stringResource(R.string.libretro_menu_disk, disk + 1, diskCount) to { diskPicker = true })
                     }
+                    add(stringResource(R.string.libretro_menu_core_options) to ::openOptions)
+                    if (!together && diskCount >= 2) add(stringResource(R.string.libretro_menu_disk, disk + 1, diskCount) to { diskPicker = true })
                     add(stringResource(R.string.libretro_menu_filter, videoFilter.title) to ::openImage)
                     add(stringResource(R.string.libretro_menu_aspect, stringResource(aspectRatio.label)) to { aspectPicker = true })
                     // Partie à plusieurs ou liaison : images rejouées par l'adaptateur, sans run-ahead.
@@ -1649,10 +1656,16 @@ class LibretroActivity : ComponentActivity() {
                         TextButton(onClick = ::resetOptions) { Text(stringResource(R.string.libretro_options_reset)) }
                     }
                 }
+                // Partie à plusieurs : seules les options d'affichage ne désynchronisent pas la partie.
+                val together = netplayPartner != null
                 Text(
-                    stringResource(if (list.isEmpty()) R.string.libretro_options_none else R.string.libretro_options_hint),
+                    stringResource(when {
+                        list.isEmpty() -> R.string.libretro_options_none
+                        together -> R.string.libretro_options_together_hint
+                        else -> R.string.libretro_options_hint
+                    }),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (together) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
                 if (groups.size > 1) {

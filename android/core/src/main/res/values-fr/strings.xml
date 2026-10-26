@@ -402,6 +402,7 @@
     <string name="libretro_filter_crt_desc">Imite un téléviseur cathodique : lignes de balayage.</string>
     <string name="libretro_filter_lcd_desc">Imite l’écran d’une console portable : grille entre les pixels.</string>
     <string name="libretro_options_title">Options du cœur %1$s</string>
+    <string name="libretro_options_together_hint">Partie à plusieurs : seules les options d’affichage (résolution, textures, filtrage) sont sans risque ; les autres peuvent désynchroniser la partie.</string>
     <string name="libretro_options_hint">Mémorisées pour ce système et appliquées à ses prochains jeux. Certaines options ne s’appliquent qu’après avoir redémarré le jeu.</string>
     <string name="libretro_options_none">Ce cœur n’a pas d’options.</string>
     <string name="libretro_options_reset">Réinitialiser</string>

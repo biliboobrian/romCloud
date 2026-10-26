@@ -71,6 +71,8 @@ static const struct {
     {"options_tabs_hint", "LB / RB ou Pg. préc. / Pg. suiv. : onglet   Tapez du texte ou Y : rechercher",
      "LB / RB or Page Up / Page Down: tab   Type text or Y: search"},
     {"options_search_hint", "Tapez du texte ou Y : rechercher", "Type text or Y: search"},
+    {"options_together_hint", "À plusieurs : seules les options d'affichage sont sans risque pour la partie commune.",
+     "Playing together: only display options are safe for the shared game."},
     {"search", "Recherche", "Search"},
     {"search_count", "option(s)", "option(s)"},
     {"search_none", "Aucune option ne correspond à la recherche.", "No option matches the search."},
@@ -85,6 +87,7 @@ static const struct {
     {"options_textures", "Textures", "Textures"},
     {"other_renderer", "autre rendu", "other renderer"},
     {"resolution_restart", "S'applique au redémarrage du jeu (« Redémarrer le jeu »)", "Applies when the game restarts (\"Restart game\")"},
+    {"resolution_restart_together", "S'applique à la prochaine partie (pas de redémarrage à plusieurs)", "Applies to the next game (no restart while playing together)"},
     {"textures_hint", "Texte, interface et logos lissés (xBRZ, HQ4x, MMPX…)", "Smoother text, HUD and logos (xBRZ, HQ4x, MMPX…)"},
     {"renderer_hint", "Pas avec ce rendu : A pour choisir le rendu (GLideN64…)", "Not with this renderer: A to pick the renderer (GLideN64…)"},
     {"state_saved", "État sauvegardé", "State saved"},
@@ -344,6 +347,13 @@ std::vector<CoreOptionGroup> Menu::optionTabs() const {
     if (group.title.empty()) group.title = tr("options_general");
     tabs.push_back(std::move(group));
   }
+  // Options imposées (liaison entre consoles, partie à plusieurs) : non modifiables, masquées.
+  const auto& list = g.options.list();
+  for (auto& tab : tabs) {
+    tab.indices.erase(std::remove_if(tab.indices.begin(), tab.indices.end(), [&](size_t i) { return g.options.isForced(list[i].key); }),
+                      tab.indices.end());
+  }
+  tabs.erase(std::remove_if(tabs.begin(), tabs.end(), [](const CoreOptionGroup& t) { return t.indices.empty(); }), tabs.end());
   return tabs;
 }
 
@@ -362,6 +372,7 @@ std::vector<size_t> Menu::shownOptions(const std::vector<CoreOptionGroup>& tabs)
   const std::vector<std::string> words = searchWords(query_);
   std::vector<std::pair<int, size_t>> found;
   for (size_t i = 0; i < list.size(); i++) {
+    if (g.options.isForced(list[i].key)) continue;
     const std::string label = fold(list[i].label), named = label + " " + fold(list[i].key + " " + tabOf[i]);
     const std::string all = named + " " + fold(list[i].info);
     int score = 0;
@@ -505,14 +516,19 @@ void Menu::openKeys() {
 
 Enhancement Menu::enhancementOf(Item item) { return item == Item::Textures ? Enhancement::Textures : Enhancement::Resolution; }
 
-/** Entrées du menu ; partie à plusieurs : rien qui ne changerait que cet appareil. */
+/**
+ * Entrées du menu ; partie à plusieurs : ni état chargé, ni redémarrage, ni disque, ni run-ahead (ils ne
+ * changeraient que cet appareil) ; options du cœur, résolution et textures gardées (affichage surtout,
+ * l'écran des options prévient des autres).
+ */
 std::vector<Menu::Item> Menu::items(const MenuState& state) const {
   std::vector<Item> list = {Item::Resume, Item::SaveState};
-  if (!state.together) list.insert(list.end(), {Item::LoadState, Item::Reset, Item::Options});
+  if (!state.together) list.insert(list.end(), {Item::LoadState, Item::Reset});
+  list.push_back(Item::Options);
   // Résolution interne (2x, 4x…) et textures (texte, interface) à portée de main, sans chercher dans
   // les options du cœur ; montrées aussi quand seul un autre rendu les propose (A : choix du rendu).
-  if (!state.together && !g.options.enhancementOptions(Enhancement::Resolution).empty()) list.push_back(Item::Resolution);
-  if (!state.together && !g.options.enhancementOptions(Enhancement::Textures).empty()) list.push_back(Item::Textures);
+  if (!g.options.enhancementOptions(Enhancement::Resolution).empty()) list.push_back(Item::Resolution);
+  if (!g.options.enhancementOptions(Enhancement::Textures).empty()) list.push_back(Item::Textures);
   list.insert(list.end(), {Item::Keys, Item::Pad, Item::Players});
   if (state.diskCount > 1 && !state.together) list.push_back(Item::Disk);
   list.push_back(Item::Filter);
@@ -757,6 +773,7 @@ void Menu::renderFilterSettings(Canvas& c) const {
 }
 
 MenuAction Menu::handle(Nav nav, const MenuState& state) {
+  together_ = state.together;
   if (screen_ == Screen::FilterSettings) return handleFilterSettings(nav);
   if (screen_ == Screen::Keys) return handleKeys(nav);
   if (screen_ == Screen::States) {
@@ -831,6 +848,7 @@ MenuAction Menu::handle(Nav nav, const MenuState& state) {
 }
 
 void Menu::render(Canvas& c, const MenuState& state) const {
+  together_ = state.together;
   if (screen_ == Screen::FilterSettings) {
     renderFilterSettings(c);
     return;
@@ -883,7 +901,7 @@ void Menu::render(Canvas& c, const MenuState& state) const {
     if (item == Item::Resolution || item == Item::Textures) {
       const int option = g.options.mainEnhancement(enhancementOf(item));
       if (option < 0) notice = "renderer_hint";
-      else if (g.options.needsRestart((size_t)option)) notice = "resolution_restart";
+      else if (g.options.needsRestart((size_t)option)) notice = state.together ? "resolution_restart_together" : "resolution_restart";
       else if (item == Item::Textures) notice = "textures_hint";
     }
   }
@@ -971,7 +989,8 @@ void Menu::renderOptions(Canvas& c) const {
   int y = 20;
   c.text(24, y, tr("options_title") + " — " + core_, 2, kText);
   y += 22;
-  c.text(24, y, Canvas::fit(tr(list.empty() ? "options_none" : "options_hint"), 1, c.width() - 48), 1, kMuted);
+  const char* hintKey = list.empty() ? "options_none" : together_ ? "options_together_hint" : "options_hint";
+  c.text(24, y, Canvas::fit(tr(hintKey), 1, c.width() - 48), 1, together_ ? kAccent : kMuted);
   y += 18;
 
   if (search) {
