@@ -411,6 +411,7 @@
     <string name="libretro_filter_crt_desc">Imitates a CRT TV: scanlines.</string>
     <string name="libretro_filter_lcd_desc">Imitates the screen of a handheld console: grid between the pixels.</string>
     <string name="libretro_options_title">Options of the %1$s core</string>
+    <string name="libretro_options_together_hint">Playing together: only display options (resolution, textures, filtering) are safe; other options may desync the game.</string>
     <string name="libretro_options_hint">Saved for this system and applied to its next games. Some options only take effect after restarting the game.</string>
     <string name="libretro_options_none">This core has no options.</string>
     <string name="libretro_options_reset">Reset</string>
