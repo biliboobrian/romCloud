@@ -2,12 +2,14 @@ package com.romcloud.app.launch
 
 import com.romcloud.app.I18n
 import com.romcloud.core.R
+import kotlin.math.roundToInt
 
 /**
  * Réglages d'un jeu PC choisis dans sa fiche (enregistrés dans le profil, [com.romcloud.app.data.Account.gameSettings]) :
  * version de Proton, pilote Vulkan (Turnip inclus dans RomCloud PC ou téléchargé, pilote Qualcomm),
- * version de DXVK et qualité graphique au démarrage (appliquée par RomCloud PC selon le moteur du jeu :
- * Unity, Unreal Engine). Réglage absent : choix automatique de RomCloud (comportement par défaut).
+ * version de DXVK, résolution de l'écran Windows et qualité graphique au démarrage (appliquée par
+ * RomCloud PC selon le moteur du jeu : Unity, Unreal Engine). Réglage absent : choix automatique de
+ * RomCloud (comportement par défaut).
  */
 object PcSettings {
 
@@ -15,6 +17,7 @@ object PcSettings {
     const val KEY_DRIVER = "driver"
     const val KEY_DXVK = "dxvk"
     const val KEY_QUALITY = "quality"
+    const val KEY_SCREEN = "screen"
 
     /** Versions de Proton de RomCloud PC (un conteneur par version). */
     val WINE_VERSIONS = listOf("proton-9.0-arm64ec", "proton-9.0-x86_64")
@@ -49,6 +52,9 @@ object PcSettings {
     /** Qualité graphique au démarrage (moteurs Unity et Unreal Engine). */
     val QUALITIES = listOf("low", "medium", "high")
 
+    /** Hauteurs de l'écran Windows (lignes), largeur au format de l'écran de l'appareil. */
+    val SCREEN_HEIGHTS = listOf("480", "540", "720", "900", "1080")
+
     /** Liste d'un réglage dans la fiche du jeu : clé, titre, choix (valeur null : automatique, libellé). */
     data class Choice(val key: String, val title: String, val options: List<Pair<String?, String>>) {
         /** Libellé de la valeur [value] (automatique si elle est absente ou inconnue). */
@@ -69,6 +75,7 @@ object PcSettings {
                 }
             }) else null,
             Choice(KEY_DXVK, I18n.get(R.string.pc_setting_dxvk), listOf(auto) + DXVK_VERSIONS.map { it to it }),
+            Choice(KEY_SCREEN, I18n.get(R.string.pc_setting_screen), listOf(auto) + SCREEN_HEIGHTS.map { it to "${it}p" }),
             Choice(KEY_QUALITY, I18n.get(R.string.pc_setting_quality), listOf(auto,
                 "low" to I18n.get(R.string.pc_quality_low), "medium" to I18n.get(R.string.pc_quality_medium), "high" to I18n.get(R.string.pc_quality_high))),
         )
@@ -77,8 +84,9 @@ object PcSettings {
     /**
      * Réglages de RomCloud PC (section « Extra Data » du raccourci) d'après les réglages [chosen] du jeu,
      * ajoutés à ceux de l'appareil [base] : Proton (« wineVersion »), pilote (« graphicsDriverConfig » et,
-     * pour un pilote téléchargé, « adrenotoolsDriverUrl »), DXVK (« dxwrapperConfig ») et qualité
-     * (« romcloudQuality »). Valeur inconnue (version retirée de RomCloud) : ignorée.
+     * pour un pilote téléchargé, « adrenotoolsDriverUrl »), DXVK (« dxwrapperConfig »), résolution
+     * (« screenSize », au format de celle de l'appareil) et qualité (« romcloudQuality »). Valeur
+     * inconnue (version retirée de RomCloud) : ignorée.
      */
     fun apply(base: Map<String, String>, chosen: Map<String, String>): Map<String, String> {
         val result = LinkedHashMap(base)
@@ -92,7 +100,15 @@ object PcSettings {
             result["dxwrapper"] = "dxvk"
             result["dxwrapperConfig"] = "version=$it,framerate=0,maxDeviceMemory=0,async=0,asyncCache=0,vkd3dVersion=2.12-0,vkd3dLevel=12_1"
         }
+        chosen[KEY_SCREEN]?.takeIf { it in SCREEN_HEIGHTS }?.let { result["screenSize"] = screenSize(base["screenSize"], it.toInt()) }
         chosen[KEY_QUALITY]?.takeIf { it in QUALITIES }?.let { result["romcloudQuality"] = it }
         return result
+    }
+
+    /** Résolution de [height] lignes au format de [device] (« 1600x720 », 16:9 sinon), largeur paire. */
+    private fun screenSize(device: String?, height: Int): String {
+        val size = device?.split('x')?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == 2 && it[1] > 0 }
+        val ratio = size?.let { it[0].toDouble() / it[1] } ?: (16.0 / 9)
+        return "${(height * ratio).roundToInt() / 2 * 2}x$height"
     }
 }

@@ -782,7 +782,7 @@
     <string name="stats_history_empty">No session recorded yet (sessions are listed from this version on).</string>
     <!-- Réglages des jeux PC (fiche du jeu) -->
     <string name="pc_settings_title">PC settings</string>
-    <string name="pc_settings_hint">Saved in your profile, applied at the next launch with RomCloud PC. Quality: Unity and Unreal Engine games.</string>
+    <string name="pc_settings_hint">Saved in your profile, applied at the next launch with RomCloud PC. Resolution: Windows screen, at your device\'s aspect ratio. Quality: Unity and Unreal Engine games.</string>
     <string name="pc_setting_auto">Auto</string>
     <string name="pc_setting_wine">Proton</string>
     <string name="pc_wine_arm64ec">Proton 9.0 arm64ec (FEX)</string>
@@ -791,6 +791,7 @@
     <string name="pc_driver_qualcomm">Qualcomm (device driver)</string>
     <string name="pc_driver_download">%1$s (downloaded)</string>
     <string name="pc_setting_dxvk">DXVK</string>
+    <string name="pc_setting_screen">Screen resolution</string>
     <string name="pc_setting_quality">Graphics quality at startup</string>
     <string name="pc_quality_low">Low</string>
     <string name="pc_quality_medium">Medium</string>
