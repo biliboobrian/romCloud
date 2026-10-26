@@ -49,8 +49,8 @@ object PcSettings {
         "2.4-gplasync", "2.4-24-gplasync", "2.4.1", "2.4.1-gplasync",
     )
 
-    /** Qualité graphique au démarrage (moteurs Unity et Unreal Engine). */
-    val QUALITIES = listOf("low", "medium", "high")
+    /** Qualité graphique au démarrage (moteurs Unity et Unreal Engine), de la plus basse à la plus haute. */
+    val QUALITIES = listOf("minimum", "verylow", "low", "medium", "high")
 
     /** Hauteurs de l'écran Windows (lignes), largeur au format de l'écran de l'appareil. */
     val SCREEN_HEIGHTS = listOf("480", "540", "720", "900", "1080")
@@ -77,6 +77,7 @@ object PcSettings {
             Choice(KEY_DXVK, I18n.get(R.string.pc_setting_dxvk), listOf(auto) + DXVK_VERSIONS.map { it to it }),
             Choice(KEY_SCREEN, I18n.get(R.string.pc_setting_screen), listOf(auto) + SCREEN_HEIGHTS.map { it to "${it}p" }),
             Choice(KEY_QUALITY, I18n.get(R.string.pc_setting_quality), listOf(auto,
+                "minimum" to I18n.get(R.string.pc_quality_minimum), "verylow" to I18n.get(R.string.pc_quality_very_low),
                 "low" to I18n.get(R.string.pc_quality_low), "medium" to I18n.get(R.string.pc_quality_medium), "high" to I18n.get(R.string.pc_quality_high))),
         )
     }

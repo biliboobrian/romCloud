@@ -33,6 +33,8 @@ public class LaunchActivityTest {
         File exe = new File(game("Jeu.exe", "UnityPlayer.dll"), "Jeu.exe");
         assertEquals("-screen-quality Low", LaunchActivity.qualityArgs(exe, "low"));
         assertEquals("-screen-quality High", LaunchActivity.qualityArgs(exe, "high"));
+        assertEquals("-screen-quality \"Very Low\"", LaunchActivity.qualityArgs(exe, "verylow"));
+        assertEquals("-screen-quality \"Very Low\"", LaunchActivity.qualityArgs(exe, "minimum"));
         assertNull(LaunchActivity.qualityArgs(exe, null));
         assertNull(LaunchActivity.qualityArgs(exe, "ultra"));
     }
@@ -45,6 +47,9 @@ public class LaunchActivityTest {
         assertTrue(args.startsWith("-ini:GameUserSettings:[ScalabilityGroups]:sg.ResolutionQuality=90,"));
         assertTrue(args.contains(",[ScalabilityGroups]:sg.ShadowQuality=1"));
         assertFalse(args.contains(" "));
+        String minimum = LaunchActivity.qualityArgs(new File(binaries, "Jeu-Win64-Shipping.exe"), "minimum");
+        assertTrue(minimum.startsWith("-ini:GameUserSettings:[ScalabilityGroups]:sg.ResolutionQuality=50,"));
+        assertTrue(minimum.contains(",[ScalabilityGroups]:sg.ShadowQuality=0"));
         // Lanceur à la racine du jeu, à côté du dossier Engine.
         File root = folder.newFolder();
         assertTrue(new File(root, "Engine/Binaries").mkdirs());

@@ -793,6 +793,8 @@
     <string name="pc_setting_dxvk">DXVK</string>
     <string name="pc_setting_screen">Screen resolution</string>
     <string name="pc_setting_quality">Graphics quality at startup</string>
+    <string name="pc_quality_minimum">Minimum</string>
+    <string name="pc_quality_very_low">Very low</string>
     <string name="pc_quality_low">Low</string>
     <string name="pc_quality_medium">Medium</string>
     <string name="pc_quality_high">High</string>
