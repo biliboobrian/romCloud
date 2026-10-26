@@ -362,10 +362,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         // Handler and Runnable to manage timeout for hiding controls
 
-        boolean isTimeoutEnabled = preferences.getBoolean("touchscreen_timeout_enabled", true);
-
+        // RomCloud : réglage lu au moment de masquer, désactivé par défaut comme partout ailleurs. Lu une
+        // fois ici et activé par défaut, il masquait les commandes tactiles 5 s après le dernier
+        // toucher, sans moyen de les faire revenir (écouteur posé seulement si le réglage est enregistré).
         hideControlsRunnable = () -> {
-            if (isTimeoutEnabled) {
+            if (preferences.getBoolean("touchscreen_timeout_enabled", false)) {
                 inputControlsView.setVisibility(View.GONE);
                 Log.d("XServerDisplayActivity", "Touchscreen controls hidden after timeout.");
             }
