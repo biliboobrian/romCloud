@@ -21,6 +21,10 @@ object PcSettings {
     const val KEY_FPS = "fps"
     const val KEY_SHADERS = "shaders"
     const val KEY_CPU = "cpu"
+    const val KEY_DX12 = "dx12"
+
+    /** DirectX 12 : VKD3D-Proton, ou celui de Wine (automatique : VKD3D-Proton pour les jeux DirectX 12). */
+    val DX12_MODES = listOf("vkd3d", "wine")
 
     /** Versions de Proton de RomCloud PC (un conteneur par version). */
     val WINE_VERSIONS = listOf("proton-9.0-arm64ec", "proton-9.0-x86_64")
@@ -84,6 +88,8 @@ object PcSettings {
                 }
             }) else null,
             Choice(KEY_DXVK, I18n.get(R.string.pc_setting_dxvk), listOf(auto) + DXVK_VERSIONS.map { it to it }),
+            Choice(KEY_DX12, I18n.get(R.string.pc_setting_dx12), listOf(auto,
+                "vkd3d" to I18n.get(R.string.pc_dx12_vkd3d), "wine" to I18n.get(R.string.pc_dx12_wine))),
             Choice(KEY_SCREEN, I18n.get(R.string.pc_setting_screen), listOf(auto) + SCREEN_HEIGHTS.map { it to "${it}p" }),
             Choice(KEY_FPS, I18n.get(R.string.pc_setting_fps), listOf(auto) + FRAMERATES.map { it to I18n.get(R.string.pc_fps_value, it) }),
             Choice(KEY_SHADERS, I18n.get(R.string.pc_setting_shaders), listOf(null to I18n.get(R.string.pc_shaders_normal),
@@ -103,7 +109,7 @@ object PcSettings {
      * (« screenSize », au format de celle de l'appareil), images par seconde (« romcloudFramerate »,
      * et dans « dxwrapperConfig » si DXVK est choisi, pour Winlator Cmod) et qualité
      * (« romcloudQuality »), shaders en arrière-plan (« romcloudShaders ») et émulation du processeur
-     * (« romcloudCpu »), appliqués par RomCloud PC. Valeur inconnue (version retirée de RomCloud) : ignorée.
+     * (« romcloudCpu »), DirectX 12 (« romcloudDx12 »), appliqués par RomCloud PC. Valeur inconnue (version retirée de RomCloud) : ignorée.
      */
     fun apply(base: Map<String, String>, chosen: Map<String, String>): Map<String, String> {
         val result = LinkedHashMap(base)
@@ -121,6 +127,7 @@ object PcSettings {
         fps?.let { result["romcloudFramerate"] = it }
         chosen[KEY_SHADERS]?.takeIf { it == "async" }?.let { result["romcloudShaders"] = it }
         chosen[KEY_CPU]?.takeIf { it in CPU_PRESETS }?.let { result["romcloudCpu"] = it }
+        chosen[KEY_DX12]?.takeIf { it in DX12_MODES }?.let { result["romcloudDx12"] = it }
         chosen[KEY_SCREEN]?.takeIf { it in SCREEN_HEIGHTS }?.let { result["screenSize"] = screenSize(base["screenSize"], it.toInt()) }
         chosen[KEY_QUALITY]?.takeIf { it in QUALITIES }?.let { result["romcloudQuality"] = it }
         return result

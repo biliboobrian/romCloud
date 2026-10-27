@@ -100,6 +100,13 @@ public class LaunchActivity extends Activity {
     static final String SETTING_SHADERS = "romcloudShaders";
     /** Émulation du processeur : « intermediate » ou « performance » ([applyCpu]) ; absent : compatibilité. */
     static final String SETTING_CPU = "romcloudCpu";
+    /**
+     * DirectX 12 choisi dans RomCloud : « vkd3d » (VKD3D-Proton), « wine » (celui de Wine, avec DXVK) ;
+     * absent : VKD3D-Proton pour les jeux DirectX 12 reconnus ([isDx12]).
+     */
+    static final String SETTING_DX12 = "romcloudDx12";
+    /** VKD3D-Proton de RomCloud PC (archive « dxwrapper/vkd3d-<version>.tzst » de Winlator Cmod). */
+    static final String VKD3D_VERSION = "2.14.1-0";
     /** Paquet AdrenoTools du pilote choisi dans RomCloud, s'il n'est pas inclus ([installDriver]). */
     static final String SETTING_DRIVER_URL = "adrenotoolsDriverUrl";
     /** Pilote par défaut sur Adreno (celui de RomCloud), si le pilote choisi n'a pas pu être installé. */
@@ -247,6 +254,8 @@ public class LaunchActivity extends Activity {
             String framerate = settings.getString(SETTING_FRAMERATE);
             boolean asyncShaders = "async".equals(settings.getString(SETTING_SHADERS));
             String cpu = settings.getString(SETTING_CPU);
+            boolean vkd3d = useVkd3d(exe, settings.getString(SETTING_DX12));
+            settings.remove(SETTING_DX12);
             settings.remove(SETTING_QUALITY);
             settings.remove(SETTING_DRIVER_URL);
             settings.remove(SETTING_FRAMERATE);
@@ -256,14 +265,20 @@ public class LaunchActivity extends Activity {
             // Limite d'images par seconde, shaders en arrière-plan : dans la configuration de DXVK du
             // jeu (choisie dans RomCloud), sinon dans celle du conteneur.
             boolean limit = framerate != null && framerate.matches("[1-9][0-9]{0,2}");
-            if (limit || asyncShaders) {
+            if (limit || asyncShaders || vkd3d) {
                 String config = settings.getString("dxwrapperConfig");
                 if (config == null || config.isEmpty()) config = container.getDXWrapperConfig();
                 if (limit) config = withConfig(config, "framerate", framerate);
-                if (asyncShaders) {
+                if (asyncShaders && !vkd3d) {
                     config = withConfig(config, "version", asyncDxvk(configValue(config, "version"), arm64ec));
                     config = withConfig(withConfig(config, "async", "1"), "asyncCache", "1");
                     settings.putString("dxwrapper", "dxvk");
+                }
+                if (vkd3d) {
+                    // DirectX 12 par VKD3D-Proton (DirectX 9 à 11 : DXVK 2.4.1, fourni avec lui).
+                    config = withConfig(withConfig(config, "vkd3dVersion", VKD3D_VERSION), "vkd3dLevel", "12_1");
+                    settings.putString("dxwrapper", "vkd3d");
+                    settings.putString("envVars", withEnv(settings.getString("envVars"), vkd3dEnv(limit ? framerate : null)));
                 }
                 settings.putString("dxwrapperConfig", config);
             }
@@ -451,6 +466,52 @@ public class LaunchActivity extends Activity {
             }
         }
         return found != null ? found : exe;
+    }
+
+    /**
+     * DirectX 12 par VKD3D-Proton : choisi dans RomCloud ([dx12] « vkd3d »), ou automatique (absent)
+     * pour un jeu DirectX 12 ([isDx12]) ; « wine » : DirectX 12 de Wine (DXVK pour le reste).
+     */
+    static boolean useVkd3d(File exe, String dx12) {
+        if (dx12 != null) return "vkd3d".equals(dx12);
+        return isDx12(exe);
+    }
+
+    /**
+     * Jeu DirectX 12 : DirectX 12 Agility SDK livré avec le jeu (« D3D12/D3D12Core.dll » à côté de
+     * l'exécutable, jeux Unreal Engine 5 compris). Celui de Wine (vkd3d d'origine) n'annonce pas le
+     * Shader Model 6.6 qu'ils exigent (Frostpunk 2 : « feature level >= 12.0, shader model >= 6.6 »).
+     */
+    static boolean isDx12(File exe) {
+        File dir = exe.getParentFile();
+        return dir != null && new File(dir, "D3D12/D3D12Core.dll").isFile();
+    }
+
+    /**
+     * Variables de VKD3D-Proton : Shader Model 6.6 annoncé (les pilotes Turnip des Adreno 6xx n'ont pas
+     * toutes les fonctions qu'il demande, les jeux qui l'exigent refusent sinon de démarrer) ; limite
+     * d'images par seconde [framerate] (null : aucune).
+     */
+    static String vkd3dEnv(String framerate) {
+        return "VKD3D_SHADER_MODEL=6_6" + (framerate != null ? " VKD3D_FRAME_RATE=" + framerate : "");
+    }
+
+    /** Variables d'environnement du raccourci [env] (« A=1 B=2 ») avec celles de [added] (remplacées). */
+    static String withEnv(String env, String added) {
+        java.util.Map<String, String> vars = new java.util.LinkedHashMap<>();
+        for (String list : new String[]{env, added}) {
+            if (list == null) continue;
+            for (String part : list.trim().split(" +")) {
+                int eq = part.indexOf('=');
+                if (eq > 0) vars.put(part.substring(0, eq), part.substring(eq + 1));
+            }
+        }
+        StringBuilder out = new StringBuilder();
+        for (java.util.Map.Entry<String, String> e : vars.entrySet()) {
+            if (out.length() > 0) out.append(' ');
+            out.append(e.getKey()).append('=').append(e.getValue());
+        }
+        return out.toString();
     }
 
     /** Jeu Unity compilé en IL2CPP : UnityPlayer.dll et GameAssembly.dll à côté de l'exécutable. */
