@@ -129,8 +129,10 @@ pub fn language() -> String {
     if LANGUAGES.contains(&system.as_str()) { system } else { "en".into() }
 }
 
-/// Réglages tels que l'interface les attend (langue et dossier des BIOS effectifs en plus).
+/// Réglages tels que l'interface les attend (langue et dossier des BIOS effectifs en plus ;
+/// identifiant de ce PC créé s'il manque, joint aux adresses des images).
 pub fn view() -> Value {
+    crate::netplay::device_id();
     let mut s = load();
     if let Value::Object(map) = &mut s {
         map.insert("effectiveLanguage".into(), Value::String(language()));

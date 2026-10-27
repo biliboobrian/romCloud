@@ -1,6 +1,7 @@
 package com.romcloud.app
 
 import android.app.Application
+import com.romcloud.app.netplay.LanPresence
 import com.romcloud.app.netplay.Peer
 import com.romcloud.app.ui.joinNetplay
 import com.romcloud.app.netplay.PlayPresence
@@ -118,7 +119,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         super.onCreate()
         I18n.init(this)
         settings = Settings(this)
-        api = ApiClient(settings, if (packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) "androidtv" else "android")
+        api = ApiClient(settings, if (packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) "androidtv" else "android", LanPresence.deviceId(this))
         repository = Repository(api, filesDir, { settings.hideUnidentified }, { settings.gameOrder }, { settings.gpuDrivers })
         library = LocalLibrary(this, settings)
         downloader = Downloader(this, api, library, appScope)

@@ -5,6 +5,7 @@ import zlib from 'node:zlib';
 import express from 'express';
 import multer from 'multer';
 import * as accounts from './accounts.js';
+import * as apiTokens from './api-tokens.js';
 import * as play from './play.js';
 import * as lobbies from './lobbies.js';
 import { addApk, apkFilePath, deleteApk, emulatorPackages, listApks, requireApk, updateApk } from './apks.js';
@@ -119,17 +120,45 @@ export function access(method, given, { apiKey, adminKey }) {
  */
 export function routeMethod(method, routePath) {
   if (routePath.startsWith('/account/')) return 'GET';
-  if (routePath.startsWith('/users') || routePath.startsWith('/logs')) return 'POST';
+  if (routePath.startsWith('/users') || routePath.startsWith('/logs') || routePath.startsWith('/tokens')) return 'POST';
   return method;
 }
+
+/**
+ * Clé générée (api-tokens.js) : droits de la clé des applications sur l'appareil [deviceId]. Renvoie
+ * « ok », « admin-required » (modification), « unknown » (pas une clé générée), ou la raison du refus
+ * (« disabled », « device-required », « device-limit »).
+ */
+export function tokenAccess(method, given, deviceId, client) {
+  const result = apiTokens.checkToken(given, deviceId, client);
+  if (result !== 'ok') return result;
+  return method === 'GET' || method === 'HEAD' ? 'ok' : 'admin-required';
+}
+
+/** Identifiant de l'appareil (clés générées) : en-tête X-RomCloud-Device-Id, ou ?device_id= (images). */
+const deviceIdOf = (get, query) => get('x-romcloud-device-id') || query.get('device_id') || '';
+
+const TOKEN_ERRORS = {
+  disabled: [401, 'errors.tokenDisabled'],
+  'device-required': [401, 'errors.deviceIdRequired'],
+  'device-limit': [403, 'errors.tokenDeviceLimit'],
+  'admin-required': [403, 'errors.adminKey'],
+};
 
 api.use((req, res, next) => {
   const auth = req.get('authorization') || '';
   const given = auth.startsWith('Bearer ') ? auth.slice(7) : req.get('x-api-key') || req.query.key;
-  const result = access(routeMethod(req.method, req.path), given, config);
+  const method = routeMethod(req.method, req.path);
+  let result = access(method, given, config);
   if (result === 'ok') return next();
-  if (result === 'admin-required') return res.status(403).json({ error: token('errors.adminKey'), code: 'errors.adminKey' });
-  res.status(401).json({ error: token('errors.apiKey') });
+  if (result === 'denied') {
+    const query = new URLSearchParams(req.url.split('?')[1] || '');
+    const generated = tokenAccess(method, given, deviceIdOf((name) => req.get(name), query), accounts.clientInfo(req));
+    if (generated === 'ok') return next();
+    if (generated !== 'unknown') result = generated;
+  }
+  const [status, code] = TOKEN_ERRORS[result] || [401, 'errors.apiKey'];
+  res.status(status).json({ error: token(code), code });
 });
 
 api.get('/status', (req, res) => {
@@ -673,14 +702,16 @@ export function relayAuth(req) {
   const auth = header('authorization');
   const url = new URL(req.url, 'http://relay');
   const given = auth.startsWith('Bearer ') ? auth.slice(7) : header('x-api-key') || url.searchParams.get('key');
-  if (access(routeMethod('GET', '/account/play'), given, config) !== 'ok') return null;
-  return accounts.authenticate(header('x-romcloud-session'), {
+  const client = {
     device: header('x-romcloud-device').slice(0, 100),
     platform: header('x-romcloud-platform').slice(0, 30),
     appVersion: header('x-romcloud-version').slice(0, 40),
     ip: String(req.socket?.remoteAddress || '').slice(0, 64),
     userAgent: header('user-agent').slice(0, 200),
-  });
+  };
+  const method = routeMethod('GET', '/account/play');
+  if (access(method, given, config) !== 'ok' && tokenAccess(method, given, deviceIdOf(header, url.searchParams), client) !== 'ok') return null;
+  return accounts.authenticate(header('x-romcloud-session'), client);
 }
 
 api.put('/account/stream/receiver', signedIn, (req, res) => {
@@ -811,6 +842,19 @@ api.delete('/users/:id', (req, res) => {
 });
 api.delete('/users/:id/sessions/:sessionId', (req, res) => {
   accounts.adminRevokeSession(req.params.id, req.params.sessionId);
+  res.status(204).end();
+});
+// Clés d'accès générées (api-tokens.js) : la clé n'est renvoyée qu'à la création.
+api.get('/tokens', (req, res) => res.json(apiTokens.listTokens()));
+api.post('/tokens', (req, res) => res.status(201).json(apiTokens.createToken(req.body || {})));
+api.get('/tokens/:id', (req, res) => res.json(apiTokens.tokenDetail(req.params.id)));
+api.put('/tokens/:id', (req, res) => res.json(apiTokens.updateToken(req.params.id, req.body || {})));
+api.delete('/tokens/:id', (req, res) => {
+  apiTokens.deleteToken(req.params.id);
+  res.status(204).end();
+});
+api.delete('/tokens/:id/devices/:deviceId', (req, res) => {
+  apiTokens.removeTokenDevice(req.params.id, req.params.deviceId);
   res.status(204).end();
 });
 api.get('/logs/logins', (req, res) => res.json(accounts.adminLoginLog(req.query.limit)));
