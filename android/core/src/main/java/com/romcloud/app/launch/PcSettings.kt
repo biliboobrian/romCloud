@@ -7,7 +7,8 @@ import kotlin.math.roundToInt
 /**
  * Réglages d'un jeu PC choisis dans sa fiche (enregistrés dans le profil, [com.romcloud.app.data.Account.gameSettings]) :
  * version de Proton, pilote Vulkan (Turnip inclus dans RomCloud PC ou téléchargé, pilote Qualcomm),
- * version de DXVK, résolution de l'écran Windows, images par seconde au plus et qualité graphique au
+ * versions de DXVK, VKD3D-Proton, Box64 et FEXCore (incluses, ou téléchargées au premier usage :
+ * [PcCatalog]), résolution de l'écran Windows, images par seconde au plus et qualité graphique au
  * démarrage (appliquée par RomCloud PC selon le moteur du jeu : Unity, Unreal Engine). Réglage absent : choix automatique de
  * RomCloud (comportement par défaut).
  */
@@ -22,6 +23,9 @@ object PcSettings {
     const val KEY_SHADERS = "shaders"
     const val KEY_CPU = "cpu"
     const val KEY_DX12 = "dx12"
+    const val KEY_VKD3D = "vkd3d"
+    const val KEY_BOX64 = "box64"
+    const val KEY_FEXCORE = "fexcore"
 
     /** DirectX 12 : VKD3D-Proton, ou celui de Wine (automatique : VKD3D-Proton pour les jeux DirectX 12). */
     val DX12_MODES = listOf("vkd3d", "wine")
@@ -38,23 +42,46 @@ object PcSettings {
 
     const val SYSTEM_DRIVER = "System"
 
-    private const val TURNIP_RELEASES = "https://github.com/tiagosouzacandido/AdrenoToolsTurnipDrivers/releases/download"
-
-    val DRIVERS = listOf(
+    /** Pilotes inclus dans RomCloud PC (Winlator Cmod 13.1). */
+    private val BUILTIN_DRIVERS = listOf(
         Driver(Winlator.TURNIP, "Turnip 25.3.0 R3"),
         Driver("turnip25.3.0_R3_Gmem", "Turnip 25.3.0 R3 (Gmem)"),
         Driver("turnip25.1.0", "Turnip 25.1.0"),
-        Driver("Turnip - Apr 13, 2026 - 41fecb5", "Turnip 26.1.0", "$TURNIP_RELEASES/20260413/turnip_20260413_26.1.0-devel_vk1.4.348_41fecb5.zip"),
-        Driver("Turnip - Jul 13, 2026 - 079d247", "Turnip 26.2.0", "$TURNIP_RELEASES/20260713/turnip_20260713_26.2.0-devel_vk1.4.354_079d247.zip"),
-        Driver("Turnip - Aug 25, 2026 - 1eb29b2", "Turnip 26.3.0", "$TURNIP_RELEASES/20260825/turnip_20260825_26.3.0-devel_vk1.4.359_1eb29b2.zip"),
-        Driver(SYSTEM_DRIVER, "Qualcomm"),
+        Driver("v805", "Qualcomm 805"),
+        Driver("v762", "Qualcomm 762"),
     )
 
-    /** Versions de DXVK de RomCloud PC (Winlator Cmod 13.1). */
-    val DXVK_VERSIONS = listOf(
-        "1.7.1", "1.10.1", "1.10.3", "async-1.10.3", "2.2.116", "2.3.1", "2.3.1-arm64ec-gplasync",
-        "2.4-gplasync", "2.4-24-gplasync", "2.4.1", "2.4.1-gplasync",
-    )
+    /** Pilotes : inclus, puis téléchargés au premier usage (du plus récent au plus ancien), puis celui de l'appareil. */
+    val DRIVERS: List<Driver> = BUILTIN_DRIVERS + PcCatalog.DRIVERS.filter { d -> BUILTIN_DRIVERS.none { it.id == d.id } } +
+        Driver(SYSTEM_DRIVER, "Qualcomm")
+
+    /**
+     * Composant de Winlator : [type] (dxvk, vkd3d, box64, wowbox64, fexcore), [version] telle que RomCloud PC
+     * l'attend (« 2.4.1 » inclus, « 3.1.1-0 » téléchargé : versionName-versionCode du paquet), [name] affiché,
+     * [url] du paquet .wcp à télécharger (null : inclus dans RomCloud PC).
+     */
+    data class Content(val type: String, val version: String, val name: String, val url: String? = null)
+
+    private fun builtin(type: String, vararg versions: String) = versions.map { Content(type, it, it.removeSuffix("-0")) }
+
+    /** Composants [type] : inclus, puis téléchargés (versions déjà incluses écartées). */
+    private fun contents(type: String, included: List<Content>): List<Content> =
+        included + PcCatalog.CONTENTS.filter { c -> c.type == type && included.none { it.version == c.version } }
+
+    /** Versions de DXVK : celles de RomCloud PC (Winlator Cmod 13.1), puis téléchargées. */
+    val DXVK = contents("dxvk", builtin("dxvk", "1.7.1", "1.10.1", "1.10.3", "async-1.10.3", "2.2.116", "2.3.1",
+        "2.3.1-arm64ec-gplasync", "2.4-gplasync", "2.4-24-gplasync", "2.4.1", "2.4.1-gplasync"))
+    val DXVK_VERSIONS: List<String> get() = DXVK.map { it.version }
+
+    /** Versions de VKD3D-Proton (DirectX 12). */
+    val VKD3D = contents("vkd3d", builtin("vkd3d", "2.14.1-0", "2.13-0", "2.12-0", "2.8-0"))
+
+    /** Box64 (Proton x86_64) et WOWBox64 (Proton arm64ec) : valeur « type:version ». */
+    val BOX64 = contents("box64", builtin("box64", "0.3.7", "0.3.6", "0.3.2")) +
+        contents("wowbox64", builtin("wowbox64", "0.3.7", "0.3.4"))
+
+    /** Versions de FEXCore (Proton arm64ec). */
+    val FEXCORE = contents("fexcore", builtin("fexcore", "2507", "2505"))
 
     /** Qualité graphique au démarrage (moteurs Unity et Unreal Engine), de la plus basse à la plus haute. */
     val QUALITIES = listOf("minimum", "verylow", "low", "medium", "high")
@@ -87,9 +114,12 @@ object PcSettings {
                     else -> driver.label
                 }
             }) else null,
-            Choice(KEY_DXVK, I18n.get(R.string.pc_setting_dxvk), listOf(auto) + DXVK_VERSIONS.map { it to it }),
+            Choice(KEY_DXVK, I18n.get(R.string.pc_setting_dxvk), listOf(auto) + DXVK.map { it.version to contentLabel(it) }),
             Choice(KEY_DX12, I18n.get(R.string.pc_setting_dx12), listOf(auto,
                 "vkd3d" to I18n.get(R.string.pc_dx12_vkd3d), "wine" to I18n.get(R.string.pc_dx12_wine))),
+            Choice(KEY_VKD3D, I18n.get(R.string.pc_setting_vkd3d), listOf(auto) + VKD3D.map { it.version to contentLabel(it) }),
+            Choice(KEY_BOX64, I18n.get(R.string.pc_setting_box64), listOf(auto) + BOX64.map { boxValue(it) to contentLabel(it) }),
+            Choice(KEY_FEXCORE, I18n.get(R.string.pc_setting_fexcore), listOf(auto) + FEXCORE.map { it.version to contentLabel(it) }),
             Choice(KEY_SCREEN, I18n.get(R.string.pc_setting_screen), listOf(auto) + SCREEN_HEIGHTS.map { it to "${it}p" }),
             Choice(KEY_FPS, I18n.get(R.string.pc_setting_fps), listOf(auto) + FRAMERATES.map { it to I18n.get(R.string.pc_fps_value, it) }),
             Choice(KEY_SHADERS, I18n.get(R.string.pc_setting_shaders), listOf(null to I18n.get(R.string.pc_shaders_normal),
@@ -102,6 +132,18 @@ object PcSettings {
         )
     }
 
+    /** Libellé d'un composant : version, avec le Proton visé (Box64) et « (téléchargé) » s'il n'est pas inclus. */
+    private fun contentLabel(c: Content): String {
+        val name = when (c.type) {
+            "box64" -> "Box64 ${c.name} (Proton x86_64)"
+            "wowbox64" -> "WOWBox64 ${c.name} (Proton arm64ec)"
+            else -> c.name
+        }
+        return if (c.url != null) I18n.get(R.string.pc_driver_download, name) else name
+    }
+
+    private fun boxValue(c: Content) = "${c.type}:${c.version}"
+
     /**
      * Réglages de RomCloud PC (section « Extra Data » du raccourci) d'après les réglages [chosen] du jeu,
      * ajoutés à ceux de l'appareil [base] : Proton (« wineVersion »), pilote (« graphicsDriverConfig » et,
@@ -109,7 +151,8 @@ object PcSettings {
      * (« screenSize », au format de celle de l'appareil), images par seconde (« romcloudFramerate »,
      * et dans « dxwrapperConfig » si DXVK est choisi, pour Winlator Cmod) et qualité
      * (« romcloudQuality »), shaders en arrière-plan (« romcloudShaders ») et émulation du processeur
-     * (« romcloudCpu »), DirectX 12 (« romcloudDx12 »), appliqués par RomCloud PC. Valeur inconnue (version retirée de RomCloud) : ignorée.
+     * (« romcloudCpu »), DirectX 12 (« romcloudDx12 »), composants téléchargés (« romcloudDxvkUrl »,
+     * « romcloudVkd3d », « romcloudBox64 », « romcloudFexcore » et leurs adresses), appliqués par RomCloud PC. Valeur inconnue (version retirée de RomCloud) : ignorée.
      */
     fun apply(base: Map<String, String>, chosen: Map<String, String>): Map<String, String> {
         val result = LinkedHashMap(base)
@@ -120,9 +163,22 @@ object PcSettings {
             driver.url?.let { result["adrenotoolsDriverUrl"] = it }
         }
         val fps = chosen[KEY_FPS]?.takeIf { it in FRAMERATES }
-        chosen[KEY_DXVK]?.takeIf { it in DXVK_VERSIONS }?.let {
+        chosen[KEY_DXVK]?.let { v -> DXVK.find { it.version == v } }?.let {
             result["dxwrapper"] = "dxvk"
-            result["dxwrapperConfig"] = "version=$it,framerate=${fps ?: 0},maxDeviceMemory=0,async=0,asyncCache=0,vkd3dVersion=2.12-0,vkd3dLevel=12_1"
+            result["dxwrapperConfig"] = "version=${it.version},framerate=${fps ?: 0},maxDeviceMemory=0,async=0,asyncCache=0,vkd3dVersion=2.12-0,vkd3dLevel=12_1"
+            it.url?.let { url -> result["romcloudDxvkUrl"] = url }
+        }
+        chosen[KEY_VKD3D]?.let { v -> VKD3D.find { it.version == v } }?.let {
+            result["romcloudVkd3d"] = it.version
+            it.url?.let { url -> result["romcloudVkd3dUrl"] = url }
+        }
+        chosen[KEY_BOX64]?.let { v -> BOX64.find { boxValue(it) == v } }?.let {
+            result["romcloudBox64"] = boxValue(it)
+            it.url?.let { url -> result["romcloudBox64Url"] = url }
+        }
+        chosen[KEY_FEXCORE]?.let { v -> FEXCORE.find { it.version == v } }?.let {
+            result["romcloudFexcore"] = it.version
+            it.url?.let { url -> result["romcloudFexcoreUrl"] = url }
         }
         fps?.let { result["romcloudFramerate"] = it }
         chosen[KEY_SHADERS]?.takeIf { it == "async" }?.let { result["romcloudShaders"] = it }

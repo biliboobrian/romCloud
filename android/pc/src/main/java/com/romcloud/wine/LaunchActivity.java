@@ -22,7 +22,9 @@ import com.winlator.cmod.XServerDisplayActivity;
 import com.winlator.cmod.container.Container;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.contents.AdrenotoolsManager;
+import com.winlator.cmod.contents.ContentProfile;
 import com.winlator.cmod.contents.ContentsManager;
+import com.winlator.cmod.core.DefaultVersion;
 import com.winlator.cmod.box86_64.Box86_64Preset;
 import com.winlator.cmod.core.WineInfo;
 import com.winlator.cmod.fexcore.FEXCoreManager;
@@ -45,6 +47,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 import okhttp3.OkHttpClient;
@@ -107,6 +110,20 @@ public class LaunchActivity extends Activity {
     static final String SETTING_DX12 = "romcloudDx12";
     /** VKD3D-Proton de RomCloud PC (archive « dxwrapper/vkd3d-<version>.tzst » de Winlator Cmod). */
     static final String VKD3D_VERSION = "2.14.1-0";
+    /**
+     * Composants choisis dans RomCloud qui ne sont pas inclus (paquets .wcp de Winlator, [installContent]) :
+     * adresse du DXVK de « dxwrapperConfig », version et adresse de VKD3D-Proton, de Box64 (« box64:… »
+     * pour Proton x86_64, « wowbox64:… » pour Proton arm64ec) et de FEXCore (Proton arm64ec).
+     */
+    static final String SETTING_DXVK_URL = "romcloudDxvkUrl";
+    static final String SETTING_VKD3D = "romcloudVkd3d";
+    static final String SETTING_VKD3D_URL = "romcloudVkd3dUrl";
+    static final String SETTING_BOX64 = "romcloudBox64";
+    static final String SETTING_BOX64_URL = "romcloudBox64Url";
+    static final String SETTING_FEXCORE = "romcloudFexcore";
+    static final String SETTING_FEXCORE_URL = "romcloudFexcoreUrl";
+    private static final String[] CONTENT_SETTINGS = {SETTING_DXVK_URL, SETTING_VKD3D, SETTING_VKD3D_URL, SETTING_BOX64,
+            SETTING_BOX64_URL, SETTING_FEXCORE, SETTING_FEXCORE_URL};
     /** Paquet AdrenoTools du pilote choisi dans RomCloud, s'il n'est pas inclus ([installDriver]). */
     static final String SETTING_DRIVER_URL = "adrenotoolsDriverUrl";
     /** Pilote par défaut sur Adreno (celui de RomCloud), si le pilote choisi n'a pas pu être installé. */
@@ -250,6 +267,10 @@ public class LaunchActivity extends Activity {
             // arguments du jeu selon son moteur (réglages propres à RomCloud retirés du raccourci).
             Bundle settings = requested != null ? new Bundle(requested) : new Bundle();
             installDriver(settings);
+            boolean arm64ec = container.getWineVersion().contains("arm64ec");
+            boolean customDxvk = applyContents(settings, arm64ec);
+            String vkd3dVersion = settings.getString(SETTING_VKD3D, VKD3D_VERSION);
+            for (String key : CONTENT_SETTINGS) settings.remove(key);
             String quality = qualityArgs(exe, settings.getString(SETTING_QUALITY));
             String framerate = settings.getString(SETTING_FRAMERATE);
             boolean asyncShaders = "async".equals(settings.getString(SETTING_SHADERS));
@@ -261,7 +282,6 @@ public class LaunchActivity extends Activity {
             settings.remove(SETTING_FRAMERATE);
             settings.remove(SETTING_SHADERS);
             settings.remove(SETTING_CPU);
-            boolean arm64ec = container.getWineVersion().contains("arm64ec");
             // Limite d'images par seconde, shaders en arrière-plan : dans la configuration de DXVK du
             // jeu (choisie dans RomCloud), sinon dans celle du conteneur.
             boolean limit = framerate != null && framerate.matches("[1-9][0-9]{0,2}");
@@ -270,13 +290,14 @@ public class LaunchActivity extends Activity {
                 if (config == null || config.isEmpty()) config = container.getDXWrapperConfig();
                 if (limit) config = withConfig(config, "framerate", framerate);
                 if (asyncShaders && !vkd3d) {
-                    config = withConfig(config, "version", asyncDxvk(configValue(config, "version"), arm64ec));
+                    // DXVK téléchargé choisi dans RomCloud : gardé tel quel.
+                    if (!customDxvk) config = withConfig(config, "version", asyncDxvk(configValue(config, "version"), arm64ec));
                     config = withConfig(withConfig(config, "async", "1"), "asyncCache", "1");
                     settings.putString("dxwrapper", "dxvk");
                 }
                 if (vkd3d) {
                     // DirectX 12 par VKD3D-Proton (DirectX 9 à 11 : DXVK 2.4.1, fourni avec lui).
-                    config = withConfig(withConfig(config, "vkd3dVersion", VKD3D_VERSION), "vkd3dLevel", "12_1");
+                    config = withConfig(withConfig(config, "vkd3dVersion", vkd3dVersion), "vkd3dLevel", "12_1");
                     settings.putString("dxwrapper", "vkd3d");
                     settings.putString("envVars", withEnv(settings.getString("envVars"), vkd3dEnv(limit ? framerate : null)));
                 }
@@ -304,6 +325,99 @@ public class LaunchActivity extends Activity {
         }
     }
 
+    /** Télécharge [url] dans [file]. */
+    private static void download(String url, File file) throws IOException {
+        OkHttpClient client = new OkHttpClient.Builder().followRedirects(true).build();
+        try (Response response = client.newCall(new Request.Builder().url(url).build()).execute()) {
+            if (!response.isSuccessful() || response.body() == null) throw new IOException("HTTP " + response.code());
+            try (InputStream in = response.body().byteStream(); OutputStream out = new FileOutputStream(file)) {
+                byte[] buffer = new byte[64 * 1024];
+                for (int n; (n = in.read(buffer)) > 0; ) out.write(buffer, 0, n);
+            }
+        }
+    }
+
+    /**
+     * Composants choisis dans RomCloud ([CONTENT_SETTINGS]) : installés au premier usage, puis appliqués
+     * au raccourci (Box64 et FEXCore seulement pour le Proton qui les utilise). Échec : composant
+     * inclus par défaut, le jeu se lance. Renvoie true si un DXVK téléchargé est utilisé.
+     */
+    private boolean applyContents(Bundle settings, boolean arm64ec) {
+        ContentsManager contents = new ContentsManager(this);
+        contents.syncContents();
+        boolean customDxvk = false;
+        String dxvkUrl = settings.getString(SETTING_DXVK_URL);
+        String config = settings.getString("dxwrapperConfig");
+        if (dxvkUrl != null && config != null) {
+            customDxvk = installContent(contents, "dxvk", configValue(config, "version"), dxvkUrl);
+            if (!customDxvk) settings.putString("dxwrapperConfig", withConfig(config, "version", DefaultVersion.DXVK));
+        }
+        String vkd3d = settings.getString(SETTING_VKD3D);
+        if (vkd3d != null && !installContent(contents, "vkd3d", vkd3d, settings.getString(SETTING_VKD3D_URL))) settings.remove(SETTING_VKD3D);
+        String box64 = settings.getString(SETTING_BOX64);
+        if (box64 != null && box64.startsWith(arm64ec ? "wowbox64:" : "box64:")) {
+            String type = box64.substring(0, box64.indexOf(':'));
+            String version = box64.substring(type.length() + 1);
+            if (installContent(contents, type, version, settings.getString(SETTING_BOX64_URL))) settings.putString("box64Version", version);
+        }
+        String fexcore = settings.getString(SETTING_FEXCORE);
+        if (fexcore != null && arm64ec && installContent(contents, "fexcore", fexcore, settings.getString(SETTING_FEXCORE_URL))) {
+            settings.putString("fexcoreVersion", fexcore);
+        }
+        return customDxvk;
+    }
+
+    /**
+     * Composant [type] (dxvk, vkd3d, box64, wowbox64, fexcore) en version [version] : inclus ([url] null),
+     * déjà installé, ou paquet .wcp [url] téléchargé et installé (contenus de Winlator). False si
+     * l'installation a échoué.
+     */
+    private boolean installContent(ContentsManager contents, String type, String version, String url) {
+        if (url == null || version == null) return version != null;
+        String entry = type + "-" + version;
+        if (contents.getProfileByEntryName(entry) != null) return true;
+        show(R.string.romcloud_content_downloading, -1);
+        File file = new File(getCacheDir(), "content.wcp");
+        try {
+            download(url, file);
+            AtomicReference<String> error = new AtomicReference<>();
+            contents.extraContentFile(Uri.fromFile(file), new ContentsManager.OnInstallFinishedCallback() {
+                @Override
+                public void onFailed(ContentsManager.InstallFailedReason reason, Exception e) {
+                    error.set(String.valueOf(reason));
+                }
+
+                @Override
+                public void onSucceed(ContentProfile profile) {
+                    if (!entry.equalsIgnoreCase(ContentsManager.getEntryName(profile))) {
+                        error.set(ContentsManager.getEntryName(profile) + " au lieu de " + entry);
+                        return;
+                    }
+                    contents.finishInstallContent(profile, new ContentsManager.OnInstallFinishedCallback() {
+                        @Override
+                        public void onFailed(ContentsManager.InstallFailedReason reason, Exception e) {
+                            if (reason != ContentsManager.InstallFailedReason.ERROR_EXIST) error.set(String.valueOf(reason));
+                        }
+
+                        @Override
+                        public void onSucceed(ContentProfile installed) {}
+                    });
+                }
+            });
+            if (error.get() != null) throw new IOException(error.get());
+            contents.syncContents();
+            if (contents.getProfileByEntryName(entry) == null) throw new IOException(entry + " introuvable après installation");
+            return true;
+        } catch (IOException e) {
+            Log.w("RomCloud", "Composant " + entry + " non installé, version incluse : " + e.getMessage());
+            return false;
+        } finally {
+            file.delete();
+            ContentsManager.cleanTmpDir(this);
+            show(R.string.romcloud_preparing, -1);
+        }
+    }
+
     /**
      * Pilote Vulkan choisi dans RomCloud qui n'est pas inclus (réglage [SETTING_DRIVER_URL] : paquet
      * AdrenoTools) : téléchargé et installé au premier usage. Échec : pilote par défaut, le jeu se lance.
@@ -317,14 +431,7 @@ public class LaunchActivity extends Activity {
         show(R.string.romcloud_driver_downloading, -1);
         File zip = new File(getCacheDir(), "driver.zip");
         try {
-            OkHttpClient client = new OkHttpClient.Builder().followRedirects(true).build();
-            try (Response response = client.newCall(new Request.Builder().url(url).build()).execute()) {
-                if (!response.isSuccessful() || response.body() == null) throw new IOException("HTTP " + response.code());
-                try (InputStream in = response.body().byteStream(); OutputStream out = new FileOutputStream(zip)) {
-                    byte[] buffer = new byte[64 * 1024];
-                    for (int n; (n = in.read(buffer)) > 0; ) out.write(buffer, 0, n);
-                }
-            }
+            download(url, zip);
             String installed = drivers.installDriver(Uri.fromFile(zip));
             if (!id.equals(installed)) throw new IOException("pilote " + installed + " au lieu de " + id);
         } catch (IOException e) {
