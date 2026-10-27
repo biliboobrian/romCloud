@@ -221,7 +221,9 @@ Mots de passe hachés (scrypt), jetons de session aléatoires (seule leur emprei
 
 ### API
 
-Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <clé>` (ou `?key=`) quand une clé est définie : `API_KEY` pour les lectures (GET), `ADMIN_KEY` (ou `API_KEY` seule) pour les modifications ; une clé en lecture seule reçoit `403` sur une modification. Exceptions : `/api/account/*` (profil du joueur) accepte `API_KEY` même pour enregistrer ; `/api/users` et `/api/logs` exigent la clé d’administration même en lecture.
+Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <clé>` (ou `?key=`) quand une clé est définie : `API_KEY` pour les lectures (GET), `ADMIN_KEY` (ou `API_KEY` seule) pour les modifications ; une clé en lecture seule reçoit `403` sur une modification. Exceptions : `/api/account/*` (profil du joueur) accepte `API_KEY` même pour enregistrer ; `/api/users`, `/api/logs` et `/api/tokens` exigent la clé d’administration même en lecture.
+
+**Clés d’accès générées** (interface web, *Utilisateurs* → *Clés d’accès*), en plus de `API_KEY` et `ADMIN_KEY` : chaque clé (`rct_…`) donne les mêmes droits que `API_KEY`, sur un nombre d’appareils choisi à sa création. Les applications envoient l’identifiant de l’appareil (`X-RomCloud-Device-Id`, ou `?device_id=` pour les images) : un appareil qui a utilisé la clé une fois prend une place ; une fois toutes les places prises, les autres appareils reçoivent `403` (`errors.tokenDeviceLimit`). L’administration peut libérer la place d’un appareil, changer le nombre d’appareils, désactiver ou supprimer une clé. La clé n’est affichée qu’à sa création (seule son empreinte est gardée).
 
 | Méthode | Route | Description |
 |---|---|---|
@@ -265,6 +267,7 @@ Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <clé>` (ou 
 | POST | `/api/account/errors` | `{ "message", "context", "details" }` : erreur d’une application (avec ou sans session) |
 | GET/POST · GET/PUT/DELETE | `/api/users` · `/api/users/:id` | Administration des profils (détail : sessions, connexions, temps de jeu, sauvegardes, erreurs) |
 | DELETE | `/api/users/:id/sessions/:sessionId` | Déconnecte un appareil |
+| GET/POST · GET/PUT/DELETE · DELETE | `/api/tokens` · `/api/tokens/:id` · `/api/tokens/:id/devices/:deviceId` | Clés d’accès générées (`POST` : `{ name, maxDevices }`, renvoie la clé une seule fois) · détail avec ses appareils, modifier (`name`, `maxDevices`, `disabled`), supprimer · libérer la place d’un appareil |
 | GET · GET/DELETE | `/api/logs/logins` · `/api/logs/errors` | Journal des connexions · des erreurs (`DELETE` : effacer) |
 | GET | `/api/logs/disk` | Espace disque en arborescence (`tree` : `id`, `label`, `size`, `files`, `children`) et disques (`total`, `free`) ; `?refresh=1` : recalculé |
 | GET · GET · DELETE | `/api/logs/downloads` · `/api/logs/downloads/stats` · `/api/logs/downloads` | Journal des téléchargements (ROM, BIOS, APK) et statistiques (`totals`, `byKind`, `byUser`, `byDevice`, `topItems`, `byDay`) ; filtres `days`, `kind`, `userId` (`anonymous`), `device` · effacer |

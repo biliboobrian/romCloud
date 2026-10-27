@@ -23,9 +23,10 @@ class OfflineException : IOException(I18n.get(R.string.err_offline))
 
 /**
  * [platform] : « android » ou « androidtv », envoyé au serveur (en-tête X-RomCloud-Platform) qui ne
- * liste que les systèmes proposés à cette plateforme.
+ * liste que les systèmes proposés à cette plateforme. [deviceId] : identifiant de l'appareil
+ * (X-RomCloud-Device-Id), qui compte les appareils d'une clé d'accès générée sur le serveur.
  */
-class ApiClient(private val settings: Settings, val platform: String) {
+class ApiClient(private val settings: Settings, val platform: String, val deviceId: String) {
 
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
@@ -60,6 +61,7 @@ class ApiClient(private val settings: Settings, val platform: String) {
         // Hors ligne : refusée sans réseau (listes relues depuis le cache, images du cache disque).
         if (isOffline() && request.tag(Ping::class.java) == null) throw OfflineException()
         val builder = request.newBuilder().header("Accept-Language", I18n.language()).header("X-RomCloud-Platform", platform)
+            .header("X-RomCloud-Device-Id", deviceId)
         // Valeur refusée par OkHttp (caractère hors ASCII dans le nom de l'appareil) : en-tête omis.
         for ((name, value) in clientHeaders()) if (request.header(name) == null) runCatching { builder.header(name, value) }
         if (config.apiKey.isNotEmpty()) builder.header("Authorization", "Bearer ${config.apiKey}")
@@ -86,10 +88,11 @@ class ApiClient(private val settings: Settings, val platform: String) {
 
     fun url(path: String): String = baseUrl() + path
 
-    /** En-tête de la clé d'API (connexions hors OkHttp : relais du jeu par Internet). */
+    /** En-têtes de la clé d'API et de l'appareil (connexions hors OkHttp : relais du jeu par Internet). */
     fun authHeaders(): Map<String, String> {
         val key = settings.config.value.apiKey
-        return if (key.isNotEmpty()) mapOf("Authorization" to "Bearer $key") else emptyMap()
+        val device = mapOf("X-RomCloud-Device-Id" to deviceId)
+        return if (key.isNotEmpty()) device + ("Authorization" to "Bearer $key") else device
     }
 
     /**

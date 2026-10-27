@@ -1,7 +1,8 @@
 // Page « Utilisateurs » de l'administration : profils des joueurs (création, mot de passe,
 // désactivation, suppression), détail d'un profil (sessions par appareil, connexions, temps de jeu,
 // sauvegardes en ligne, erreurs), journal de toutes les connexions et des erreurs des applications,
-// téléchargements (ROM, BIOS, APK) : qui télécharge quoi, statistiques par profil, appareil, jeu et jour.
+// téléchargements (ROM, BIOS, APK) : qui télécharge quoi, statistiques par profil, appareil, jeu et jour,
+// clés d'accès générées (nombre d'appareils permis, appareils qui les utilisent).
 import { formatSize, getLanguage, t } from './i18n.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -10,6 +11,9 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 let helpers;
 let tab = 'users';
 let detailId = null;
+/** Clé d'accès ouverte (onglet Clés d'accès) ; createdToken : clé tout juste créée, montrée une fois. */
+let tokenId = null;
+let createdToken = null;
 /** Filtres de l'onglet Téléchargements : période (jours, 0 = tout), type, profil (« anonymous »), appareil. */
 const dlFilters = { days: 30, kind: '', userId: '', device: '' };
 
@@ -52,15 +56,19 @@ export function initUsers(h) {
     el.onclick = () => {
       tab = el.dataset.usersTab;
       detailId = null;
+      tokenId = null;
+      createdToken = null;
       render();
     };
   }
   $('#userCreateBtn').onclick = createUser;
+  $('#tokenCreateBtn').onclick = createToken;
 }
 
 export function openUsers() {
   if (!$('#usersDialog').open) $('#usersDialog').showModal();
   detailId = null;
+  tokenId = null;
   render();
 }
 
@@ -70,12 +78,15 @@ async function render() {
   $('#errorsClearBtn').classList.toggle('hidden', tab !== 'errors' || detailId != null);
   $('#downloadsClearBtn').classList.toggle('hidden', tab !== 'downloads' || detailId != null);
   $('#diskRefreshBtn').classList.toggle('hidden', tab !== 'disk' || detailId != null);
+  $('#tokenCreateBtn').classList.toggle('hidden', tab !== 'tokens' || tokenId != null);
   const box = $('#usersContent');
   box.innerHTML = `<p class="muted">${helpers.escapeHtml(t('apks.loading'))}</p>`;
   await helpers.guard(async () => {
     if (detailId != null) return renderDetail(box, await helpers.api(`/users/${detailId}`));
     if (tab === 'users') return renderList(box, await helpers.api('/users'));
     if (tab === 'logins') return renderLogins(box, await helpers.api('/logs/logins'));
+    if (tab === 'tokens' && tokenId != null) return renderToken(box, await helpers.api(`/tokens/${tokenId}`));
+    if (tab === 'tokens') return renderTokens(box, await helpers.api('/tokens'));
     if (tab === 'disk') return renderDisk(box, await helpers.api(`/logs/disk${diskRefresh ? '?refresh=1' : ''}`));
     if (tab === 'downloads') {
       const query = new URLSearchParams(Object.entries(dlFilters).filter(([, v]) => v !== '' && v != null)).toString();
@@ -358,6 +369,119 @@ function createUser() {
   helpers.guard(async () => {
     await helpers.api('/users', { method: 'POST', body: { username: username.trim(), password } });
     helpers.toast(t('users.createdToast', { name: username.trim() }));
+    render();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Clés d'accès générées : nombre d'appareils permis, appareils qui les utilisent.
+
+/** Clé tout juste créée : affichée une seule fois, avec un bouton pour la copier. */
+function createdBanner() {
+  if (!createdToken) return '';
+  const e = helpers.escapeHtml;
+  return `<div class="token-created"><strong>${e(t('tokens.createdTitle'))}</strong>
+    <div class="line"><code>${e(createdToken)}</code> <button class="btn small" data-copy-token>${e(t('tokens.copy'))}</button></div></div>`;
+}
+
+function bindCopy(box) {
+  const btn = $('[data-copy-token]', box);
+  if (btn) btn.onclick = () => helpers.guard(async () => {
+    await navigator.clipboard.writeText(createdToken);
+    helpers.toast(t('tokens.copied'));
+  });
+}
+
+function tokenState(k) {
+  const e = helpers.escapeHtml;
+  if (k.disabled) return ` <span class="tag mismatch">${e(t('tokens.disabled'))}</span>`;
+  return k.devices >= k.maxDevices ? ` <span class="tag">${e(t('tokens.full'))}</span>` : '';
+}
+
+function renderTokens(box, tokens) {
+  const e = helpers.escapeHtml;
+  box.innerHTML = `${createdBanner()}<p class="muted">${e(t('tokens.hint'))}</p>${table(
+    [t('tokens.name'), t('tokens.key'), t('tokens.devices'), t('tokens.lastUsed'), ''],
+    tokens.map((k) => `<tr data-token="${k.id}" class="clickable${k.disabled ? ' disabled' : ''}">
+      <td><strong>${e(k.name)}</strong>${tokenState(k)}<br><span class="muted">${e(t('users.created', { date: formatDate(k.createdAt) }))}</span></td>
+      <td><code>${e(k.prefix)}…</code></td>
+      <td>${e(t('tokens.devicesUsed', { n: k.devices, max: k.maxDevices }))}</td>
+      <td>${e(formatDate(k.lastUsedAt))}</td>
+      <td><button class="btn small">${e(t('users.open'))}</button></td>
+    </tr>`),
+    t('tokens.none'),
+  )}`;
+  bindCopy(box);
+  for (const row of $$('[data-token]', box)) {
+    row.onclick = () => {
+      tokenId = Number(row.dataset.token);
+      createdToken = null;
+      render();
+    };
+  }
+}
+
+function renderToken(box, k) {
+  const e = helpers.escapeHtml;
+  box.innerHTML = `
+    <div class="user-head">
+      <button class="btn small ghost" data-back>← ${e(t('users.back'))}</button>
+      <h4>${e(k.name)}${tokenState(k)}</h4>
+      <span class="muted"><code>${e(k.prefix)}…</code> · ${e(t('users.created', { date: formatDate(k.createdAt) }))} ·
+        ${e(t('tokens.devices'))} : ${e(t('tokens.devicesUsed', { n: k.devices, max: k.maxDevices }))}</span>
+      <div class="actions">
+        <button class="btn small" data-rename>${e(t('tokens.rename'))}</button>
+        <button class="btn small" data-max>${e(t('tokens.setMax'))}</button>
+        <button class="btn small" data-toggle>${e(t(k.disabled ? 'tokens.enable' : 'tokens.disable'))}</button>
+        <button class="btn small danger" data-delete>${e(t('tokens.delete'))}</button>
+      </div>
+    </div>
+    <section class="user-section"><h4>${e(t('tokens.devices'))}</h4>
+    ${table([t('tokens.deviceCol'), t('tokens.deviceId'), t('tokens.firstSeen'), t('users.lastSeen'), t('users.ip'), ''], k.deviceList.map((d) => `<tr>
+      <td>${e(device(d))}</td><td><code>${e(d.deviceId)}</code></td><td>${e(formatDate(d.firstSeenAt))}</td>
+      <td>${e(formatDate(d.lastSeenAt))}</td><td><code>${e(d.ip || '–')}</code></td>
+      <td><button class="btn small danger" data-remove="${e(d.deviceId)}">${e(t('tokens.removeDevice'))}</button></td></tr>`), t('tokens.noDevices'))}</section>`;
+  $('[data-back]', box).onclick = () => {
+    tokenId = null;
+    render();
+  };
+  const update = (body) => helpers.guard(async () => {
+    await helpers.api(`/tokens/${k.id}`, { method: 'PUT', body });
+    render();
+  });
+  $('[data-rename]', box).onclick = () => {
+    const name = prompt(t('tokens.namePrompt'), k.name);
+    if (name && name.trim() !== k.name) update({ name: name.trim() });
+  };
+  $('[data-max]', box).onclick = () => {
+    const max = prompt(t('tokens.maxPrompt'), String(k.maxDevices));
+    if (max && Number(max) !== k.maxDevices) update({ maxDevices: Number(max) });
+  };
+  $('[data-toggle]', box).onclick = () => update({ disabled: !k.disabled });
+  $('[data-delete]', box).onclick = () => helpers.guard(async () => {
+    if (!confirm(t('tokens.confirmDelete', { name: k.name }))) return;
+    await helpers.api(`/tokens/${k.id}`, { method: 'DELETE' });
+    tokenId = null;
+    render();
+  });
+  for (const btn of $$('[data-remove]', box)) {
+    btn.onclick = () => helpers.guard(async () => {
+      if (!confirm(t('tokens.confirmRemoveDevice'))) return;
+      await helpers.api(`/tokens/${k.id}/devices/${encodeURIComponent(btn.dataset.remove)}`, { method: 'DELETE' });
+      render();
+    });
+  }
+}
+
+function createToken() {
+  const name = prompt(t('tokens.namePrompt'));
+  if (!name) return;
+  const max = prompt(t('tokens.maxPrompt'), '1');
+  if (!max) return;
+  helpers.guard(async () => {
+    const created = await helpers.api('/tokens', { method: 'POST', body: { name: name.trim(), maxDevices: Number(max) } });
+    createdToken = created.token;
+    tokenId = null;
     render();
   });
 }

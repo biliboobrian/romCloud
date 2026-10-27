@@ -24,10 +24,13 @@ fn safe_name(s: &str) -> String {
 }
 
 /// En-têtes communs : langue de l'interface, clé d'API, plateforme (le serveur ne liste que les
-/// systèmes proposés sous Windows).
+/// systèmes proposés sous Windows), identifiant de ce PC (appareils d'une clé d'accès générée).
 pub fn headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut h = reqwest::header::HeaderMap::new();
     h.insert("X-RomCloud-Platform", reqwest::header::HeaderValue::from_static("windows"));
+    if let Ok(v) = crate::netplay::device_id().parse() {
+        h.insert("X-RomCloud-Device-Id", v);
+    }
     if let Ok(v) = settings::language().parse() {
         h.insert(reqwest::header::ACCEPT_LANGUAGE, v);
     }

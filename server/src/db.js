@@ -204,6 +204,32 @@ db.exec(`
     at          TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS error_logs_user ON error_logs(user_id);
+
+  -- Clés d'accès générées (api-tokens.js) : mêmes droits que la clé des applications, sur un nombre
+  -- limité d'appareils ; seule l'empreinte SHA-256 de la clé est gardée.
+  CREATE TABLE IF NOT EXISTS api_tokens (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    token_hash    TEXT NOT NULL UNIQUE,
+    prefix        TEXT NOT NULL,
+    max_devices   INTEGER NOT NULL,
+    disabled      INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at  TEXT
+  );
+
+  -- Appareils qui ont utilisé une clé générée (au moins une fois : place prise).
+  CREATE TABLE IF NOT EXISTS api_token_devices (
+    token_id      INTEGER NOT NULL REFERENCES api_tokens(id) ON DELETE CASCADE,
+    device_id     TEXT NOT NULL,
+    device        TEXT,
+    platform      TEXT,
+    app_version   TEXT,
+    ip            TEXT,
+    first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (token_id, device_id)
+  );
 `);
 
 // Migrations légères pour les bases créées par une version antérieure.

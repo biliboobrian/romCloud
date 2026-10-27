@@ -290,6 +290,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .error-cell pre { white-space: pre-wrap; font-size: 11px; max-height: 240px; overflow: auto; margin: 6px 0 0; }
 .user-head { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .user-head h4 { font-size: 18px; margin: 4px 0 0; }
+.token-created { border: 1px solid var(--accent, var(--border)); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.token-created code { user-select: all; word-break: break-all; }
 /* Fenêtre des utilisateurs : large et haute ; détail d'un profil sur deux colonnes. */
 #usersDialog { width: min(1600px, calc(100vw - 32px)); height: calc(100vh - 40px); }
 #usersDialog[open] { display: flex; flex-direction: column; }

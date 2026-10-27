@@ -111,7 +111,10 @@
     setTimeout(() => el.remove(), duration ?? (action ? 10000 : type === 'error' ? 7000 : 3500));
   }
 
-  const withKey = (url) => (S.settings.apiKey ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(S.settings.apiKey)}` : url);
+  // Clé d'API, et identifiant de ce PC (appareils d'une clé d'accès générée sur le serveur).
+  const withKey = (url) => (S.settings.apiKey
+    ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(S.settings.apiKey)}${S.settings.deviceId ? `&device_id=${encodeURIComponent(S.settings.deviceId)}` : ''}`
+    : url);
 
   /** Nombre de captures d'écran du jeu (serveur d'avant les 4 captures : 0 ou 1). */
   const screenshotCount = (game) => game.screenshotCount ?? (game.hasScreenshot ? 1 : 0);
