@@ -233,8 +233,9 @@ public class LaunchActivity extends Activity {
                 return;
             }
             Intent intent = getIntent();
-            File exe = new File(intent.getStringExtra(EXTRA_EXE));
-            File romsDir = new File(intent.getStringExtra(EXTRA_ROMS_DIR) != null ? intent.getStringExtra(EXTRA_ROMS_DIR) : exe.getParent());
+            File chosen = new File(intent.getStringExtra(EXTRA_EXE));
+            File exe = unrealShipping(chosen);
+            File romsDir = new File(intent.getStringExtra(EXTRA_ROMS_DIR) != null ? intent.getStringExtra(EXTRA_ROMS_DIR) : chosen.getParent());
             File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
             container.setDrives(drives(container.getDrives(), ROMS_DRIVE, romsDir.getAbsolutePath()));
             container.saveData();
@@ -421,6 +422,35 @@ public class LaunchActivity extends Activity {
         if (name.endsWith("-shipping.exe")) return true;
         File dir = exe.getParentFile();
         return dir != null && new File(dir, "Engine/Binaries").isDirectory();
+    }
+
+    /**
+     * Exécutable à lancer pour [exe] : lanceur Unreal Engine à la racine du jeu (à côté du dossier
+     * Engine) remplacé par le jeu lui-même, « <Projet>/Binaries/Win64/…-Shipping.exe » ; le lanceur
+     * exige le Visual C++ Redistributable installé, alors que les DLL de Wine suffisent au jeu. Sinon [exe].
+     */
+    static File unrealShipping(File exe) {
+        File dir = exe.getParentFile();
+        if (dir == null || exe.getName().toLowerCase(java.util.Locale.ROOT).endsWith("-shipping.exe")
+                || !new File(dir, "Engine/Binaries").isDirectory()) return exe;
+        String base = exe.getName().replaceFirst("(?i)\\.exe$", "").toLowerCase(java.util.Locale.ROOT);
+        File found = null;
+        File[] projects = dir.listFiles(File::isDirectory);
+        if (projects == null) return exe;
+        java.util.Arrays.sort(projects);
+        for (File project : projects) {
+            if (project.getName().equalsIgnoreCase("Engine")) continue;
+            File[] shipping = new File(project, "Binaries/Win64").listFiles((d, name) ->
+                    name.toLowerCase(java.util.Locale.ROOT).endsWith("-shipping.exe"));
+            if (shipping == null) continue;
+            java.util.Arrays.sort(shipping);
+            for (File candidate : shipping) {
+                // Celui du même nom que le lanceur d'abord (« Jeu.exe » : « Jeu-Win64-Shipping.exe »).
+                if (candidate.getName().toLowerCase(java.util.Locale.ROOT).startsWith(base + "-")) return candidate;
+                if (found == null) found = candidate;
+            }
+        }
+        return found != null ? found : exe;
     }
 
     /** Jeu Unity compilé en IL2CPP : UnityPlayer.dll et GameAssembly.dll à côté de l'exécutable. */
