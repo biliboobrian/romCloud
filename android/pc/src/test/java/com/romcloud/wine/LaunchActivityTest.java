@@ -59,6 +59,24 @@ public class LaunchActivityTest {
     }
 
     @Test
+    public void lanceurUnrealRemplaceParLeJeu() throws IOException {
+        File root = folder.newFolder();
+        assertTrue(new File(root, "Engine/Binaries/Win64").mkdirs());
+        assertTrue(new File(root, "Frostpunk2/Binaries/Win64").mkdirs());
+        File shipping = new File(root, "Frostpunk2/Binaries/Win64/Frostpunk2-Win64-Shipping.exe");
+        assertTrue(shipping.createNewFile());
+        assertEquals(shipping, LaunchActivity.unrealShipping(new File(root, "Frostpunk2.exe")));
+        // Déjà le jeu, ou autre moteur : inchangé.
+        assertEquals(shipping, LaunchActivity.unrealShipping(shipping));
+        File other = new File(game("Jeu.exe"), "Jeu.exe");
+        assertEquals(other, LaunchActivity.unrealShipping(other));
+        // Lanceur Unreal sans exécutable Shipping : inchangé.
+        File empty = folder.newFolder();
+        assertTrue(new File(empty, "Engine/Binaries").mkdirs());
+        assertEquals(new File(empty, "Jeu.exe"), LaunchActivity.unrealShipping(new File(empty, "Jeu.exe")));
+    }
+
+    @Test
     public void reglagesDansLaConfigurationDeDxvk() {
         assertEquals("version=2.4.1,framerate=30,async=0", LaunchActivity.withConfig("version=2.4.1,framerate=0,async=0", "framerate", "30"));
         assertEquals("version=2.4.1,framerate=45", LaunchActivity.withConfig("version=2.4.1", "framerate", "45"));
