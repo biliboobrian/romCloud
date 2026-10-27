@@ -791,6 +791,9 @@
     <string name="pc_setting_dx12">DirectX 12</string>
     <string name="pc_dx12_vkd3d">VKD3D-Proton (Shader Model 6.6)</string>
     <string name="pc_dx12_wine">Wine (DXVK pour le reste)</string>
+    <string name="pc_setting_vkd3d">Version de VKD3D-Proton</string>
+    <string name="pc_setting_box64">Version de Box64</string>
+    <string name="pc_setting_fexcore">Version de FEXCore</string>
     <string name="pc_setting_screen">Résolution de l’écran</string>
     <string name="pc_setting_fps">Images par seconde (max.)</string>
     <string name="pc_fps_value">%1$s i/s</string>
