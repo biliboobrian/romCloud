@@ -77,6 +77,25 @@ public class LaunchActivityTest {
     }
 
     @Test
+    public void directX12ParVkd3d() throws IOException {
+        // Agility SDK de DirectX 12 à côté de l'exécutable : VKD3D-Proton automatiquement.
+        File binaries = new File(folder.newFolder(), "Frostpunk2/Binaries/Win64");
+        assertTrue(new File(binaries, "D3D12").mkdirs());
+        assertTrue(new File(binaries, "D3D12/D3D12Core.dll").createNewFile());
+        File exe = new File(binaries, "Frostpunk2-Win64-Shipping.exe");
+        assertTrue(LaunchActivity.useVkd3d(exe, null));
+        assertFalse(LaunchActivity.useVkd3d(exe, "wine"));
+        // Autre jeu : seulement s'il est choisi.
+        File other = new File(game("Jeu.exe"), "Jeu.exe");
+        assertFalse(LaunchActivity.useVkd3d(other, null));
+        assertTrue(LaunchActivity.useVkd3d(other, "vkd3d"));
+        assertEquals("VKD3D_SHADER_MODEL=6_6", LaunchActivity.vkd3dEnv(null));
+        assertEquals("VKD3D_SHADER_MODEL=6_6 VKD3D_FRAME_RATE=30", LaunchActivity.vkd3dEnv("30"));
+        assertEquals("A=1 VKD3D_SHADER_MODEL=6_6", LaunchActivity.withEnv("A=1 VKD3D_SHADER_MODEL=6_0", "VKD3D_SHADER_MODEL=6_6"));
+        assertEquals("B=2", LaunchActivity.withEnv(null, "B=2"));
+    }
+
+    @Test
     public void reglagesDansLaConfigurationDeDxvk() {
         assertEquals("version=2.4.1,framerate=30,async=0", LaunchActivity.withConfig("version=2.4.1,framerate=0,async=0", "framerate", "30"));
         assertEquals("version=2.4.1,framerate=45", LaunchActivity.withConfig("version=2.4.1", "framerate", "45"));

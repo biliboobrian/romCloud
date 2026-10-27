@@ -62,10 +62,16 @@ class PcSettingsTest {
     }
 
     @Test
+    fun directX12() {
+        assertEquals("vkd3d", PcSettings.apply(base, mapOf(PcSettings.KEY_DX12 to "vkd3d"))["romcloudDx12"])
+        assertEquals("wine", PcSettings.apply(base, mapOf(PcSettings.KEY_DX12 to "wine"))["romcloudDx12"])
+    }
+
+    @Test
     fun valeursInconnuesIgnorees() {
         val chosen = mapOf(PcSettings.KEY_WINE to "proton-1.0", PcSettings.KEY_DRIVER to "inconnu", PcSettings.KEY_DXVK to "9.9",
             PcSettings.KEY_QUALITY to "ultra", PcSettings.KEY_SCREEN to "4320", PcSettings.KEY_FPS to "1000",
-            PcSettings.KEY_SHADERS to "x", PcSettings.KEY_CPU to "turbo")
+            PcSettings.KEY_SHADERS to "x", PcSettings.KEY_CPU to "turbo", PcSettings.KEY_DX12 to "dx13")
         assertEquals(base, PcSettings.apply(base, chosen))
     }
 }

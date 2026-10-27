@@ -797,6 +797,9 @@
     <string name="pc_driver_qualcomm">Qualcomm (device driver)</string>
     <string name="pc_driver_download">%1$s (downloaded)</string>
     <string name="pc_setting_dxvk">DXVK</string>
+    <string name="pc_setting_dx12">DirectX 12</string>
+    <string name="pc_dx12_vkd3d">VKD3D-Proton (Shader Model 6.6)</string>
+    <string name="pc_dx12_wine">Wine (DXVK for the rest)</string>
     <string name="pc_setting_screen">Screen resolution</string>
     <string name="pc_setting_fps">Frames per second (max)</string>
     <string name="pc_fps_value">%1$s fps</string>
