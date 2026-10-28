@@ -159,15 +159,21 @@ class RomCloudApp : Application(), ImageLoaderFactory {
             private var started = 0
             override fun onActivityStarted(activity: Activity) {
                 if (started++ == 0) {
+                    connectivity.foreground = true
                     presence.start(appScope)
                     lobbies.start(appScope)
                     touchActivity()
-                    // Retour d'une partie : temps de jeu, sauvegardes et états faits en ligne envoyés.
-                    appScope.launch { account.flush() }
+                    // Retour d'une partie (émulateur externe…) : hors ligne, le serveur est de nouveau
+                    // sondé ; puis temps de jeu, sauvegardes et états faits en ligne envoyés.
+                    appScope.launch {
+                        if (!connectivity.online.value) connectivity.ping()
+                        account.flush()
+                    }
                 }
             }
             override fun onActivityStopped(activity: Activity) {
                 if (--started == 0) {
+                    connectivity.foreground = false
                     presence.stop()
                     lobbies.stop()
                 }
