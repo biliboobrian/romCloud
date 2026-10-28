@@ -206,11 +206,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS error_logs_user ON error_logs(user_id);
 
   -- Clés d'accès générées (api-tokens.js) : mêmes droits que la clé des applications, sur un nombre
-  -- limité d'appareils ; seule l'empreinte SHA-256 de la clé est gardée.
+  -- limité d'appareils. Clé reconnue par son empreinte SHA-256 ; la clé elle-même est gardée pour que
+  -- l'administration puisse la copier et la partager (NULL pour celles d'avant : seule l'empreinte).
   CREATE TABLE IF NOT EXISTS api_tokens (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     name          TEXT NOT NULL,
     token_hash    TEXT NOT NULL UNIQUE,
+    token         TEXT,
     prefix        TEXT NOT NULL,
     max_devices   INTEGER NOT NULL,
     disabled      INTEGER NOT NULL DEFAULT 0,
@@ -262,6 +264,8 @@ if (!systemColumns.includes('folder_games')) {
   // Système « Windows » déjà créé (catalogue Daijishou) et encore vide : jeux PC en dossiers.
   db.exec("UPDATE systems SET folder_games = 1 WHERE id = 'windows' AND NOT EXISTS (SELECT 1 FROM games WHERE system_id = 'windows')");
 }
+// Clé d'accès générée gardée en clair, pour la copier depuis l'administration.
+if (!db.prepare('PRAGMA table_info(api_tokens)').all().some((c) => c.name === 'token')) db.exec('ALTER TABLE api_tokens ADD COLUMN token TEXT');
 const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 // Options des émulateurs intégrés propres au jeu, qui remplacent celles du système (JSON, core-options.js).
 if (!gameColumns.includes('core_options')) db.exec("ALTER TABLE games ADD COLUMN core_options TEXT NOT NULL DEFAULT '{}'");

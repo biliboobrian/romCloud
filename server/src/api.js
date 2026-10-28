@@ -854,7 +854,7 @@ api.delete('/users/:id/sessions/:sessionId', (req, res) => {
   accounts.adminRevokeSession(req.params.id, req.params.sessionId);
   res.status(204).end();
 });
-// Clés d'accès générées (api-tokens.js) : la clé n'est renvoyée qu'à la création.
+// Clés d'accès générées (api-tokens.js), avec la clé elle-même (à copier pour la partager).
 api.get('/tokens', (req, res) => res.json(apiTokens.listTokens()));
 api.post('/tokens', (req, res) => res.status(201).json(apiTokens.createToken(req.body || {})));
 api.get('/tokens/:id', (req, res) => res.json(apiTokens.tokenDetail(req.params.id)));

@@ -25,9 +25,9 @@ test('clé générée : places prises par les appareils, refusée au-delà', () 
   const detail = tokens.tokenDetail(created.id);
   assert.equal(detail.devices, 2);
   assert.deepEqual(detail.deviceList.map((d) => d.deviceId).sort(), [PC, PHONE].sort());
-  // La clé elle-même n'est jamais relue.
-  assert.equal(detail.token, undefined);
-  assert.equal(tokens.listTokens().find((t) => t.id === created.id).token, undefined);
+  // La clé elle-même reste lisible par l'administration, pour la partager.
+  assert.equal(detail.token, created.token);
+  assert.equal(tokens.listTokens().find((t) => t.id === created.id).token, created.token);
   // Appareil retiré : sa place est libérée.
   tokens.removeTokenDevice(created.id, PC);
   assert.equal(tokens.checkToken(created.token, TV), 'ok');

@@ -11,7 +11,7 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 let helpers;
 let tab = 'users';
 let detailId = null;
-/** Clé d'accès ouverte (onglet Clés d'accès) ; createdToken : clé tout juste créée, montrée une fois. */
+/** Clé d'accès ouverte (onglet Clés d'accès) ; createdToken : clé tout juste créée, montrée en tête de liste. */
 let tokenId = null;
 let createdToken = null;
 /** Filtres de l'onglet Téléchargements : période (jours, 0 = tout), type, profil (« anonymous »), appareil. */
@@ -376,20 +376,54 @@ function createUser() {
 // ---------------------------------------------------------------------------
 // Clés d'accès générées : nombre d'appareils permis, appareils qui les utilisent.
 
-/** Clé tout juste créée : affichée une seule fois, avec un bouton pour la copier. */
+/** Clé tout juste créée, en tête de liste, avec un bouton pour la copier. */
 function createdBanner() {
   if (!createdToken) return '';
   const e = helpers.escapeHtml;
   return `<div class="token-created"><strong>${e(t('tokens.createdTitle'))}</strong>
-    <div class="line"><code>${e(createdToken)}</code> <button class="btn small" data-copy-token>${e(t('tokens.copy'))}</button></div></div>`;
+    <div class="line"><code>${e(createdToken)}</code> ${copyButton(createdToken)}</div></div>`;
+}
+
+/** Bouton « Copier » d'une clé ; clé créée avant qu'elles soient gardées (null) : mention à la place. */
+function copyButton(token) {
+  const e = helpers.escapeHtml;
+  if (!token) return `<span class="muted" title="${e(t('tokens.unknown'))}">ⓘ</span>`;
+  return `<button class="btn small" data-copy="${e(token)}">${e(t('tokens.copy'))}</button>`;
+}
+
+/**
+ * Copie [text] dans le presse-papiers. navigator.clipboard n'existe que sur une page sûre (https ou
+ * localhost) : sur l'adresse du serveur dans le réseau local (http), copie par une zone de texte cachée.
+ */
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch { /* copie de secours */ }
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch { /* ok reste faux */ }
+  area.remove();
+  return ok;
 }
 
 function bindCopy(box) {
-  const btn = $('[data-copy-token]', box);
-  if (btn) btn.onclick = () => helpers.guard(async () => {
-    await navigator.clipboard.writeText(createdToken);
-    helpers.toast(t('tokens.copied'));
-  });
+  for (const btn of $$('[data-copy]', box)) {
+    btn.onclick = async (event) => {
+      event.stopPropagation(); // pas d'ouverture de la clé (ligne de la liste)
+      helpers.toast(t(await copyText(btn.dataset.copy) ? 'tokens.copied' : 'tokens.copyFailed'));
+    };
+  }
 }
 
 function tokenState(k) {
@@ -404,7 +438,7 @@ function renderTokens(box, tokens) {
     [t('tokens.name'), t('tokens.key'), t('tokens.devices'), t('tokens.lastUsed'), ''],
     tokens.map((k) => `<tr data-token="${k.id}" class="clickable${k.disabled ? ' disabled' : ''}">
       <td><strong>${e(k.name)}</strong>${tokenState(k)}<br><span class="muted">${e(t('users.created', { date: formatDate(k.createdAt) }))}</span></td>
-      <td><code>${e(k.prefix)}…</code></td>
+      <td><code>${e(k.prefix)}…</code> ${copyButton(k.token)}</td>
       <td>${e(t('tokens.devicesUsed', { n: k.devices, max: k.maxDevices }))}</td>
       <td>${e(formatDate(k.lastUsedAt))}</td>
       <td><button class="btn small">${e(t('users.open'))}</button></td>
@@ -427,8 +461,10 @@ function renderToken(box, k) {
     <div class="user-head">
       <button class="btn small ghost" data-back>← ${e(t('users.back'))}</button>
       <h4>${e(k.name)}${tokenState(k)}</h4>
-      <span class="muted"><code>${e(k.prefix)}…</code> · ${e(t('users.created', { date: formatDate(k.createdAt) }))} ·
+      <span class="muted">${e(t('users.created', { date: formatDate(k.createdAt) }))} ·
         ${e(t('tokens.devices'))} : ${e(t('tokens.devicesUsed', { n: k.devices, max: k.maxDevices }))}</span>
+      <div class="token-created"><div class="line"><code>${e(k.token || `${k.prefix}…`)}</code> ${copyButton(k.token)}</div>
+        ${k.token ? '' : `<span class="muted">${e(t('tokens.unknown'))}</span>`}</div>
       <div class="actions">
         <button class="btn small" data-rename>${e(t('tokens.rename'))}</button>
         <button class="btn small" data-max>${e(t('tokens.setMax'))}</button>
@@ -445,6 +481,7 @@ function renderToken(box, k) {
     tokenId = null;
     render();
   };
+  bindCopy(box);
   const update = (body) => helpers.guard(async () => {
     await helpers.api(`/tokens/${k.id}`, { method: 'PUT', body });
     render();
