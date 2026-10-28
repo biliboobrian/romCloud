@@ -790,6 +790,7 @@
     <string name="pc_settings_title">PC settings</string>
     <string name="pc_settings_hint">Saved in your profile, applied at the next launch with RomCloud PC. Resolution: Windows screen, at your device\'s aspect ratio. Frames per second: capped by DXVK, less work for the GPU. Shaders in the background: no freeze when a new effect appears (an object may be missing for a moment). CPU emulation: faster, but some games crash or freeze. Quality: Unity and Unreal Engine games.</string>
     <string name="pc_setting_auto">Auto</string>
+    <string name="pc_setting_server">Server: %1$s</string>
     <string name="pc_setting_wine">Proton</string>
     <string name="pc_wine_arm64ec">Proton 9.0 arm64ec (FEX)</string>
     <string name="pc_wine_x86_64">Proton 9.0 x86_64 (Box64)</string>

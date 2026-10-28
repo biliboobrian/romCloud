@@ -6,6 +6,7 @@ import { HttpError } from './http-error.js';
 import { SCREENSCRAPER_SYSTEM_IDS } from './screenscraper-systems.js';
 import { DEFAULT_SYSTEM_COLORS, normalizeColor } from './system-colors.js';
 import { normalizeEmulatorOrder } from './emulator-order.js';
+import { normalizeCoreOptions, parseCoreOptions } from './core-options.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
@@ -44,6 +45,8 @@ function rowToSystem(row, stats) {
     platforms: JSON.parse(row.platforms || '[]'),
     // Ordre des émulateurs par plateforme ({ windows: [...], android: [...] } ; absente : ordre de l'application).
     emulatorOrder: JSON.parse(row.emulator_order || '{}'),
+    // Options par défaut des émulateurs intégrés ({ clé: valeur }, core-options.js).
+    coreOptions: parseCoreOptions(row.core_options),
     // Jeux en dossiers (PC Windows) : un sous-dossier par jeu, lancé par son exécutable.
     folderGames: Boolean(row.folder_games),
     source: row.source,
@@ -175,9 +178,10 @@ export function updateSystem(id, input) {
     color: input.color !== undefined ? validateColor(input.color) : current.customColor ? current.color : null,
     emulatorOrder: input.emulatorOrder !== undefined ? normalizeEmulatorOrder(input.emulatorOrder) : current.emulatorOrder,
     folderGames: input.folderGames !== undefined ? flag(input.folderGames) : current.folderGames,
+    coreOptions: input.coreOptions !== undefined ? normalizeCoreOptions(input.coreOptions) : current.coreOptions,
   };
   db.prepare(
-    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?, color = ?, emulator_order = ?, folder_games = ?
+    `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?, color = ?, emulator_order = ?, folder_games = ?, core_options = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -190,6 +194,7 @@ export function updateSystem(id, input) {
     next.color,
     JSON.stringify(next.emulatorOrder),
     next.folderGames ? 1 : 0,
+    JSON.stringify(next.coreOptions),
     id,
   );
   return getSystem(id);

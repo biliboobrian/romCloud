@@ -3,6 +3,7 @@
 //   romcloud-player --core <cœur.dll> --rom <jeu> [--system-dir <BIOS>] [--save-dir <dossier>]
 //                   [--state-dir <dossier>] [--options <fichier>] [--title <nom>] [--lang fr|en]
 //                   [--windowed] [--resume] [--state-name <nom>] [--option-default <clé>=<valeur>]…
+//                   [--options-catalog <fichier JSON des options déclarées par le cœur, écrit en quittant>]
 //                   [--keys-file <touches du clavier>] [--buttons <boutons de la console>]
 //                   [--pad-style <manette de la console>] [--pad-images <illustrations des manettes>]
 //                   [--history-dir <historique des états> --history-device <nom du PC>] [--state-file <état>]
@@ -70,6 +71,7 @@ struct Args {
   std::string core, rom, systemDir, saveDir, stateDir, options, title, lang = "fr";
   std::string stateName;  // nom de l'état de sauvegarde (par défaut celui de la ROM)
   std::vector<std::string> optionDefaults;  // « clé=valeur » propres au jeu (--option-default)
+  std::string optionsCatalog;  // options déclarées par le cœur, écrites en JSON en quittant (--options-catalog)
   std::string keysFile;  // touches du clavier « bouton=scancode », modifiées depuis le menu
   std::string buttons;  // boutons de la console proposés dans l'écran des touches (--buttons)
   std::string padStyle;  // manette de la console dessinée dans la configuration (--pad-style)
@@ -120,7 +122,7 @@ Args parseArgs(int argc, char** argv) {
       {"--netplay-link", &a.netplayLink}, {"--linked", &a.linked},
       {"--netplay-port", &a.netplayPort}, {"--netplay-delay", &a.netplayDelay},
       {"--history-dir", &a.historyDir}, {"--history-device", &a.historyDevice}, {"--state-file", &a.stateFile},
-      {"--disk", &a.disk},
+      {"--disk", &a.disk},       {"--options-catalog", &a.optionsCatalog},
   };
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
@@ -1065,6 +1067,7 @@ int Player::run() {
   }
 
   saveSram();
+  g.options.writeCatalog(args_.optionsCatalog);
   audio_.close();
   input_.shutdown();
   shutdown();

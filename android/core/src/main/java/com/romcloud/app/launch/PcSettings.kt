@@ -1,6 +1,7 @@
 package com.romcloud.app.launch
 
 import com.romcloud.app.I18n
+import com.romcloud.app.data.Account
 import com.romcloud.core.R
 import kotlin.math.roundToInt
 
@@ -99,6 +100,26 @@ object PcSettings {
     data class Choice(val key: String, val title: String, val options: List<Pair<String?, String>>) {
         /** Libellé de la valeur [value] (automatique si elle est absente ou inconnue). */
         fun labelOf(value: String?): String = options.find { it.first == value }?.second ?: options.first().second
+
+        /** Choix sans valeur (null) : réglage [value] du serveur, s'il est connu, à la place d'« automatique ». */
+        fun withDefault(value: String?): Choice {
+            val label = options.find { value != null && it.first == value }?.second ?: return this
+            return copy(options = listOf(null to I18n.get(R.string.pc_setting_server, label)) + options.drop(1))
+        }
+    }
+
+    /** Clé du catalogue des réglages de RomCloud PC envoyé au serveur (options par défaut des jeux PC). */
+    const val CATALOG_CORE = "romcloud-pc"
+
+    /**
+     * Listes de la fiche d'un jeu PC ; pilote Vulkan seulement sur Adreno ([adreno]) ; [defaults] :
+     * réglages choisis sur le serveur (système, puis jeu), appliqués sans choix dans la fiche.
+     */
+    fun choices(adreno: Boolean, defaults: Map<String, String>): List<Choice> = choices(adreno).map { it.withDefault(defaults[it.key]) }
+
+    /** Réglages proposés à l'administration (options par défaut des jeux PC) : tous, choix automatique exclu. */
+    fun catalog(): List<Account.CatalogOption> = choices(adreno = true).map { choice ->
+        Account.CatalogOption(choice.key, choice.title, choice.options.mapNotNull { (value, label) -> value?.let { it to label } }, default = "")
     }
 
     /** Listes de la fiche d'un jeu PC ; pilote Vulkan seulement sur Adreno ([adreno]). */

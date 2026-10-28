@@ -432,7 +432,8 @@ fun GameDetailScreen(
 
             // Jeu PC : Proton, pilote graphique, DXVK et qualité graphique au démarrage.
             state.pcSettings?.let { chosen ->
-                PcSettingsSection(chosen) { key, value ->
+                val defaults = state.system?.let { system -> state.game?.defaultCoreOptions(system) }.orEmpty()
+                PcSettingsSection(chosen, defaults) { key, value ->
                     viewModel.setPcSetting(key, value) { message -> scope.launch { snackbar.showSnackbar(message) } }
                 }
             }
@@ -661,11 +662,14 @@ private fun PlayerSelector(
     }
 }
 
-/** Réglages d'un jeu PC ([PcSettings]) : une liste par réglage, « Auto » par défaut. */
+/**
+ * Réglages d'un jeu PC ([PcSettings]) : une liste par réglage, « Auto » par défaut, ou le réglage
+ * choisi sur le serveur ([defaults]).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PcSettingsSection(chosen: Map<String, String>, onChange: (key: String, value: String?) -> Unit) {
-    val choices = remember { PcSettings.choices(adreno = Settings.isSnapdragon()) }
+private fun PcSettingsSection(chosen: Map<String, String>, defaults: Map<String, String>, onChange: (key: String, value: String?) -> Unit) {
+    val choices = remember(defaults) { PcSettings.choices(adreno = Settings.isSnapdragon(), defaults = defaults) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.pc_settings_title), style = MaterialTheme.typography.titleSmall)
         Text(

@@ -217,6 +217,17 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .emu-order .row { align-items: center; gap: 8px; }
 .emu-order li { align-items: center; }
 .emu-order li .mono { margin-left: 4px; }
+.core-options { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; font-size: 12px; }
+.core-options .row { align-items: center; gap: 8px; }
+.core-options .co-filter { flex: 1; }
+.core-options .co-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.core-options .co-option { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px; border-radius: 6px; }
+.core-options .co-option.chosen { background: var(--surface-2); }
+.core-options .co-option > span { display: flex; flex-direction: column; min-width: 0; }
+.core-options .co-option select { max-width: 50%; }
+.core-options .co-set .mono { margin-left: 4px; }
+.core-options .co-key { flex: 2; }
+.core-options .co-value { flex: 1; }
 
 .game-edit { display: flex; gap: 8px; }
 .media-col { display: flex; flex-direction: column; gap: 12px; padding: 16px 0 16px 18px; width: 200px; flex-shrink: 0; }

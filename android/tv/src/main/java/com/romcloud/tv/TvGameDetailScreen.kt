@@ -117,7 +117,9 @@ fun TvGameDetailScreen(
     var pickEmulator by remember { mutableStateOf(false) }
     // Jeu PC : réglage dont la liste est ouverte (Proton, pilote, DXVK, qualité).
     var pickPcSetting by remember { mutableStateOf<String?>(null) }
-    val pcChoices = remember { PcSettings.choices(adreno = com.romcloud.app.data.Settings.isSnapdragon()) }
+    // « Automatique » : réglage choisi sur le serveur (système, puis jeu) s'il y en a un.
+    val pcDefaults = state.system?.let { system -> state.game?.defaultCoreOptions(system) }.orEmpty()
+    val pcChoices = remember(pcDefaults) { PcSettings.choices(adreno = com.romcloud.app.data.Settings.isSnapdragon(), defaults = pcDefaults) }
     var showRetroArchHelp by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var showStates by remember { mutableStateOf(false) }

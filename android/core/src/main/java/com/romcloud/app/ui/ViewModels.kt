@@ -37,6 +37,7 @@ import com.romcloud.app.launch.CoreSwitchPrompt
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulator
 import com.romcloud.app.launch.MissingEmulatorException
+import com.romcloud.app.launch.PcSettings
 import com.romcloud.app.launch.PendingLaunch
 import com.romcloud.app.libretro.LibretroActivity
 import com.romcloud.app.launch.GameIssue
@@ -123,7 +124,7 @@ fun RomCloudApp.play(
         }
     }
     return try {
-        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay, state, core, listDisk)
+        launcher.launch(activity, system, file, player, resume, game.id, stream, streamMode, netplay, state, core, listDisk, game.defaultCoreOptions(system))
         repository.rememberPlayed(game.id)
         // Émulateur externe : temps de jeu compté jusqu'au retour dans l'application (l'émulateur
         // intégré compte lui-même le temps de la partie affichée).
@@ -175,8 +176,10 @@ internal fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem,
         }
     }
     return try {
-        // Réglages du jeu (Proton, pilote, DXVK, qualité) gardés sur l'appareil par sa fiche.
-        val hint = Winlator.launch(activity, game.title, gameDir, exe, romsRoot, driveReady, chosen, account.cachedGameSettings(game.id))
+        // Réglages du jeu (Proton, pilote, DXVK, qualité) : ceux du serveur (système, puis jeu), remplacés
+        // par ceux choisis dans sa fiche, gardés sur l'appareil.
+        val pcSettings = game.defaultCoreOptions(system) + account.cachedGameSettings(game.id)
+        val hint = Winlator.launch(activity, game.title, gameDir, exe, romsRoot, driveReady, chosen, pcSettings)
         account.startExternalSession(game.id)
         hint?.takeIf { !settings.winlatorDriveHintShown }?.also { settings.winlatorDriveHintShown = true }
     } catch (e: MissingEmulatorException) {
@@ -236,7 +239,7 @@ suspend fun RomCloudApp.joinNetplay(context: Context, peer: Peer): String? {
         NetplayLaunch(host = false, address = peer.address, port = peer.port, peerName = peer.name, game = hosted, saveCore = saveCore)
     }
     return try {
-        launcher.launch(context, system, file, null, gameId = game.id, netplay = launch)
+        launcher.launch(context, system, file, null, gameId = game.id, netplay = launch, coreOptions = game.defaultCoreOptions(system))
         repository.rememberPlayed(game.id)
         null
     } catch (e: LaunchException) {
@@ -683,6 +686,8 @@ class GameDetailViewModel(
             _state.value = UiState(loading = false, system = system, game = game, bios = bios, pcSettings = pc)
             refreshLocal()
             if (pc != null) {
+                // Réglages de RomCloud PC proposés à l'administration (options par défaut des jeux PC).
+                system?.let { app.account.reportCoreOptions(PcSettings.CATALOG_CORE, it.id, PcSettings.catalog()) }
                 val fresh = app.account.gameSettings(gameId)
                 _state.update { it.copy(pcSettings = fresh) }
             }

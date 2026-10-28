@@ -328,8 +328,13 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         keys_file: Some(text(keys_file())),
         buttons: Some(keyboard::console_buttons(system_key, core, &language)),
         pad_style: Some(keyboard::console_pad(system_key, core).to_string()),
-        option_defaults: cores::game_option_defaults(core, &rom),
+        // Options imposées par le jeu, puis celles du serveur (système, puis jeu) : sous les choix de l'utilisateur.
+        option_defaults: [cores::game_option_defaults(core, &rom), cores::server_option_defaults(system, game)].concat(),
     });
+    // Options déclarées par le cœur, écrites par le moteur en quittant : envoyées au serveur (administration).
+    let catalog = base.join("catalog").join(format!("{core}.json"));
+    let _ = std::fs::create_dir_all(base.join("catalog"));
+    args.extend(["--options-catalog".to_string(), text(catalog.clone())]);
     args.extend(["--history-dir".to_string(), text(history.clone()), "--history-device".to_string(), account::hostname()]);
     args.extend(["--pad-images".to_string(), text(pad_images_dir())]);
     // Jeu à plusieurs en réseau local (netplay.rs) : partie proposée ou rejointe ; état choisi.
@@ -359,6 +364,7 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         account::add_playtime(game_id.clone(), (paths::now_ms() - started) / 1000.0).await;
         account::upload_changed(&game_id, &core, &save_files, started - 2000.0).await;
         states::after_session(&game_id, &history).await;
+        account::report_core_options(&core, s(&system, "id"), &catalog).await;
         if let Some((other, path)) = linked_sram {
             if let Some((_, sram)) = save_files.iter().find(|(kind, _)| *kind == "sram") {
                 copy_if_newer(sram, &path);

@@ -230,6 +230,18 @@ db.exec(`
     last_seen_at  TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (token_id, device_id)
   );
+
+  -- Options déclarées par les cœurs des émulateurs intégrés, envoyées par les applications
+  -- (core-options.js) : listes proposées dans l'administration pour les options par défaut.
+  CREATE TABLE IF NOT EXISTS core_option_catalog (
+    core        TEXT NOT NULL,
+    platform    TEXT NOT NULL,
+    systems     TEXT NOT NULL DEFAULT '[]',
+    options     TEXT NOT NULL DEFAULT '[]',
+    app_version TEXT,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (core, platform)
+  );
 `);
 
 // Migrations légères pour les bases créées par une version antérieure.
@@ -242,6 +254,8 @@ if (!systemColumns.includes('platforms')) db.exec("ALTER TABLE systems ADD COLUM
 if (!systemColumns.includes('color')) db.exec('ALTER TABLE systems ADD COLUMN color TEXT');
 // Ordre des émulateurs dans chaque application (JSON { plateforme: [identifiants] }, emulator-order.js).
 if (!systemColumns.includes('emulator_order')) db.exec("ALTER TABLE systems ADD COLUMN emulator_order TEXT NOT NULL DEFAULT '{}'");
+// Options par défaut des émulateurs intégrés pour le système (JSON { clé: valeur }, core-options.js).
+if (!systemColumns.includes('core_options')) db.exec("ALTER TABLE systems ADD COLUMN core_options TEXT NOT NULL DEFAULT '{}'");
 // Jeux en dossiers (PC Windows) : chaque sous-dossier du système est un jeu (folder-games.js).
 if (!systemColumns.includes('folder_games')) {
   db.exec('ALTER TABLE systems ADD COLUMN folder_games INTEGER NOT NULL DEFAULT 0');
@@ -249,6 +263,8 @@ if (!systemColumns.includes('folder_games')) {
   db.exec("UPDATE systems SET folder_games = 1 WHERE id = 'windows' AND NOT EXISTS (SELECT 1 FROM games WHERE system_id = 'windows')");
 }
 const gameColumns = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
+// Options des émulateurs intégrés propres au jeu, qui remplacent celles du système (JSON, core-options.js).
+if (!gameColumns.includes('core_options')) db.exec("ALTER TABLE games ADD COLUMN core_options TEXT NOT NULL DEFAULT '{}'");
 if (!gameColumns.includes('details')) db.exec('ALTER TABLE games ADD COLUMN details TEXT');
 // Licence zRIF d'un jeu PS Vita en .pkg (proposée aux applications pour l'installer dans Vita3K).
 if (!gameColumns.includes('zrif')) db.exec('ALTER TABLE games ADD COLUMN zrif TEXT');

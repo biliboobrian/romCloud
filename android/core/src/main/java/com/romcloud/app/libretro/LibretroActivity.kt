@@ -94,6 +94,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.data.Account
 import com.romcloud.app.data.SavedState
 import com.romcloud.app.data.StateHistory
 import com.romcloud.app.data.StreamReceiver
@@ -132,6 +133,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
@@ -463,7 +467,8 @@ class LibretroActivity : ComponentActivity() {
             savesDirectory = sramFile.parentFile!!.apply { mkdirs() }.absolutePath
             saveRAMState = sram
             // Dernières options choisies pour ce système (les autres gardent la valeur par défaut du cœur).
-            // Valeurs imposées par le jeu (cartouche GX4000…), sauf choix de l'utilisateur.
+            // Valeurs imposées par le jeu (cartouche GX4000…), puis options par défaut choisies sur le
+            // serveur (système, puis jeu), sauf choix de l'utilisateur.
             // Liaison entre consoles : options du cœur imposées (serveur chez l'hôte, adresse de l'hôte chez l'invité).
             val linkOptions = netplayLaunch?.let { launch ->
                 link?.let {
@@ -474,7 +479,8 @@ class LibretroActivity : ComponentActivity() {
             val netplayOptions = if (netplayLaunch != null && link == null) NetplayRules.CORE_OPTIONS else emptyMap()
             // Options imposées : masquées de l'écran des options (non modifiables pendant la partie).
             lockedOptions = linkOptions.keys + netplayOptions.keys
-            variables = (GameOptionDefaults.forGame(core, game) + optionsStore.load(systemId) + linkOptions + netplayOptions)
+            defaultOptions = GameOptionDefaults.forGame(core, game) + serverOptions
+            variables = (defaultOptions + optionsStore.load(systemId) + linkOptions + netplayOptions)
                 .map { (key, value) -> Variable(key, value) }.toTypedArray()
             preferLowLatencyAudio = true
             videoFilter = videoFilters.load(systemId)
@@ -493,6 +499,7 @@ class LibretroActivity : ComponentActivity() {
                 if (it is GLRetroView.GLRetroEvents.FrameRendered && !gameReady) {
                     gameReady = true
                     startPlayClock()
+                    reportOptionCatalog()
                     applyRunAhead()
                     selectControllers(view)
                     // Invité : l'état de l'hôte remplace la partie reprise.
@@ -1049,11 +1056,39 @@ class LibretroActivity : ComponentActivity() {
         options = readOptions()
     }
 
-    /** Revient aux valeurs par défaut du cœur et oublie les options mémorisées du système. */
+    /**
+     * Options par défaut du cœur choisies sur le serveur pour ce jeu (système, puis jeu) : sous les choix
+     * de l'utilisateur.
+     */
+    private val serverOptions: Map<String, String> by lazy {
+        intent.getStringExtra(EXTRA_CORE_OPTIONS)
+            ?.let { runCatching { Json.decodeFromString(MapSerializer(String.serializer(), String.serializer()), it) }.getOrNull() }
+            .orEmpty()
+    }
+
+    /** Valeurs des options sans choix de l'utilisateur : imposées par le jeu, puis choisies sur le serveur. */
+    private var defaultOptions: Map<String, String> = emptyMap()
+
+    /**
+     * Options déclarées par le cœur envoyées au serveur (une fois par version) : l'administration les
+     * propose pour choisir les options par défaut du système ou du jeu.
+     */
+    private fun reportOptionCatalog() {
+        val declared = retroView?.getVariables().orEmpty()
+            .mapNotNull { v -> v.key?.let { CoreOption.parse(it, v.description, v.value.orEmpty()) } }
+        account.reportCoreOptions(core, systemId, declared.map { o ->
+            Account.CatalogOption(o.key, o.label, o.values.map { it to it }, o.default)
+        })
+    }
+
+    /**
+     * Revient aux valeurs par défaut (celles du serveur, sinon du cœur) et oublie les options
+     * mémorisées du système.
+     */
     private fun resetOptions() {
         optionsStore.clear(systemId)
-        val changed = options.orEmpty().filter { it.value != it.default }
-        retroView?.updateVariables(*changed.map { Variable(it.key, it.default) }.toTypedArray())
+        val reset = options.orEmpty().map { it to (defaultOptions[it.key] ?: it.default) }.filter { (option, value) -> option.value != value }
+        retroView?.updateVariables(*reset.map { (option, value) -> Variable(option.key, value) }.toTypedArray())
         options = readOptions()
         toast = getString(R.string.libretro_options_reset_done)
     }
@@ -2051,6 +2086,7 @@ class LibretroActivity : ComponentActivity() {
         private const val EXTRA_STATE = "state"
         private const val EXTRA_AUTO_UPLOAD_STATES = "autoUploadStates"
         private const val EXTRA_DISK = "disk"
+        private const val EXTRA_CORE_OPTIONS = "coreOptions"
         private const val TOAST_MS = 2000L
         /** État chargé au lancement : essais espacés de [START_STATE_RETRY_MS] (environ 3 s en tout). */
         private const val START_STATE_ATTEMPTS = 15
@@ -2077,7 +2113,8 @@ class LibretroActivity : ComponentActivity() {
          * [stream] : TV du profil sur laquelle diffuser le jeu ; [streamMode] : image diffusée ;
          * [state] : état de l'historique chargé au lancement ; [autoUploadStates] : états envoyés en ligne
          * (réglage lu par l'application : ce processus garde ses préférences en mémoire) ; [disk] : jeu en
-         * plusieurs disques, disque inséré au démarrage (0 pour le premier).
+         * plusieurs disques, disque inséré au démarrage (0 pour le premier) ; [coreOptions] : options par
+         * défaut du cœur choisies sur le serveur (système, puis jeu), sous les choix de l'utilisateur.
          */
         fun intent(
             context: Context,
@@ -2093,6 +2130,7 @@ class LibretroActivity : ComponentActivity() {
             state: File? = null,
             autoUploadStates: Boolean = true,
             disk: Int = 0,
+            coreOptions: Map<String, String> = emptyMap(),
         ): Intent =
             Intent(context, LibretroActivity::class.java)
                 .putExtra(EXTRA_SYSTEM, systemId)
@@ -2107,5 +2145,6 @@ class LibretroActivity : ComponentActivity() {
                 .putExtra(EXTRA_STATE, state?.absolutePath)
                 .putExtra(EXTRA_AUTO_UPLOAD_STATES, autoUploadStates)
                 .putExtra(EXTRA_DISK, disk)
+                .putExtra(EXTRA_CORE_OPTIONS, Json.encodeToString(MapSerializer(String.serializer(), String.serializer()), coreOptions))
     }
 }

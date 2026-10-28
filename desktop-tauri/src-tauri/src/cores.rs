@@ -180,6 +180,23 @@ pub fn game_option_defaults(core: &str, file: &str) -> Vec<(String, String)> {
     vec![]
 }
 
+/**
+ * Options par défaut des émulateurs intégrés choisies sur le serveur : celles du système
+ * (`coreOptions`), remplacées par celles du jeu. Passées au moteur sous les choix de l'utilisateur.
+ */
+pub fn server_option_defaults(system: &Value, game: &Value) -> Vec<(String, String)> {
+    let mut merged: Vec<(String, String)> = Vec::new();
+    for level in [system, game] {
+        let Some(options) = level.get("coreOptions").and_then(Value::as_object) else { continue };
+        for (key, value) in options {
+            let Some(value) = value.as_str() else { continue };
+            merged.retain(|(k, _)| k != key);
+            merged.push((key.clone(), value.to_string()));
+        }
+    }
+    merged
+}
+
 /// Paramètres de romcloud-player.exe. `state_name` : nom de l'état de sauvegarde (celui du jeu,
 /// même si la ROM passée est extraite d'un .zip) ; `resume` : reprend la partie à cet état ;
 /// `keys_file` : touches du clavier ; `buttons` : boutons de la console ; `pad_style` : manette
@@ -385,6 +402,18 @@ mod tests {
         assert!(game_option_defaults("cap32", r"D:\Jeux\Disque.dsk").is_empty());
         let args = player_args(&PlayerArgs { option_defaults: game_option_defaults("cap32", "Pang.cpr"), ..base() });
         assert_eq!(value(&args, "--option-default"), "cap32_model=6128+ (experimental)");
+    }
+
+    #[test]
+    fn options_du_serveur_systeme_puis_jeu() {
+        let system = json!({ "id": "n64", "coreOptions": { "rdp": "gliden64", "res": "640x480" } });
+        let game = json!({ "id": 1, "coreOptions": { "rdp": "angrylion", "n": 3 } });
+        assert_eq!(
+            server_option_defaults(&system, &game),
+            [("res".to_string(), "640x480".to_string()), ("rdp".to_string(), "angrylion".to_string())]
+        );
+        // Serveur d'avant les options : aucune.
+        assert!(server_option_defaults(&json!({ "id": "n64" }), &json!({ "id": 1 })).is_empty());
     }
 
     /// Même ordre effectif sous Windows et Android : dans chaque table, un cœur absent d'une seule des
