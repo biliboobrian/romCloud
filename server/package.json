@@ -1,6 +1,6 @@
 {
   "name": "romcloud-server",
-  "version": "1.83.1",
+  "version": "1.84.0",
   "description": "Serveur de ROMs pour RomCloud : gestion par système, scraping, API pour l'application Android",
   "type": "module",
   "main": "src/index.js",
