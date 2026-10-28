@@ -12,6 +12,7 @@ import { stars } from './scraper/rating.js';
 import { contentIdLabel } from './scraper/serial.js';
 import { exeCandidates, folderFiles, folderStats, prereqsOf, uninstallerOf } from './folder-games.js';
 import { listSystems, requireSystem, systemDir } from './systems.js';
+import { normalizeCoreOptions, parseCoreOptions } from './core-options.js';
 
 // Fichiers ignorés lors du scan : fichiers cachés, envois en cours, métadonnées diverses.
 const IGNORED_RE = /^\.|\.(part|tmp|upload|txt|nfo|db|ini|xml|jpg|jpeg|png)$/i;
@@ -116,6 +117,8 @@ export function rowToGame(row, parts = []) {
         }
       : {}),
     groupMode: row.group_mode ?? null,
+    // Options des émulateurs intégrés propres au jeu, qui remplacent celles du système (core-options.js).
+    coreOptions: parseCoreOptions(row.core_options),
     crc32: row.crc32,
     md5: row.md5,
     title: row.title,
@@ -271,6 +274,10 @@ export function updateGame(id, input) {
     for (const exe of list) if (!exes.includes(exe)) throw new HttpError(400, 'errors.unknownExe', { exe });
     sets.push('extra_exes = ?', 'extra_exes_chosen = ?');
     values.push(JSON.stringify(list), chosen ? 1 : 0);
+  }
+  if (input.coreOptions !== undefined) {
+    sets.push('core_options = ?');
+    values.push(JSON.stringify(normalizeCoreOptions(input.coreOptions)));
   }
   if (sets.length) {
     db.prepare(`UPDATE games SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`).run(...values, Number(id));

@@ -1,6 +1,7 @@
 // Interface d'administration RomCloud (vanilla JS, sans build).
 import { LANGUAGES, applyTranslations, formatSize, getLanguage, setLanguage, t } from './i18n.js';
 import { initUsers } from './users.js';
+import { coreOptionsEditor } from './core-options.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -396,6 +397,7 @@ function openSystemSettings() {
   fillCopyPlayersSelect(s);
   state.emulatorOrder = structuredClone(s.emulatorOrder || {});
   loadEmulatorCandidates();
+  guard(() => sysCoreOptions().load({ systemId: s.id, values: s.coreOptions || {} }));
   if (!$('#sysDialog').open) $('#sysDialog').showModal();
 }
 
@@ -582,6 +584,7 @@ async function saveSystemSettings(e) {
   // Case décochée : absente du formulaire, envoyée quand même (jeux en dossiers coupés).
   data.folderGames = $('#sysFolderGames').checked;
   data.emulatorOrder = state.emulatorOrder;
+  data.coreOptions = sysCoreOptions().value();
   await guard(async () => {
     state.current = await api(`/systems/${encodeURIComponent(state.current.id)}`, { method: 'PUT', body: data });
     $('#sysDialog').close();
@@ -712,7 +715,24 @@ const licenseKindOf = (s) => (isVitaSystem(s) ? 'zrif' : isPs3System(s) ? 'rap' 
 function openGame(game) {
   state.editingGame = game;
   fillGameDialog(game);
+  fillGameCoreOptions(game);
   $('#gameDialog').showModal();
+}
+
+// ---- Options par défaut des émulateurs intégrés (core-options.js) ----
+
+let sysCoreOptionsEditor;
+let gameCoreOptionsEditor;
+const sysCoreOptions = () => (sysCoreOptionsEditor ??= coreOptionsEditor($('#sysCoreOptions'), { api, escapeHtml }));
+const gameCoreOptions = () => (gameCoreOptionsEditor ??= coreOptionsEditor($('#gameCoreOptions'), { api, escapeHtml }));
+
+/** Options du jeu, celles du système en valeur par défaut ; section ouverte s'il en a. */
+function fillGameCoreOptions(game) {
+  const values = game.coreOptions || {};
+  const count = Object.keys(values).length;
+  $('#gameCoreOptionsSummary').textContent = count ? t('coreOptions.gameCount', { n: count }) : t('coreOptions.game');
+  $('#gameCoreOptionsBox').open = count > 0;
+  guard(() => gameCoreOptions().load({ systemId: game.systemId, values, inherited: state.current?.coreOptions || {} }));
 }
 
 function fillGameDialog(game, bust = '') {
@@ -830,6 +850,7 @@ async function saveGame(e) {
   // Autres exécutables (jeu en dossier) : toutes les cases cochées, liste vide comprise.
   delete data.extraExes;
   if (state.editingGame.folder && $('#gameExtraList').childElementCount) data.extraExes = form.getAll('extraExes');
+  data.coreOptions = gameCoreOptions().value();
   await guard(async () => {
     await api(`/games/${state.editingGame.id}`, { method: 'PUT', body: data });
     $('#gameDialog').close();

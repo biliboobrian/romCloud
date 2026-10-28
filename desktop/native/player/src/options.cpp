@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 #include "libretro.h"
@@ -388,11 +389,59 @@ std::vector<std::pair<std::string, std::string>> CoreOptions::settings(const std
 
 void CoreOptions::resetAll() {
   for (auto& o : options_) {
-    o.value = o.defaultValue();
+    // Valeur par défaut propre au jeu (serveur, jeu) si le cœur la propose, sinon celle du cœur.
+    auto preset = gameDefaults_.find(o.key);
+    bool valid = preset != gameDefaults_.end() && std::find(o.values.begin(), o.values.end(), preset->second) != o.values.end();
+    o.value = valid ? preset->second : o.defaultValue();
     saved_.erase(o.key);
   }
   updated_ = true;
   save();
+}
+
+namespace {
+
+std::string jsonString(const std::string& s) {
+  std::string out = "\"";
+  for (char c : s) {
+    if (c == '"' || c == '\\') {
+      out += '\\';
+      out += c;
+    } else if ((unsigned char)c < 0x20) {
+      char hex[8];
+      snprintf(hex, sizeof hex, "\\u%04x", c);
+      out += hex;
+    } else {
+      out += c;
+    }
+  }
+  return out + "\"";
+}
+
+}  // namespace
+
+void CoreOptions::writeCatalog(const std::string& file) const {
+  if (file.empty() || options_.empty()) return;
+  std::string text = "[";
+  for (size_t i = 0; i < options_.size(); i++) {
+    const CoreOption& o = options_[i];
+    std::string category;
+    for (const auto& c : categories_) {
+      if (c.first == o.category) category = c.second;
+    }
+    text += i ? ",\n{" : "\n{";
+    text += "\"key\":" + jsonString(o.key) + ",\"label\":" + jsonString(o.label) + ",\"default\":" + jsonString(o.defaultVal);
+    if (!category.empty()) text += ",\"category\":" + jsonString(category);
+    if (!o.info.empty()) text += ",\"info\":" + jsonString(o.info);
+    text += ",\"values\":[";
+    for (size_t v = 0; v < o.values.size(); v++) {
+      const std::string& label = v < o.labels.size() && !o.labels[v].empty() ? o.labels[v] : o.values[v];
+      text += (v ? ",{\"value\":" : "{\"value\":") + jsonString(o.values[v]) + ",\"label\":" + jsonString(label) + "}";
+    }
+    text += "]}";
+  }
+  text += "\n]\n";
+  writeFile(file, text.data(), text.size());
 }
 
 void CoreOptions::save() const {

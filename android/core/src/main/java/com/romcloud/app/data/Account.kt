@@ -548,6 +548,45 @@ class Account(private val context: Context, private val api: ApiClient, private 
     }
 
     // -------------------------------------------------------------------------
+    // Catalogue des options des cœurs (options par défaut choisies dans l'administration)
+    // -------------------------------------------------------------------------
+
+    /** Option déclarée par un cœur intégré ou réglage de RomCloud PC : valeurs (valeur, libellé). */
+    data class CatalogOption(val key: String, val label: String, val values: List<Pair<String, String>>, val default: String?)
+
+    private val catalogSent = context.getSharedPreferences("romcloud_core_catalog", Context.MODE_PRIVATE)
+
+    /**
+     * Options déclarées par le cœur [core] lancé pour le système [systemId], envoyées au serveur pour que
+     * l'administration les propose en listes. Envoyées une fois par version de l'application, de cœur
+     * (options déclarées) et par système ; réessayé au lancement suivant si le serveur est injoignable.
+     */
+    fun reportCoreOptions(core: String, systemId: String, options: List<CatalogOption>) {
+        if (options.isEmpty() || runCatching { api.url("") }.isFailure) return
+        val body = buildJsonObject {
+            put("core", JsonPrimitive(core))
+            put("system", JsonPrimitive(systemId))
+            put("options", JsonArray(options.map { o ->
+                buildJsonObject {
+                    put("key", JsonPrimitive(o.key))
+                    put("label", JsonPrimitive(o.label))
+                    o.default?.let { put("default", JsonPrimitive(it)) }
+                    put("values", JsonArray(o.values.map { (value, label) ->
+                        buildJsonObject { put("value", JsonPrimitive(value)); put("label", JsonPrimitive(label)) }
+                    }))
+                }
+            }))
+        }.toString()
+        val key = "$core|$systemId"
+        val fingerprint = "$appVersion|${body.hashCode()}"
+        if (catalogSent.getString(key, null) == fingerprint) return
+        scope.launch {
+            runCatching { execute(request("/api/account/core-options").post(body.toRequestBody(JSON)), 20) }
+                .onSuccess { catalogSent.edit().putString(key, fingerprint).apply() }
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Sauvegardes en ligne (émulateur intégré)
     // -------------------------------------------------------------------------
 

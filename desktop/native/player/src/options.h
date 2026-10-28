@@ -84,6 +84,11 @@ class CoreOptions {
   /** Valeur suivante (ou précédente) d'une option ; mémorisée. */
   void cycle(size_t index, int direction);
   void resetAll();
+  /**
+   * Options déclarées par le cœur (clé, libellé, valeurs et leurs libellés, défaut, catégorie), en JSON
+   * dans [file] : envoyées au serveur par l'application, qui les propose dans l'administration.
+   */
+  void writeCatalog(const std::string& file) const;
 
   /** Réglage du moteur (clé « romcloud_… »), mémorisé avec les options du cœur. */
   std::string setting(const std::string& key, const std::string& fallback) const;

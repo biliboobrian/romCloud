@@ -56,6 +56,7 @@ import {
   updateSystem,
 } from './systems.js';
 import { emulatorCandidates } from './emulator-order.js';
+import { listCatalog, reportCatalog } from './core-options.js';
 
 // Version du serveur : celle de l'image Docker (tag v1.2.3 de la publication), sinon package.json.
 const VERSION = process.env.ROMCLOUD_VERSION || JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
@@ -195,6 +196,9 @@ api.put('/systems/:id', (req, res) => {
 
 // Émulateurs proposés par chaque application pour ce système, dans leur ordre par défaut
 // ({ windows, android, androidtv } : [{ id, name, kind }]), pour en choisir l'ordre.
+// Options déclarées par les cœurs des émulateurs intégrés (envoyées par les applications) ; ?system= : ceux de ce système.
+api.get('/core-options', (req, res) => res.json(listCatalog(req.query.system ? String(req.query.system) : null)));
+
 api.get('/systems/:id/emulators', (req, res) => res.json(emulatorCandidates(requireSystem(req.params.id))));
 
 api.delete('/systems/:id', (req, res) => {
@@ -826,6 +830,12 @@ api.delete('/account/states/:id', signedIn, (req, res) => {
 });
 
 // Erreur rencontrée par une application (avec ou sans joueur connecté).
+// Options déclarées par un cœur lancé par une application : { core, system, options: [...] } (core-options.js).
+api.post('/account/core-options', (req, res) => {
+  reportCatalog(req.body || {}, accounts.clientInfo(req, {}));
+  res.status(204).end();
+});
+
 api.post('/account/errors', (req, res) => {
   accounts.logError(req.body, userAuth(req), accounts.clientInfo(req, req.body || {}));
   res.status(204).end();

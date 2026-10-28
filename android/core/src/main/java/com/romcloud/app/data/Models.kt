@@ -48,6 +48,11 @@ data class GameSystem(
      * « windows ») : uniqueId des émulateurs ; absent : ordre de l'application.
      */
     val emulatorOrder: Map<String, List<String>> = emptyMap(),
+    /**
+     * Options par défaut des émulateurs intégrés choisies sur le serveur (variables des cœurs libretro,
+     * réglages de RomCloud PC pour les jeux PC) ; celles du jeu ([Game.coreOptions]) les remplacent.
+     */
+    val coreOptions: Map<String, String> = emptyMap(),
 ) {
     /**
      * Émulateurs de l'ordre choisi sur le serveur pour [platform] d'abord, dans cet ordre ; les
@@ -152,9 +157,17 @@ data class Game(
     val packedSize: Long? = null,
     /** Format des archives du jeu PC compressé : « zst », « xz », « zip » ou « mixed » ; null : aucune. */
     val packFormat: String? = null,
+    /** Options des émulateurs intégrés propres au jeu, choisies sur le serveur : remplacent celles du système. */
+    val coreOptions: Map<String, String> = emptyMap(),
 ) {
     /** Jeu PC dont des fichiers sont téléchargés compressés : tailles compressée et installée différentes. */
     val zipped: Boolean get() = folder && packed != "flat" && packedSize != null
+    /**
+     * Options par défaut des émulateurs intégrés pour ce jeu : celles du système [system], remplacées par
+     * celles du jeu. Les choix du joueur pendant la partie l'emportent sur elles.
+     */
+    fun defaultCoreOptions(system: GameSystem): Map<String, String> = system.coreOptions + coreOptions
+
     /** Fichiers du jeu : le fichier principal puis ses parties. */
     val files: List<GamePart> get() = listOf(GamePart(id, fileName, size)) + parts
 

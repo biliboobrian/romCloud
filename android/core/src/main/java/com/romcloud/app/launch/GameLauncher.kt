@@ -242,7 +242,8 @@ class GameLauncher(private val context: Context, private val settings: Settings)
      * Lance le jeu avec l'émulateur choisi ([resume] : reprend la partie sauvegardée, émulateur
      * intégré ; [state] : à partir de cet état de l'historique ; [stream] : diffusé sur cette TV du
      * profil, émulateur intégré, image [streamMode] ; [disk] : jeu en plusieurs disques (liste .m3u),
-     * démarré sur ce disque et repris depuis la dernière partie faite sur lui). Sans modèle d'émulateur
+     * démarré sur ce disque et repris depuis la dernière partie faite sur lui ; [coreOptions] : options
+     * par défaut du cœur intégré choisies sur le serveur, sous celles du joueur). Sans modèle d'émulateur
      * (système personnalisé), ouvre le sélecteur d'applications.
      */
     fun launch(
@@ -258,6 +259,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         state: File? = null,
         core: String? = null,
         disk: Int? = null,
+        coreOptions: Map<String, String> = emptyMap(),
     ) {
         if (!file.isFile) throw LaunchException(I18n.get(R.string.err_file_not_found, file.absolutePath))
 
@@ -282,6 +284,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
             val intent = LibretroActivity.intent(
                 activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode, netplay,
                 state = state ?: resumeState, autoUploadStates = settings.autoUploadStates, disk = startDisk ?: 0,
+                coreOptions = coreOptions,
             )
             if (activityContext !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             activityContext.startActivity(intent)

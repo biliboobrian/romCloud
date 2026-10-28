@@ -781,6 +781,7 @@
     <string name="pc_settings_title">Réglages PC</string>
     <string name="pc_settings_hint">Enregistrés dans votre profil, appliqués au prochain lancement avec RomCloud PC. Résolution : écran Windows, au format de l’appareil. Images par seconde : plafonnées par DXVK, moins de travail pour le processeur graphique. Shaders en arrière-plan : plus d’image figée quand un effet apparaît (un objet peut manquer un instant). Émulation du processeur : plus rapide, mais certains jeux plantent ou se figent. Qualité : jeux Unity et Unreal Engine.</string>
     <string name="pc_setting_auto">Auto</string>
+    <string name="pc_setting_server">Serveur : %1$s</string>
     <string name="pc_setting_wine">Proton</string>
     <string name="pc_wine_arm64ec">Proton 9.0 arm64ec (FEX)</string>
     <string name="pc_wine_x86_64">Proton 9.0 x86_64 (Box64)</string>

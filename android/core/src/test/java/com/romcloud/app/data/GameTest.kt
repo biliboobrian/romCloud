@@ -19,6 +19,17 @@ class GameTest {
     }
 
     @Test
+    fun `options des emulateurs integres du jeu remplacent celles du systeme`() {
+        val system = json.decodeFromString(GameSystem.serializer(),
+            """{"id":"n64","name":"N64","shortname":"n64","folder":"n64","coreOptions":{"rdp":"gliden64","res":"640x480"}}""")
+        val game = json.decodeFromString(Game.serializer(),
+            """{"id":1,"systemId":"n64","fileName":"a.z64","size":1,"title":"A","coreOptions":{"rdp":"angrylion"}}""")
+        assertEquals(mapOf("rdp" to "angrylion", "res" to "640x480"), game.defaultCoreOptions(system))
+        // Serveur d'avant les options : aucune.
+        assertEquals(emptyMap<String, String>(), game(null).defaultCoreOptions(system.copy(coreOptions = emptyMap())))
+    }
+
+    @Test
     fun `note en etoiles entieres`() {
         assertEquals(listOf(4, 4, 5, 0, null), listOf(3.5, 4.4, 7.0, -1.0, null).map { Game(1, "snes", "a", 1, "A", rating = it).stars })
         assertEquals("★★★☆☆", starsText(3))

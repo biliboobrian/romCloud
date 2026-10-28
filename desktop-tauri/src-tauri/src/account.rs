@@ -582,6 +582,33 @@ fn utc_now() -> String {
 
 /// Détail d'un rapport (journal joint) : limite du serveur.
 const MAX_ERROR_DETAILS: usize = 200_000;
+/**
+ * Options déclarées par le cœur [core] (fichier JSON écrit par le moteur intégré en quittant),
+ * envoyées au serveur pour que l'administration les propose en listes. Envoyées une fois par version
+ * de l'application, options déclarées et système ; réessayé à la partie suivante si le serveur est injoignable.
+ */
+pub async fn report_core_options(core: &str, system_id: &str, file: &Path) {
+    use std::hash::{Hash, Hasher};
+    let Some(options) = std::fs::read_to_string(file).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { return };
+    if !options.as_array().is_some_and(|list| !list.is_empty()) {
+        return;
+    }
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (env!("CARGO_PKG_VERSION"), options.to_string()).hash(&mut hasher);
+    let fingerprint = format!("{:x}", hasher.finish());
+    let key = format!("{core}|{system_id}");
+    let sent = settings::load().get("coreCatalogSent").cloned().unwrap_or_else(|| json!({}));
+    if sent.get(&key).and_then(Value::as_str) == Some(fingerprint.as_str()) {
+        return;
+    }
+    let body = json!({ "core": core, "system": system_id, "options": options });
+    if call("/api/account/core-options", reqwest::Method::POST, Body::Json(body), false, &[], Duration::from_secs(30)).await.is_ok() {
+        let mut sent = settings::load().get("coreCatalogSent").cloned().unwrap_or_else(|| json!({}));
+        sent[key] = json!(fingerprint);
+        settings::save(json!({ "coreCatalogSent": sent }));
+    }
+}
+
 /// Erreurs gardées hors ligne au plus (les plus anciennes laissent la place).
 const MAX_PENDING_ERRORS: usize = 50;
 
