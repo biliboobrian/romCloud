@@ -3,7 +3,9 @@
 // limité d'appareils. Un appareil (identifiant envoyé par l'application : en-tête
 // X-RomCloud-Device-Id, ou ?device=) qui a utilisé la clé une fois prend une place ; une fois toutes
 // les places prises, les autres appareils sont refusés. Retirer un appareil depuis l'administration
-// libère sa place. Seule l'empreinte SHA-256 de la clé est gardée : elle n'est montrée qu'à sa création.
+// libère sa place. La clé est reconnue par son empreinte SHA-256 ; elle est aussi gardée telle quelle,
+// pour que l'administration puisse la copier et la partager à tout moment (sauf les clés créées avant :
+// seule leur empreinte est connue).
 import crypto from 'node:crypto';
 import { db, transaction } from './db.js';
 import { HttpError } from './http-error.js';
@@ -35,6 +37,7 @@ const tokenRow = (r) => ({
   id: r.id,
   name: r.name,
   prefix: r.prefix,
+  token: r.token ?? null,
   maxDevices: r.max_devices,
   devices: r.device_count ?? 0,
   disabled: Boolean(r.disabled),
@@ -87,14 +90,14 @@ export function checkToken(given, deviceId, client = {}) {
   });
 }
 
-/** Crée une clé ([name], [maxDevices] appareils) ; la clé elle-même n'est renvoyée qu'ici. */
+/** Crée une clé ([name], [maxDevices] appareils). */
 export function createToken({ name, maxDevices } = {}) {
   const label = validateName(name);
   const max = validateMaxDevices(maxDevices);
   const key = PREFIX + crypto.randomBytes(24).toString('base64url');
-  const { lastInsertRowid } = db.prepare('INSERT INTO api_tokens (name, token_hash, prefix, max_devices) VALUES (?, ?, ?, ?)')
-    .run(label, hash(key), key.slice(0, PREFIX.length + 6), max);
-  return { ...tokenRow(requireToken(lastInsertRowid)), token: key };
+  const { lastInsertRowid } = db.prepare('INSERT INTO api_tokens (name, token_hash, token, prefix, max_devices) VALUES (?, ?, ?, ?, ?)')
+    .run(label, hash(key), key, key.slice(0, PREFIX.length + 6), max);
+  return tokenRow(requireToken(lastInsertRowid));
 }
 
 export function listTokens() {
