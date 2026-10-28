@@ -158,6 +158,11 @@ public class ALSAClient {
     /**
      * This is the new method to handle audio device changes.
      * It will be called from the Android system when a device is connected or disconnected.
+     *
+     * RomCloud PC : flux fermé et recréé sous le verrou du client. Appelée depuis le fil principal
+     * pendant que le fil audio écrit dans le flux (writeDataToStream) : sans verrou, l'écriture
+     * visait le flux tout juste fermé (SIGSEGV au branchement d'un casque ou d'une manette).
+     * L'attente entre deux essais se fait hors du verrou.
      */
     public void onAudioDeviceChanged() {
         // This entire feature is designed for reflector mode.
@@ -170,35 +175,41 @@ public class ALSAClient {
 
         // --- REFLECTOR MODE LOGIC ---
         // The pacer (streamPtr) is safe. We only need to rebuild the hardware stream (mirrorStreamPtr).
-        if (mirrorStreamPtr != 0) {
-            System.out.println("Tearing down old playback stream...");
-            stop(mirrorStreamPtr);
-            close(mirrorStreamPtr);
-            mirrorStreamPtr = 0;
+        synchronized (this) {
+            if (mirrorStreamPtr != 0) {
+                System.out.println("Tearing down old playback stream...");
+                stop(mirrorStreamPtr);
+                close(mirrorStreamPtr);
+                mirrorStreamPtr = 0;
+            }
         }
 
         final int MAX_RETRIES = 5;
         final int RETRY_DELAY_MS = 200;
 
         for (int i = 0; i < MAX_RETRIES; i++) {
-            System.out.println("Attempting to rebuild playback stream (Attempt " + (i + 1) + ")");
-            long newStreamPtr = create(dataType.ordinal(), channelCount, sampleRate, bufferSize);
+            synchronized (this) {
+                // Flux libéré entre-temps (jeu fermé) ou recréé (prepare) : rien à reconstruire.
+                if (streamPtr == 0 || mirrorStreamPtr != 0) return;
+                System.out.println("Attempting to rebuild playback stream (Attempt " + (i + 1) + ")");
+                long newStreamPtr = create(dataType.ordinal(), channelCount, sampleRate, bufferSize);
 
-            if (newStreamPtr > 0) {
-                if (playing) {
-                    int result = start(newStreamPtr);
-                    if (result == 0) { // AAUDIO_OK
-                        mirrorStreamPtr = newStreamPtr;
-                        System.out.println("Successfully resumed playback on new stream.");
-                        return;
+                if (newStreamPtr > 0) {
+                    if (playing) {
+                        int result = start(newStreamPtr);
+                        if (result == 0) { // AAUDIO_OK
+                            mirrorStreamPtr = newStreamPtr;
+                            System.out.println("Successfully resumed playback on new stream.");
+                            return;
+                        } else {
+                            System.out.println("Failed to start new stream, result code: " + result + ". Retrying...");
+                            close(newStreamPtr);
+                        }
                     } else {
-                        System.out.println("Failed to start new stream, result code: " + result + ". Retrying...");
-                        close(newStreamPtr);
+                        mirrorStreamPtr = newStreamPtr;
+                        System.out.println("Successfully created new stream while paused.");
+                        return;
                     }
-                } else {
-                    mirrorStreamPtr = newStreamPtr;
-                    System.out.println("Successfully created new stream while paused.");
-                    return;
                 }
             }
             try {
