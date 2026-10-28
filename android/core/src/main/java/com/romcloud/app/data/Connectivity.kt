@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Connexion au serveur RomCloud : mode en ligne ou hors ligne. Le serveur est sondé (/api/ping) à
- * l'ouverture de l'application et quand l'utilisateur touche la pastille « hors ligne »
+ * l'ouverture de l'application, à son retour au premier plan s'il est hors ligne, et quand l'utilisateur touche la pastille « hors ligne »
  * ([ping]) ; une requête qui n'aboutit pas (délai dépassé, serveur injoignable) passe l'application
  * hors ligne. Hors ligne, aucune requête ne part vers le serveur ([ApiClient.isOffline]) : seuls les
  * fichiers déjà sur l'appareil sont utilisés. Chaque retour en ligne est signalé par [reconnected]
@@ -27,10 +27,17 @@ class Connectivity(context: Context, private val api: ApiClient) {
     private val _reconnected = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val reconnected: SharedFlow<Unit> = _reconnected.asSharedFlow()
 
+    /**
+     * Un écran de l'application est affiché. En arrière-plan (émulateur externe lancé…), Android
+     * coupe le réseau de l'application : une requête qui échoue alors ne la passe pas hors ligne.
+     */
+    @Volatile
+    var foreground = true
+
     init {
         api.isOffline = { !_online.value }
         // Requête sans réponse : hors ligne (le retour en ligne passe seulement par le ping).
-        api.onReachability = { reachable -> if (!reachable) set(false) }
+        api.onReachability = { reachable -> if (!reachable && foreground) set(false) }
     }
 
     @Synchronized
