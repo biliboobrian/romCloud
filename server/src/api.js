@@ -56,7 +56,7 @@ import {
   updateSystem,
 } from './systems.js';
 import { emulatorCandidates } from './emulator-order.js';
-import { listCatalog, reportCatalog } from './core-options.js';
+import { listCatalog, reportCatalog, systemCatalog } from './core-options.js';
 
 // Version du serveur : celle de l'image Docker (tag v1.2.3 de la publication), sinon package.json.
 const VERSION = process.env.ROMCLOUD_VERSION || JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
@@ -197,7 +197,7 @@ api.put('/systems/:id', (req, res) => {
 // Émulateurs proposés par chaque application pour ce système, dans leur ordre par défaut
 // ({ windows, android, androidtv } : [{ id, name, kind }]), pour en choisir l'ordre.
 // Options déclarées par les cœurs des émulateurs intégrés (envoyées par les applications) ; ?system= : ceux de ce système.
-api.get('/core-options', (req, res) => res.json(listCatalog(req.query.system ? String(req.query.system) : null)));
+api.get('/core-options', (req, res) => res.json(req.query.system ? systemCatalog(String(req.query.system)) : listCatalog(null)));
 
 api.get('/systems/:id/emulators', (req, res) => res.json(emulatorCandidates(requireSystem(req.params.id))));
 

@@ -220,7 +220,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .core-options { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; font-size: 12px; }
 .core-options .row { align-items: center; gap: 8px; }
 .core-options .co-filter { flex: 1; }
-.core-options .co-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.core-options .co-list { display: flex; flex-direction: column; gap: 4px; max-height: 480px; overflow-y: auto; }
+.core-options .co-category { margin: 8px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.core-options .co-category:first-child { margin-top: 0; }
+.core-options .co-other summary { cursor: pointer; color: var(--muted); }
+.core-options .co-other .row { margin-top: 6px; }
 .core-options .co-option { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px; border-radius: 6px; }
 .core-options .co-option.chosen { background: var(--surface-2); }
 .core-options .co-option > span { display: flex; flex-direction: column; min-width: 0; }
