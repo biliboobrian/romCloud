@@ -8,7 +8,7 @@ process.env.DATA_DIR = path.join(os.tmpdir(), `romcloud-core-options-test-${proc
 const { db } = await import('../src/db.js');
 const { getSystem, updateSystem } = await import('../src/systems.js');
 const { gameWithParts, updateGame } = await import('../src/library.js');
-const { listCatalog, normalizeCoreOptions, reportCatalog } = await import('../src/core-options.js');
+const { listCatalog, normalizeCoreOptions, reportCatalog, systemCatalog } = await import('../src/core-options.js');
 
 db.prepare("INSERT INTO systems (id, name, shortname, folder) VALUES ('n64', 'Nintendo 64', 'n64', 'n64')").run();
 const gameId = Number(db.prepare("INSERT INTO games (system_id, file_name, size, mtime, title) VALUES ('n64', 'mario.z64', 1, 0, 'Mario')").run().lastInsertRowid);
@@ -72,4 +72,30 @@ test('catalogue des options envoyé par les applications, par cœur et plateform
     { key: 'snes9x_region', label: 'snes9x_region', values: [{ value: 'auto', label: 'auto' }], default: 'auto' },
   ]);
   assert.throws(() => reportCatalog({ core: '../x', options: [] }, {}), /invalidCoreOptions/);
+});
+
+test('options proposées pour un système : envoyées par les applications, sinon catalogue livré', () => {
+  db.prepare("INSERT INTO systems (id, name, shortname, folder, players) VALUES ('gba', 'GBA', 'gba', 'gba', ?)").run(
+    JSON.stringify([{ name: 'gpSP', amStartArguments: '-e LIBRETRO /data/cores/gpsp_libretro_android.so' }]),
+  );
+  const option = (key) => ({ key, label: key, default: 'a', values: [{ value: 'a', label: 'a' }] });
+  const builtin = {
+    vbam: { systems: { gba: 1 }, options: [option('vbam_x')] },
+    mgba: { systems: { gba: 0, gb: 2 }, options: [option('mgba_x')] },
+    gpsp: { systems: {}, options: [option('gpsp_x')] },
+    snes9x: { systems: { snes: 1 }, options: [option('snes9x_x')] },
+  };
+  // Ordre du moteur intégré, puis cœurs des modèles d'émulateurs.
+  assert.deepEqual(systemCatalog('gba', builtin).map((e) => [e.core, e.platform, e.builtin]), [
+    ['mgba', 'libretro', true],
+    ['vbam', 'libretro', true],
+    ['gpsp', 'libretro', true],
+  ]);
+  // Options envoyées par une application : à la place de celles du catalogue livré.
+  reportCatalog({ core: 'mgba', system: 'gba', options: [option('mgba_y')] }, { platform: 'windows' });
+  const gba = systemCatalog('gba', builtin);
+  assert.deepEqual(gba[0].core, 'mgba');
+  assert.deepEqual(gba[0].platform, 'windows');
+  assert.deepEqual(gba[0].options.map((o) => o.key), ['mgba_y']);
+  assert.equal(gba.length, 3);
 });

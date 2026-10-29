@@ -10,6 +10,9 @@
 //
 // Catalogue : les applications envoient les options déclarées par chaque cœur qu'elles lancent
 // (libellés, valeurs possibles), pour que l'administration propose des listes plutôt que des clés à taper.
+// Catalogue livré avec le serveur (core-options-builtin.json, scripts/core-options-catalog.py) : options
+// des cœurs libretro du moteur intégré, proposées tant qu'aucune application n'a envoyé les siennes.
+import fs from 'node:fs';
 import { db } from './db.js';
 import { HttpError } from './http-error.js';
 
@@ -112,4 +115,63 @@ export function listCatalog(systemId) {
       updatedAt: row.updated_at,
     }))
     .filter((entry) => !systemId || entry.systems.includes(systemId));
+}
+
+let builtinCatalog;
+
+/** Catalogue livré : { cœur: { systems: { système: rang }, options } } ; absent ou illisible : vide. */
+function loadBuiltin() {
+  if (!builtinCatalog) {
+    try {
+      builtinCatalog = JSON.parse(fs.readFileSync(new URL('./core-options-builtin.json', import.meta.url), 'utf8')).cores || {};
+    } catch {
+      builtinCatalog = {};
+    }
+  }
+  return builtinCatalog;
+}
+
+/** Cœurs libretro des modèles d'émulateurs d'un système (« -e LIBRETRO …/snes9x_libretro_android.so »). */
+function playerCores(systemId) {
+  const row = db.prepare('SELECT players FROM systems WHERE id = ?').get(systemId);
+  let players = [];
+  try {
+    players = JSON.parse(row?.players || '[]');
+  } catch {}
+  const cores = [];
+  for (const player of Array.isArray(players) ? players : []) {
+    for (const [, core] of String(player?.amStartArguments || '').matchAll(/([\w.+-]+)_libretro_android\.so/g)) {
+      if (!cores.includes(core)) cores.push(core);
+    }
+  }
+  return cores;
+}
+
+/**
+ * Options proposées pour [systemId] : pour chaque cœur du système, celles envoyées par les applications
+ * (une entrée par plateforme), sinon celles du catalogue livré (platform « libretro », builtin).
+ * Cœurs dans l'ordre du moteur intégré, puis ceux des modèles d'émulateurs, puis les autres.
+ */
+export function systemCatalog(systemId, builtin = loadBuiltin()) {
+  const reported = listCatalog(systemId).filter((entry) => entry.options.length);
+  const players = playerCores(systemId);
+  const rank = new Map();
+  for (const [core, entry] of Object.entries(builtin)) {
+    const r = entry.systems?.[systemId];
+    if (r !== undefined) rank.set(core, r);
+  }
+  players.forEach((core, i) => {
+    if (!rank.has(core)) rank.set(core, 1000 + i);
+  });
+  for (const entry of reported) if (!rank.has(entry.core)) rank.set(entry.core, 2000);
+  const cores = [...rank.keys()].sort((a, b) => rank.get(a) - rank.get(b) || a.localeCompare(b));
+  const result = [];
+  for (const core of cores) {
+    const own = reported.filter((entry) => entry.core === core);
+    if (own.length) result.push(...own);
+    else if (builtin[core]?.options?.length) {
+      result.push({ core, platform: 'libretro', builtin: true, systems: Object.keys(builtin[core].systems || {}), options: builtin[core].options });
+    }
+  }
+  return result;
 }

@@ -1,11 +1,12 @@
 // Options par défaut des émulateurs intégrés (moteur intégré de Windows, LibretroDroid, RomCloud PC),
 // dans les réglages d'un système et la fiche d'un jeu. Les listes viennent du catalogue envoyé par les
-// applications (/api/core-options) : options déclarées par chaque cœur qu'elles ont lancé. Une option
-// absente du catalogue s'ajoute à la main (clé et valeur).
+// applications (/api/core-options) : options déclarées par chaque cœur qu'elles ont lancé, sinon
+// celles du catalogue livré avec le serveur (tous les cœurs du moteur intégré). Une option absente
+// des deux s'ajoute à la main (clé et valeur, bloc « Autre option »).
 //
 // Niveaux : options du système, puis du jeu (qui les remplacent) ; le joueur garde le dernier mot
 // pendant la partie.
-import { t } from './i18n.js';
+import { getLanguage, t } from './i18n.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -33,11 +34,14 @@ export function coreOptionsEditor(root, { api, escapeHtml }) {
     <div class="co-custom">
       <strong class="co-custom-title"></strong>
       <ul class="co-set players"></ul>
-      <div class="row">
-        <input class="co-key mono" autocomplete="off" spellcheck="false">
-        <input class="co-value mono" autocomplete="off" spellcheck="false">
-        <button type="button" class="btn small co-add"></button>
-      </div>
+      <details class="co-other">
+        <summary class="co-other-title"></summary>
+        <div class="row">
+          <input class="co-key mono" autocomplete="off" spellcheck="false">
+          <input class="co-value mono" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn small co-add"></button>
+        </div>
+      </details>
     </div>`;
   const coreSelect = $('.co-core', root);
   const filterInput = $('.co-filter', root);
@@ -46,6 +50,7 @@ export function coreOptionsEditor(root, { api, escapeHtml }) {
     $('span.muted', root).textContent = t('coreOptions.hint');
     filterInput.placeholder = t('coreOptions.filter');
     $('.co-custom-title', root).textContent = t('coreOptions.set');
+    $('.co-other-title', root).textContent = t('coreOptions.other');
     $('.co-key', root).placeholder = t('coreOptions.key');
     $('.co-value', root).placeholder = t('coreOptions.value');
     $('.co-add', root).textContent = t('coreOptions.add');
@@ -60,7 +65,13 @@ export function coreOptionsEditor(root, { api, escapeHtml }) {
     return null;
   };
 
-  const valueLabel = (option, value) => option?.values.find((v) => v.value === value)?.label ?? value;
+  // Libellés français donnés par le cœur (catalogue livré : labelFr, categoryFr…), sinon anglais.
+  const local = (item, field) => (getLanguage() === 'fr' && item?.[`${field}Fr`]) || item?.[field] || '';
+
+  const valueLabel = (option, value) => {
+    const found = option?.values.find((v) => v.value === value);
+    return found ? local(found, 'label') : value;
+  };
 
   function set(key, value) {
     if (value === '' || value === null || value === undefined) delete values[key];
@@ -79,7 +90,8 @@ export function coreOptionsEditor(root, { api, escapeHtml }) {
     catalog.forEach((entry, i) => {
       const option = document.createElement('option');
       option.value = String(i);
-      option.textContent = `${entry.core} — ${t(`platform.${entry.platform}`) || entry.platform} (${t('coreOptions.count', { n: entry.options.length })})`;
+      const platform = entry.builtin ? t('coreOptions.builtin') : t(`platform.${entry.platform}`) || entry.platform;
+      option.textContent = `${entry.core} — ${platform} (${t('coreOptions.count', { n: entry.options.length })})`;
       coreSelect.append(option);
     });
     // Cœur dont une option est déjà choisie, sinon le premier.
@@ -94,15 +106,27 @@ export function coreOptionsEditor(root, { api, escapeHtml }) {
     const entry = catalog[Number(selected)];
     if (!entry) return;
     const words = filter.toLowerCase();
-    const options = entry.options.filter((o) => !words || `${o.label} ${o.key} ${o.category || ''}`.toLowerCase().includes(words));
+    const options = entry.options.filter((o) => !words || `${local(o, 'label')} ${o.label} ${o.key} ${local(o, 'category')}`.toLowerCase().includes(words));
     if (!options.length) {
       list.innerHTML = `<p class="muted">${escapeHtml(t('coreOptions.none'))}</p>`;
       return;
     }
+    let category = null;
     for (const option of options) {
+      // Options regroupées sous le nom de leur catégorie (ordre du cœur).
+      const name = local(option, 'category');
+      if (name !== category) {
+        category = name;
+        if (name) {
+          const head = document.createElement('h4');
+          head.className = 'co-category';
+          head.textContent = name;
+          list.append(head);
+        }
+      }
       const row = document.createElement('label');
       row.className = `co-option${option.key in values ? ' chosen' : ''}`;
-      row.title = option.info || option.key;
+      row.title = local(option, 'info') || option.key;
       const select = document.createElement('select');
       // Sans valeur à ce niveau : celle du niveau au-dessus, sinon celle du cœur.
       const fallback = option.key in inherited
@@ -117,12 +141,12 @@ export function coreOptionsEditor(root, { api, escapeHtml }) {
       for (const v of choices) {
         const el = document.createElement('option');
         el.value = v.value;
-        el.textContent = v.label;
+        el.textContent = local(v, 'label');
         select.append(el);
       }
       select.value = values[option.key] ?? '';
       select.onchange = () => set(option.key, select.value);
-      row.innerHTML = `<span>${escapeHtml(option.label)}${option.category ? ` <span class="muted">· ${escapeHtml(option.category)}</span>` : ''}<span class="muted mono">${escapeHtml(option.key)}</span></span>`;
+      row.innerHTML = `<span>${escapeHtml(local(option, 'label'))}<span class="muted mono">${escapeHtml(option.key)}</span></span>`;
       row.append(select);
       list.append(row);
     }
@@ -140,7 +164,7 @@ export function coreOptionsEditor(root, { api, escapeHtml }) {
     for (const key of keys) {
       const option = known(key);
       const li = document.createElement('li');
-      li.innerHTML = `<div><strong>${escapeHtml(option?.label || key)}</strong> = ${escapeHtml(valueLabel(option, values[key]))}<span class="muted mono">${escapeHtml(key)}</span></div>`;
+      li.innerHTML = `<div><strong>${escapeHtml(local(option, 'label') || key)}</strong> = ${escapeHtml(valueLabel(option, values[key]))}<span class="muted mono">${escapeHtml(key)}</span></div>`;
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'btn small ghost';
