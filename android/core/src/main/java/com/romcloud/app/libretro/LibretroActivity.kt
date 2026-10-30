@@ -2,6 +2,7 @@ package com.romcloud.app.libretro
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
@@ -83,11 +84,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -126,6 +129,7 @@ import com.romcloud.app.netplay.joinNetplay
 import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.libretrodroid.GLRetroViewData
 import com.swordfish.libretrodroid.Variable
+import com.swordfish.libretrodroid.ViewportAlignment
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -275,6 +279,11 @@ class LibretroActivity : ComponentActivity() {
     private var diskCount by mutableStateOf(0)
     private var disk by mutableStateOf(0)
     private var diskPicker by mutableStateOf(false)
+    private val portraitStore by lazy { PortraitLayoutStore(this) }
+    /** Présentation en portrait (téléphone) : image en haut, manette tactile en bas ; changée depuis le menu. */
+    private var portrait by mutableStateOf(false)
+    /** Portrait : bas de l'image du jeu (px), où commence la manette tactile. */
+    private var portraitScreenBottom by mutableStateOf(0)
     /** Cœur chargé par l'adaptateur natif ([CoreShim]) : format d'image modifiable en cours de partie. */
     private var throughShim = false
     /** Disposition de la manette tactile propre à la console. */
@@ -331,8 +340,15 @@ class LibretroActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
+        if (!isTv && portraitStore.load(systemId)) {
+            portrait = true
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        }
+
         getSystemService(InputManager::class.java)?.registerInputDeviceListener(inputDevices, null)
         container = FrameLayout(this).apply { setBackgroundColor(AndroidColor.BLACK) }
+        // Rotation (portrait / paysage) : image du jeu replacée.
+        container.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> container.post(::layoutGameView) }
         container.addView(
             ComposeView(this).apply {
                 setContent {
@@ -486,11 +502,13 @@ class LibretroActivity : ComponentActivity() {
             videoFilter = videoFilters.load(systemId)
             filterValues = videoFilters.values(systemId, videoFilter)
             shader = videoFilter.shader(filterValues)
+            viewportAlignment = if (portrait) ViewportAlignment.TOP else ViewportAlignment.CENTER
         }
         val view = GLRetroView(this, data).apply { isFocusable = false }
         retroView = view
         lifecycle.addObserver(view)
         container.addView(view, 0, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        layoutGameView()
         // Format « étiré » : proportions de la vue, suivies (rotation, fenêtre redimensionnée).
         view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyAspectRatio() }
         lifecycleScope.launch { view.getGLRetroErrors().collect(::onRetroError) }
@@ -1323,6 +1341,8 @@ class LibretroActivity : ComponentActivity() {
                                 retroView?.sendMotionEvent(source, x, y, 0)
                             },
                             onMenu = ::openMenu,
+                            // Portrait : manette sous l'image du jeu.
+                            portraitTop = portraitScreenBottom.takeIf { it > 0 }?.let { with(LocalDensity.current) { it.toDp() } },
                         )
                     } else if (!isTv) {
                         // Manette tactile masquée (manette physique utilisée) : un appui la réaffiche.
@@ -1448,6 +1468,7 @@ class LibretroActivity : ComponentActivity() {
                             closeMenu()
                         },
                     )
+                    add(stringResource(if (portrait) R.string.libretro_menu_landscape else R.string.libretro_menu_portrait) to ::togglePortrait)
                 }
                 add(
                     stringResource(R.string.libretro_menu_gamepad) to {
@@ -2006,6 +2027,41 @@ class LibretroActivity : ComponentActivity() {
     }
 
     /** Format d'image envoyé à l'adaptateur (« étiré » : proportions de la vue du jeu). */
+    /** Passe de la présentation paysage au portrait (image en haut, manette en bas), ou l'inverse. */
+    private fun togglePortrait() {
+        portrait = !portrait
+        portraitStore.save(systemId, portrait)
+        requestedOrientation =
+            if (portrait) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // Portrait : la manette tactile occupe le bas de l'écran.
+        if (portrait) showTouchPad = true
+        layoutGameView()
+        closeMenu()
+    }
+
+    /**
+     * Place la vue du jeu : tout l'écran en paysage ; en portrait (écran déjà tourné), une bande en haut
+     * sous l'encoche, image alignée en haut.
+     */
+    private fun layoutGameView() {
+        val view = retroView ?: return
+        val params = view.layoutParams as? FrameLayout.LayoutParams ?: return
+        val upright = portrait && container.height > container.width
+        val top = if (upright) {
+            ViewCompat.getRootWindowInsets(container)?.getInsets(WindowInsetsCompat.Type.displayCutout())?.top ?: 0
+        } else {
+            0
+        }
+        val height = if (upright) PortraitLayoutStore.screenHeight(container.width, container.height - top) else MATCH_PARENT
+        portraitScreenBottom = if (upright) top + height else 0
+        view.viewportAlignment = if (upright) ViewportAlignment.TOP else ViewportAlignment.CENTER
+        if (params.topMargin != top || params.height != height) {
+            params.topMargin = top
+            params.height = height
+            view.layoutParams = params
+        }
+    }
+
     private fun applyAspectRatio() {
         if (!throughShim) return
         val view = retroView ?: container

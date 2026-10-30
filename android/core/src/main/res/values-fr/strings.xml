@@ -346,6 +346,8 @@
     <string name="libretro_menu_reset">Redémarrer le jeu</string>
     <string name="libretro_menu_show_touchpad">Afficher la manette tactile</string>
     <string name="libretro_menu_hide_touchpad">Masquer la manette tactile</string>
+    <string name="libretro_menu_portrait">Affichage portrait (Game Boy)</string>
+    <string name="libretro_menu_landscape">Affichage paysage</string>
     <string name="libretro_menu_save_quit">Sauvegarder et quitter</string>
     <string name="action_resume_game">Reprendre</string>
     <string name="libretro_menu_quit">Quitter</string>

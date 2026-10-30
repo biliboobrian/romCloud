@@ -353,6 +353,8 @@
     <string name="libretro_menu_reset">Restart the game</string>
     <string name="libretro_menu_show_touchpad">Show the touch controls</string>
     <string name="libretro_menu_hide_touchpad">Hide the touch controls</string>
+    <string name="libretro_menu_portrait">Portrait layout (Game Boy)</string>
+    <string name="libretro_menu_landscape">Landscape layout</string>
     <string name="libretro_menu_save_quit">Save and quit</string>
     <string name="action_resume_game">Resume</string>
     <string name="libretro_menu_quit">Quit</string>

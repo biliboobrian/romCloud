@@ -10,11 +10,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +55,7 @@ private val Label = Color.White.copy(alpha = 0.8f)
  * Manette tactile superposée au jeu (téléphones sans manette physique), disposée selon la
  * console ([layout]). [onKey] reçoit (KeyEvent.ACTION_DOWN / ACTION_UP, code RetroPad) ;
  * [onAnalog] reçoit la position d'un stick (true = stick droit), de -1 à 1.
+ * [portraitTop] : présentation portrait, manette sous l'image du jeu (de ce point au bas de l'écran).
  */
 @Composable
 internal fun TouchGamepad(
@@ -56,6 +63,7 @@ internal fun TouchGamepad(
     onKey: (Int, Int) -> Unit,
     onAnalog: (right: Boolean, x: Float, y: Float) -> Unit,
     onMenu: () -> Unit,
+    portraitTop: Dp? = null,
 ) {
     // Boutons C de la Nintendo 64 enfoncés : leur somme donne la position du stick droit.
     var rightStick by remember(layout) { mutableStateOf(emptySet<PadButton>()) }
@@ -66,6 +74,11 @@ internal fun TouchGamepad(
         onAnalog(true, x, y)
     }
     val shoulderShape = RoundedCornerShape(10.dp)
+
+    if (portraitTop != null) {
+        PortraitGamepad(layout, onKey, onAnalog, onMenu, portraitTop, ::pressRightStick)
+        return
+    }
 
     Box(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp)) {
         Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -109,6 +122,75 @@ internal fun TouchGamepad(
             layout.select?.let { TouchButton(it, onKey.forKey(KeyEvent.KEYCODE_BUTTON_SELECT), width = 76.dp, height = 30.dp, shape = pill) }
             layout.start?.let { TouchButton(it, onKey.forKey(KeyEvent.KEYCODE_BUTTON_START), width = 76.dp, height = 30.dp, shape = pill) }
         }
+    }
+}
+
+/**
+ * Manette sous l'image (portrait, comme une Game Boy) : tranches en haut, croix et boutons au milieu,
+ * Select / Start en bas, menu dans le coin.
+ */
+@Composable
+private fun PortraitGamepad(
+    layout: PadLayout,
+    onKey: (Int, Int) -> Unit,
+    onAnalog: (right: Boolean, x: Float, y: Float) -> Unit,
+    onMenu: () -> Unit,
+    top: Dp,
+    pressRightStick: (PadButton, Boolean) -> Unit,
+) {
+    val shoulderShape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier.fillMaxSize().padding(top = top)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+            .padding(16.dp),
+    ) {
+        Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            layout.left.forEach { TouchButton(it.label, onKey.forKey(it.key), width = it.width, height = 36.dp, shape = shoulderShape) }
+        }
+        Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            layout.right.forEach { TouchButton(it.label, onKey.forKey(it.key), width = it.width, height = 36.dp, shape = shoulderShape) }
+        }
+
+        Row(
+            Modifier.align(Alignment.Center).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Croix plus petite à côté de boutons larges (Nintendo 64), pour tenir dans la largeur.
+            val pad = if (layout.width > 180.dp) 130.dp else 150.dp
+            val both = layout.stick && layout.dpad
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (layout.stick) TouchStick({ x, y -> onAnalog(false, x, y) }, diameter = if (both) 110.dp else pad)
+                if (layout.dpad) DPad(onKey, diameter = if (both) 130.dp else pad)
+            }
+            Box(Modifier.size(layout.width, layout.height)) {
+                layout.buttons.forEach { button ->
+                    TouchButton(
+                        button.label,
+                        onPress = if (button.rightStick != null) {
+                            { pressed -> pressRightStick(button, pressed) }
+                        } else {
+                            onKey.forKey(button.key)
+                        },
+                        modifier = Modifier.offset(button.x, button.y),
+                        width = button.size,
+                        height = button.size,
+                        color = button.color,
+                    )
+                }
+            }
+        }
+
+        Row(Modifier.align(Alignment.BottomCenter), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            val pill = RoundedCornerShape(15.dp)
+            layout.select?.let { TouchButton(it, onKey.forKey(KeyEvent.KEYCODE_BUTTON_SELECT), width = 76.dp, height = 30.dp, shape = pill) }
+            layout.start?.let { TouchButton(it, onKey.forKey(KeyEvent.KEYCODE_BUTTON_START), width = 76.dp, height = 30.dp, shape = pill) }
+        }
+        Box(
+            Modifier.align(Alignment.BottomEnd).size(44.dp).background(Idle, CircleShape)
+                .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(); onMenu() } },
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Default.Menu, contentDescription = null, tint = Label) }
     }
 }
 
