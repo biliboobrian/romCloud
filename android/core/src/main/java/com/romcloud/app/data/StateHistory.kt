@@ -190,6 +190,8 @@ class StateHistory(val dir: File, private val core: String) {
     companion object {
         /** États gardés par jeu (hors états épinglés), comme sur le serveur. */
         const val LIMIT = 10
+        /** Écart de date (ms) entre deux copies d'un même état (date du fichier, date de l'état). */
+        private const val SAME_STATE_MS = 2000L
         private const val THUMBNAIL_WIDTH = 320
         private val json = Json { ignoreUnknownKeys = true }
 
@@ -208,10 +210,19 @@ class StateHistory(val dir: File, private val core: String) {
          */
         fun merge(local: List<StateMeta>, online: List<OnlineState>, core: String): List<SavedState> = merge(local, online, listOf(core))
 
-        /** Même chose pour plusieurs cœurs (fiche du jeu : tous les cœurs intégrés du système). */
+        /**
+         * Même chose pour plusieurs cœurs (fiche du jeu : tous les cœurs intégrés du système). Un état
+         * de l'appareil jamais envoyé, daté comme un état en ligne d'un autre identifiant (à
+         * [SAME_STATE_MS] près), en est une copie : état de reprise d'un autre appareil, téléchargé
+         * puis ajouté à l'historique ([record]) ; seul l'état en ligne est affiché.
+         */
         fun merge(local: List<StateMeta>, online: List<OnlineState>, cores: Collection<String>): List<SavedState> {
             val remote = online.filter { s -> cores.any { sameSaveCore(s.core, it) } }.associateBy { it.id }
-            val mine = local.map { meta ->
+            val copies = local.filter { meta ->
+                !meta.uploaded && meta.id !in remote &&
+                    remote.values.any { sameSaveCore(it.core, meta.core) && Math.abs(it.createdAtMillis - meta.createdAt) <= SAME_STATE_MS }
+            }.map { it.id }.toSet()
+            val mine = local.filter { it.id !in copies }.map { meta ->
                 val match = remote[meta.id]
                 SavedState(meta.id, meta.core, meta.createdAt, meta.device, meta.platform, match?.pinned ?: meta.pinned, meta, match)
             }
