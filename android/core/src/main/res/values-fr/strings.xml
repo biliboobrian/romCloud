@@ -127,6 +127,11 @@
     <string name="order_rating">Par note</string>
     <string name="players_count">%1$s joueur(s)</string>
     <string name="available_on_device">✓ Disponible sur l’appareil</string>
+    <string name="game_version">Version %1$s</string>
+    <string name="game_update_available">Nouvelle version sur le serveur : %1$s</string>
+    <string name="game_update_available_from">Nouvelle version sur le serveur : %1$s (installée : %2$s)</string>
+    <string name="game_update_available_unknown">Une nouvelle version du jeu est sur le serveur</string>
+    <string name="action_update_game">Mettre à jour le jeu</string>
     <string name="delete_from_device">Supprimer de l’appareil</string>
     <string name="must_download">Le jeu doit être téléchargé avant de pouvoir y jouer.</string>
     <string name="screenshot">Capture d’écran</string>

@@ -2387,6 +2387,8 @@
       multiDisc ? call(rc.launcher.resumeDiscs, system, game).catch(() => null) : null,
     ]);
     const savedStates = history?.states?.length || 0;
+    // Jeu PC téléchargé : nouvelle version sur le serveur (seuls les fichiers changés sont téléchargés).
+    const folderStatus = game.folder && downloaded.size ? await call(rc.library.folderStatus, system, game).catch(() => null) : null;
     // Jeu à plusieurs : compatibilité de l'émulateur choisi (relue : il a pu changer).
     await refreshNetplaySystem(system, true);
     // Partie à reprendre : état sur ce PC ou sauvegarde en ligne (récupérée au lancement si plus récente).
@@ -2423,6 +2425,7 @@
       game.publisher && t('detail.publisher', { v: game.publisher }),
       game.players && t('detail.players', { v: game.players }),
       game.rating != null && t('detail.rating', { v: starsText(game.rating) }),
+      game.version && t('detail.version', { v: game.version }),
     ].filter(Boolean);
 
     let actions = '';
@@ -2465,6 +2468,13 @@
           ${playtimeHtml(game)}
           ${online ? `<div class="muted">${icon('cloud', 16)} ${esc(t('profile.onlineSave', { device: online.device || '?', date: new Date(online.savedAt).toLocaleString(window.I18N.language) }))}</div>` : ''}
           ${st.kind === 'downloaded' ? `<div class="ok">${esc(t('detail.onPc'))}</div>` : ''}
+          ${st.kind === 'downloaded' && folderStatus?.updateAvailable
+            ? `<div class="line"><span class="warn">${esc(
+                game.version && folderStatus.localVersion && folderStatus.localVersion !== game.version
+                  ? t('detail.updateFrom', { v: game.version, local: folderStatus.localVersion })
+                  : game.version ? t('detail.update', { v: game.version }) : t('detail.updateUnknown'),
+              )}</span> <button class="btn primary small" id="updateBtn">${icon('cloud', 18)} ${esc(t('detail.updateBtn'))}</button></div>`
+            : ''}
           ${st.kind === 'failed' ? `<div class="error">${esc(t('status.failed', { error: st.error }))}</div>` : ''}
           ${st.kind === 'remote' ? `<div class="muted">${esc(t('detail.mustDownload'))}</div>` : ''}
           ${discs && st.kind === 'downloaded' && !isLobbyHost() ? `<div class="line disc-choice">${Array.from({ length: discs.count }, (_, d) => `<button class="chip${d === disc ? ' selected' : ''}${discs.resume[d] ? ' has-resume' : ''}" data-disc="${d}"${discs.resume[d] ? ` title="${esc(t('parts.discResume'))}"` : ''}>${esc(t('parts.disc', { n: d + 1 }))}</button>`).join('')}</div>` : ''}
@@ -2528,6 +2538,8 @@
       btn.addEventListener('click', () => joinNetplay(S.peers.find((p) => p.id === btn.dataset.joinPeer && p.hosting)));
     }
     $('#downloadBtn')?.addEventListener('click', () => startDownload(system, game, false, missingBios));
+    // Mise à jour du jeu PC : téléchargement des fichiers changés (les autres gardés).
+    $('#updateBtn')?.addEventListener('click', () => startDownload(system, game, false));
     $('#biosBtn')?.addEventListener('click', async () => {
       await call(rc.downloads.dismiss, game.id);
       await call(rc.downloads.start, system, game, { bios: missingBios, includeRom: false });

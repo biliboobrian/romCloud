@@ -103,7 +103,6 @@ pub fn start(system: Value, game: Value, options: Value) {
                     notify(&game_id, Some(state), None)
                 })
                 .await?;
-                std::fs::write(library::folder_marker(&system, &game), n(&game, "size").to_string())?;
                 if let Err(e) = api::remember_downloaded(&system, &game) {
                     eprintln!("{e}"); // listé hors ligne
                 }
@@ -187,6 +186,8 @@ struct FolderFile {
     size: u64,
     archive_size: Option<u64>,
     format: &'static str,
+    /// Date du fichier sur le serveur (ms) : avec la taille, repère un fichier changé par une nouvelle version.
+    mtime: Option<u64>,
 }
 
 impl FolderFile {
@@ -197,7 +198,7 @@ impl FolderFile {
             Some("xz") => "xz",
             _ => "zip",
         };
-        FolderFile { path: s(v, "path").to_string(), size: n(v, "size"), archive_size, format }
+        FolderFile { path: s(v, "path").to_string(), size: n(v, "size"), archive_size, format, mtime: v.get("mtime").and_then(Value::as_u64) }
     }
 
     fn packed(&self) -> bool {
@@ -368,7 +369,18 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
     let listing: Value = serde_json::from_str(&api::request(&format!("/api/games/{id}/files?zst=1"), None).await?)?;
     let files: Vec<FolderFile> = listing["files"].as_array().map(|a| a.iter().map(FolderFile::from_json).collect()).unwrap_or_default();
     let target_of = |f: &FolderFile| f.path.split('/').fold(folder.clone(), |path, part| path.join(part));
-    let complete = |f: &FolderFile| std::fs::metadata(target_of(f)).map(|m| m.is_file() && m.len() == f.size).unwrap_or(false);
+    // Mise à jour : fichiers reçus avec la version déjà téléchargée (chemin -> [taille, date sur le
+    // serveur]) ; ceux qui ont changé sont téléchargés de nouveau.
+    let previous = library::read_folder_marker(system, game)
+        .and_then(|m| m.get("files").and_then(Value::as_object).cloned())
+        .unwrap_or_default();
+    let complete = |f: &FolderFile| {
+        std::fs::metadata(target_of(f)).map(|m| m.is_file() && m.len() == f.size).unwrap_or(false)
+            && match (f.mtime, previous.get(&f.path).and_then(|e| e.get(1)).and_then(Value::as_u64)) {
+                (Some(remote), Some(local)) => remote == local,
+                _ => true,
+            }
+    };
     let mut todo: Vec<FolderFile> = files.iter().filter(|f| !complete(f)).cloned().collect();
     todo.sort_by(|a, b| b.download_size().cmp(&a.download_size()));
     let free = || crate::paths::disk_space(&folder).map(|(free, _)| free);
@@ -469,10 +481,23 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
             }
         }
     };
+    let listed = files.clone();
     tokio::select! {
         result = async { tokio::try_join!(downloads, unpacks) } => { result?; }
         _ = ticker => {}
     }
+    // Fichiers de la version précédente absents de la nouvelle : supprimés.
+    let paths: std::collections::HashSet<&str> = listed.iter().map(|f| f.path.as_str()).collect();
+    for old in previous.keys().filter(|p| !paths.contains(p.as_str())) {
+        let _ = std::fs::remove_file(old.split('/').fold(folder.clone(), |path, part| path.join(part)));
+    }
+    let marker = json!({
+        "size": listed.iter().map(|f| f.size).sum::<u64>(),
+        "stamp": listing.get("contentStamp").cloned().unwrap_or(Value::Null),
+        "version": listing.get("version").cloned().unwrap_or(Value::Null),
+        "files": listed.iter().map(|f| (f.path.clone(), json!([f.size, f.mtime.unwrap_or(0)]))).collect::<serde_json::Map<String, Value>>(),
+    });
+    std::fs::write(library::folder_marker(system, game), marker.to_string())?;
     Ok(())
 }
 
@@ -481,7 +506,7 @@ mod tests {
     use super::*;
 
     fn file(path: &str, size: u64, archive_size: Option<u64>) -> FolderFile {
-        FolderFile { path: path.into(), size, archive_size, format: "xz" }
+        FolderFile { path: path.into(), size, archive_size, format: "xz", mtime: None }
     }
 
     #[test]

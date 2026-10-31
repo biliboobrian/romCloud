@@ -66,7 +66,8 @@ export function folderFiles(dir) {
           files.push({
             path: original,
             size: packed.size,
-            mtime: Math.floor(stat.mtimeMs),
+            // Date du fichier d'origine : la compression ne change pas le jeu (mises à jour des applications).
+            mtime: packed.mtime ?? Math.floor(stat.mtimeMs),
             packed: true,
             format,
             packedSize: stat.size,

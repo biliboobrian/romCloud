@@ -234,6 +234,12 @@
           <button type="button" class="btn small" id="gamePackBtn"></button>
           <button type="button" class="btn small ghost" id="gameUnpackBtn"></button>
         </div>
+        <div class="row hidden" id="gameNewVersion">
+          <label><span data-i18n="game.newVersion"></span>
+            <select id="gameNewVersionSelect" class="mono"></select>
+            <span class="muted" data-i18n="game.newVersionHint"></span></label>
+          <button type="button" class="btn small" id="gameNewVersionBtn" data-i18n="game.newVersionReplace"></button>
+        </div>
         <div class="game-parts" id="gameParts"></div>
         <label><span data-i18n="game.fieldTitle"></span> <input name="title" required></label>
         <div class="row">
@@ -249,6 +255,9 @@
         <label id="gameZrifField" class="hidden"><span data-i18n="game.zrif"></span>
           <input name="zrif" class="mono" placeholder="KO5ifR1dQ+eHBl…" autocomplete="off" spellcheck="false">
           <span class="muted" data-i18n="game.zrifHint"></span></label>
+        <label id="gameVersionField" class="hidden"><span data-i18n="game.version"></span>
+          <input name="version" class="mono" maxlength="40" autocomplete="off" spellcheck="false">
+          <span class="muted" id="gameVersionHint"></span></label>
         <label id="gameSteamField" class="hidden"><span data-i18n="game.steamAppId"></span>
           <input name="steamAppId" class="mono" placeholder="4297840" autocomplete="off" spellcheck="false">
           <span class="muted" data-i18n="game.steamAppIdHint"></span></label>

@@ -174,6 +174,7 @@ fun TvGameDetailScreen(
                         game.genre,
                         game.developer,
                         game.players?.let { stringResource(R.string.players_count, it) },
+                        game.version?.let { stringResource(R.string.game_version, it) },
                         game.stars?.let { stringResource(R.string.rating_short, starsText(it)) },
                         partsSummary(game),
                         gameSizeLabel(game),
@@ -192,7 +193,22 @@ fun TvGameDetailScreen(
                     }
                     download is DownloadState.Failed ->
                         Text(stringResource(R.string.download_failed, download.message), color = MaterialTheme.colorScheme.error)
-                    state.downloaded -> Text(stringResource(R.string.tv_on_tv), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
+                    state.downloaded -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(stringResource(R.string.tv_on_tv), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
+                        // Jeu PC : nouvelle version sur le serveur (« Mettre à jour le jeu » plus bas).
+                        if (state.updateAvailable) {
+                            Text(
+                                when {
+                                    game.version != null && state.localVersion != null && state.localVersion != game.version ->
+                                        stringResource(R.string.game_update_available_from, game.version!!, state.localVersion!!)
+                                    game.version != null -> stringResource(R.string.game_update_available, game.version!!)
+                                    else -> stringResource(R.string.game_update_available_unknown)
+                                },
+                                color = MaterialTheme.colorScheme.tertiary,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
                     else -> Text(
                         stringResource(R.string.tv_must_download),
                         style = MaterialTheme.typography.labelLarge,
@@ -294,6 +310,10 @@ fun TvGameDetailScreen(
                             }
                             if (state.missingBios.isNotEmpty()) {
                                 SecondaryButton(stringResource(R.string.action_download_bios), Icons.Filled.CloudDownload) { viewModel.downloadBios() }
+                            }
+                            // Jeu PC : nouvelle version sur le serveur, seuls les fichiers changés sont téléchargés.
+                            if (state.updateAvailable) {
+                                SecondaryButton(stringResource(R.string.action_update_game), Icons.Filled.CloudDownload) { viewModel.download() }
                             }
                         }
                         else -> ActionButton(

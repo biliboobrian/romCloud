@@ -8,6 +8,7 @@ import android.os.StatFs
 import androidx.core.content.ContextCompat
 import com.romcloud.app.launch.PlayerFilter
 import java.io.File
+import kotlinx.serialization.json.Json
 
 /**
  * Emplacement des ROMs sur l'appareil : <dossier ROMs>/<dossier du système>/<fichier>.
@@ -15,6 +16,8 @@ import java.io.File
  * fichier principal et ses parties (disques, mises à jour, DLC), rangés à côté de lui.
  */
 class LocalLibrary(private val context: Context, private val settings: Settings) {
+
+    private val markerJson = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
     private fun root() = File(settings.config.value.romsDir)
 
@@ -26,12 +29,37 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         if (game.folder) folderComplete(system, game)
         else game.files.all { f -> File(systemDir(system), f.fileName).let { it.isFile && it.length() == f.size } }
 
-    /** Jeu en dossier : fichier écrit à la fin du téléchargement (taille du jeu), absent tant qu'il manque des fichiers. */
+    /** Jeu en dossier : fichier écrit à la fin du téléchargement ([FolderMarker]), absent tant qu'il manque des fichiers. */
     fun folderMarker(system: GameSystem, game: Game) = File(fileFor(system, game), ".romcloud-complete")
 
-    /** Jeu en dossier complet sur l'appareil : téléchargement terminé pour sa taille actuelle sur le serveur. */
-    private fun folderComplete(system: GameSystem, game: Game): Boolean =
-        runCatching { folderMarker(system, game).readText().trim().toLong() == game.size }.getOrDefault(false)
+    /** Téléchargement terminé du jeu en dossier (empreinte, version, fichiers reçus) ; null : pas terminé. */
+    fun readFolderMarker(system: GameSystem, game: Game): FolderMarker? = runCatching {
+        val text = folderMarker(system, game).takeIf { it.isFile }?.readText()?.trim() ?: return null
+        // Anciennes versions de l'application : la taille seule.
+        text.toLongOrNull()?.let { FolderMarker(size = it) } ?: markerJson.decodeFromString(FolderMarker.serializer(), text)
+    }.getOrNull()
+
+    fun writeFolderMarker(system: GameSystem, game: Game, marker: FolderMarker) {
+        folderMarker(system, game).writeText(markerJson.encodeToString(FolderMarker.serializer(), marker))
+    }
+
+    /** Jeu en dossier téléchargé sur l'appareil, dans sa version actuelle ou une plus ancienne (voir [updateAvailable]). */
+    private fun folderComplete(system: GameSystem, game: Game): Boolean = readFolderMarker(system, game) != null
+
+    /**
+     * Jeu PC téléchargé dont les fichiers ont changé sur le serveur depuis (nouvelle version) : à mettre
+     * à jour (seuls les fichiers changés sont téléchargés de nouveau). Marqueur d'une ancienne version
+     * de l'application, ou serveur sans empreinte : par la taille du jeu.
+     */
+    fun updateAvailable(system: GameSystem, game: Game): Boolean {
+        if (!game.folder) return false
+        val marker = readFolderMarker(system, game) ?: return false
+        val stamp = marker.stamp
+        return if (stamp != null && game.contentStamp != null) stamp != game.contentStamp else marker.size != game.size
+    }
+
+    /** Version du jeu PC téléchargé sur l'appareil (null : inconnue ou pas téléchargé). */
+    fun downloadedVersion(system: GameSystem, game: Game): String? = readFolderMarker(system, game)?.version
 
     /** Fichier d'un jeu en dossier à partir de son chemin sur le serveur (« Bin/Game.exe »), resté dans le dossier. */
     fun folderFile(system: GameSystem, game: Game, path: String): File =

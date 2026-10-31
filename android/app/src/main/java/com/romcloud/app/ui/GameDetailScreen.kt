@@ -189,6 +189,8 @@ fun GameDetailScreen(
                         game.developer?.let { stringResource(R.string.meta_developer, it) },
                         game.publisher?.let { stringResource(R.string.meta_publisher, it) },
                         game.players?.let { stringResource(R.string.meta_players, it) },
+                        // Jeu PC : version sur le serveur.
+                        game.version?.let { stringResource(R.string.game_version, it) },
                         game.stars?.let { stringResource(R.string.meta_rating, starsText(it)) },
                     ).forEach {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -248,6 +250,24 @@ fun GameDetailScreen(
                     }
                     if (state.downloaded) {
                         Text(stringResource(R.string.available_on_device), color = DownloadedGreen, style = MaterialTheme.typography.labelLarge)
+                        // Jeu PC : nouvelle version sur le serveur, seuls les fichiers changés sont téléchargés.
+                        if (state.updateAvailable) {
+                            Text(
+                                when {
+                                    game.version != null && state.localVersion != null && state.localVersion != game.version ->
+                                        stringResource(R.string.game_update_available_from, game.version!!, state.localVersion!!)
+                                    game.version != null -> stringResource(R.string.game_update_available, game.version!!)
+                                    else -> stringResource(R.string.game_update_available_unknown)
+                                },
+                                color = MaterialTheme.colorScheme.tertiary,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Button(onClick = viewModel::download, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                                Icon(Icons.Filled.CloudDownload, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.action_update_game))
+                            }
+                        }
                         // Jeu en plusieurs disques : disque de départ (icône : partie à reprendre sur ce disque).
                         if (state.discCount > 0) {
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

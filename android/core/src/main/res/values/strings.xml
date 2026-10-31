@@ -130,6 +130,11 @@
     <string name="order_rating">By rating</string>
     <string name="players_count">%1$s player(s)</string>
     <string name="available_on_device">✓ Available on the device</string>
+    <string name="game_version">Version %1$s</string>
+    <string name="game_update_available">New version on the server: %1$s</string>
+    <string name="game_update_available_from">New version on the server: %1$s (installed: %2$s)</string>
+    <string name="game_update_available_unknown">A new version of the game is on the server</string>
+    <string name="action_update_game">Update the game</string>
     <string name="delete_from_device">Delete from the device</string>
     <string name="must_download">The game must be downloaded before you can play it.</string>
     <string name="screenshot">Screenshot</string>
