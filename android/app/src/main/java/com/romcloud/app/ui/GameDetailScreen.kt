@@ -141,6 +141,16 @@ fun GameDetailScreen(
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.refreshLocal() }
     }
 
+    // Ouvert par le raccourci du jeu sur l'écran d'accueil : lancé (reprise de la partie s'il y en a
+    // une) dès que sa présence sur l'appareil est connue ; absent, la fiche reste affichée.
+    val app = activity.application as com.romcloud.app.RomCloudApp
+    LaunchedEffect(state.localChecked) {
+        val game = state.game ?: return@LaunchedEffect
+        if (!state.localChecked || app.shortcutLaunch.value?.second != game.id) return@LaunchedEffect
+        app.shortcutLaunch.value = null
+        if (state.downloaded) viewModel.play(activity, state.canResume)?.let { snackbar.showSnackbar(it) }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

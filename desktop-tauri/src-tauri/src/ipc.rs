@@ -2,7 +2,7 @@
 // une seule commande et répartis ici. Le pont
 // (bridge.js) renvoie à l'interface { ok, data } ou { ok: false, error }.
 use crate::error::{AppError, Result};
-use crate::{account, api, builtin, connectivity, downloads, keyboard, launcher, library, netplay, screencast, settings, updater};
+use crate::{account, api, builtin, connectivity, downloads, keyboard, launcher, library, netplay, screencast, settings, shortcuts, updater};
 use serde_json::{json, Value};
 use tauri_plugin_dialog::DialogExt;
 
@@ -200,6 +200,8 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "keyboard:layout" => keyboard::layout(builtin::load_keys()),
         "keyboard:save" => builtin::save_keys(&arg(a, 0))?,
         "app:version" => json!(account::version()),
+        "shortcut:create" => shortcuts::create(&arg(a, 0)).await?,
+        "shortcut:pending" => shortcuts::take_pending(),
         // Diffusion de l'écran sur un Chromecast.
         "cast:discover" => crate::cast::discover().await,
         "cast:start" => screencast::start(arg(a, 0)).await?,

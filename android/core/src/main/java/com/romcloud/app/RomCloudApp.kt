@@ -66,6 +66,12 @@ class RomCloudApp : Application(), ImageLoaderFactory {
     /** Jeux à lancer automatiquement dès la fin de leur téléchargement, avec les options du lancement (reprise…). */
     val autoLaunch: MutableMap<Long, PendingLaunch> = ConcurrentHashMap()
 
+    /**
+     * Jeu demandé par un raccourci de l'écran d'accueil ([com.romcloud.app.launch.GameShortcuts]) :
+     * (système, jeu), lancé par sa fiche dès qu'elle sait s'il est sur l'appareil.
+     */
+    val shortcutLaunch = MutableStateFlow<Pair<String, Long>?>(null)
+
     lateinit var settings: Settings
         private set
     lateinit var api: ApiClient
