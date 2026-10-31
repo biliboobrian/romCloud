@@ -334,6 +334,7 @@ Les Releases sont celles qu’Obtainium surveille (voir [Installation](#applicat
 
 - **Premier lancement** : saisir l'adresse du serveur (`http://192.168.x.x:8080`) et la clé d'API, *Tester la connexion*, puis autoriser **l'accès à tous les fichiers** : les ROMs sont écrites dans un dossier partagé (`/storage/emulated/0/RomCloud/<système>/` par défaut) pour que les émulateurs puissent les lire.
 - **Systèmes** : cartes avec l’image configurée sur le serveur.
+- **Favoris** (Windows, téléphone et TV) : bouton *Ajouter aux favoris* (cœur) dans la fiche d’un jeu, téléchargé ou non. Dès qu’un jeu y est, la rangée **Favoris** apparaît sur l’écran des systèmes, au-dessus de la rangée *Téléchargés* (du plus récemment ajouté au plus ancien ; hors ligne : favoris téléchargés seulement). Avec un profil connecté, les favoris sont ceux du profil, communs à tous ses appareils ; sans profil, ils restent sur l’appareil et sont ajoutés à ceux du profil à la connexion.
 - **Recherche globale** (loupe sur l’écran des systèmes, bouton *Rechercher* sur TV) : cherche dans les jeux de **tous les systèmes** ; résultats en cartes avec l’indicateur de téléchargement et le **logo de la console en bas à droite** (image du système, sinon son nom court). Un résultat ouvre la fiche du jeu. Hors ligne, la recherche porte sur les listes déjà ouvertes.
 - **Liste des jeux** : deux affichages au choix (bouton en haut à droite, choix mémorisé) :
   - **liste** : jaquette, titre, année, genre, taille ;

@@ -66,6 +66,7 @@ body.systems-screen { --bg: #000; background: linear-gradient(135deg, #2e1a6b 0%
 .btn.primary:hover:not(:disabled) { background: var(--accent-strong); }
 .btn.ghost { background: transparent; }
 .btn.danger { color: var(--danger); }
+.btn.favorite-on .icon { fill: var(--accent); }
 .btn.big { padding: 12px 22px; font-size: 15px; }
 .icon-btn {
   background: none; border: 0; color: var(--text); cursor: pointer; padding: 8px; border-radius: 8px;

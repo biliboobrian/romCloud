@@ -88,6 +88,10 @@
     <string name="criteria_publisher">Publisher</string>
     <string name="criteria_none">No game matches these filters.</string>
     <string name="row_downloaded">Downloaded</string>
+    <string name="row_favorites">Favorites</string>
+    <string name="favorite_add">Add to favorites</string>
+    <string name="favorite_remove">Remove from favorites</string>
+    <string name="favorite_not_saved">Favorite not saved to your profile: %1$s</string>
     <string name="row_recent">Recently added</string>
     <string name="row_other">Other</string>
     <string name="row_all">All games</string>

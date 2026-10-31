@@ -157,6 +157,14 @@ db.exec(`
     PRIMARY KEY (user_id, game_id)
   );
 
+  -- Jeux favoris du profil (téléchargés ou non) : rangée « Favoris » de la page des systèmes.
+  CREATE TABLE IF NOT EXISTS favorites (
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id     INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, game_id)
+  );
+
   CREATE TABLE IF NOT EXISTS saves (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

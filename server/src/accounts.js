@@ -360,6 +360,22 @@ export function listPlaytime(userId) {
 }
 
 // ---------------------------------------------------------------------------
+// Favoris
+// ---------------------------------------------------------------------------
+
+/** Jeux favoris du profil, du plus récemment ajouté au plus ancien. */
+export function favoriteIds(userId) {
+  return db.prepare('SELECT game_id FROM favorites WHERE user_id = ? ORDER BY added_at DESC, rowid DESC').all(userId).map((r) => r.game_id);
+}
+
+/** Ajoute ([on]) ou retire le jeu des favoris du profil (sans effet s'il y est déjà, ou n'y est pas). */
+export function setFavorite(userId, gameId, on) {
+  const id = requireGame(gameId);
+  if (on) db.prepare('INSERT OR IGNORE INTO favorites (user_id, game_id) VALUES (?, ?)').run(userId, id);
+  else db.prepare('DELETE FROM favorites WHERE user_id = ? AND game_id = ?').run(userId, id);
+}
+
+// ---------------------------------------------------------------------------
 // Réglages des jeux
 // ---------------------------------------------------------------------------
 

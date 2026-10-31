@@ -28,9 +28,11 @@ import {
   gameFolderFiles,
   gameMediaDir,
   gameWithParts,
+  getGameRow,
   listGames,
   replaceWithVersion,
   requireGameRow,
+  rowsToGames,
   SCREENSHOT_TYPES,
   deleteGameMedia,
   safeFileName,
@@ -740,6 +742,21 @@ api.post('/account/playtime', signedIn, (req, res) => {
 api.get('/account/game-settings', signedIn, (req, res) => res.json(accounts.gameSettingsOf(req.auth.user.id, req.query.gameId)));
 api.put('/account/game-settings', signedIn, (req, res) => {
   res.json(accounts.setGameSettings(req.auth.user.id, req.body?.gameId, req.body?.settings));
+});
+// Jeux favoris du profil (téléchargés ou non), du plus récemment ajouté au plus ancien ; seulement
+// ceux des systèmes proposés à la plateforme de l'application.
+api.get('/account/favorites', signedIn, (req, res) => {
+  const systems = new Set(listSystems({ platform: platformOf(req) }).map((s) => s.id));
+  const rows = accounts.favoriteIds(req.auth.user.id).map((id) => getGameRow(id)).filter((r) => r && systems.has(r.system_id));
+  res.json(rowsToGames(rows));
+});
+api.put('/account/favorites/:gameId', signedIn, (req, res) => {
+  accounts.setFavorite(req.auth.user.id, req.params.gameId, true);
+  res.status(204).end();
+});
+api.delete('/account/favorites/:gameId', signedIn, (req, res) => {
+  accounts.setFavorite(req.auth.user.id, req.params.gameId, false);
+  res.status(204).end();
 });
 // Statistiques du profil : temps de jeu, jeux téléchargés par appareil, jeux les plus joués, dernières parties.
 api.get('/account/stats', signedIn, (req, res) => res.json(profileStats(req.auth.user.id)));

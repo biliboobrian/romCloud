@@ -85,6 +85,10 @@
     <string name="criteria_publisher">Éditeur</string>
     <string name="criteria_none">Aucun jeu ne correspond à ces filtres.</string>
     <string name="row_downloaded">Téléchargés</string>
+    <string name="row_favorites">Favoris</string>
+    <string name="favorite_add">Ajouter aux favoris</string>
+    <string name="favorite_remove">Retirer des favoris</string>
+    <string name="favorite_not_saved">Favori non enregistré dans le profil : %1$s</string>
     <string name="row_recent">Ajoutés récemment</string>
     <string name="row_other">Autres</string>
     <string name="row_all">Tous les jeux</string>

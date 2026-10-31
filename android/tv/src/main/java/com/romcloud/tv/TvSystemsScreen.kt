@@ -104,26 +104,35 @@ fun TvSystemsScreen(
     }
     val app = (LocalContext.current as Activity).application as RomCloudApp
     val lobbyState by app.lobbies.state.collectAsStateWithLifecycle()
-    // Jeux téléchargés, tous systèmes confondus : rangée en tête de la grille (lobby : jeux à assez de joueurs).
+    // Jeux favoris puis téléchargés, tous systèmes confondus : rangées en tête de la grille (lobby :
+    // jeux à assez de joueurs ; hors ligne : favoris téléchargés seulement).
     val localGames by viewModel.localGames.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val local = localGames.filter { viewModel.system(it.systemId) != null && fitsLobby(it, lobbyState) }
-    // Au retour d'un système (ou d'un jeu de la rangée), le focus revient sur la carte d'où l'on venait.
+    val localIds = localGames.mapTo(HashSet()) { it.id }
+    val favorite = favorites.filter { viewModel.system(it.systemId) != null && fitsLobby(it, lobbyState) && (!state.offline || it.id in localIds) }
+    // Au retour d'un système (ou d'un jeu d'une rangée), le focus revient sur la carte d'où l'on venait.
     var lastFocused by rememberSaveable { mutableIntStateOf(0) }
     var lastGame by rememberSaveable { mutableLongStateOf(-1L) }
+    /** Rangée du dernier jeu choisi (un jeu peut être dans les deux) : favoris, sinon téléchargés. */
+    var lastGameFavorite by rememberSaveable { mutableStateOf(false) }
     val restoreFocus = remember { FocusRequester() }
     val settingsFocus = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
     val rowState = rememberLazyListState()
+    val favoriteRowState = rememberLazyListState()
+    val headerRows = (if (favorite.isNotEmpty()) 1 else 0) + (if (local.isNotEmpty()) 1 else 0)
+    val gameRestored = (if (lastGameFavorite) favorite else local).any { it.id == lastGame }
 
-    LaunchedEffect(state.systems.size, search.active, local.isNotEmpty()) {
+    LaunchedEffect(state.systems.size, search.active, local.isNotEmpty(), favorite.isNotEmpty()) {
         if (state.systems.isEmpty() || search.active) return@LaunchedEffect
-        val gameIndex = local.indexOfFirst { it.id == lastGame }
+        val gameIndex = (if (lastGameFavorite) favorite else local).indexOfFirst { it.id == lastGame }
         if (gameIndex >= 0) {
-            gridState.scrollToItem(0)
-            rowState.scrollToItem(gameIndex)
+            gridState.scrollToItem(if (lastGameFavorite || favorite.isEmpty()) 0 else 1)
+            (if (lastGameFavorite) favoriteRowState else rowState).scrollToItem(gameIndex)
         } else {
             val index = lastFocused.coerceIn(0, state.systems.lastIndex)
-            gridState.scrollToItem(index + if (local.isNotEmpty()) 1 else 0)
+            gridState.scrollToItem(index + headerRows)
         }
         withFrameNanos { }
         runCatching { restoreFocus.requestFocus() }
@@ -223,13 +232,24 @@ fun TvSystemsScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
+                if (favorite.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "favorite-games") {
+                        TvGamesRow(
+                            viewModel, stringResource(R.string.row_favorites), favorite, { it.id in localIds }, favoriteRowState, imageUrl, mediaUrl,
+                            restoreGame = lastGame.takeIf { gameRestored && lastGameFavorite },
+                            restoreFocus = restoreFocus,
+                            onFocused = { lastGame = it.id; lastGameFavorite = true },
+                            onOpenGame = onOpenGame,
+                        )
+                    }
+                }
                 if (local.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "local-games") {
-                        TvLocalGamesRow(
-                            viewModel, local, rowState, imageUrl, mediaUrl,
-                            restoreGame = lastGame.takeIf { id -> local.any { it.id == id } },
+                        TvGamesRow(
+                            viewModel, stringResource(R.string.row_downloaded), local, { true }, rowState, imageUrl, mediaUrl,
+                            restoreGame = lastGame.takeIf { gameRestored && !lastGameFavorite },
                             restoreFocus = restoreFocus,
-                            onFocused = { lastGame = it.id },
+                            onFocused = { lastGame = it.id; lastGameFavorite = false },
                             onOpenGame = onOpenGame,
                         )
                     }
@@ -242,7 +262,7 @@ fun TvSystemsScreen(
                         localSize = usage.systems[system.id] ?: 0,
                         onClick = { onOpenSystem(system.id) },
                         modifier = Modifier
-                            .then(if (index == lastFocused && local.none { it.id == lastGame }) Modifier.focusRequester(restoreFocus) else Modifier)
+                            .then(if (index == lastFocused && !gameRestored) Modifier.focusRequester(restoreFocus) else Modifier)
                             .onFocusChanged {
                                 if (it.isFocused) {
                                     lastFocused = index
@@ -291,11 +311,16 @@ fun Message(text: String) {
     }
 }
 
-/** Rangée des jeux téléchargés, en tête des systèmes : cartes comme la recherche, validation -> fiche du jeu. */
+/**
+ * Rangée de jeux en tête des systèmes (favoris, téléchargés) : cartes comme la recherche, validation
+ * -> fiche du jeu ; [downloaded] : jeu présent sur l'appareil.
+ */
 @Composable
-private fun TvLocalGamesRow(
+private fun TvGamesRow(
     viewModel: SystemsViewModel,
+    title: String,
     games: List<Game>,
+    downloaded: (Game) -> Boolean,
     rowState: LazyListState,
     imageUrl: (GameSystem) -> String?,
     mediaUrl: MediaUrl,
@@ -307,7 +332,7 @@ private fun TvLocalGamesRow(
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     Column {
         Text(
-            stringResource(R.string.row_title, stringResource(R.string.row_downloaded), games.size),
+            stringResource(R.string.row_title, title, games.size),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
@@ -324,7 +349,7 @@ private fun TvLocalGamesRow(
                     status = when (val d = downloads[game.id]) {
                         is DownloadState.Running -> LocalStatus.Downloading(d)
                         is DownloadState.Failed -> LocalStatus.Error(d.message)
-                        null -> LocalStatus.Downloaded
+                        null -> if (downloaded(game)) LocalStatus.Downloaded else LocalStatus.Remote
                     },
                     onClick = { onOpenGame(game.systemId, game.id) },
                     onLongClick = { onOpenGame(game.systemId, game.id) },
