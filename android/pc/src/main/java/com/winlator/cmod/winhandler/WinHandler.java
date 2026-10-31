@@ -339,12 +339,30 @@ public class WinHandler {
 
     // ========================== Event handling ==============================
 
+    /**
+     * RomCloud : joueur de la manette, attribuée au premier joueur libre si elle n'en a pas. Manette
+     * utilisée pendant que la manette à l'écran est affichée (jeu lancé sans manette) : celle-ci est
+     * masquée, la manette branchée devient le joueur 1.
+     */
+    private int physicalSlot(InputDevice device) {
+        int slot = controllerManager.getSlotForDeviceOrSibling(device.getId());
+        if (slot == -1) {
+            slot = controllerManager.autoAssign(device);
+            if (slot == 0) currentController = null;
+        }
+        if (slot == 0 && isVirtualActive()) {
+            activity.usePhysicalGamepad();
+            currentController = null;
+        }
+        return slot;
+    }
+
     public boolean onGenericMotionEvent(MotionEvent event) {
         int deviceId = event.getDeviceId();
         InputDevice device = InputDevice.getDevice(deviceId);
         if (device == null || !ControllerManager.isGameController(device)) return false;
 
-        int assignedSlot = controllerManager.getSlotForDeviceOrSibling(deviceId);
+        int assignedSlot = physicalSlot(device);
 
         // If virtual is active and this device is P1, ignore to avoid conflicts
         if (virtualExclusiveP1 && isVirtualActive() && assignedSlot == 0) {
@@ -440,7 +458,7 @@ public class WinHandler {
             return false;
         }
 
-        int assignedSlot = controllerManager.getSlotForDeviceOrSibling(deviceId);
+        int assignedSlot = physicalSlot(device);
 
         if (virtualExclusiveP1 && isVirtualActive() && assignedSlot == 0) {
             return true; // consume quietly

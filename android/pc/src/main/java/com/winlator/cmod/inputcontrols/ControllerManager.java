@@ -275,6 +275,37 @@ public class ControllerManager {
         saveAssignments(); // Persist the change immediately.
     }
 
+    /**
+     * RomCloud : manette sans joueur (l'écran d'attribution de Winlator n'est pas accessible) : placée
+     * au premier joueur sans manette branchée, joueur activé. Renvoie le joueur, -1 si aucun.
+     */
+    public int autoAssign(InputDevice device) {
+        if (device == null || device.isVirtual() || !isGameController(device)) return -1;
+        int slot = getSlotForDeviceOrSibling(device.getId());
+        if (slot == -1) {
+            for (int i = 0; i < 4 && slot == -1; i++) {
+                if (getAssignedDeviceForSlot(i) == null) slot = i;
+            }
+            if (slot == -1) return -1;
+            assignDeviceToSlot(slot, device);
+        }
+        if (!enabledSlots[slot]) setSlotEnabled(slot, true);
+        return slot;
+    }
+
+    /**
+     * RomCloud, au lancement du jeu : manettes branchées attribuées aux joueurs dans l'ordre ; joueurs
+     * 2 à 4 activés seulement avec une manette branchée (une manette Windows de plus par joueur activé).
+     */
+    public void autoAssignConnected() {
+        scanForDevices();
+        for (InputDevice device : detectedDevices) autoAssign(device);
+        for (int i = 1; i < 4; i++) {
+            boolean connected = getAssignedDeviceForSlot(i) != null;
+            if (enabledSlots[i] != connected) setSlotEnabled(i, connected);
+        }
+    }
+
     public boolean hasEnabledUnassignedSlot() {
         for (int i = 0; i < 4; i++) {
             if (enabledSlots[i] && getAssignedDeviceForSlot(i) == null) {
