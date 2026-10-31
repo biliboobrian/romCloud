@@ -2204,6 +2204,7 @@
         <p class="muted">${esc(game.fileName)}${game.parts?.length ? ` + ${esc(partsSummary(game, true))}` : ''} · ${esc(sizeLabel(game))}</p>
         ${lastError ? `<p class="bad">${esc(t('download.lastError', { error: lastError }))}</p>` : ''}
         <label class="check"><input type="checkbox" id="launchAfter" checked> ${esc(t('download.launchAfter'))}</label>
+        ${rc.shortcut ? `<label class="check"><input type="checkbox" id="desktopShortcut"> ${esc(t('download.shortcut'))}</label>` : ''}
         ${missing.length ? `<label class="check"><input type="checkbox" id="withBios" checked> ${esc(t('bios.downloadToo', { n: missing.length, size: biosSize(missing) }))}</label>` : ''}`,
       buttons: [
         { label: t('action.details'), kind: 'ghost', left: true, onClick: () => openGameDetail(game.systemId, game.id) },
@@ -2215,12 +2216,42 @@
           onClick: async (close) => {
             const launchAfter = $('#launchAfter', root).checked;
             const bios = $('#withBios', root)?.checked ? missing : [];
+            if ($('#desktopShortcut', root)?.checked) createShortcut(game);
             close();
             await startDownload(system, game, launchAfter, bios);
           },
         },
       ],
     });
+  }
+
+  /** Raccourci du jeu sur le bureau : il ouvre RomCloud et lance le jeu ([playFromShortcut]). */
+  async function createShortcut(game) {
+    try {
+      await call(rc.shortcut.create, game);
+      toast(t('download.shortcutDone', { title: game.title }));
+    } catch (err) {
+      toast(t('download.shortcutFailed', { detail: err.message }), { type: 'error' });
+    }
+  }
+
+  /**
+   * Jeu demandé par son raccourci sur le bureau : sa fiche, puis le jeu lancé (reprise de la partie
+   * s'il y en a une) ; pas sur le PC : la fiche reste affichée.
+   */
+  async function playFromShortcut(request) {
+    if (!request?.systemId || !request.gameId) return;
+    await openGameDetail(request.systemId, request.gameId);
+    const system = systemById(request.systemId);
+    const game = S.detailGame;
+    if (!system || !game) return;
+    const downloaded = await call(rc.library.downloaded, [system], [game]).catch(() => []);
+    if (!downloaded.length) return;
+    const [localResume, online] = await Promise.all([
+      call(rc.launcher.resumable, system, game).catch(() => false),
+      S.account.signedIn ? call(rc.launcher.resumableOnline, system, game).catch(() => null) : null,
+    ]);
+    playChecked(system, game, localResume || online ? { resume: true, resumeCore: !localResume && online?.core ? online.core : undefined } : {});
   }
 
   async function startDownload(system, game, launchAfter, bios = []) {
@@ -3388,5 +3419,10 @@
     render();
     checkUpdate();
     if (S.settings.serverUrl) await loadSystems();
+    // Ouvert par le raccourci d'un jeu sur le bureau (puis raccourcis utilisés RomCloud ouvert).
+    if (rc.shortcut) {
+      playFromShortcut(await call(rc.shortcut.pending).catch(() => null));
+      rc.shortcut.onPlay(playFromShortcut);
+    }
   })();
 })();

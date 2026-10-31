@@ -101,6 +101,7 @@
     <string name="download_text">« %1$s » n’est pas encore sur cet appareil. Il doit être téléchargé avant de pouvoir y jouer.</string>
     <string name="download_last_error">Dernier essai : %1$s</string>
     <string name="download_launch_after">Lancer le jeu une fois téléchargé</string>
+    <string name="download_shortcut">Créer un raccourci sur l’écran d’accueil</string>
     <string name="downloading_title">Téléchargement en cours</string>
     <string name="downloading_text">« %1$s » est en cours de téléchargement. Voulez-vous l’annuler ?</string>
     <string name="cancel_download">Annuler le téléchargement</string>

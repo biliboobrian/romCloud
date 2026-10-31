@@ -629,6 +629,8 @@ class GameDetailViewModel(
         val system: GameSystem? = null,
         val game: Game? = null,
         val downloaded: Boolean = false,
+        /** Présence du jeu sur l'appareil vérifiée ([downloaded] connu). */
+        val localChecked: Boolean = false,
         /** Jeu PC téléchargé dont une nouvelle version est sur le serveur : « Mettre à jour ». */
         val updateAvailable: Boolean = false,
         /** Version du jeu PC téléchargée sur l'appareil (null : inconnue). */
@@ -798,6 +800,7 @@ class GameDetailViewModel(
             _state.update {
                 it.copy(
                     downloaded = downloaded,
+                    localChecked = true,
                     updateAvailable = updateAvailable,
                     localVersion = localVersion,
                     players = players,

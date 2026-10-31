@@ -1,12 +1,14 @@
 // Images allégées pour les applications : jaquettes, captures et images des systèmes réduites et
 // converties en WebP (qualité 80, transparence gardée), à la première demande puis gardées sur le
 // disque à côté de l'original (dossier « _variants »). Les grilles et listes demandent la vignette,
-// la fiche du jeu la version moyenne ; l'original reste servi sans demande de taille.
+// la fiche du jeu la version moyenne ; l'original reste servi sans demande de taille. Icône
+// (« icon ») : carré PNG de 256 px, image entière sur fond transparent (raccourci d'un jeu sur le
+// bureau de Windows, glissé tel quel dans un fichier .ico).
 import fs from 'node:fs';
 import path from 'node:path';
 
 /** Tailles proposées : largeur (et hauteur) maximales en pixels ; jamais agrandi. */
-export const VARIANTS = { thumb: 400, medium: 800 };
+export const VARIANTS = { thumb: 400, medium: 800, icon: 256 };
 export const VARIANTS_DIR = '_variants';
 const QUALITY = 80;
 
@@ -42,7 +44,8 @@ export async function mediaVariant(file, variant, dir) {
     return null;
   }
   const prefix = `${path.basename(file)}.${variant}.`;
-  const target = path.join(dir, `${prefix}${Math.round(stat.mtimeMs)}-${stat.size}.webp`);
+  const icon = variant === 'icon';
+  const target = path.join(dir, `${prefix}${Math.round(stat.mtimeMs)}-${stat.size}.${icon ? 'png' : 'webp'}`);
   if (fs.existsSync(target)) return target;
   if (!pending.has(target)) {
     pending.set(target, (async () => {
@@ -51,11 +54,11 @@ export async function mediaVariant(file, variant, dir) {
       try {
         fs.mkdirSync(dir, { recursive: true });
         const part = `${target}.${process.pid}.part`;
-        await lib(file, { animated: false })
-          .rotate()
-          .resize({ width, height: width * 2, fit: 'inside', withoutEnlargement: true })
-          .webp({ quality: QUALITY })
-          .toFile(part);
+        const image = lib(file, { animated: false }).rotate();
+        await (icon
+          ? image.resize({ width, height: width, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png()
+          : image.resize({ width, height: width * 2, fit: 'inside', withoutEnlargement: true }).webp({ quality: QUALITY })
+        ).toFile(part);
         fs.renameSync(part, target);
         // Versions plus anciennes de la même image (original remplacé) : retirées.
         for (const old of fs.readdirSync(dir)) {

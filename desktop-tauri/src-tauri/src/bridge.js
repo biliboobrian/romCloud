@@ -144,6 +144,7 @@
     keyboard: { layout: call('keyboard:layout'), save: call('keyboard:save') },
     pads: { start: call('pads:start'), command: call('pads:command'), stop: call('pads:stop'), onEvent: on('pads:event') },
     app: { version: call('app:version') },
+    shortcut: { create: call('shortcut:create'), pending: call('shortcut:pending'), onPlay: on('shortcut:play') },
     player: { resetCore: call('player:resetCore'), onCrash: on('player:crashed') },
     account: {
       state: call('account:state'),

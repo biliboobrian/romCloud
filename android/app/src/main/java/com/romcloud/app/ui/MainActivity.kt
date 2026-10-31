@@ -1,5 +1,6 @@
 package com.romcloud.app.ui
 
+import android.content.Intent
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
@@ -45,6 +46,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
+import com.romcloud.app.launch.GameShortcuts
 import com.romcloud.app.ui.theme.RomCloudTheme
 import kotlinx.coroutines.launch
 
@@ -78,6 +80,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Raccourci d'un jeu sur l'écran d'accueil (pas au retour d'une activité recréée).
+        if (savedInstanceState == null) GameShortcuts.gameOf(intent)?.let { app.shortcutLaunch.value = it }
         // Réglage modifiable depuis les Paramètres : appliqué dès qu'il change.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -98,6 +102,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        GameShortcuts.gameOf(intent)?.let { app.shortcutLaunch.value = it }
     }
 
     /** Les barres réapparaissent après un dialogue ou au retour d'un émulateur : on les re-masque. */
@@ -139,6 +148,12 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
     val route = nav.currentBackStackEntryAsState().value?.destination?.route
     LaunchedEffect(lobbyState.locked, route) {
         if (lobbyState.locked && route != null && route != "lobby") nav.navigate("lobby") { launchSingleTop = true }
+    }
+    // Raccourci d'un jeu : sa fiche, qui le lance (GameDetailScreen).
+    val shortcut by app.shortcutLaunch.collectAsStateWithLifecycle()
+    LaunchedEffect(shortcut) {
+        val (systemId, gameId) = shortcut ?: return@LaunchedEffect
+        if (start == "systems") nav.navigate("game/$systemId/$gameId") { launchSingleTop = true }
     }
     val dissolvedText = stringResource(com.romcloud.core.R.string.lobby_dissolved)
     LaunchedEffect(Unit) {

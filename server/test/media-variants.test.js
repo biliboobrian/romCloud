@@ -39,6 +39,17 @@ test('vignette et version moyenne en WebP, réduites sans être agrandies', asyn
   assert.equal((await sharp(await mediaVariant(small, 'medium', variants)).metadata()).width, 320);
 });
 
+test('icône : carré PNG de 256 px, image entière sur fond transparent', async () => {
+  const file = path.join(dir, 'boxart-icon.png');
+  await png(file, 300, 400);
+  const icon = await mediaVariant(file, 'icon', variants);
+  const meta = await sharp(icon).metadata();
+  assert.deepEqual([meta.format, meta.width, meta.height, meta.hasAlpha], ['png', 256, 256, true]);
+  // Bandes transparentes de chaque côté (jaquette en hauteur, non rognée).
+  const { data } = await sharp(icon).raw().toBuffer({ resolveWithObject: true });
+  assert.equal(data[(128 * 256 + 2) * 4 + 3], 0);
+});
+
 test('original remplacé : nouvelle version, l\'ancienne retirée', async () => {
   const file = path.join(dir, 'boxart2.png');
   await png(file, 900, 900);

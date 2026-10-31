@@ -27,6 +27,7 @@ mod paths;
 mod relay;
 mod screencast;
 mod settings;
+mod shortcuts;
 mod states;
 mod title_bar;
 mod updater;
@@ -37,12 +38,14 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 fn main() {
     tauri::Builder::default()
-        // Une seule fenêtre : un second lancement ramène la première au premier plan.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        // Une seule fenêtre : un second lancement ramène la première au premier plan (raccourci d'un
+        // jeu sur le bureau : le jeu est lancé).
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
+            shortcuts::forward(&args);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -51,6 +54,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![ipc::ipc, ipc::cast_chunk])
         .setup(|app| {
             events::init(app.handle().clone());
+            // Ouvert par le raccourci d'un jeu : lancé une fois l'interface prête.
+            shortcuts::remember_launch(&std::env::args().collect::<Vec<_>>());
             // Plantage de l'application : signalé au serveur (au lancement suivant).
             account::install_panic_hook();
             // Jeu à plusieurs : annonce de ce PC et appareils RomCloud du réseau local.

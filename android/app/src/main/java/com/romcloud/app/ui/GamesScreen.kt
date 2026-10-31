@@ -83,6 +83,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.romcloud.app.RomCloudApp
+import com.romcloud.app.launch.GameShortcuts
 import com.romcloud.app.launch.PendingLaunch
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.launch.RetroArchInfo
@@ -354,6 +356,8 @@ fun GamesScreen(
 
     askDownload?.let { game ->
         var launchAfter by remember { mutableStateOf(true) }
+        var shortcut by remember { mutableStateOf(false) }
+        val canShortcut = remember { GameShortcuts.supported(activity) }
         var withBios by remember { mutableStateOf(true) }
         val missingBios = state.missingBios
         AlertDialog(
@@ -373,6 +377,12 @@ fun GamesScreen(
                         Checkbox(checked = launchAfter, onCheckedChange = { launchAfter = it })
                         Text(stringResource(R.string.download_launch_after))
                     }
+                    if (canShortcut) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = shortcut, onCheckedChange = { shortcut = it })
+                            Text(stringResource(R.string.download_shortcut))
+                        }
+                    }
                     if (missingBios.isNotEmpty()) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = withBios, onCheckedChange = { withBios = it })
@@ -388,6 +398,8 @@ fun GamesScreen(
                     if (launchAfter && help == null) autoLaunch[game.id] = PendingLaunch() else autoLaunch -= game.id
                     viewModel.download(game, withBios)
                     askDownload = null
+                    // Raccourci sur l'écran d'accueil : le lanceur demande confirmation.
+                    if (shortcut) scope.launch { GameShortcuts.request(activity, (activity.application as RomCloudApp).api, game) }
                     if (help != null) postDownloadHelp = Triple(game, help, launchAfter)
                 }) { Text(stringResource(R.string.action_download)) }
             },
