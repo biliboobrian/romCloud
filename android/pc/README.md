@@ -10,7 +10,9 @@ Wine, Box64 et les autres programmes du système Linux sont lancés depuis le do
 l'application ; Android l'interdit aux applications qui visent l'API 29 ou plus. RomCloud PC vise
 l'API 28 (comme Winlator) ; RomCloud reste à jour. RomCloud la propose à l'installation au premier
 jeu PC (Release GitHub de RomCloud, `RomCloud-PC-<version>.apk`) et la lance pour chaque jeu ;
-elle n'a pas d'icône.
+son icône ouvre RomCloud
+(elle sert aux espaces jeux des constructeurs, comme Game Turbo, qui ne listent que les applications
+avec une icône).
 
 ## Ce qui change par rapport à Winlator Cmod
 

@@ -6,6 +6,7 @@
     <string name="romcloud_content_downloading">Téléchargement d’un composant du jeu (la première fois seulement)…</string>
     <string name="romcloud_storage_access">Autorisez RomCloud PC à accéder à tous les fichiers pour que Windows lise vos jeux, puis revenez.</string>
     <string name="romcloud_storage_denied">Sans accès aux fichiers, RomCloud PC ne peut pas lire vos jeux.</string>
+    <string name="romcloud_open_missing">RomCloud n’est pas installé : les jeux de RomCloud PC se lancent depuis RomCloud.</string>
     <string name="romcloud_downloading">Téléchargement des fichiers de Windows (environ 700 Mo, la première fois seulement)…</string>
     <string name="romcloud_installing">Installation des fichiers de Windows…</string>
     <string name="romcloud_install_failed">Impossible d\'installer les fichiers de Windows. Vérifiez la place libre et réessayez.</string>
