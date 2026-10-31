@@ -273,7 +273,7 @@ test('pilote Turnip : dernière version avec l’archive de base, proposé aux �
   ];
   assert.deepEqual(systemFiles.parseTurnipReleases(releases), { version: 'v26.0.0_R8', url: 'https://x/r8', size: 3478359 });
   assert.equal(systemFiles.parseTurnipReleases([]), null);
-  for (const id of ['switch', 'gc', 'wii', 'vita', 'ps3']) {
+  for (const id of ['switch', 'gc', 'wii', 'vita', 'ps3', 'wiiu']) {
     const driver = systemFiles.systemFiles({ id }, 'fr').find((f) => f.kind === 'driver');
     assert.deepEqual([driver?.path, driver?.source, driver?.required], ['drivers/turnip.zip', 'turnip', false], id);
   }

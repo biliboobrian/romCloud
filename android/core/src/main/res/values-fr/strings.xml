@@ -737,6 +737,7 @@
     <string name="settings_gpu_drivers_hint">Pilote Turnip pour les puces Adreno (Snapdragon), quand le serveur le propose (Switch, GameCube, Wii, PS Vita, PS3) : téléchargé avec les BIOS et recopié dans Téléchargements/RomCloud/&lt;système&gt;, à installer depuis le gestionnaire de pilotes de l’émulateur (Eden, Dolphin, Vita3K, aPS3e). Activé par défaut sur les appareils Snapdragon.</string>
     <string name="settings_auto_upload_states_on">États envoyés en ligne automatiquement</string>
     <string name="emulator_files_hint">Pour Eden : %2$s dans Téléchargements › %1$s. Dans Eden, installez les clés et le firmware depuis ses paramètres, en choisissant ces fichiers.</string>
+    <string name="driver_files_hint">Pilote graphique Turnip (puces Adreno) : %2$s dans Téléchargements › %1$s. Si le jeu plante ou s’affiche mal, installez-le dans l’émulateur (réglages graphiques, pilote personnalisé), en choisissant ce fichier.</string>
     <string name="pc_crash_reported">RomCloud PC : plantage de %1$s signalé au serveur</string>
     <string name="report_default_title">Rapport de problème</string>
     <string name="report_section">Signaler un problème</string>

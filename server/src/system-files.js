@@ -60,6 +60,8 @@ const FILES = {
       path: 'wiiu/keys.txt', kind: 'keys', required: false, emulators: ['Cemu'],
       description: { fr: 'Clés des jeux chiffrés (.wud, .wux), une par ligne', en: 'Keys of encrypted games (.wud, .wux), one per line' },
     },
+    // Cemu pour Android : pilote d'origine des Adreno 6xx qui plante (« failed to submit command buffer »).
+    turnip(['Cemu']),
   ],
   ps3: [
     {
