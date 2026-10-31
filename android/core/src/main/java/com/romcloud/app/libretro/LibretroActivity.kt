@@ -106,8 +106,10 @@ import com.romcloud.app.stream.StreamSender
 import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.stream.StreamTap
 import com.romcloud.app.ui.CastDialog
+import com.romcloud.app.ui.FocusRowShape
 import com.romcloud.app.ui.StateHistoryController
 import com.romcloud.app.ui.StateHistoryList
+import com.romcloud.app.ui.focusHighlight
 import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
 import com.romcloud.app.netplay.LanPresence
@@ -1406,7 +1408,7 @@ class LibretroActivity : ComponentActivity() {
                     title = { Text(stringResource(if (link != null) R.string.link_request_title else R.string.netplay_request_title)) },
                     text = { Text(stringResource(if (link != null) R.string.link_request_text else R.string.netplay_request_text, join.name)) },
                     confirmButton = { FocusedButton(stringResource(R.string.netplay_accept), { answer.complete(true) }) },
-                    dismissButton = { TextButton(onClick = { answer.complete(false) }) { Text(stringResource(R.string.netplay_refuse)) } },
+                    dismissButton = { TextButton(onClick = { answer.complete(false) }, modifier = Modifier.focusHighlight()) { Text(stringResource(R.string.netplay_refuse)) } },
                 )
             }
             // Diffusion en cours : rappel discret (vue superposée, absente de l'image envoyée à la TV).
@@ -1555,7 +1557,7 @@ class LibretroActivity : ComponentActivity() {
                 }
                 Text(stringResource(R.string.players_hint), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { finishPlayers(order) }, enabled = order.isNotEmpty()) { Text(stringResource(R.string.players_done)) }
+                    TextButton(onClick = { finishPlayers(order) }, enabled = order.isNotEmpty(), modifier = Modifier.focusHighlight()) { Text(stringResource(R.string.players_done)) }
                     FocusedButton(stringResource(R.string.action_cancel), { playersOrder = null })
                 }
             }
@@ -1635,8 +1637,8 @@ class LibretroActivity : ComponentActivity() {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (name != null) {
-                TextButton(onClick = session::skip) { Text(stringResource(R.string.action_skip)) }
-                TextButton(onClick = session::resetDevice) { Text(stringResource(R.string.pad_config_default)) }
+                TextButton(onClick = session::skip, modifier = Modifier.focusHighlight()) { Text(stringResource(R.string.action_skip)) }
+                TextButton(onClick = session::resetDevice, modifier = Modifier.focusHighlight()) { Text(stringResource(R.string.pad_config_default)) }
             }
             FocusedButton(stringResource(R.string.action_cancel), { mappingSession = null })
         }
@@ -1700,7 +1702,7 @@ class LibretroActivity : ComponentActivity() {
         Surface(color = Color.Black.copy(alpha = 0.85f), modifier = Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp, vertical = 16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = { options = null }, modifier = Modifier.focusRequester(focus)) {
+                    TextButton(onClick = { options = null }, modifier = Modifier.focusHighlight().focusRequester(focus)) {
                         Text(stringResource(R.string.action_back))
                     }
                     Text(
@@ -1709,7 +1711,7 @@ class LibretroActivity : ComponentActivity() {
                         modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     )
                     if (list.isNotEmpty()) {
-                        TextButton(onClick = ::resetOptions) { Text(stringResource(R.string.libretro_options_reset)) }
+                        TextButton(onClick = ::resetOptions, modifier = Modifier.focusHighlight()) { Text(stringResource(R.string.libretro_options_reset)) }
                     }
                 }
                 // Partie à plusieurs : seules les options d'affichage ne désynchronisent pas la partie.
@@ -1738,7 +1740,7 @@ class LibretroActivity : ComponentActivity() {
                                 text = { Text("${group.title ?: generalTitle} (${group.options.size})") },
                                 unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 // Télécommande et manette : l'onglet qui reçoit le focus s'affiche.
-                                modifier = Modifier.onFocusChanged { if (it.isFocused) optionTab = index },
+                                modifier = Modifier.focusHighlight(FocusRowShape).onFocusChanged { if (it.isFocused) optionTab = index },
                             )
                         }
                     }
@@ -1776,7 +1778,7 @@ class LibretroActivity : ComponentActivity() {
                     )
                 },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                modifier = Modifier.clickable(enabled = option.values.size > 1) { editing = option },
+                modifier = Modifier.focusHighlight(FocusRowShape).clickable(enabled = option.values.size > 1) { editing = option },
             )
         }
     }
@@ -1807,6 +1809,7 @@ class LibretroActivity : ComponentActivity() {
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         modifier = Modifier
                             .then(if (selected) Modifier.focusRequester(focus) else Modifier)
+                            .focusHighlight(FocusRowShape)
                             .clickable { setOption(option, value) },
                     )
                 }
@@ -1889,6 +1892,7 @@ class LibretroActivity : ComponentActivity() {
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             modifier = Modifier
                                 .then(if (isSelected) Modifier.focusRequester(focus) else Modifier)
+                                .focusHighlight(FocusRowShape)
                                 .clickable { chooseFilter(filter) },
                         )
                     }
@@ -1904,9 +1908,9 @@ class LibretroActivity : ComponentActivity() {
                     }
                     item {
                         Row(Modifier.padding(top = 8.dp)) {
-                            TextButton(onClick = ::resetFilterValues) { Text(stringResource(R.string.libretro_image_defaults)) }
+                            TextButton(onClick = ::resetFilterValues, modifier = Modifier.focusHighlight()) { Text(stringResource(R.string.libretro_image_defaults)) }
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = ::closeImage) { Text(stringResource(R.string.action_close)) }
+                            TextButton(onClick = ::closeImage, modifier = Modifier.focusHighlight()) { Text(stringResource(R.string.action_close)) }
                         }
                     }
                 }
@@ -1925,20 +1929,20 @@ class LibretroActivity : ComponentActivity() {
         ) {
             Text(stringResource(param.label), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             if (param.format == ParamFormat.SWITCH) {
-                Switch(checked = value >= 0.5f, onCheckedChange = { setFilterValue(param, if (it) 1f else 0f) })
+                Switch(checked = value >= 0.5f, onCheckedChange = { setFilterValue(param, if (it) 1f else 0f) }, modifier = Modifier.focusHighlight())
             } else {
                 OutlinedButton(
                     onClick = { setFilterValue(param, value - param.step) },
                     enabled = value > param.min,
                     contentPadding = PaddingValues(0.dp),
-                    modifier = Modifier.width(44.dp),
+                    modifier = Modifier.width(44.dp).focusHighlight(),
                 ) { Text("−") }
                 Text(formatParam(param, value), modifier = Modifier.widthIn(min = 52.dp), textAlign = TextAlign.Center)
                 OutlinedButton(
                     onClick = { setFilterValue(param, value + param.step) },
                     enabled = value < param.max,
                     contentPadding = PaddingValues(0.dp),
-                    modifier = Modifier.width(44.dp),
+                    modifier = Modifier.width(44.dp).focusHighlight(),
                 ) { Text("+") }
             }
         }
@@ -2097,6 +2101,7 @@ class LibretroActivity : ComponentActivity() {
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         modifier = Modifier
                             .then(if (isSelected) Modifier.focusRequester(focus) else Modifier)
+                            .focusHighlight(FocusRowShape)
                             .clickable { onPick(choice) },
                     )
                 }
@@ -2107,14 +2112,14 @@ class LibretroActivity : ComponentActivity() {
 
     @Composable
     private fun MenuButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
-        OutlinedButton(onClick = onClick, modifier = modifier) { Text(text, textAlign = TextAlign.Center) }
+        OutlinedButton(onClick = onClick, modifier = modifier.focusHighlight()) { Text(text, textAlign = TextAlign.Center) }
     }
 
     /** Bouton qui prend le focus à l'affichage (navigation à la manette ou à la télécommande). */
     @Composable
     private fun FocusedButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
         val focus = remember { FocusRequester() }
-        Button(onClick = onClick, modifier = modifier.focusRequester(focus)) { Text(text, textAlign = TextAlign.Center) }
+        Button(onClick = onClick, modifier = modifier.focusHighlight().focusRequester(focus)) { Text(text, textAlign = TextAlign.Center) }
         LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     }
 

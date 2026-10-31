@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
@@ -220,7 +221,7 @@ fun StateHistoryList(
         Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = onClose, modifier = if (ui.states.isEmpty()) Modifier.focusRequester(focus) else Modifier) {
+                TextButton(onClick = onClose, modifier = Modifier.focusHighlight().then(if (ui.states.isEmpty()) Modifier.focusRequester(focus) else Modifier)) {
                     Text(stringResource(R.string.action_close))
                 }
             }
@@ -269,9 +270,9 @@ fun StateHistoryList(
                 TextButton(onClick = {
                     confirmDelete = null
                     controller.delete(state)
-                }) { Text(stringResource(R.string.action_delete)) }
+                }, modifier = Modifier.focusHighlight()) { Text(stringResource(R.string.action_delete)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.action_cancel)) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }, modifier = Modifier.focusHighlight()) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 }
@@ -323,19 +324,19 @@ private fun StateRow(
                 Text(stringResource(R.string.states_core, state.core), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = onLoad, enabled = enabled, modifier = loadModifier) { Text(loadLabel) }
-                IconButton(onClick = { controller.setPinned(state, !state.pinned) }, enabled = enabled) {
+                Button(onClick = onLoad, enabled = enabled, modifier = Modifier.focusHighlight().then(loadModifier)) { Text(loadLabel) }
+                IconButton(onClick = { controller.setPinned(state, !state.pinned) }, enabled = enabled, modifier = Modifier.focusHighlight(CircleShape)) {
                     Icon(
                         if (state.pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                         stringResource(if (state.pinned) R.string.states_unpin else R.string.states_pin),
                     )
                 }
                 if (state.canUpload && controller.signedIn) {
-                    IconButton(onClick = { controller.upload(state) }, enabled = enabled) {
+                    IconButton(onClick = { controller.upload(state) }, enabled = enabled, modifier = Modifier.focusHighlight(CircleShape)) {
                         Icon(Icons.Filled.CloudUpload, stringResource(R.string.states_upload))
                     }
                 }
-                IconButton(onClick = onDelete, enabled = enabled) { Icon(Icons.Filled.Delete, stringResource(R.string.action_delete)) }
+                IconButton(onClick = onDelete, enabled = enabled, modifier = Modifier.focusHighlight(CircleShape)) { Icon(Icons.Filled.Delete, stringResource(R.string.action_delete)) }
             }
         }
     }
