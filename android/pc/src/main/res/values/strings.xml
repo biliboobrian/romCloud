@@ -722,6 +722,7 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="romcloud_content_downloading">Downloading a game component (first time only)…</string>
     <string name="romcloud_storage_access">Allow RomCloud PC to access all files so Windows can read your games, then come back.</string>
     <string name="romcloud_storage_denied">Without access to files, RomCloud PC cannot read your games.</string>
+    <string name="romcloud_open_missing">RomCloud is not installed: games for RomCloud PC are launched from RomCloud.</string>
     <string name="romcloud_downloading">Downloading Windows files (about 700 MB, first time only)…</string>
     <string name="romcloud_installing">Installing Windows files…</string>
     <string name="romcloud_install_failed">Unable to install Windows files. Check the free space and try again.</string>

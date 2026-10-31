@@ -55,6 +55,19 @@
             android:name="android.game_mode_config"
             android:resource="@xml/game_mode_config" />
 
+        <!-- Icône du lanceur : RomCloud PC proposé dans les espaces jeux des constructeurs (Game Turbo…),
+             qui ne listent que les applications avec une icône ; elle ouvre RomCloud. -->
+        <activity
+            android:name="com.romcloud.wine.OpenRomCloudActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Main activity -->
         <activity
             android:name="com.winlator.cmod.MainActivity"
