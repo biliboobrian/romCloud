@@ -156,12 +156,29 @@ async fn online(game_id: &Value) -> Option<Vec<Value>> {
     Some(list.as_array().cloned().unwrap_or_default())
 }
 
-/// Réunit les états de ce PC et ceux du profil en ligne (même identifiant : un seul état), des cœurs [cores].
+/// Écart de date (ms) entre deux copies d'un même état (date du fichier, date de l'état).
+const SAME_STATE_MS: f64 = 2000.0;
+
+/**
+ * Réunit les états de ce PC et ceux du profil en ligne (même identifiant : un seul état), des cœurs
+ * [cores]. Un état du PC jamais envoyé, daté comme un état en ligne d'un autre identifiant (à
+ * [SAME_STATE_MS] près), en est une copie (état de reprise d'un autre appareil, téléchargé puis
+ * ajouté à l'historique, [record_quick]) : seul l'état en ligne est affiché.
+ */
 pub fn merge(local: &[Value], remote: &[Value], cores: &[String]) -> Vec<Value> {
     let remote: Vec<&Value> = remote
         .iter()
         .filter(|s| cores.iter().any(|c| account::same_save_core(s["core"].as_str().unwrap_or(""), c)))
         .collect();
+    let copy = |m: &Value| {
+        m["uploaded"] != json!(true)
+            && !remote.iter().any(|s| s["id"] == m["id"])
+            && remote.iter().any(|s| {
+                account::same_save_core(s["core"].as_str().unwrap_or(""), m["core"].as_str().unwrap_or(""))
+                    && (account::parse_date_ms(s["createdAt"].as_str().unwrap_or("")) - m["createdAt"].as_f64().unwrap_or(0.0)).abs() <= SAME_STATE_MS
+            })
+    };
+    let local: Vec<&Value> = local.iter().filter(|m| !copy(m)).collect();
     let mut list: Vec<Value> = local
         .iter()
         .map(|m| {
@@ -532,13 +549,13 @@ mod tests {
     #[test]
     fn etats_du_pc_et_en_ligne_reunis() {
         let local = vec![
-            json!({ "id": "aaaaaaaa", "core": "snes9x", "createdAt": 3000.0, "device": "PC", "pinned": false, "uploaded": true }),
-            json!({ "id": "bbbbbbbb", "core": "snes9x", "createdAt": 1000.0, "device": "PC", "pinned": false }),
+            json!({ "id": "aaaaaaaa", "core": "snes9x", "createdAt": 30000.0, "device": "PC", "pinned": false, "uploaded": true }),
+            json!({ "id": "bbbbbbbb", "core": "snes9x", "createdAt": 10000.0, "device": "PC", "pinned": false }),
         ];
         let remote = vec![
-            json!({ "id": "aaaaaaaa", "core": "snes9x", "createdAt": "1970-01-01T00:00:03Z", "device": "PC", "pinned": true }),
-            json!({ "id": "cccccccc", "core": "snes9x", "createdAt": "1970-01-01T00:00:02Z", "device": "Pixel 8", "thumbnail": true }),
-            json!({ "id": "dddddddd", "core": "bsnes", "createdAt": "1970-01-01T00:00:04Z", "device": "Shield" }),
+            json!({ "id": "aaaaaaaa", "core": "snes9x", "createdAt": "1970-01-01T00:00:30Z", "device": "PC", "pinned": true }),
+            json!({ "id": "cccccccc", "core": "snes9x", "createdAt": "1970-01-01T00:00:20Z", "device": "Pixel 8", "thumbnail": true }),
+            json!({ "id": "dddddddd", "core": "bsnes", "createdAt": "1970-01-01T00:00:40Z", "device": "Shield" }),
         ];
         let merged = merge(&local, &remote, &["snes9x".to_string()]);
         let ids: Vec<&str> = merged.iter().map(|s| s["id"].as_str().unwrap()).collect();
@@ -548,6 +565,19 @@ mod tests {
         assert_eq!(merged[1]["local"], false);
         assert_eq!(merged[1]["device"], "Pixel 8");
         assert_eq!(merged[2]["canUpload"], true);
+    }
+
+    #[test]
+    fn copie_d_un_etat_en_ligne_masquee() {
+        // État de reprise du téléphone, téléchargé puis ajouté à l'historique du PC sous un autre identifiant.
+        let local = vec![json!({ "id": "eeeeeeee", "core": "ppsspp", "createdAt": 20183.0, "device": "PC" })];
+        let remote = vec![json!({ "id": "ffffffff", "core": "ppsspp", "createdAt": "1970-01-01T00:00:20Z", "device": "POCO F3" })];
+        let merged = merge(&local, &remote, &["ppsspp".to_string()]);
+        let ids: Vec<&str> = merged.iter().map(|s| s["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["ffffffff"]);
+        // Déjà envoyé : un état à part entière, gardé.
+        let sent = vec![json!({ "id": "eeeeeeee", "core": "ppsspp", "createdAt": 20183.0, "device": "PC", "uploaded": true })];
+        assert_eq!(merge(&sent, &remote, &["ppsspp".to_string()]).len(), 2);
     }
 
     #[test]

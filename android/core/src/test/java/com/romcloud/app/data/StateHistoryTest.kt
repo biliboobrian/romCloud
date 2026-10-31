@@ -85,12 +85,12 @@ class StateHistoryTest {
 
     @Test
     fun `etats de l'appareil et en ligne reunis`() {
-        val mine = StateMeta("a", "snes9x", 3000, "Pixel 8", "android", uploaded = true)
-        val notSent = StateMeta("b", "snes9x", 1000, "Pixel 8", "android")
+        val mine = StateMeta("a", "snes9x", 30000, "Pixel 8", "android", uploaded = true)
+        val notSent = StateMeta("b", "snes9x", 10000, "Pixel 8", "android")
         val online = listOf(
-            OnlineState("a", 1, "snes9x", Instant.ofEpochMilli(3000).toString(), "Pixel 8", "android", pinned = true),
-            OnlineState("c", 1, "snes9x", Instant.ofEpochMilli(2000).toString(), "Shield", "androidtv", thumbnail = true),
-            OnlineState("d", 1, "bsnes", Instant.ofEpochMilli(4000).toString(), "PC", "windows"),
+            OnlineState("a", 1, "snes9x", Instant.ofEpochMilli(30000).toString(), "Pixel 8", "android", pinned = true),
+            OnlineState("c", 1, "snes9x", Instant.ofEpochMilli(20000).toString(), "Shield", "androidtv", thumbnail = true),
+            OnlineState("d", 1, "bsnes", Instant.ofEpochMilli(40000).toString(), "PC", "windows"),
         )
         val merged = StateHistory.merge(listOf(mine, notSent), online, "snes9x")
         assertEquals(listOf("a", "c", "b"), merged.map { it.id })
@@ -98,6 +98,16 @@ class StateHistoryTest {
         assertEquals("Shield", merged[1].device)
         assertTrue(merged[1].local == null && !merged[1].canUpload)
         assertTrue(merged[2].canUpload)
+    }
+
+    @Test
+    fun `copie d'un etat en ligne masquee`() {
+        // État de reprise du PC, téléchargé puis ajouté à l'historique du téléphone sous un autre identifiant.
+        val copy = StateMeta("e", "ppsspp", 20183, "POCO F3", "android")
+        val online = listOf(OnlineState("f", 1, "ppsspp", Instant.ofEpochMilli(20000).toString(), "ZEPC", "windows"))
+        assertEquals(listOf("f"), StateHistory.merge(listOf(copy), online, "ppsspp").map { it.id })
+        // Déjà envoyé : un état à part entière, gardé.
+        assertEquals(2, StateHistory.merge(listOf(copy.copy(uploaded = true)), online, "ppsspp").size)
     }
 
     @Test
