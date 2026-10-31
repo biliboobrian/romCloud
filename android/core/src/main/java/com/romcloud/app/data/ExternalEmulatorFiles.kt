@@ -14,17 +14,17 @@ import java.util.zip.ZipOutputStream
  * Switch (Eden, Citron…) : clés, et firmware en .zip, seul format accepté par Eden (un firmware
  * envoyé en dossier de fichiers .nca est recompressé).
  * Pilote graphique Turnip (puces Adreno) des systèmes dont les émulateurs en chargent un (Eden,
- * Dolphin, Vita3K, aPS3e), à installer depuis leur gestionnaire de pilotes ; retiré si l'option
+ * Dolphin, Vita3K, aPS3e, Cemu), à installer depuis leur gestionnaire de pilotes ; retiré si l'option
  * des pilotes est désactivée.
  */
 object ExternalEmulatorFiles {
 
     /** Système -> dossier public (Téléchargements/RomCloud/<dossier>). */
-    private val FOLDERS = mapOf("switch" to "Switch", "gc" to "GameCube", "wii" to "Wii", "vita" to "PS Vita", "ps3" to "PS3")
+    private val FOLDERS = mapOf("switch" to "Switch", "gc" to "GameCube", "wii" to "Wii", "vita" to "PS Vita", "ps3" to "PS3", "wiiu" to "Wii U")
 
     /** Pilote dans le dossier des BIOS (chemin du serveur) et nom de sa copie. */
     private const val DRIVER_PATH = "drivers/turnip.zip"
-    internal const val DRIVER_NAME = "Turnip (Adreno).zip"
+    const val DRIVER_NAME = "Turnip (Adreno).zip"
 
     private fun folderKey(system: GameSystem) = listOf(system.id, system.shortname).firstOrNull { it in FOLDERS }
 

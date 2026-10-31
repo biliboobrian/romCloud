@@ -2,6 +2,7 @@ package com.romcloud.tv
 
 import com.romcloud.app.ui.downloadProgressText
 import com.romcloud.app.ui.DownloadBars
+import com.romcloud.app.data.ExternalEmulatorFiles
 import com.romcloud.app.data.MediaUrl
 import com.romcloud.app.data.MediaSize
 import androidx.compose.ui.window.Dialog
@@ -218,11 +219,16 @@ fun TvGameDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                // Clés et firmware pour l'émulateur externe (Eden) : à importer depuis son menu.
+                // Clés et firmware (Eden), pilote graphique : à importer depuis le menu de l'émulateur externe.
                 val emulatorFolder = state.emulatorFilesFolder
                 if (state.emulatorFiles.isNotEmpty() && emulatorFolder != null) {
                     Text(
-                        stringResource(R.string.emulator_files_hint, emulatorFolder, state.emulatorFiles.joinToString(", ")),
+                        stringResource(
+                        // Pilote graphique seul (GameCube, PS3, Wii U…) : à installer dans l'émulateur s'il plante.
+                        if (state.emulatorFiles.all { it == ExternalEmulatorFiles.DRIVER_NAME }) R.string.driver_files_hint else R.string.emulator_files_hint,
+                        emulatorFolder,
+                        state.emulatorFiles.joinToString(", "),
+                    ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

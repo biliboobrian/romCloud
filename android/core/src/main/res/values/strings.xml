@@ -746,6 +746,7 @@
     <string name="settings_gpu_drivers_on">Graphics drivers downloaded</string>
     <string name="settings_gpu_drivers_hint">Turnip driver for Adreno GPUs (Snapdragon), when the server offers it (Switch, GameCube, Wii, PS Vita, PS3): downloaded with the BIOS and copied to Downloads/RomCloud/&lt;system&gt;, to install from the emulator\'s GPU driver manager (Eden, Dolphin, Vita3K, aPS3e). On by default on Snapdragon devices.</string>
     <string name="emulator_files_hint">For Eden: %2$s in Downloads › %1$s. In Eden, install the keys and the firmware from its settings, choosing these files.</string>
+    <string name="driver_files_hint">Turnip graphics driver (Adreno GPUs): %2$s in Downloads › %1$s. If the game crashes or looks wrong, install it in the emulator (graphics settings, custom driver), choosing this file.</string>
     <string name="pc_crash_reported">RomCloud PC: crash of %1$s reported to the server</string>
     <string name="report_default_title">Problem report</string>
     <string name="report_section">Report a problem</string>
