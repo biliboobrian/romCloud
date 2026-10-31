@@ -51,9 +51,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -289,6 +292,9 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
     /** Jeux téléchargés sur l'appareil, tous systèmes confondus, du plus récent au plus ancien. */
     val localGames: StateFlow<List<Game>> = _localGames.asStateFlow()
 
+    /** Jeux favoris (téléchargés ou non), du plus récemment ajouté au plus ancien : rangée en tête de l'écran. */
+    val favorites: StateFlow<List<Game>> = app.account.favorites
+
     val downloads = app.downloader.states
     private var searchJob: Job? = null
 
@@ -347,6 +353,7 @@ class SystemsViewModel(private val app: RomCloudApp) : ViewModel() {
      * l'écran, retour dans l'application (après une partie), fin de téléchargement.
      */
     fun refreshLocalGames() {
+        viewModelScope.launch { app.account.refreshFavorites() }
         viewModelScope.launch {
             _localGames.value = localGames()
             // Fiches relues sur le serveur (jaquettes changées depuis le téléchargement) : rangée mise à jour.
@@ -708,6 +715,21 @@ class GameDetailViewModel(
                 }
                 delay(TV_POLL_MS)
             }
+        }
+    }
+
+    /** Jeu dans les favoris (rangée « Favoris » de l'écran des systèmes). */
+    val favorite: StateFlow<Boolean> = app.account.favorites
+        .map { list -> list.any { it.id == gameId } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, app.account.favorites.value.any { it.id == gameId })
+
+    /** Ajoute le jeu aux favoris, ou l'en retire ; [onError] : message si le profil ne l'a pas reçu. */
+    fun toggleFavorite(onError: (String) -> Unit) {
+        val game = _state.value.game ?: return
+        val add = !favorite.value
+        viewModelScope.launch {
+            runCatching { app.account.setFavorite(game, add) }
+                .onFailure { onError(I18n.get(R.string.favorite_not_saved, it.message ?: it.javaClass.simpleName)) }
         }
     }
 

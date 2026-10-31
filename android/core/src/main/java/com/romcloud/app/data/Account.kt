@@ -232,13 +232,19 @@ class Account(private val context: Context, private val api: ApiClient, private 
             .putLong(KEY_USER_ID, session.user.id)
             .commit()
         _state.value = AccountState(signedIn = true, username = session.user.username, offline = true)
-        scope.launch { refresh() }
+        // Favoris choisis sans profil : ajoutés à ceux du profil.
+        val local = _favorites.value
+        scope.launch {
+            for (game in local) runCatching { execute(request(favoritePath(game.id)).put(jsonBody()), 10) }
+            refresh()
+        }
     }
 
     private fun forget() {
         prefs.edit().remove(KEY_TOKEN).remove(KEY_USER).remove(KEY_USER_ID).commit()
         _state.value = AccountState()
         _playtime.value = emptyMap()
+        saveFavorites(emptyList())
     }
 
     suspend fun login(username: String, password: String) {
@@ -265,6 +271,7 @@ class Account(private val context: Context, private val api: ApiClient, private 
             val me = json.decodeFromString(MeResponse.serializer(), execute(request("/api/account/me")))
             val list = json.decodeFromString(ListSerializer(PlaytimeEntry.serializer()), execute(request("/api/account/playtime")))
             _playtime.value = list.associate { it.gameId to it.seconds }
+            refreshFavorites()
             _state.value = AccountState(
                 signedIn = true, username = me.user.username, avatar = me.user.avatar, avatars = me.avatars,
                 playSeconds = me.playSeconds, gamesPlayed = me.gamesPlayed,
@@ -503,6 +510,59 @@ class Account(private val context: Context, private val api: ApiClient, private 
             if (seconds in MIN_PLAY_SECONDS..MAX_EXTERNAL_SECONDS) recordPlaytime(gameId, seconds, sendNow = false)
         }
         scope.launch { refresh() }
+    }
+
+    // -------------------------------------------------------------------------
+    // Favoris
+    // -------------------------------------------------------------------------
+
+    private val favoritesFile = File(context.filesDir, "favorites.json")
+    private val favoritesSerializer = ListSerializer(Game.serializer())
+
+    private val _favorites = MutableStateFlow(
+        runCatching { json.decodeFromString(favoritesSerializer, favoritesFile.readText()) }.getOrDefault(emptyList()),
+    )
+
+    /**
+     * Jeux favoris (téléchargés ou non), du plus récemment ajouté au plus ancien : ceux du profil
+     * (communs à ses appareils), sinon ceux de l'appareil ; copie de l'appareil hors ligne.
+     */
+    val favorites: StateFlow<List<Game>> = _favorites.asStateFlow()
+
+    private fun favoritePath(gameId: Long) = "/api/account/favorites/$gameId"
+
+    private fun saveFavorites(games: List<Game>) {
+        _favorites.value = games
+        runCatching {
+            val tmp = File(favoritesFile.path + ".tmp")
+            tmp.writeText(json.encodeToString(favoritesSerializer, games))
+            tmp.renameTo(favoritesFile)
+        }
+    }
+
+    /** Favoris du profil relus sur le serveur (copie de l'appareil gardée s'il est injoignable). */
+    suspend fun refreshFavorites() {
+        if (token == null) return
+        runCatching { json.decodeFromString(favoritesSerializer, execute(request("/api/account/favorites"), 10)) }
+            .onSuccess(::saveFavorites)
+    }
+
+    /**
+     * Ajoute ([favorite]) ou retire le jeu des favoris : tout de suite sur l'appareil, puis dans le
+     * profil (ApiException si le serveur le refuse ou est injoignable : favoris remis comme avant).
+     */
+    suspend fun setFavorite(game: Game, favorite: Boolean) {
+        val before = _favorites.value
+        val others = before.filter { it.id != game.id }
+        saveFavorites(if (favorite) listOf(game) + others else others)
+        if (token == null) return
+        try {
+            val call = request(favoritePath(game.id))
+            execute(if (favorite) call.put(jsonBody()) else call.delete(), 10)
+        } catch (e: Exception) {
+            saveFavorites(before)
+            throw e
+        }
     }
 
     // -------------------------------------------------------------------------

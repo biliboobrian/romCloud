@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
@@ -103,6 +105,7 @@ fun TvGameDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val peers by viewModel.peers.collectAsStateWithLifecycle()
+    val favorite by viewModel.favorite.collectAsStateWithLifecycle()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val activity = LocalContext.current as Activity
     // Multijoueurs : lobbies (créer, rejoindre ; hôte : « Définir comme jeu du lobby »).
@@ -333,6 +336,10 @@ fun TvGameDetailScreen(
                             ) { scope.launch { viewModel.join(activity, peer)?.let(onMessage) } }
                         }
                     }
+                    SecondaryButton(
+                        stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add),
+                        if (favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    ) { viewModel.toggleFavorite(onMessage) }
                     if (state.players.isNotEmpty()) {
                         SecondaryButton(stringResource(R.string.tv_emulator_value, state.selectedPlayer?.name ?: "—"), Icons.Filled.SportsEsports) {
                             pickEmulator = true

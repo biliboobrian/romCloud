@@ -207,8 +207,15 @@ async fn post(api_path: &str, body: Value) -> Result<Value> {
 async fn remember(data: Value) -> Result<Value> {
     let user = data.get("user").cloned().unwrap_or(json!({}));
     settings::save(json!({ "session": { "token": data["token"], "username": user["username"], "userId": user["id"] } }));
-    tauri::async_runtime::spawn(async {
+    // Favoris choisis sans profil : ajoutés à ceux du profil.
+    let local = read_favorites();
+    tauri::async_runtime::spawn(async move {
         flush().await;
+        for game in local {
+            let _ = favorite_call(&game["id"], true).await;
+        }
+        favorites().await;
+        changed();
     });
     changed();
     Ok(state().await)
@@ -227,6 +234,7 @@ pub async fn logout() -> Result<Value> {
         let _ = post("/api/account/logout", Value::Null).await;
     }
     settings::save(json!({ "session": null }));
+    write_favorites(&[]);
     changed();
     Ok(state().await)
 }
@@ -256,6 +264,66 @@ pub async fn state() -> Value {
             json!({ "signedIn": true, "username": s["username"], "offline": true, "error": e.message })
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Favoris
+// ---------------------------------------------------------------------------
+
+/// Copie de ce PC des jeux favoris : ceux du profil (hors ligne), ou ceux choisis sans profil.
+fn favorites_file() -> std::path::PathBuf {
+    paths::user_data().join("favorites.json")
+}
+
+fn read_favorites() -> Vec<Value> {
+    std::fs::read(favorites_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+fn write_favorites(games: &[Value]) {
+    let file = favorites_file();
+    let tmp = file.with_extension("json.tmp");
+    if std::fs::write(&tmp, serde_json::to_vec(games).unwrap_or_default()).is_ok() {
+        let _ = std::fs::rename(&tmp, &file);
+    }
+}
+
+async fn favorite_call(game_id: &Value, favorite: bool) -> Result<Response> {
+    let method = if favorite { reqwest::Method::PUT } else { reqwest::Method::DELETE };
+    call(&format!("/api/account/favorites/{}", game_key(game_id)), method, Body::None, false, &[], Duration::from_secs(10)).await
+}
+
+/**
+ * Jeux favoris (téléchargés ou non), du plus récemment ajouté au plus ancien : ceux du profil,
+ * relus sur le serveur (copie de ce PC s'il est injoignable), sinon ceux de ce PC.
+ */
+pub async fn favorites() -> Value {
+    if session().is_some() {
+        if let Ok(Value::Array(list)) = get("/api/account/favorites", 10000).await {
+            write_favorites(&list);
+            return Value::Array(list);
+        }
+    }
+    Value::Array(read_favorites())
+}
+
+/**
+ * Ajoute ([favorite]) ou retire le jeu [game] (fiche) des favoris : sur ce PC, puis dans le profil
+ * (erreur si le serveur le refuse ou est injoignable : favoris remis comme avant). Renvoie les favoris.
+ */
+pub async fn set_favorite(game: Value, favorite: bool) -> Result<Value> {
+    let before = read_favorites();
+    let mut next: Vec<Value> = before.iter().filter(|g| g["id"] != game["id"]).cloned().collect();
+    if favorite {
+        next.insert(0, game.clone());
+    }
+    write_favorites(&next);
+    if session().is_some() {
+        if let Err(e) = favorite_call(&game["id"], favorite).await {
+            write_favorites(&before);
+            return Err(e);
+        }
+    }
+    Ok(Value::Array(next))
 }
 
 // ---------------------------------------------------------------------------

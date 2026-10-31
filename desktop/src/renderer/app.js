@@ -41,6 +41,7 @@
     connectivity: { online: true, pending: 0 }, // serveur joignable ; envois en attente
     localSystems: new Set(), // systèmes avec des jeux sur le PC (seuls affichés hors ligne)
     localGames: [], // jeux téléchargés, tous systèmes (rangée de la page des systèmes)
+    favorites: [], // jeux favoris, téléchargés ou non (rangée au-dessus des jeux téléchargés)
     // Manettes du moteur intégré dans la fiche du jeu (pads:event) : service du système affiché.
     pads: { key: null },
   };
@@ -74,6 +75,8 @@
     castOn: 'M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm18-7H5v1.63c3.96 1.28 7.09 4.41 8.37 8.37H19V7zM1 10v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11zm20-7H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z',
     user: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
     timer: 'M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61 1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z',
+    favorite: 'm12 21.35-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
+    favoriteBorder: 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z',
     pad: 'M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z',
   };
   const icon = (name, size = 20) => `<svg class="icon" viewBox="0 0 24 24" style="width:${size}px;height:${size}px"><path d="${ICONS[name]}"/></svg>`;
@@ -210,7 +213,7 @@
   }
 
   function findGame(id) {
-    return S.games.list.find((g) => g.id === id) || S.search.results.find((g) => g.id === id) || S.localGames.find((g) => g.id === id) || S.detailGame?.id === id && S.detailGame;
+    return S.games.list.find((g) => g.id === id) || S.search.results.find((g) => g.id === id) || S.localGames.find((g) => g.id === id) || S.favorites.find((g) => g.id === id) || S.detailGame?.id === id && S.detailGame;
   }
 
   // ---------------------------------------------------------------------------
@@ -480,6 +483,7 @@
 
   rc.account.onUpdate(() => {
     refreshAccount();
+    loadFavorites(); // connexion (favoris du profil), déconnexion
     call(rc.connectivity.state).then(paintConnectivity).catch(() => {});
   });
 
@@ -789,6 +793,7 @@
   function renderSystems() {
     loadUsage();
     loadLocalGames();
+    loadFavorites();
     setTopbar({
       title: 'RomCloud',
       disk: true,
@@ -820,12 +825,14 @@
       main.innerHTML = `<div class="centered"><p>${esc(text)}</p>${S.systemsError ? `<button class="btn" data-action="settings">${esc(t('app.settings'))}</button>` : ''}</div>`;
       return;
     }
-    // Jeux téléchargés, tous systèmes confondus (comme la recherche, avec le logo du système).
+    // Jeux favoris puis téléchargés, tous systèmes confondus (comme la recherche, avec le logo du
+    // système) ; hors ligne : favoris téléchargés seulement.
     const local = S.localGames.filter((g) => systemById(g.systemId) && fitsLobby(g));
-    const localIds = new Set(local.map((g) => g.id));
-    const localRow = local.length ? `<section class="row local-row"><h3>${esc(t('row.downloaded'))} <span class="count">· ${local.length}</span></h3>
-      <div class="row-track">${local.map((g) => cardHtml(g, localIds, { badge: true })).join('')}</div></section>` : '';
-    main.innerHTML = `${localRow}<div class="page"><div class="systems-grid">${systems.map((s) => {
+    const localIds = new Set(S.localGames.map((g) => g.id));
+    const favorites = S.favorites.filter((g) => systemById(g.systemId) && fitsLobby(g) && (!S.systemsOffline || localIds.has(g.id)));
+    const gamesRow = (cls, title, games) => games.length ? `<section class="row ${cls}"><h3>${esc(title)} <span class="count">· ${games.length}</span></h3>
+      <div class="row-track">${games.map((g) => cardHtml(g, localIds, { badge: true })).join('')}</div></section>` : '';
+    main.innerHTML = `${gamesRow('favorite-row', t('row.favorites'), favorites)}${gamesRow('local-row', t('row.downloaded'), local)}<div class="page"><div class="systems-grid">${systems.map((s) => {
       const img = systemImageUrl(s);
       const color = /^#[0-9a-f]{6}$/i.test(s.color || '') ? ` style="--card:${s.color}"` : '';
       return `<div class="system-card" data-system="${esc(s.id)}"${color}>
@@ -836,10 +843,36 @@
       </div>`;
     }).join('')}</div></div>`;
     for (const el of $$('[data-system]', main)) el.onclick = () => openSystem(el.dataset.system);
-    if (local.length) {
-      bindCards(main, local, (g) => openGameDetail(g.systemId, g.id));
-      bindTrackDrag($('.local-row .row-track', main));
+    for (const [cls, games] of [['favorite-row', favorites], ['local-row', local]]) {
+      const row = $(`.${cls}`, main);
+      if (!row) continue;
+      bindCards(row, games, (g) => openGameDetail(g.systemId, g.id));
+      bindTrackDrag($('.row-track', row));
     }
+  }
+
+  /** Jeux favoris (rangée de la page des systèmes) : ceux du profil, sinon ceux de ce PC ; réaffichée s'ils changent. */
+  async function loadFavorites() {
+    const games = await call(rc.account.favorites).catch(() => S.favorites);
+    showFavorites(games);
+  }
+
+  function showFavorites(games) {
+    const sig = (list) => JSON.stringify(list.map((g) => [g.id, g.updatedAt, g.hasBoxart, g.title]));
+    const same = sig(games) === sig(S.favorites);
+    S.favorites = games;
+    if (!same && S.route.name === 'systems' && !S.search.query.trim()) renderSystemsBody();
+  }
+
+  /** Ajoute le jeu aux favoris, ou l'en retire (fiche du jeu). */
+  async function toggleFavorite(game) {
+    const favorite = !S.favorites.some((g) => g.id === game.id);
+    try {
+      showFavorites(await call(rc.account.setFavorite, game, favorite));
+    } catch (err) {
+      toast(t('detail.favoriteNotSaved', { detail: err.message }), { type: 'error' });
+    }
+    if (S.route.name === 'game') renderGame();
   }
 
   /**
@@ -2429,6 +2462,8 @@
     ].filter(Boolean);
 
     let actions = '';
+    const favorite = S.favorites.some((g) => g.id === game.id);
+    const favoriteBtn = `<button class="btn${favorite ? ' favorite-on' : ''}" id="favoriteBtn" title="${esc(t(favorite ? 'detail.favoriteRemove' : 'detail.favoriteAdd'))}">${icon(favorite ? 'favorite' : 'favoriteBorder', 18)} ${esc(t(favorite ? 'detail.favoriteRemove' : 'detail.favoriteAdd'))}</button>`;
     // Ce jeu proposé par un autre appareil : partie rejointe (jeu téléchargé d'abord s'il manque).
     const joinBtns = hostsOf(game).map((p) => `<button class="btn primary big" data-join-peer="${esc(p.id)}">${icon(p.hosting.link ? 'link' : 'group')} ${esc(t(p.hosting.link ? 'link.joinPeer' : 'netplay.joinPeer', { name: peerName(p) }))}</button>`).join('');
     if (st.kind === 'running') {
@@ -2478,7 +2513,7 @@
           ${st.kind === 'failed' ? `<div class="error">${esc(t('status.failed', { error: st.error }))}</div>` : ''}
           ${st.kind === 'remote' ? `<div class="muted">${esc(t('detail.mustDownload'))}</div>` : ''}
           ${discs && st.kind === 'downloaded' && !isLobbyHost() ? `<div class="line disc-choice">${Array.from({ length: discs.count }, (_, d) => `<button class="chip${d === disc ? ' selected' : ''}${discs.resume[d] ? ' has-resume' : ''}" data-disc="${d}"${discs.resume[d] ? ` title="${esc(t('parts.discResume'))}"` : ''}>${esc(t('parts.disc', { n: d + 1 }))}</button>`).join('')}</div>` : ''}
-          <div class="actions">${actions}</div>
+          <div class="actions">${actions}${favoriteBtn}</div>
           ${system.biosCount && st.kind !== 'running' ? (missingBios.length
             ? `<div class="line"><span class="muted">${esc(t('bios.missing', { n: missingBios.length, size: biosSize(missingBios) }))}</span>${st.kind === 'downloaded' ? `<button class="btn ghost" id="biosBtn">${icon('cloud', 18)} ${esc(t('bios.download'))}</button>` : ''}</div>`
             : `<div class="ok">${esc(t('bios.present', { n: system.biosCount }))}</div>`) : ''}
@@ -2540,6 +2575,7 @@
     $('#downloadBtn')?.addEventListener('click', () => startDownload(system, game, false, missingBios));
     // Mise à jour du jeu PC : téléchargement des fichiers changés (les autres gardés).
     $('#updateBtn')?.addEventListener('click', () => startDownload(system, game, false));
+    $('#favoriteBtn')?.addEventListener('click', () => toggleFavorite(game));
     $('#biosBtn')?.addEventListener('click', async () => {
       await call(rc.downloads.dismiss, game.id);
       await call(rc.downloads.start, system, game, { bios: missingBios, includeRom: false });

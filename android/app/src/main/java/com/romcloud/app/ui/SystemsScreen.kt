@@ -155,6 +155,7 @@ fun SystemsScreen(
     }
     val usage by viewModel.usage.collectAsStateWithLifecycle()
     val localGames by viewModel.localGames.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
 
     // Boutons de la barre du haut, rangés différemment en portrait (deux lignes) et en paysage.
     val netplayButton: @Composable () -> Unit = {
@@ -298,11 +299,21 @@ fun SystemsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        // Jeux téléchargés, tous systèmes confondus (lobby : jeux à assez de joueurs).
+                        // Jeux favoris puis téléchargés, tous systèmes confondus (lobby : jeux à assez de
+                        // joueurs ; hors ligne : favoris téléchargés seulement).
                         val local = localGames.filter { viewModel.system(it.systemId) != null && fitsLobby(it, lobbyState) }
+                        val localIds = localGames.mapTo(HashSet()) { it.id }
+                        val favorite = favorites.filter {
+                            viewModel.system(it.systemId) != null && fitsLobby(it, lobbyState) && (!state.offline || it.id in localIds)
+                        }
+                        if (favorite.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }, key = "favorite-games") {
+                                GamesRow(viewModel, stringResource(R.string.row_favorites), favorite, { it.id in localIds }, imageUrl, mediaUrl, onOpenGame)
+                            }
+                        }
                         if (local.isNotEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }, key = "local-games") {
-                                LocalGamesRow(viewModel, local, imageUrl, mediaUrl, onOpenGame)
+                                GamesRow(viewModel, stringResource(R.string.row_downloaded), local, { true }, imageUrl, mediaUrl, onOpenGame)
                             }
                         }
                         // Lobby : seulement les systèmes que tous ses membres savent jouer en réseau.
@@ -476,11 +487,16 @@ private fun SearchResults(
     }
 }
 
-/** Rangée des jeux téléchargés, en tête des systèmes : cartes comme la recherche, appui -> fiche du jeu. */
+/**
+ * Rangée de jeux en tête des systèmes (favoris, téléchargés) : cartes comme la recherche, appui ->
+ * fiche du jeu ; [downloaded] : jeu présent sur l'appareil.
+ */
 @Composable
-private fun LocalGamesRow(
+private fun GamesRow(
     viewModel: SystemsViewModel,
+    title: String,
     games: List<Game>,
+    downloaded: (Game) -> Boolean,
     imageUrl: (GameSystem) -> String?,
     mediaUrl: MediaUrl,
     onOpenGame: (systemId: String, gameId: Long) -> Unit,
@@ -488,7 +504,7 @@ private fun LocalGamesRow(
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     Column {
         Text(
-            stringResource(R.string.row_title, stringResource(R.string.row_downloaded), games.size),
+            stringResource(R.string.row_title, title, games.size),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(bottom = 8.dp),
@@ -507,7 +523,7 @@ private fun LocalGamesRow(
                     status = when (val d = downloads[game.id]) {
                         is DownloadState.Running -> LocalStatus.Downloading(d)
                         is DownloadState.Failed -> LocalStatus.Error(d.message)
-                        null -> LocalStatus.Downloaded
+                        null -> if (downloaded(game)) LocalStatus.Downloaded else LocalStatus.Remote
                     },
                     onClick = { onOpenGame(game.systemId, game.id) },
                     onDetails = { onOpenGame(game.systemId, game.id) },

@@ -29,6 +29,8 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
@@ -46,6 +48,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -108,6 +111,7 @@ fun GameDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val peers by viewModel.peers.collectAsStateWithLifecycle()
+    val favorite by viewModel.favorite.collectAsStateWithLifecycle()
     val activity = LocalContext.current as Activity
     val scope = rememberCoroutineScope()
     // Multijoueurs : lobbies (créer, rejoindre ; hôte : « Définir comme jeu du lobby »).
@@ -142,7 +146,18 @@ fun GameDetailScreen(
                 windowInsets = topBarInsets,
                 title = { Text(state.system?.name ?: "") },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) } },
-                actions = { OfflineBadge(Modifier.padding(end = 12.dp)) },
+                actions = {
+                    OfflineBadge(Modifier.padding(end = 4.dp))
+                    if (state.game != null) {
+                        IconButton(onClick = { viewModel.toggleFavorite { message -> scope.launch { snackbar.showSnackbar(message) } } }) {
+                            Icon(
+                                if (favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add),
+                                tint = if (favorite) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                            )
+                        }
+                    }
+                },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },

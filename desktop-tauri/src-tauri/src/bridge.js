@@ -154,6 +154,8 @@
       setAvatar: call('account:setAvatar'),
       playtime: call('account:playtime'),
       stats: call('account:stats'),
+      favorites: call('account:favorites'),
+      setFavorite: call('account:setFavorite'),
       uploadPending: call('account:uploadPending'),
       reportError: call('account:reportError'),
       onUpdate: on('account:update'),

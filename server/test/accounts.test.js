@@ -290,3 +290,32 @@ test('rapport gardé hors ligne : date de l’erreur conservée, long journal ac
   assert.equal(rows[0].size, 150_000);
   assert.equal(rows[1].at.slice(0, 10), day(Date.now())); // date invraisemblable : maintenant
 });
+
+test('favoris : par profil, téléchargés ou non, du plus récent au plus ancien, retirés avec le jeu', async () => {
+  const express = (await import('express')).default;
+  const app = express().use(express.json()).use('/api', api);
+  const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  const base = `http://127.0.0.1:${server.address().port}/api`;
+  const { token } = accounts.login('alice', 'secret1', phone);
+  const call = (method, path) => fetch(`${base}${path}`, { method, headers: { 'X-RomCloud-Session': token } });
+  try {
+    const other = Number(db.prepare("INSERT INTO games (system_id, file_name, size, mtime, title) VALUES ('snes', 'mario.sfc', 1, 0, 'Mario')").run().lastInsertRowid);
+    assert.deepEqual(await (await call('GET', '/account/favorites')).json(), []);
+    assert.equal((await call('PUT', `/account/favorites/${gameId}`)).status, 204);
+    assert.equal((await call('PUT', `/account/favorites/${other}`)).status, 204);
+    assert.equal((await call('PUT', `/account/favorites/${other}`)).status, 204); // déjà favori
+    const list = await (await call('GET', '/account/favorites')).json();
+    assert.deepEqual(list.map((g) => g.title), ['Mario', 'Zelda']);
+    assert.equal(list[0].systemId, 'snes');
+    // Autre profil : ses propres favoris.
+    const bob = accounts.createUser('bob-favorites', 'secret1');
+    assert.deepEqual(accounts.favoriteIds(bob.id), []);
+    assert.equal((await call('DELETE', `/account/favorites/${gameId}`)).status, 204);
+    assert.equal((await call('PUT', '/account/favorites/999999')).status, 404);
+    assert.equal((await fetch(`${base}/account/favorites`)).status, 401); // sans profil
+    db.prepare('DELETE FROM games WHERE id = ?').run(other);
+    assert.deepEqual(await (await call('GET', '/account/favorites')).json(), []);
+  } finally {
+    server.close();
+  }
+});
