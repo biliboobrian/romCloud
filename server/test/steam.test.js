@@ -90,6 +90,12 @@ test('Steam : nom exact, le jeu le plus commenté parmi ceux du même nom ; par 
   assert.equal(byId.rating, null); // moins de 10 avis
   assert.ok(!calls.some((u) => u.includes('storesearch')));
 
+  // AppID inconnu de la boutique (« 480 » d'un émulateur Steam) : recherche par le titre.
+  calls = mockSteam();
+  const unknownId = await scrapeSteam({ appId: '480', titles: ['Rock Bottom'], languages: ['fr'] });
+  assert.equal(unknownId.appId, 4297840);
+  assert.ok(calls.some((u) => u.includes('storesearch')));
+
   mockSteam();
   assert.equal(await scrapeSteam({ titles: ['Rock'], languages: ['fr'] }), null); // pas de nom exact
 });

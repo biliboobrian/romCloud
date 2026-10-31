@@ -113,15 +113,15 @@ export function steamMeta(item, genre) {
 }
 
 /**
- * Jeu de la boutique Steam : par son [appId] s'il est connu, sinon par l'un des [titles] (nom
- * exact ; plusieurs jeux du même nom : le plus commenté). null s'il est introuvable.
+ * Jeu de la boutique Steam : par son [appId] s'il est connu, sinon (ou AppID inconnu de la boutique :
+ * « 480 » laissé par un émulateur Steam, jeu retiré) par l'un des [titles] (nom exact ; plusieurs jeux
+ * du même nom : le plus commenté). null s'il est introuvable.
  */
 export async function scrapeSteam({ appId, titles = [], languages = ['en'] }) {
   const language = languages[0] || 'en';
   let item = null;
-  if (appId) {
-    [item] = await storeItems([appId], language);
-  } else {
+  if (appId) [item] = await storeItems([appId], language);
+  if (!item) {
     for (const title of [...new Set(titles.filter(Boolean))]) {
       const ids = await searchExact(title, language);
       if (!ids.length) continue;
