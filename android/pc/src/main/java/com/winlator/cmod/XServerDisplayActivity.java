@@ -25,6 +25,9 @@ import android.hardware.SensorManager;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
+import android.app.GameManager;
+import android.app.GameState;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.FileObserver;
 import android.os.Handler;
@@ -888,6 +891,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     @Override
     public void onResume() {
         super.onResume();
+        reportGameState(true);
         boolean gyroEnabled = preferences.getBoolean("gyro_enabled", true);
 
         if (gyroEnabled) {
@@ -913,6 +917,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     @Override
     public void onPause() {
         super.onPause();
+        reportGameState(false);
         boolean gyroEnabled = preferences.getBoolean("gyro_enabled", true);
 
         if (gyroEnabled) {
@@ -2187,6 +2192,20 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 winHandler.refreshControllerMappings();
             }
         }
+    }
+
+    /**
+     * RomCloud, Android 13+ : partie en cours (écran du jeu affiché) ou interrompue signalée au système,
+     * pour les modes de jeu d'Android et des constructeurs (performances).
+     */
+    private void reportGameState(boolean playing) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        try {
+            GameManager gameManager = getSystemService(GameManager.class);
+            if (gameManager != null) {
+                gameManager.setGameState(new GameState(false, playing ? GameState.MODE_GAMEPLAY_UNINTERRUPTIBLE : GameState.MODE_NONE));
+            }
+        } catch (RuntimeException ignored) {}
     }
 
     /** RomCloud : manette branchée utilisée, manette à l'écran masquée (la manette devient le joueur 1). */
