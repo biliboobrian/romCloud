@@ -93,6 +93,7 @@
     api: { test: call('api:test'), systems: call('api:systems'), games: call('api:games'), search: call('api:search') },
     library: {
       downloaded: call('library:downloaded'),
+      folderStatus: call('library:folderStatus'),
       downloadedGames: call('library:downloadedGames'),
       refreshDownloaded: call('library:refreshDownloaded'),
       path: call('library:path'),

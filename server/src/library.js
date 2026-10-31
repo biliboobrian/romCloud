@@ -13,6 +13,7 @@ import { contentIdLabel } from './scraper/serial.js';
 import { exeCandidates, folderFiles, folderStats, prereqsOf, uninstallerOf } from './folder-games.js';
 import { listSystems, requireSystem, systemDir } from './systems.js';
 import { normalizeCoreOptions, parseCoreOptions } from './core-options.js';
+import { queueVersionDetection } from './game-version.js';
 
 // Fichiers ignorés lors du scan : fichiers cachés, envois en cours, métadonnées diverses.
 const IGNORED_RE = /^\.|\.(part|tmp|upload|txt|nfo|db|ini|xml|jpg|jpeg|png)$/i;
@@ -114,6 +115,12 @@ export function rowToGame(row, parts = []) {
           packFormat: row.packed_files ? row.pack_format || 'zip' : null,
           // AppID Steam choisi dans la fiche (null : retrouvé par les fichiers du jeu ou son titre).
           steamAppId: row.steam_app_id ?? null,
+          // Version du jeu (game-version.js) : devinée, ou choisie dans la fiche (versionChosen).
+          version: row.version ?? null,
+          versionChosen: Boolean(row.version_chosen),
+          // Empreinte des fichiers (taille et date la plus récente) : les applications la notent au
+          // téléchargement et proposent de mettre à jour le jeu quand elle change (nouvelle version).
+          contentStamp: `${row.size}-${row.mtime}`,
         }
       : {}),
     groupMode: row.group_mode ?? null,
@@ -275,6 +282,17 @@ export function updateGame(id, input) {
     sets.push('extra_exes = ?', 'extra_exes_chosen = ?');
     values.push(JSON.stringify(list), chosen ? 1 : 0);
   }
+  // Version du jeu en dossier : choisie (gardée au scan) ; vide : devinée de nouveau.
+  if (input.version !== undefined) {
+    const row = requireGameRow(id);
+    if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
+    const version = String(input.version ?? '').trim().slice(0, 40);
+    if (version) sets.push('version = ?', 'version_chosen = 1');
+    else sets.push('version = NULL', 'version_chosen = 0', 'version_mtime = NULL');
+    if (version) values.push(version);
+  }
+  // Exécutable changé : version devinée de nouveau (elle peut venir de lui).
+  if (input.exe !== undefined) sets.push('version_mtime = NULL');
   if (input.coreOptions !== undefined) {
     sets.push('core_options = ?');
     values.push(JSON.stringify(normalizeCoreOptions(input.coreOptions)));
@@ -282,6 +300,7 @@ export function updateGame(id, input) {
   if (sets.length) {
     db.prepare(`UPDATE games SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`).run(...values, Number(id));
   }
+  if (input.version !== undefined || input.exe !== undefined) detectVersions();
   return rowToGame(getGameRow(id));
 }
 
@@ -426,6 +445,8 @@ export function scanSystem(systemId) {
       if (row.uninstall_exe === '' || (row.uninstall_exe && candidates.includes(row.uninstall_exe))) continue;
       db.prepare('UPDATE games SET uninstall_exe = ? WHERE id = ?').run(uninstallerOf(files), row.id);
     }
+    // Versions des jeux nouveaux ou changés, en tâche de fond.
+    detectVersions();
     return result;
   }
   // Disques, mises à jour et DLC rattachés à leur jeu.
@@ -447,11 +468,15 @@ export function gameFolderFiles(row, { zst = false } = {}) {
   return {
     // Archives zstd : listées seulement pour les applications qui savent les lire ([zst]) ; pour les
     // autres, fichiers en clair (décompressés à la volée par le serveur au téléchargement).
-    files: files.map(({ path: p, size, packed, format, packedSize, zipSize, crc32 }) =>
+    // mtime : date du fichier (d'origine s'il est compressé) ; avec la taille, les applications
+    // repèrent les fichiers changés par une nouvelle version du jeu.
+    files: files.map(({ path: p, size, mtime, packed, format, packedSize, zipSize, crc32 }) =>
       packed && (zst || format !== 'zst')
-        ? { path: p, size, format, packedSize, crc32, ...(zipSize !== undefined ? { zipSize } : {}) }
-        : { path: p, size },
+        ? { path: p, size, mtime, format, packedSize, crc32, ...(zipSize !== undefined ? { zipSize } : {}) }
+        : { path: p, size, mtime },
     ),
+    version: row.version ?? null,
+    contentStamp: `${row.size}-${row.mtime}`,
     packed: stats.packed === 0 ? 'flat' : stats.packed === files.length ? 'zip' : 'partial',
     packFormat: stats.format,
     size: stats.size,
@@ -487,6 +512,40 @@ function validateExe(id, value) {
   const exe = String(value).replace(/\\/g, '/');
   if (!gameFolderFiles(row).exes.includes(exe)) throw new HttpError(400, 'errors.unknownExe', { exe });
   return exe;
+}
+
+/** Versions des jeux en dossiers à deviner (game-version.js), en tâche de fond. */
+export function detectVersions() {
+  return queueVersionDetection({ listFiles: folderFiles, dirOf: gameFilePath });
+}
+
+/**
+ * Nouvelle version d'un jeu PC : les fichiers du jeu [id] remplacés par ceux du jeu [withId] (même
+ * système, dossier ajouté à côté : « Jeu v1.3 »), qui disparaît. Fiche, images, options, sauvegardes,
+ * temps de jeu et états du jeu [id] gardés ; son ancien dossier est supprimé et il prend le nom du
+ * nouveau. Les applications qui l'ont téléchargé proposent alors de le mettre à jour.
+ */
+export function replaceWithVersion(id, withId) {
+  const row = requireGameRow(id);
+  const other = requireGameRow(withId);
+  if (!row.is_folder || !other.is_folder) throw new HttpError(400, 'errors.notFolderGame');
+  if (row.id === other.id || row.system_id !== other.system_id) throw new HttpError(400, 'errors.invalidNewVersion');
+  const oldDir = gameFilePath(row);
+  transaction(() => {
+    for (const part of db.prepare('SELECT id FROM games WHERE parent_id = ?').all(other.id)) {
+      db.prepare('UPDATE games SET parent_id = NULL WHERE id = ?').run(part.id);
+    }
+    db.prepare('DELETE FROM games WHERE id = ?').run(other.id);
+    // Exécutable et désinstalleur gardés s'ils existent dans la nouvelle version (sinon devinés au scan) ;
+    // version choisie dans la fiche oubliée (celle de la nouvelle version devinée).
+    db.prepare(
+      "UPDATE games SET file_name = ?, size = ?, mtime = ?, version = NULL, version_chosen = 0, version_mtime = NULL, updated_at = datetime('now') WHERE id = ?",
+    ).run(other.file_name, other.size, other.mtime, row.id);
+  });
+  fs.rmSync(gameMediaDir(other.id), { recursive: true, force: true });
+  if (path.resolve(oldDir) !== path.resolve(gameFilePath(other))) fs.rmSync(oldDir, { recursive: true, force: true });
+  scanSystem(row.system_id);
+  return gameWithParts(row.id);
 }
 
 export function scanAll() {

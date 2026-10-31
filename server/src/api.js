@@ -29,6 +29,7 @@ import {
   gameMediaDir,
   gameWithParts,
   listGames,
+  replaceWithVersion,
   requireGameRow,
   SCREENSHOT_TYPES,
   deleteGameMedia,
@@ -548,6 +549,10 @@ api.post('/games/:id/pack', (req, res) => {
   const job = queueFolderPack(req.params.id, req.body?.mode);
   res.status(202).json({ job });
 });
+
+// Jeu PC : nouvelle version ({ gameId } : jeu en dossier du même système, ajouté à côté) ; ses fichiers
+// remplacent ceux du jeu, qui garde sa fiche, ses sauvegardes et son temps de jeu. Renvoie le jeu.
+api.post('/games/:id/replace', (req, res) => res.json(replaceWithVersion(req.params.id, req.body?.gameId)));
 
 const MEDIA_TYPES = ['boxart', ...SCREENSHOT_TYPES];
 

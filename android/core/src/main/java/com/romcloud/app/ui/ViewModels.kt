@@ -622,6 +622,10 @@ class GameDetailViewModel(
         val system: GameSystem? = null,
         val game: Game? = null,
         val downloaded: Boolean = false,
+        /** Jeu PC téléchargé dont une nouvelle version est sur le serveur : « Mettre à jour ». */
+        val updateAvailable: Boolean = false,
+        /** Version du jeu PC téléchargée sur l'appareil (null : inconnue). */
+        val localVersion: String? = null,
         val players: List<Pair<Player, Boolean>> = emptyList(), // (émulateur, installé ?)
         val selectedPlayer: Player? = null,
         val localPath: String? = null,
@@ -731,6 +735,9 @@ class GameDetailViewModel(
                     app.launcher.compatiblePlayers(system, game.fileName, game.folder).map { it to app.launcher.isInstalled(it) }
             }
             val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(s.bios) }
+            val (updateAvailable, localVersion) = withContext(Dispatchers.IO) {
+                (downloaded && app.library.updateAvailable(system, game)) to app.library.downloadedVersion(system, game)
+            }
             val emulatorFiles = withContext(Dispatchers.IO) { runCatching { app.library.exportForEmulators(system) }.getOrDefault(emptyList()) }
             val selected = app.launcher.selectedPlayer(system, game.fileName, game.folder)
             val file = withContext(Dispatchers.IO) { app.library.launchFile(system, game, selected) }
@@ -769,6 +776,8 @@ class GameDetailViewModel(
             _state.update {
                 it.copy(
                     downloaded = downloaded,
+                    updateAvailable = updateAvailable,
+                    localVersion = localVersion,
                     players = players,
                     selectedPlayer = selected,
                     localPath = file.absolutePath,

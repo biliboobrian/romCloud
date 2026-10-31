@@ -292,6 +292,12 @@ if (!gameColumns.includes('folder_files')) db.exec('ALTER TABLE games ADD COLUMN
 if (!gameColumns.includes('pack_format')) db.exec('ALTER TABLE games ADD COLUMN pack_format TEXT');
 // Identifiant Steam (AppID) d'un jeu PC, choisi dans la fiche : jeu retrouvé dans la boutique Steam au scraping.
 if (!gameColumns.includes('steam_app_id')) db.exec('ALTER TABLE games ADD COLUMN steam_app_id TEXT');
+// Version d'un jeu PC (game-version.js) : devinée (nom du dossier, version de l'exécutable) tant
+// qu'elle n'a pas été choisie dans la fiche (version_chosen) ; version_mtime : date des fichiers
+// quand elle a été devinée (devinée de nouveau quand ils changent).
+if (!gameColumns.includes('version')) db.exec('ALTER TABLE games ADD COLUMN version TEXT');
+if (!gameColumns.includes('version_chosen')) db.exec('ALTER TABLE games ADD COLUMN version_chosen INTEGER NOT NULL DEFAULT 0');
+if (!gameColumns.includes('version_mtime')) db.exec('ALTER TABLE games ADD COLUMN version_mtime INTEGER');
 if (!gameColumns.includes('packed_files')) db.exec('ALTER TABLE games ADD COLUMN packed_files INTEGER NOT NULL DEFAULT 0');
 if (!gameColumns.includes('packed_size')) db.exec('ALTER TABLE games ADD COLUMN packed_size INTEGER');
 // Captures d'écran 2 à 4 (« screenshot » : la première).

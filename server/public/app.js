@@ -762,8 +762,17 @@ function fillGameDialog(game, bust = '') {
   $('#gameSteamField').classList.toggle('hidden', !game.folder);
   form.elements.steamAppId.disabled = !game.folder;
   form.elements.steamAppId.value = game.steamAppId ?? '';
+  // Jeu PC : version (devinée, ou choisie dans la fiche) et remplacement par une nouvelle version.
+  $('#gameVersionField').classList.toggle('hidden', !game.folder);
+  form.elements.version.disabled = !game.folder;
+  form.elements.version.value = game.versionChosen ? game.version ?? '' : '';
+  form.elements.version.placeholder = !game.versionChosen && game.version ? game.version : '';
+  $('#gameVersionHint').textContent = game.versionChosen
+    ? t('game.versionChosen')
+    : t('game.versionHint', { guess: game.version ? t('game.versionGuess', { version: game.version }) : '' });
   if (game.folder) fillGameExe(game);
   fillGamePack(game);
+  fillNewVersion(game);
   const statusText = {
     none: t('game.never'),
     ok: t('game.scrapedVia', { source: game.scrapeSource }),
@@ -816,6 +825,42 @@ function fillGamePack(game) {
   unpack.classList.toggle('hidden', packed === 'flat');
   unpack.textContent = t('pack.unpack');
   unpack.onclick = () => start('flat');
+}
+
+/** Titre comparable (minuscules, sans accents ni ponctuation) : dossiers d'un même jeu. */
+const sameTitleKey = (title) => String(title || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * Jeu PC : autres jeux en dossiers du système proposés comme nouvelle version (ceux du même titre
+ * en premier) ; leurs fichiers remplacent ceux du jeu, qui garde sa fiche.
+ */
+function fillNewVersion(game) {
+  const others = game.folder ? (state.games || []).filter((g) => g.folder && g.id !== game.id) : [];
+  $('#gameNewVersion').classList.toggle('hidden', !others.length);
+  if (!others.length) return;
+  const key = sameTitleKey(game.title);
+  const same = (g) => sameTitleKey(g.title) === key;
+  others.sort((a, b) => Number(same(b)) - Number(same(a)) || a.fileName.localeCompare(b.fileName));
+  const select = $('#gameNewVersionSelect');
+  select.innerHTML =
+    `<option value="">${escapeHtml(t('game.newVersionNone'))}</option>` +
+    others
+      .map((g) => {
+        const name = `${g.fileName}/${g.version ? ` (${g.version})` : ''}`;
+        return `<option value="${g.id}">${escapeHtml(same(g) ? t('game.newVersionSameTitle', { name }) : name)}</option>`;
+      })
+      .join('');
+  $('#gameNewVersionBtn').onclick = () =>
+    guard(async () => {
+      const other = others.find((g) => String(g.id) === select.value);
+      if (!other) return toast(t('game.newVersionNone'), 'error');
+      if (!confirm(t('game.newVersionConfirm', { title: game.title, other: other.fileName, file: game.fileName }))) return;
+      const updated = await api(`/games/${game.id}/replace`, { method: 'POST', body: { gameId: other.id } });
+      toast(t('game.newVersionDone'));
+      await loadGames();
+      state.editingGame = updated;
+      fillGameDialog(updated, `-${Date.now()}`);
+    });
 }
 
 /**

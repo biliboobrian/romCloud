@@ -111,7 +111,6 @@ class Downloader(
                     fetchFolder(system, game, done) { bytes, folderTotal, unpackBytes, unpackTotal ->
                         _states.update { it + (game.id to DownloadState.Running(game.title, bytes, done + folderTotal, unpackBytes, unpackTotal)) }
                     }
-                    library.folderMarker(system, game).writeText(game.size.toString())
                 } else if (includeRom) {
                     for (file in game.files) {
                         fetch(api.fileUrl(file.id), File(library.systemDir(system), file.fileName), file.size, progress)
@@ -149,6 +148,9 @@ class Downloader(
      * Refusé d'avance s'il n'y a pas assez de place ; si la décompression prend du retard au point de
      * manquer de place, le téléchargement suivant l'attend. [progress] reçoit les octets reçus (avec les
      * [before] déjà comptés), le total à télécharger, puis les octets décompressés et le total à décompresser.
+     * Mise à jour (jeu déjà téléchargé, nouvelle version sur le serveur) : seuls les fichiers changés
+     * (taille ou date sur le serveur) sont téléchargés de nouveau, ceux retirés de la nouvelle version
+     * supprimés ; à la fin, le marqueur note l'empreinte, la version et les fichiers reçus.
      */
     private suspend fun fetchFolder(
         system: GameSystem,
@@ -156,8 +158,14 @@ class Downloader(
         before: Long,
         progress: (bytes: Long, total: Long, unpackBytes: Long, unpackTotal: Long) -> Unit,
     ) = coroutineScope {
-        val files = api.folderFiles(game.id)
-        val complete = { f: FolderFile -> library.folderFile(system, game, f.path).let { it.isFile && it.length() == f.size } }
+        val listing = api.folderListing(game.id)
+        val files = listing.files
+        // Fichiers reçus avec la version déjà téléchargée (chemin -> [taille, date sur le serveur]).
+        val previous = library.readFolderMarker(system, game)?.files.orEmpty()
+        val complete = { f: FolderFile ->
+            library.folderFile(system, game, f.path).let { it.isFile && it.length() == f.size } &&
+                (f.mtime == null || previous[f.path]?.getOrNull(1)?.let { it == f.mtime } ?: true)
+        }
         val todo = FolderInstall.order(files.filterNot(complete))
         val folder = library.fileFor(system, game)
         val needed = FolderInstall.neededBytes(todo)
@@ -234,6 +242,18 @@ class Downloader(
         downloading.set(false)
         unpackQueue.close()
         unpacker.join()
+        // Fichiers de la version précédente absents de la nouvelle : supprimés.
+        val paths = files.mapTo(HashSet()) { it.path }
+        for (path in previous.keys - paths) library.folderFile(system, game, path).delete()
+        library.writeFolderMarker(
+            system, game,
+            FolderMarker(
+                size = files.sumOf { it.size },
+                stamp = listing.contentStamp,
+                version = listing.version,
+                files = files.associate { it.path to listOf(it.size, it.mtime ?: 0) },
+            ),
+        )
     }
 
     private suspend fun fetch(url: String, target: File, size: Long, progress: (Long) -> Unit) =

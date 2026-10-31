@@ -278,6 +278,8 @@ body.immersive .hero .desc { -webkit-line-clamp: 2; }
 .detail .ok { color: var(--ok); font-weight: 600; }
 .detail .line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .detail .error { color: var(--danger); }
+/* Jeu PC : nouvelle version sur le serveur. */
+.detail .warn { color: var(--accent); font-weight: 600; }
 .detail .emu { background: color-mix(in srgb, var(--surface) 80%, transparent); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 /* Émulateur externe à configurer avant de jouer : problèmes en tête de l'encadré. */
 .detail .emu.blocked { border-color: var(--danger); }

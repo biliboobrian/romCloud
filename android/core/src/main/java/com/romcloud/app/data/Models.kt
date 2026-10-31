@@ -157,6 +157,13 @@ data class Game(
     val packedSize: Long? = null,
     /** Format des archives du jeu PC compressé : « zst », « xz », « zip » ou « mixed » ; null : aucune. */
     val packFormat: String? = null,
+    /** Version du jeu PC sur le serveur (devinée ou choisie) ; null : inconnue. */
+    val version: String? = null,
+    /**
+     * Empreinte des fichiers du jeu PC sur le serveur : notée au téléchargement, elle change avec une
+     * nouvelle version (mise à jour proposée) ; null : serveur d'avant les mises à jour des jeux PC.
+     */
+    val contentStamp: String? = null,
     /** Options des émulateurs intégrés propres au jeu, choisies sur le serveur : remplacent celles du système. */
     val coreOptions: Map<String, String> = emptyMap(),
 ) {
@@ -210,6 +217,8 @@ data class FolderFile(
     val crc32: String? = null,
     val format: String? = null,
     val packedSize: Long? = null,
+    /** Date du fichier sur le serveur (ms) : avec la taille, repère un fichier changé par une nouvelle version. */
+    val mtime: Long? = null,
 ) {
     val packed: Boolean get() = archiveSize != null
 
@@ -225,7 +234,28 @@ data class FolderFile(
 
 /** Fichiers d'un jeu en dossier (`GET /api/games/{id}/files`). */
 @Serializable
-data class FolderListing(val files: List<FolderFile> = emptyList(), val exe: String? = null, val packed: String = "flat")
+data class FolderListing(
+    val files: List<FolderFile> = emptyList(),
+    val exe: String? = null,
+    val packed: String = "flat",
+    val version: String? = null,
+    val contentStamp: String? = null,
+)
+
+/**
+ * Fin du téléchargement d'un jeu PC (fichier « .romcloud-complete » de son dossier) : empreinte
+ * [stamp] et [version] du jeu téléchargé, taille, et fichiers reçus (chemin -> [taille, date sur le
+ * serveur]) : à la mise à jour, seuls ceux qui ont changé sont téléchargés de nouveau, ceux retirés de
+ * la nouvelle version supprimés (les fichiers créés par le jeu, sauvegardes comprises, restent).
+ * Anciennes versions de l'application : la taille seule, en texte.
+ */
+@Serializable
+data class FolderMarker(
+    val size: Long,
+    val stamp: String? = null,
+    val version: String? = null,
+    val files: Map<String, List<Long>> = emptyMap(),
+)
 
 /** Partie d'un jeu : [kind] disc (avec son numéro [index]), update ou dlc ; vide pour le fichier principal. */
 @Serializable

@@ -42,14 +42,54 @@ pub fn is_folder(game: &Value) -> bool {
     game.get("folder").and_then(Value::as_bool).unwrap_or(false)
 }
 
-/// Jeu en dossier : fichier écrit à la fin du téléchargement (taille du jeu), absent tant qu'il manque des fichiers.
+/// Jeu en dossier : fichier écrit à la fin du téléchargement, absent tant qu'il manque des fichiers.
 pub fn folder_marker(system: &Value, game: &Value) -> PathBuf {
     file_for(system, game).join(".romcloud-complete")
 }
 
-/// Jeu en dossier complet sur le PC : téléchargement terminé pour sa taille actuelle sur le serveur.
+/**
+ * Fin du téléchargement d'un jeu en dossier : { size, stamp, version, files: { chemin: [taille, date
+ * sur le serveur] } } (empreinte et version du jeu téléchargé, fichiers reçus : à la mise à jour, seuls
+ * ceux qui ont changé sont téléchargés de nouveau, ceux retirés supprimés). Anciennes versions de
+ * l'application : la taille seule, en texte. None : téléchargement pas terminé.
+ */
+pub fn read_folder_marker(system: &Value, game: &Value) -> Option<Value> {
+    let text = std::fs::read_to_string(folder_marker(system, game)).ok()?;
+    let text = text.trim();
+    match text.parse::<u64>() {
+        Ok(size) => Some(serde_json::json!({ "size": size })),
+        Err(_) => serde_json::from_str(text).ok(),
+    }
+}
+
+/// Jeu en dossier téléchargé sur le PC, dans sa version actuelle ou une plus ancienne (voir `update_available`).
 fn folder_complete(system: &Value, game: &Value) -> bool {
-    std::fs::read_to_string(folder_marker(system, game)).ok().and_then(|t| t.trim().parse::<u64>().ok()) == Some(n(game, "size"))
+    read_folder_marker(system, game).is_some()
+}
+
+/**
+ * Jeu PC téléchargé dont les fichiers ont changé sur le serveur depuis (nouvelle version) : à mettre à
+ * jour. Marqueur d'une ancienne version de l'application, ou serveur sans empreinte : par la taille.
+ */
+pub fn update_available(system: &Value, game: &Value) -> bool {
+    if !is_folder(game) {
+        return false;
+    }
+    read_folder_marker(system, game).is_some_and(|marker| marker_outdated(&marker, game))
+}
+
+/// Marqueur [marker] d'une version plus ancienne que celle du jeu [game] sur le serveur.
+fn marker_outdated(marker: &Value, game: &Value) -> bool {
+    match (marker.get("stamp").and_then(Value::as_str), game.get("contentStamp").and_then(Value::as_str)) {
+        (Some(local), Some(remote)) => local != remote,
+        _ => n(marker, "size") != n(game, "size"),
+    }
+}
+
+/// Jeu en dossier sur le PC : { updateAvailable, localVersion } (version téléchargée, null : inconnue).
+pub fn folder_status(system: &Value, game: &Value) -> Value {
+    let local = read_folder_marker(system, game).and_then(|m| m.get("version").cloned()).unwrap_or(Value::Null);
+    serde_json::json!({ "updateAvailable": update_available(system, game), "localVersion": local })
 }
 
 /// Exécutable d'un jeu en dossier sur le PC (None : aucun choisi sur le serveur).
@@ -266,6 +306,17 @@ mod tests {
         assert_eq!(playlist_text(&second), None);
         assert_eq!(on_disc(&game, 0), game);
         assert_eq!(on_disc(&game, 7), game);
+    }
+
+    #[test]
+    fn nouvelle_version_d_un_jeu_pc() {
+        let game = json!({ "size": 120, "contentStamp": "120-99" });
+        assert!(!marker_outdated(&json!({ "size": 120, "stamp": "120-99" }), &game));
+        assert!(marker_outdated(&json!({ "size": 120, "stamp": "120-50" }), &game));
+        // Ancien marqueur (taille seule) ou serveur sans empreinte : par la taille.
+        assert!(!marker_outdated(&json!({ "size": 120 }), &game));
+        assert!(marker_outdated(&json!({ "size": 100 }), &game));
+        assert!(marker_outdated(&json!({ "size": 100, "stamp": "100-1" }), &json!({ "size": 120 })));
     }
 
     #[test]
