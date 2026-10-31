@@ -34,6 +34,7 @@ import com.romcloud.app.data.sameSaveCore
 import com.romcloud.app.launch.BiosPrompt
 import com.romcloud.app.launch.CloseEmulatorPrompt
 import com.romcloud.app.launch.CoreSwitchPrompt
+import com.romcloud.app.launch.GameShortcuts
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.MissingEmulator
 import com.romcloud.app.launch.MissingEmulatorException
@@ -631,6 +632,9 @@ class GameDetailViewModel(
         val downloaded: Boolean = false,
         /** Présence du jeu sur l'appareil vérifiée ([downloaded] connu). */
         val localChecked: Boolean = false,
+        /** Raccourci du jeu sur l'écran d'accueil (actif) ; [canShortcut] : le lanceur les accepte. */
+        val shortcut: Boolean = false,
+        val canShortcut: Boolean = false,
         /** Jeu PC téléchargé dont une nouvelle version est sur le serveur : « Mettre à jour ». */
         val updateAvailable: Boolean = false,
         /** Version du jeu PC téléchargée sur l'appareil (null : inconnue). */
@@ -759,6 +763,8 @@ class GameDetailViewModel(
                     app.launcher.compatiblePlayers(system, game.fileName, game.folder).map { it to app.launcher.isInstalled(it) }
             }
             val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(s.bios) }
+            val canShortcut = GameShortcuts.supported(app)
+            val shortcut = canShortcut && withContext(Dispatchers.IO) { GameShortcuts.exists(app, game.id) }
             val (updateAvailable, localVersion) = withContext(Dispatchers.IO) {
                 (downloaded && app.library.updateAvailable(system, game)) to app.library.downloadedVersion(system, game)
             }
@@ -801,6 +807,8 @@ class GameDetailViewModel(
                 it.copy(
                     downloaded = downloaded,
                     localChecked = true,
+                    shortcut = shortcut,
+                    canShortcut = canShortcut,
                     updateAvailable = updateAvailable,
                     localVersion = localVersion,
                     players = players,
@@ -924,6 +932,25 @@ class GameDetailViewModel(
         val game = s.game ?: return
         viewModelScope.launch(Dispatchers.IO) {
             app.library.delete(system, game)
+            // Raccourci sur l'écran d'accueil : désactivé (jeu plus sur l'appareil).
+            GameShortcuts.remove(app, game.id, I18n.get(R.string.shortcut_game_removed))
+            refreshLocal()
+        }
+    }
+
+    /**
+     * Crée le raccourci du jeu sur l'écran d'accueil (le lanceur demande confirmation ; état relu
+     * au retour dans l'application), ou le retire (désactivé : Android ne permet pas de l'enlever).
+     */
+    fun toggleShortcut(onMessage: (String) -> Unit) {
+        val game = _state.value.game ?: return
+        viewModelScope.launch {
+            if (_state.value.shortcut) {
+                GameShortcuts.remove(app, game.id, I18n.get(R.string.shortcut_removed))
+                onMessage(I18n.get(R.string.shortcut_removed_hint))
+            } else if (!GameShortcuts.request(app, app.api, game)) {
+                onMessage(I18n.get(R.string.shortcut_failed))
+            }
             refreshLocal()
         }
     }

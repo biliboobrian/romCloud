@@ -2451,6 +2451,7 @@
       multiDisc ? call(rc.launcher.resumeDiscs, system, game).catch(() => null) : null,
     ]);
     const savedStates = history?.states?.length || 0;
+    const hasShortcut = rc.shortcut ? await call(rc.shortcut.exists, game.id).catch(() => false) : false;
     // Jeu PC téléchargé : nouvelle version sur le serveur (seuls les fichiers changés sont téléchargés).
     const folderStatus = game.folder && downloaded.size ? await call(rc.library.folderStatus, system, game).catch(() => null) : null;
     // Jeu à plusieurs : compatibilité de l'émulateur choisi (relue : il a pu changer).
@@ -2494,6 +2495,11 @@
 
     let actions = '';
     const favorite = S.favorites.some((g) => g.id === game.id);
+    // Raccourci sur le bureau : jeu sur le PC, ou raccourci à retirer.
+    const shortcutLabel = t(hasShortcut ? 'detail.shortcutRemove' : 'detail.shortcutAdd');
+    const shortcutBtn = rc.shortcut && (downloaded.size || hasShortcut)
+      ? `<button class="btn${hasShortcut ? ' favorite-on' : ''}" id="shortcutBtn" title="${esc(shortcutLabel)}">${icon('open', 18)} ${esc(shortcutLabel)}</button>`
+      : '';
     const favoriteBtn = `<button class="btn${favorite ? ' favorite-on' : ''}" id="favoriteBtn" title="${esc(t(favorite ? 'detail.favoriteRemove' : 'detail.favoriteAdd'))}">${icon(favorite ? 'favorite' : 'favoriteBorder', 18)} ${esc(t(favorite ? 'detail.favoriteRemove' : 'detail.favoriteAdd'))}</button>`;
     // Ce jeu proposé par un autre appareil : partie rejointe (jeu téléchargé d'abord s'il manque).
     const joinBtns = hostsOf(game).map((p) => `<button class="btn primary big" data-join-peer="${esc(p.id)}">${icon(p.hosting.link ? 'link' : 'group')} ${esc(t(p.hosting.link ? 'link.joinPeer' : 'netplay.joinPeer', { name: peerName(p) }))}</button>`).join('');
@@ -2544,7 +2550,7 @@
           ${st.kind === 'failed' ? `<div class="error">${esc(t('status.failed', { error: st.error }))}</div>` : ''}
           ${st.kind === 'remote' ? `<div class="muted">${esc(t('detail.mustDownload'))}</div>` : ''}
           ${discs && st.kind === 'downloaded' && !isLobbyHost() ? `<div class="line disc-choice">${Array.from({ length: discs.count }, (_, d) => `<button class="chip${d === disc ? ' selected' : ''}${discs.resume[d] ? ' has-resume' : ''}" data-disc="${d}"${discs.resume[d] ? ` title="${esc(t('parts.discResume'))}"` : ''}>${esc(t('parts.disc', { n: d + 1 }))}</button>`).join('')}</div>` : ''}
-          <div class="actions">${actions}${favoriteBtn}</div>
+          <div class="actions">${actions}${favoriteBtn}${shortcutBtn}</div>
           ${system.biosCount && st.kind !== 'running' ? (missingBios.length
             ? `<div class="line"><span class="muted">${esc(t('bios.missing', { n: missingBios.length, size: biosSize(missingBios) }))}</span>${st.kind === 'downloaded' ? `<button class="btn ghost" id="biosBtn">${icon('cloud', 18)} ${esc(t('bios.download'))}</button>` : ''}</div>`
             : `<div class="ok">${esc(t('bios.present', { n: system.biosCount }))}</div>`) : ''}
@@ -2607,6 +2613,15 @@
     // Mise à jour du jeu PC : téléchargement des fichiers changés (les autres gardés).
     $('#updateBtn')?.addEventListener('click', () => startDownload(system, game, false));
     $('#favoriteBtn')?.addEventListener('click', () => toggleFavorite(game));
+    $('#shortcutBtn')?.addEventListener('click', async () => {
+      if (hasShortcut) {
+        await call(rc.shortcut.remove, game.id).catch(() => {});
+        toast(t('detail.shortcutRemoved', { title: game.title }));
+      } else {
+        await createShortcut(game);
+      }
+      if (S.route.name === 'game') renderGame();
+    });
     $('#biosBtn')?.addEventListener('click', async () => {
       await call(rc.downloads.dismiss, game.id);
       await call(rc.downloads.start, system, game, { bios: missingBios, includeRom: false });

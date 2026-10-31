@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.material.icons.filled.AddToHomeScreen
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
@@ -159,6 +160,16 @@ fun GameDetailScreen(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) } },
                 actions = {
                     OfflineBadge(Modifier.padding(end = 4.dp))
+                    // Raccourci sur l'écran d'accueil : jeu sur l'appareil, ou raccourci à retirer.
+                    if (state.game != null && state.canShortcut && (state.downloaded || state.shortcut)) {
+                        IconButton(onClick = { viewModel.toggleShortcut { message -> scope.launch { snackbar.showSnackbar(message) } } }) {
+                            Icon(
+                                Icons.Filled.AddToHomeScreen,
+                                stringResource(if (state.shortcut) R.string.shortcut_remove else R.string.shortcut_add),
+                                tint = if (state.shortcut) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                            )
+                        }
+                    }
                     if (state.game != null) {
                         IconButton(onClick = { viewModel.toggleFavorite { message -> scope.launch { snackbar.showSnackbar(message) } } }) {
                             Icon(

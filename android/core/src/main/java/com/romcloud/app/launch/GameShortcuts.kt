@@ -18,9 +18,11 @@ import kotlinx.coroutines.withContext
 import okhttp3.Request
 
 /**
- * Raccourci d'un jeu sur l'écran d'accueil (fenêtre de téléchargement) : il ouvre RomCloud et lance
- * le jeu (reprise de la partie s'il y en a une), ou ouvre sa fiche s'il n'est plus sur l'appareil.
- * Icône : la jaquette du jeu, sinon celle de l'application.
+ * Raccourci d'un jeu sur l'écran d'accueil (fenêtre de téléchargement, fiche du jeu) : il ouvre
+ * RomCloud et lance le jeu (reprise de la partie s'il y en a une), ou ouvre sa fiche s'il n'est plus
+ * sur l'appareil. Icône : la jaquette du jeu, sinon celle de l'application. Android ne laisse pas une
+ * application retirer un raccourci de l'écran d'accueil : retiré (fiche, jeu supprimé de
+ * l'appareil), il est désactivé (grisé, avec un message) ; recréé, il est réactivé.
  */
 object GameShortcuts {
 
@@ -41,7 +43,26 @@ object GameShortcuts {
         return system to game
     }
 
-    /** Propose au lanceur d'ajouter le raccourci du jeu (le lanceur demande confirmation). */
+    private fun shortcutId(gameId: Long) = "game-$gameId"
+
+    /** Raccourci du jeu sur l'écran d'accueil (épinglé), actif ou désactivé, ou null. */
+    private fun pinned(context: Context, gameId: Long): ShortcutInfoCompat? = runCatching {
+        ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED).firstOrNull { it.id == shortcutId(gameId) }
+    }.getOrNull()
+
+    /** Le jeu a-t-il un raccourci actif sur l'écran d'accueil ? */
+    fun exists(context: Context, gameId: Long): Boolean = pinned(context, gameId)?.isEnabled == true
+
+    /** Retire le raccourci du jeu : désactivé (Android ne permet pas de l'enlever de l'écran d'accueil). */
+    fun remove(context: Context, gameId: Long, message: String) {
+        if (pinned(context, gameId) == null) return
+        runCatching { ShortcutManagerCompat.disableShortcuts(context, listOf(shortcutId(gameId)), message) }
+    }
+
+    /**
+     * Propose au lanceur d'ajouter le raccourci du jeu (le lanceur demande confirmation) ; déjà sur
+     * l'écran d'accueil (désactivé) : réactivé et mis à jour.
+     */
     suspend fun request(context: Context, api: ApiClient, game: Game): Boolean {
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return false
         val intent = Intent(launch).apply {
@@ -54,12 +75,16 @@ object GameShortcuts {
         val icon = withContext(Dispatchers.IO) { cover(api, game) }
             ?.let(IconCompat::createWithBitmap)
             ?: IconCompat.createWithResource(context, context.applicationInfo.icon)
-        val shortcut = ShortcutInfoCompat.Builder(context, "game-${game.id}")
+        val shortcut = ShortcutInfoCompat.Builder(context, shortcutId(game.id))
             .setShortLabel(game.title.ifBlank { game.fileName }.take(25))
             .setLongLabel(game.title.ifBlank { game.fileName })
             .setIcon(icon)
             .setIntent(intent)
             .build()
+        if (pinned(context, game.id) != null) {
+            ShortcutManagerCompat.enableShortcuts(context, listOf(shortcut))
+            return ShortcutManagerCompat.updateShortcuts(context, listOf(shortcut))
+        }
         return ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)
     }
 
