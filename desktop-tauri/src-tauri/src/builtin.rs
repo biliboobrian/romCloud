@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Duration;
 use tauri::Manager;
 
 fn root() -> PathBuf {
@@ -52,6 +53,41 @@ pub fn core_installed(core: &str) -> bool {
     cores::valid_core(core) && core_file(core).exists()
 }
 
+/// Version du buildbot du cœur installé (en-tête Last-Modified au téléchargement).
+fn core_version_file(core: &str) -> PathBuf {
+    root().join("cores").join(format!("{}.version", safe(core)))
+}
+
+/// Date de la dernière vérification de version du cœur.
+fn core_checked_file(core: &str) -> PathBuf {
+    root().join("cores").join(format!("{}.checked", safe(core)))
+}
+
+/// Vérification de la version des cœurs au plus une fois par jour.
+const CORE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 3600);
+
+/**
+ * Le buildbot a-t-il une version plus récente du cœur installé ? Vérifié au plus une fois par jour,
+ * comme sous Android : les états faits avec un cœur plus récent (sur un autre appareil) ne se
+ * chargent pas dans un cœur plus ancien (« wrong version » de PPSSPP). Hors ligne ou en cas
+ * d'erreur, le cœur installé est gardé ; installé sans version connue (version antérieure de
+ * RomCloud) : mis à jour une fois.
+ */
+async fn core_outdated(core: &str) -> bool {
+    let checked = core_checked_file(core);
+    let recent = std::fs::metadata(&checked).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age < CORE_CHECK_INTERVAL);
+    if recent {
+        return false;
+    }
+    let Ok(res) = api::client().head(cores::core_url(core)).timeout(Duration::from_secs(4)).send().await else { return false };
+    if !res.status().is_success() {
+        return false;
+    }
+    let Some(remote) = res.headers().get("last-modified").and_then(|v| v.to_str().ok()).map(String::from) else { return false };
+    let _ = std::fs::write(&checked, &remote);
+    std::fs::read_to_string(core_version_file(core)).ok().as_deref() != Some(remote.as_str())
+}
+
 // Un téléchargement à la fois par cœur, même si l'utilisateur relance.
 static CORE_LOCKS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -63,8 +99,17 @@ pub async fn ensure_core(core: &str) -> Result<PathBuf> {
     let lock = CORE_LOCKS.lock().unwrap().entry(core.to_string()).or_default().clone();
     let _guard = lock.lock().await;
     if core_installed(core) {
-        return Ok(core_file(core));
+        if !core_outdated(core).await {
+            return Ok(core_file(core));
+        }
+        // Mise à jour impossible (hors ligne, DLL utilisée par une partie en cours) : cœur installé gardé.
+        return Ok(download_core(core).await.unwrap_or_else(|_| core_file(core)));
     }
+    download_core(core).await
+}
+
+/// Télécharge et décompresse le cœur ; sa version (Last-Modified) est notée.
+async fn download_core(core: &str) -> Result<PathBuf> {
     let res = api::client()
         .get(cores::core_url(core))
         .send()
@@ -76,6 +121,7 @@ pub async fn ensure_core(core: &str) -> Result<PathBuf> {
     if !res.status().is_success() {
         return Err(AppError::new("errors.coreDownload", json!({ "core": core, "detail": format!("HTTP {}", res.status().as_u16()) })));
     }
+    let version = res.headers().get("last-modified").and_then(|v| v.to_str().ok()).map(String::from);
     let archive = res.bytes().await.map_err(|e| AppError::new("errors.coreDownload", json!({ "core": core, "detail": e.to_string() })))?;
     let core_name = core.to_string();
     tokio::task::spawn_blocking(move || -> Result<PathBuf> {
@@ -85,7 +131,16 @@ pub async fn ensure_core(core: &str) -> Result<PathBuf> {
         std::fs::create_dir_all(target.parent().unwrap())?;
         let part = PathBuf::from(format!("{}.part", target.display()));
         std::fs::write(&part, data)?;
-        std::fs::rename(&part, &target)?;
+        if let Err(e) = std::fs::rename(&part, &target) {
+            let _ = std::fs::remove_file(&part);
+            return Err(e.into());
+        }
+        match version {
+            Some(v) => std::fs::write(core_version_file(&core_name), v)?,
+            None => {
+                let _ = std::fs::remove_file(core_version_file(&core_name));
+            }
+        }
         Ok(target)
     })
     .await
@@ -255,7 +310,9 @@ pub fn reset_core(system_id: &str, core: &str) -> Result<()> {
     if !cores::valid_core(core) {
         return Err(AppError::new("errors.coreInvalid", json!({ "core": core })));
     }
-    let _ = std::fs::remove_file(core_file(core));
+    for file in [core_file(core), core_version_file(core), core_checked_file(core)] {
+        let _ = std::fs::remove_file(file);
+    }
     if !system_id.is_empty() {
         let _ = std::fs::remove_file(options_file(system_id));
     }
