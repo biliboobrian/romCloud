@@ -296,6 +296,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         setContentView(R.layout.xserver_display_activity);
 
         ControllerManager.getInstance().init(this);
+        // RomCloud : manettes branchées attribuées aux joueurs (pas d'écran d'attribution).
+        ControllerManager.getInstance().autoAssignConnected();
 
         setupAudioDeviceListener();
 
@@ -2185,6 +2187,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 winHandler.refreshControllerMappings();
             }
         }
+    }
+
+    /** RomCloud : manette branchée utilisée, manette à l'écran masquée (la manette devient le joueur 1). */
+    public void usePhysicalGamepad() {
+        ControlsProfile current = inputControlsView.getProfile();
+        if (current != null && current.isVirtualGamepad()) hideInputControls();
     }
 
     private void hideInputControls() {
