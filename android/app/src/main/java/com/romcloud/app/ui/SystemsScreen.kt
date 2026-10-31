@@ -200,6 +200,8 @@ fun SystemsScreen(
     Scaffold(
         modifier = Modifier.background(SystemsGradient),
         containerColor = Color.Transparent,
+        // Textes posés sur le dégradé (jeux téléchargés, résultats de recherche) : en blanc, sinon noirs.
+        contentColor = Color.White,
         topBar = {
             if (portrait && !searching) {
                 // Portrait : barre de l'espace, jeu à plusieurs, profil et paramètres ; puis espace
