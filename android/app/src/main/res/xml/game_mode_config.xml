@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modes de jeu d'Android : performances et batterie laissés au système (fréquences du processeur) ;
+     pas de réduction de la résolution ni de la cadence d'image (émulateur : image du cœur). -->
+<game-mode-config xmlns:android="http://schemas.android.com/apk/res/android"
+    android:supportsPerformanceGameMode="false"
+    android:supportsBatteryGameMode="false"
+    android:allowGameAngleDriver="false"
+    android:allowGameDownscaling="false"
+    android:allowGameFpsOverride="false" />

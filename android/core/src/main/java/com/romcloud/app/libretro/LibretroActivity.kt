@@ -1,5 +1,7 @@
 package com.romcloud.app.libretro
 
+import android.app.GameManager
+import android.app.GameState
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -381,6 +383,7 @@ class LibretroActivity : ComponentActivity() {
             }
         }
         CrashReports.startSession(this, core, rom.absolutePath, systemId)
+        reportGameState()
         lifecycleScope.launch { prepare() }
     }
 
@@ -534,6 +537,7 @@ class LibretroActivity : ComponentActivity() {
             }
         }
         phase = Phase.Running
+        reportGameState()
         showTouchPad = !isTv && !GamepadInput.hasGamepad()
     }
 
@@ -605,6 +609,7 @@ class LibretroActivity : ComponentActivity() {
         stopPlayClock()
         captureFrame()
         menuOpen = true
+        reportGameState()
         // Pause annoncée à l'autre joueur avant de suspendre l'émulation.
         Netplay.setPaused(true)
         retroView?.apply {
@@ -646,6 +651,21 @@ class LibretroActivity : ComponentActivity() {
             audioEnabled = true
         }
         startPlayClock()
+        reportGameState()
+    }
+
+    /**
+     * Android 13+ : état de la partie signalé au système (modes de jeu d'Android et des constructeurs) :
+     * chargement, partie en cours, ou menu ouvert (jeu en pause).
+     */
+    private fun reportGameState() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val state = when {
+            phase != Phase.Running -> GameState(true, GameState.MODE_NONE)
+            menuOpen -> GameState(false, GameState.MODE_NONE)
+            else -> GameState(false, GameState.MODE_GAMEPLAY_UNINTERRUPTIBLE)
+        }
+        runCatching { getSystemService(GameManager::class.java)?.setGameState(state) }
     }
 
     override fun onResume() {
