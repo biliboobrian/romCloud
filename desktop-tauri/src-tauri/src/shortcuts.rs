@@ -1,7 +1,8 @@
-// Raccourci d'un jeu sur le bureau (fenêtre de téléchargement) : « RomCloud.exe --play <système>
-// <jeu> » ouvre RomCloud (ou ramène sa fenêtre) et lance le jeu, ou ouvre sa fiche s'il n'est pas
-// sur le PC. Icône : la jaquette du jeu (version « icon » du serveur : carré PNG, glissé dans un
-// fichier .ico), sinon celle de RomCloud.
+// Raccourci d'un jeu sur le bureau (fenêtre de téléchargement, fiche du jeu) : « RomCloud.exe
+// --play <système> <jeu> » ouvre RomCloud (ou ramène sa fenêtre) et lance le jeu, ou ouvre sa fiche
+// s'il n'est pas sur le PC. Icône : la jaquette du jeu (version « icon » du serveur : carré PNG,
+// glissé dans un fichier .ico), sinon celle de RomCloud. Raccourcis créés notés (jeu -> fichier
+// .lnk) : retirés depuis la fiche du jeu, et quand le jeu est supprimé du PC.
 use crate::error::{AppError, Result};
 use crate::{api, events, paths, settings};
 use serde_json::{json, Value};
@@ -39,6 +40,42 @@ pub fn take_pending() -> Value {
     PENDING.lock().unwrap().take().unwrap_or(Value::Null)
 }
 
+fn dir() -> PathBuf {
+    paths::user_data().join("shortcuts")
+}
+
+/// Raccourcis créés : { identifiant du jeu : chemin du fichier .lnk }.
+fn index() -> serde_json::Map<String, Value> {
+    std::fs::read(dir().join("index.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+fn save_index(index: &serde_json::Map<String, Value>) {
+    let _ = std::fs::create_dir_all(dir());
+    let _ = std::fs::write(dir().join("index.json"), Value::Object(index.clone()).to_string());
+}
+
+/// Raccourci du jeu [game_id] encore sur le bureau, ou None.
+fn lnk_of(game_id: i64) -> Option<PathBuf> {
+    index().get(&game_id.to_string()).and_then(Value::as_str).map(PathBuf::from).filter(|p| p.is_file())
+}
+
+/// Le jeu a-t-il un raccourci sur le bureau ?
+pub fn exists(game_id: i64) -> bool {
+    lnk_of(game_id).is_some()
+}
+
+/// Retire le raccourci du jeu [game_id] (et son icône), s'il en a un.
+pub fn remove(game_id: i64) {
+    let mut index = index();
+    if let Some(lnk) = index.remove(&game_id.to_string()) {
+        if let Some(path) = lnk.as_str() {
+            let _ = std::fs::remove_file(path);
+        }
+        save_index(&index);
+    }
+    let _ = std::fs::remove_file(dir().join(format!("{game_id}.ico")));
+}
+
 /// Nom de fichier lisible pour Windows (caractères interdits retirés).
 fn file_name(title: &str) -> String {
     let clean: String = title.chars().map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() { ' ' } else { c }).collect();
@@ -73,7 +110,7 @@ async fn game_icon(game: &Value) -> Option<PathBuf> {
     if !png.starts_with(b"\x89PNG") {
         return None;
     }
-    let file = paths::user_data().join("shortcuts").join(format!("{}.ico", game["id"]));
+    let file = dir().join(format!("{}.ico", game["id"]));
     std::fs::create_dir_all(file.parent()?).ok()?;
     std::fs::write(&file, ico_from_png(&png)).ok()?;
     Some(file)
@@ -110,16 +147,23 @@ pub async fn create(game: &Value) -> Result<Value> {
         return Err(AppError::msg("jeu inconnu".to_string()));
     }
     let desktop = dirs::desktop_dir().ok_or_else(|| AppError::msg("bureau introuvable".to_string()))?;
+    // Raccourci précédent du jeu (autre nom, titre changé depuis) : remplacé.
+    if let Some(old) = lnk_of(id) {
+        let _ = std::fs::remove_file(old);
+    }
     let exe = paths::plain(std::env::current_exe()?);
     let title = game["title"].as_str().filter(|t| !t.is_empty()).or_else(|| game["fileName"].as_str()).unwrap_or("RomCloud");
     let icon = game_icon(game).await.unwrap_or_else(|| exe.clone());
     let lnk = desktop.join(format!("{}.lnk", file_name(title)));
     let args = format!("{PLAY_ARG} {system} {id}");
     let description = format!("{title} (RomCloud)");
-    tokio::task::spawn_blocking(move || write_lnk(&lnk, &exe, &args, &icon, &description).map(|_| lnk))
+    let lnk = tokio::task::spawn_blocking(move || write_lnk(&lnk, &exe, &args, &icon, &description).map(|_| lnk))
         .await
-        .map_err(|e| AppError::msg(e.to_string()))?
-        .map(|lnk| json!(lnk.to_string_lossy()))
+        .map_err(|e| AppError::msg(e.to_string()))??;
+    let mut index = index();
+    index.insert(id.to_string(), json!(lnk.to_string_lossy()));
+    save_index(&index);
+    Ok(json!(lnk.to_string_lossy()))
 }
 
 #[cfg(test)]

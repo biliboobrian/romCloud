@@ -105,6 +105,12 @@
     <string name="download_last_error">Last attempt: %1$s</string>
     <string name="download_launch_after">Launch the game once downloaded</string>
     <string name="download_shortcut">Create a home screen shortcut</string>
+    <string name="shortcut_add">Create a home screen shortcut</string>
+    <string name="shortcut_remove">Remove the home screen shortcut</string>
+    <string name="shortcut_removed">Shortcut removed in RomCloud</string>
+    <string name="shortcut_game_removed">Game deleted from the device</string>
+    <string name="shortcut_removed_hint">Shortcut disabled: Android does not let an app remove it, remove it from the home screen.</string>
+    <string name="shortcut_failed">The launcher did not accept the shortcut</string>
     <string name="downloading_title">Download in progress</string>
     <string name="downloading_text">“%1$s” is being downloaded. Do you want to cancel it?</string>
     <string name="cancel_download">Cancel the download</string>

@@ -63,6 +63,8 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         // Jeu PC avec un désinstalleur : lancé, dossier effacé à la fin ; sinon fichiers supprimés.
         "library:remove" => {
             let uninstalling = launcher::uninstall(&arg(a, 0), &arg(a, 1))?;
+            // Jeu plus sur le PC : son raccourci sur le bureau est retiré.
+            shortcuts::remove(arg(a, 1)["id"].as_i64().unwrap_or(0));
             if !uninstalling {
                 library::remove(&arg(a, 0), &arg(a, 1));
             }
@@ -202,6 +204,11 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "app:version" => json!(account::version()),
         "shortcut:create" => shortcuts::create(&arg(a, 0)).await?,
         "shortcut:pending" => shortcuts::take_pending(),
+        "shortcut:exists" => json!(shortcuts::exists(arg(a, 0).as_i64().unwrap_or(0))),
+        "shortcut:remove" => {
+            shortcuts::remove(arg(a, 0).as_i64().unwrap_or(0));
+            Value::Null
+        }
         // Diffusion de l'écran sur un Chromecast.
         "cast:discover" => crate::cast::discover().await,
         "cast:start" => screencast::start(arg(a, 0)).await?,
