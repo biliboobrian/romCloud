@@ -107,7 +107,9 @@ test('jeu PC compressé en zstd fichier par fichier : liste, archive ou fichier 
     assert.equal((await tail.arrayBuffer()).byteLength, pak.packedSize - 10);
     // Applications d'avant le zstd : fichiers listés en clair, envoyés décompressés.
     const older = await (await fetch(`${base}/games/${game.id}/files`)).json();
-    assert.deepEqual(older.files.find((f) => f.path === 'data/level1.pak'), { path: 'data/level1.pak', size: level.length });
+    const { mtime, ...flatEntry } = older.files.find((f) => f.path === 'data/level1.pak');
+    assert.deepEqual(flatEntry, { path: 'data/level1.pak', size: level.length });
+    assert.equal(mtime, pak.mtime); // date du fichier d'origine (mises à jour des applications)
     for (const old of [url, `${url}&packed=1`]) {
       const flat = await fetch(old);
       assert.equal(flat.headers.get('content-length'), String(level.length));
