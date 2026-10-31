@@ -64,9 +64,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -146,6 +151,23 @@ fun GameDetailScreen(
         if (game == null) {
             Column(Modifier.padding(padding)) { Centered(stringResource(if (state.loading) R.string.loading else R.string.game_not_found)) }
             return@Scaffold
+        }
+        // Manette ou télécommande : focus sur l'action principale (« Reprendre », sinon « Jouer »,
+        // sinon « Télécharger »), aussi quand elle change (téléchargement terminé).
+        val primaryFocus = remember { FocusRequester() }
+        val primaryAction = when {
+            downloads[game.id] is DownloadState.Running || lobbyState.isHost -> null
+            !state.downloaded -> "download"
+            state.canResume -> "resume"
+            state.issues.isNotEmpty() -> "configure"
+            else -> "play"
+        }
+        val inputMode = LocalInputModeManager.current
+        LaunchedEffect(game.id, primaryAction) {
+            if (primaryAction != null && inputMode.inputMode == InputMode.Keyboard) {
+                withFrameNanos { }
+                runCatching { primaryFocus.requestFocus() }
+            }
         }
         Column(
             Modifier
@@ -249,7 +271,7 @@ fun GameDetailScreen(
                             }
                             // Partie sauvegardée dans l'émulateur intégré : « Reprendre » d'abord, puis « Jouer ».
                             if (state.canResume) {
-                                Button(onClick = { play(true) }, modifier = Modifier.weight(1f).height(52.dp)) {
+                                Button(onClick = { play(true) }, modifier = Modifier.weight(1f).height(52.dp).focusRequester(primaryFocus)) {
                                     Icon(Icons.Filled.PlayArrow, null)
                                     Spacer(Modifier.width(8.dp))
                                     Text(stringResource(R.string.action_resume_game))
@@ -264,13 +286,13 @@ fun GameDetailScreen(
                                 Button(onClick = {
                                     viewModel.configure()?.let { scope.launch { snackbar.showSnackbar(it) } }
                                     scope.launch { issuesInView.bringIntoView() }
-                                }, modifier = Modifier.weight(1f).height(52.dp)) {
+                                }, modifier = Modifier.weight(1f).height(52.dp).focusRequester(primaryFocus)) {
                                     Icon(Icons.Filled.Settings, null)
                                     Spacer(Modifier.width(8.dp))
                                     Text(stringResource(R.string.action_configure))
                                 }
                             } else {
-                                Button(onClick = { play(false) }, modifier = Modifier.weight(1f).height(52.dp)) {
+                                Button(onClick = { play(false) }, modifier = Modifier.weight(1f).height(52.dp).focusRequester(primaryFocus)) {
                                     Icon(Icons.Filled.PlayArrow, null)
                                     Spacer(Modifier.width(8.dp))
                                     Text(stringResource(R.string.action_play))
@@ -354,7 +376,7 @@ fun GameDetailScreen(
                             )
                         }
                     } else {
-                        Button(onClick = viewModel::download, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                        Button(onClick = viewModel::download, modifier = Modifier.fillMaxWidth().height(52.dp).focusRequester(primaryFocus)) {
                             Icon(Icons.Filled.CloudDownload, null)
                             Spacer(Modifier.width(8.dp))
                             Text(
