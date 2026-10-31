@@ -50,6 +50,11 @@
         android:supportsRtl="true"
         tools:ignore="DataExtractionRules,GoogleAppIndexingWarning">
 
+        <!-- RomCloud : modes de jeu d'Android (performances, économie de batterie) du tableau de bord de jeu. -->
+        <meta-data
+            android:name="android.game_mode_config"
+            android:resource="@xml/game_mode_config" />
+
         <!-- Main activity -->
         <activity
             android:name="com.winlator.cmod.MainActivity"
