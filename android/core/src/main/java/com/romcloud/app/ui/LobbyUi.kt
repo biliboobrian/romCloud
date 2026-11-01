@@ -422,7 +422,7 @@ fun LobbyContent(app: RomCloudApp, onChooseGame: () -> Unit, onMessage: (String)
                         DownloadBars(running, Modifier.fillMaxWidth())
                         Text(
                             if (running.unpackTotal > 0) downloadProgressText(running)
-                            else stringResource(R.string.tv_downloading_percent, (running.progress * 100).toInt()),
+                            else (listOf(stringResource(R.string.tv_downloading_percent, (running.progress * 100).toInt())) + downloadExtras(running)).joinToString(" · "),
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }

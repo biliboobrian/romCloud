@@ -114,6 +114,11 @@
     <string name="downloading_progress">Téléchargement… %1$s / %2$s</string>
     <string name="unpacking_progress">Décompression %1$s / %2$s</string>
     <string name="unpacking_playable">Décompression des derniers fichiers… le jeu sera jouable à la fin</string>
+    <string name="download_speed">%1$s/s</string>
+    <plurals name="download_files_left">
+        <item quantity="one">%1$s fichier restant</item>
+        <item quantity="other">%1$s fichiers restants</item>
+    </plurals>
     <string name="notif_unpacking">%1$s — décompression</string>
     <string name="download_failed">Échec du téléchargement : %1$s</string>
     <string name="download_with_size">Télécharger (%1$s)</string>

@@ -479,7 +479,7 @@ private fun GameRow(
             if (status is LocalStatus.Downloading) {
                 Text(
                     if (status.state.unpackTotal > 0) downloadProgressText(status.state)
-                    else stringResource(R.string.bytes_progress, formatSize(status.state.bytes), formatSize(status.state.total)),
+                    else (listOf(stringResource(R.string.bytes_progress, formatSize(status.state.bytes), formatSize(status.state.total))) + downloadExtras(status.state)).joinToString(" · "),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
                 )
             }

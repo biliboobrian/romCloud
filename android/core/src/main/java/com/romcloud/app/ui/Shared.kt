@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -180,14 +181,31 @@ fun DownloadBars(state: DownloadState.Running, modifier: Modifier = Modifier, he
     }
 }
 
-/** Progression écrite sous les barres : octets reçus, puis décompressés (jeu PC compressé). */
+/**
+ * Vitesse du téléchargement et fichiers qui restent à recevoir (jeu PC, jeu en plusieurs parties) ;
+ * rien une fois tout reçu (décompression des derniers fichiers).
+ */
 @Composable
-fun downloadProgressText(state: DownloadState.Running): String = when {
-    state.unpacking -> stringResource(R.string.unpacking_playable) + " " +
-        stringResource(R.string.unpacking_progress, formatSize(state.unpackBytes), formatSize(state.unpackTotal))
-    state.unpackTotal > 0 -> stringResource(R.string.downloading_progress, formatSize(state.bytes), formatSize(state.total)) + " · " +
-        stringResource(R.string.unpacking_progress, formatSize(state.unpackBytes), formatSize(state.unpackTotal))
-    else -> stringResource(R.string.downloading_progress, formatSize(state.bytes), formatSize(state.total))
+fun downloadExtras(state: DownloadState.Running): List<String> {
+    if (state.unpacking || state.bytes >= state.total) return emptyList()
+    return listOfNotNull(
+        if (state.speed > 0) stringResource(R.string.download_speed, formatSize(state.speed)) else null,
+        if (state.files > 1 && state.filesLeft > 0) {
+            pluralStringResource(R.plurals.download_files_left, state.filesLeft, java.text.NumberFormat.getIntegerInstance().format(state.filesLeft))
+        } else null,
+    )
+}
+
+/**
+ * Progression écrite sous les barres : octets reçus, vitesse, fichiers restants, puis octets
+ * décompressés (jeu PC compressé).
+ */
+@Composable
+fun downloadProgressText(state: DownloadState.Running): String {
+    val unpack = stringResource(R.string.unpacking_progress, formatSize(state.unpackBytes), formatSize(state.unpackTotal))
+    if (state.unpacking) return stringResource(R.string.unpacking_playable) + " " + unpack
+    val received = stringResource(R.string.downloading_progress, formatSize(state.bytes), formatSize(state.total))
+    return (listOf(received) + downloadExtras(state) + listOfNotNull(unpack.takeIf { state.unpackTotal > 0 })).joinToString(" · ")
 }
 
 /** Taille du jeu ; jeu PC compressé : taille installée et taille à télécharger (« 12 Go (zip : 8 Go) »). */
