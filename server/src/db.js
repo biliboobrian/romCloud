@@ -292,6 +292,8 @@ if (!gameColumns.includes('uninstall_exe')) db.exec('ALTER TABLE games ADD COLUM
 // Windows (JSON, chemins dans le dossier) ; devinés au scan tant qu'ils n'ont pas été choisis dans la fiche.
 if (!gameColumns.includes('extra_exes')) db.exec('ALTER TABLE games ADD COLUMN extra_exes TEXT');
 if (!gameColumns.includes('extra_exes_chosen')) db.exec('ALTER TABLE games ADD COLUMN extra_exes_chosen INTEGER NOT NULL DEFAULT 0');
+// Arguments ajoutés à l'exécutable du jeu en dossier (« -novid -steam »), choisis dans la fiche.
+if (!gameColumns.includes('launch_args')) db.exec('ALTER TABLE games ADD COLUMN launch_args TEXT');
 // Jeu PC compressé fichier par fichier (folder-pack.js) : packed_files, fichiers compressés (0 : en
 // clair) ; packed_size, taille à télécharger (archives et fichiers restés en clair) ; folder_files,
 // nombre de fichiers du jeu. Mis à jour au scan.

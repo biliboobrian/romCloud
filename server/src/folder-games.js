@@ -158,6 +158,43 @@ export function prereqsOf(files) {
     .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
 }
 
+// Émulateurs Steam des jeux sur moteur Source (Valve), à côté de l'exécutable : REVEmu, SmartSteamEmu…
+const SOURCE_STEAM_EMU_RE = /^(rev\.ini|revapi\.ini|steam_emu\.ini|smartsteamemu\.ini|bin\/steam\.dll|bin\/steamclient\.dll)$/i;
+
+/**
+ * Jeu sur moteur Source lancé par [exe] (avec les arguments [args]) : dossier de son jeu, qui a un
+ * « gameinfo.txt » (« hl2 », « ep2 »…, chemin dans le dossier du jeu), ou null. Jeu choisi par
+ * « -game X », sinon celui qui porte le nom de l'exécutable (« left4dead2.exe »), sinon « hl2 ».
+ */
+export function sourceGameDir(files, exe, args = '') {
+  if (!exe) return null;
+  const base = path.posix.dirname(exe) === '.' ? '' : `${path.posix.dirname(exe)}/`;
+  const infos = new Map(files.map((f) => [f.path.toLowerCase(), f.path]));
+  const game = /(?:^|\s)-game\s+("[^"]+"|\S+)/i.exec(args || '')?.[1]?.replace(/"/g, '');
+  const names = game ? [game] : [path.posix.basename(exe).replace(/\.exe$/i, ''), 'hl2'];
+  for (const name of names) {
+    const info = infos.get(`${base}${name}/gameinfo.txt`.toLowerCase());
+    if (info) return path.posix.dirname(info);
+  }
+  return null;
+}
+
+/**
+ * Arguments de lancement devinés : jeu sur moteur Source livré avec un émulateur Steam, lancé sans
+ * son petit lanceur : « -steam » (sinon « Steam startup failed: missing interface ») ; null sinon.
+ */
+export function steamLaunchArgs(files, exe) {
+  if (!sourceGameDir(files, exe)) return null;
+  const base = path.posix.dirname(exe) === '.' ? '' : `${path.posix.dirname(exe)}/`;
+  const emulated = files.some((f) => f.path.toLowerCase().startsWith(base.toLowerCase()) && SOURCE_STEAM_EMU_RE.test(f.path.slice(base.length)));
+  return emulated ? '-steam' : null;
+}
+
+/** AppID Steam du « gameinfo.txt » d'un jeu Source (« SteamAppId 220 ») ; null sinon. */
+export function sourceAppId(text) {
+  return /^\s*SteamAppId\s+"?(\d{2,10})"?/im.exec(String(text || ''))?.[1] ?? null;
+}
+
 /** Désinstalleur probable du jeu (« unins000.exe », « uninstall.exe »…, le moins profond), ou null. */
 export function uninstallerOf(files) {
   return exeCandidates(files)

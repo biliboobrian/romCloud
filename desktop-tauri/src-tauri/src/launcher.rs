@@ -380,10 +380,11 @@ pub fn issues(system: &Value, game: &Value) -> Value {
 
 /// Commande de lancement selon l'émulateur choisi (le jeu n'a pas besoin d'être téléchargé).
 fn plan(system: &Value, game: &Value) -> Result<Plan> {
-    // Jeu en dossier (PC Windows) : son exécutable, lancé directement depuis son dossier.
+    // Jeu en dossier (PC Windows) : son exécutable, lancé directement depuis son dossier, avec les
+    // arguments choisis sur le serveur (« -novid -steam »).
     if library::is_folder(game) {
         let exe = library::folder_exe(system, game).ok_or_else(|| AppError::new("errors.noExe", json!({ "title": s(game, "title") })))?;
-        return Ok(Plan::Run { exe: exe.to_string_lossy().into_owned(), args: Vec::new(), emulator: None });
+        return Ok(Plan::Run { exe: exe.to_string_lossy().into_owned(), args: cores::tokenize(s(game, "launchArgs")), emulator: None });
     }
     let file = library::file_for(system, game).to_string_lossy().into_owned();
     // Jeu en plusieurs disques : liste des disques (.m3u) pour les émulateurs qui la lisent

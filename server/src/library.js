@@ -10,7 +10,7 @@ import { queuePs4Conversions } from './ps4-convert.js';
 import { fileNameDetails, mergeDetails, parseStoredDetails } from './scraper/details.js';
 import { stars } from './scraper/rating.js';
 import { contentIdLabel } from './scraper/serial.js';
-import { exeCandidates, folderFiles, folderStats, prereqsOf, uninstallerOf } from './folder-games.js';
+import { exeCandidates, folderFiles, folderStats, prereqsOf, steamLaunchArgs, uninstallerOf } from './folder-games.js';
 import { listSystems, requireSystem, systemDir } from './systems.js';
 import { normalizeCoreOptions, parseCoreOptions } from './core-options.js';
 import { queueVersionDetection } from './game-version.js';
@@ -101,12 +101,14 @@ export function rowToGame(row, parts = []) {
     // Jeu en dossier (PC Windows) : fichiers listés par /games/:id/files, lancé par [exe].
     // uninstallExe : désinstalleur lancé quand le jeu est supprimé du PC (null : aucun).
     // extraExes : autres exécutables (prérequis : DirectX, Visual C++…) proposés par l'application Windows.
+    // launchArgs : arguments ajoutés à [exe] (« -novid -steam » ; null : aucun).
     // packed : « zip » (tous les fichiers compressés, un .zip par fichier), « partial » (une partie)
     // ou « flat » (en clair) ; packedSize : taille à télécharger (size : taille une fois installé).
     ...(row.is_folder
       ? {
           folder: true,
           exe: row.exe ?? null,
+          launchArgs: row.launch_args || null,
           uninstallExe: row.uninstall_exe || null,
           extraExes: extraExesOf(row),
           packed: packState(row),
@@ -229,9 +231,13 @@ const EDITABLE = {
   zrif: 'zrif',
   rap: 'rap',
   exe: 'exe',
+  launchArgs: 'launch_args',
   uninstallExe: 'uninstall_exe',
   steamAppId: 'steam_app_id',
 };
+
+/** Longueur maximale des arguments de lancement d'un jeu PC. */
+const MAX_LAUNCH_ARGS = 500;
 
 /** Licence zRIF (base64, « KO5ifR1dQ+eHBl… ») sans espaces ni retours à la ligne ; null si vide. */
 export function normalizeZrif(input) {
@@ -265,6 +271,12 @@ export function updateGame(id, input) {
       if (!value) throw new HttpError(400, 'errors.invalidSteamAppId');
     }
     if (key === 'exe') value = validateExe(id, value);
+    // Arguments de lancement : une ligne, espaces superflus retirés ; vide : aucun, gardé tel quel
+    // (pas deviné de nouveau au scan).
+    if (key === 'launchArgs') {
+      if (!requireGameRow(id).is_folder) throw new HttpError(400, 'errors.notFolderGame');
+      value = String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_LAUNCH_ARGS);
+    }
     // Désinstalleur : vide = aucun, gardé tel quel (pas deviné de nouveau au scan).
     if (key === 'uninstallExe') value = input[key] === '' || input[key] === null ? '' : validateExe(id, value);
     if (key === 'title' && !value) throw new HttpError(400, 'errors.titleRequired');
@@ -432,13 +444,19 @@ export function scanSystem(systemId) {
   if (folders) {
     // Exécutable et désinstalleur de chaque jeu : devinés s'ils n'ont pas été choisis, ou s'ils
     // n'existent plus (désinstalleur « aucun » choisi dans la fiche : gardé).
-    for (const row of db.prepare('SELECT id, file_name, exe, uninstall_exe, extra_exes, extra_exes_chosen FROM games WHERE system_id = ?').all(systemId)) {
+    for (const row of db.prepare('SELECT id, file_name, exe, uninstall_exe, extra_exes, extra_exes_chosen, launch_args FROM games WHERE system_id = ?').all(systemId)) {
       const files = folderFiles(path.join(dir, row.file_name));
       // Compression (folder-pack.js) : fichiers compressés et taille à télécharger.
       const stats = folderStats(null, files);
       db.prepare('UPDATE games SET packed_files = ?, packed_size = ?, folder_files = ?, pack_format = ? WHERE id = ?').run(stats.packed, stats.packedSize, stats.count, stats.format, row.id);
       const candidates = exeCandidates(files);
-      if (!row.exe || !candidates.includes(row.exe)) db.prepare('UPDATE games SET exe = ? WHERE id = ?').run(candidates[0] ?? null, row.id);
+      const exe = row.exe && candidates.includes(row.exe) ? row.exe : candidates[0] ?? null;
+      if (exe !== row.exe) db.prepare('UPDATE games SET exe = ? WHERE id = ?').run(exe, row.id);
+      // Arguments de lancement pas encore choisis : devinés (jeu Source avec émulateur Steam : « -steam »).
+      if (row.launch_args === null) {
+        const guessed = steamLaunchArgs(files, exe);
+        if (guessed) db.prepare('UPDATE games SET launch_args = ? WHERE id = ?').run(guessed, row.id);
+      }
       // Autres exécutables : devinés, ou ceux choisis qui existent encore.
       const extras = row.extra_exes_chosen ? extraExesOf(row).filter((p) => candidates.includes(p)) : prereqsOf(files);
       db.prepare('UPDATE games SET extra_exes = ? WHERE id = ?').run(JSON.stringify(extras), row.id);
@@ -483,6 +501,7 @@ export function gameFolderFiles(row, { zst = false } = {}) {
     packedSize: stats.packedSize,
     exes: exeCandidates(files),
     exe: row.exe ?? null,
+    launchArgs: row.launch_args || null,
     uninstallExe: row.uninstall_exe || null,
     extraExes: extraExesOf(row),
   };
