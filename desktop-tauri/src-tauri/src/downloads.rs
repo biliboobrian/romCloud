@@ -27,6 +27,9 @@ struct Speed {
     bytes_per_second: f64,
 }
 
+/// Jeu téléchargé : état « finishing » gardé ce temps (voir `start`).
+const FINISHING_SHOWN: Duration = Duration::from_secs(15);
+
 /// Fenêtre de mesure de la vitesse.
 const SPEED_WINDOW: Duration = Duration::from_secs(1);
 
@@ -179,12 +182,23 @@ pub fn start(system: Value, game: Value, options: Value) {
         }
         match result {
             Ok(()) => {
-                ACTIVE.lock().unwrap().remove(&key(&game_id));
+                // « Veuillez patienter » le temps que l'interface relise les jeux présents (sinon
+                // « Télécharger » réapparaît un instant) ; retiré ensuite.
+                let finishing = json!({ "status": "finishing", "title": title });
                 notify(
                     &game_id,
-                    None,
+                    Some(finishing),
                     Some(json!({ "type": "completed", "systemId": s(&system, "id"), "gameId": game_id, "title": title, "romIncluded": include_rom })),
                 );
+                tokio::time::sleep(FINISHING_SHOWN).await;
+                let done = {
+                    let mut active = ACTIVE.lock().unwrap();
+                    let finishing = active.get(&key(&game_id)).is_some_and(|d| d.state["status"] == "finishing");
+                    finishing && active.remove(&key(&game_id)).is_some()
+                };
+                if done {
+                    notify(&game_id, None, None);
+                }
             }
             Err(e) => {
                 let error = json!({
@@ -207,6 +221,18 @@ pub fn cancel(game_id: &Value) {
         d.cancelled.store(true, Ordering::SeqCst);
     }
     notify(game_id, None, None);
+}
+
+/// Jeu supprimé du PC tout juste après son téléchargement : plus de « Veuillez patienter ».
+pub fn forget_finished(game_id: &Value) {
+    let removed = {
+        let mut active = ACTIVE.lock().unwrap();
+        let finishing = active.get(&key(game_id)).is_some_and(|d| d.state["status"] == "finishing");
+        finishing && active.remove(&key(game_id)).is_some()
+    };
+    if removed {
+        notify(game_id, None, None);
+    }
 }
 
 pub fn dismiss_error(game_id: &Value) {

@@ -932,6 +932,7 @@ class GameDetailViewModel(
         val game = s.game ?: return
         viewModelScope.launch(Dispatchers.IO) {
             app.library.delete(system, game)
+            app.downloader.forgetFinished(game.id) // supprimé tout juste téléchargé : plus de « Veuillez patienter »
             // Raccourci sur l'écran d'accueil : désactivé (jeu plus sur l'appareil).
             GameShortcuts.remove(app, game.id, I18n.get(R.string.shortcut_game_removed))
             refreshLocal()

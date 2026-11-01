@@ -2,6 +2,9 @@ package com.romcloud.tv
 
 import com.romcloud.app.ui.downloadProgressText
 import com.romcloud.app.ui.DownloadBars
+import com.romcloud.app.ui.FinishingNotice
+import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.localStatus
 import com.romcloud.app.data.ExternalEmulatorFiles
 import com.romcloud.app.data.MediaUrl
 import com.romcloud.app.data.MediaSize
@@ -140,7 +143,9 @@ fun TvGameDetailScreen(
         return
     }
     val download = downloads[game.id]
-    LaunchedEffect(game.id, state.downloaded, download is DownloadState.Running) {
+    // Tout est reçu, jeu pas encore relu parmi ceux présents : « Veuillez patienter ».
+    val finishing = localStatus(download, state.downloaded) == LocalStatus.Finishing
+    LaunchedEffect(game.id, state.downloaded, download is DownloadState.Running, finishing) {
         runCatching { primaryFocus.requestFocus() }
     }
 
@@ -191,6 +196,7 @@ fun TvGameDetailScreen(
 
                 // État local
                 when {
+                    finishing -> FinishingNotice(Modifier.fillMaxWidth(0.7f), height = 6.dp)
                     download is DownloadState.Running -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         DownloadBars(download, Modifier.fillMaxWidth(0.7f), height = 6.dp)
                         Text(downloadProgressText(download))
@@ -276,6 +282,7 @@ fun TvGameDetailScreen(
                         } else {
                             Text(stringResource(R.string.lobby_not_network), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        finishing -> ActionButton(stringResource(R.string.download_finishing), Icons.Filled.CloudDownload, primary) {}
                         download is DownloadState.Running ->
                             ActionButton(stringResource(R.string.tv_cancel_percent, (download.progress * 100).toInt()), Icons.Filled.Close, primary) { viewModel.cancel() }
                         state.downloaded -> {

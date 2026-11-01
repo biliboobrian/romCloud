@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Column
@@ -196,6 +197,15 @@ fun downloadExtras(state: DownloadState.Running): List<String> {
     )
 }
 
+/** Téléchargement terminé, jeu jouable dans un instant : barre qui défile et « Veuillez patienter… ». */
+@Composable
+fun FinishingNotice(modifier: Modifier = Modifier, height: Dp = 4.dp) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LinearProgressIndicator(Modifier.fillMaxWidth().height(height))
+        Text(stringResource(R.string.download_finishing), style = MaterialTheme.typography.bodySmall)
+    }
+}
+
 /**
  * Progression écrite sous les barres : octets reçus, vitesse, fichiers restants, puis octets
  * décompressés (jeu PC compressé).
@@ -218,7 +228,19 @@ sealed interface LocalStatus {
     data object Remote : LocalStatus
     data object Downloaded : LocalStatus
     data class Downloading(val state: DownloadState.Running) : LocalStatus
+
+    /** Tout est reçu, le jeu sera jouable dans un instant : « Veuillez patienter ». */
+    data object Finishing : LocalStatus
     data class Error(val message: String) : LocalStatus
+}
+
+/** État affiché d'un jeu : son téléchargement [download] (null : aucun), présent sur l'appareil ou non ([downloaded]). */
+fun localStatus(download: DownloadState?, downloaded: Boolean): LocalStatus = when (download) {
+    is DownloadState.Running -> if (download.finishing) LocalStatus.Finishing else LocalStatus.Downloading(download)
+    is DownloadState.Failed -> LocalStatus.Error(download.message)
+    // Téléchargement terminé, jeu pas encore relu parmi ceux présents.
+    is DownloadState.Finishing -> if (downloaded) LocalStatus.Downloaded else LocalStatus.Finishing
+    null -> if (downloaded) LocalStatus.Downloaded else LocalStatus.Remote
 }
 
 @Composable
@@ -242,6 +264,8 @@ fun DownloadIndicator(status: LocalStatus, modifier: Modifier = Modifier, size: 
                 )
                 Text("${(status.state.progress * 100).toInt()}", fontSize = 9.sp)
             }
+            // Jeu bientôt jouable : cercle qui tourne.
+            LocalStatus.Finishing -> CircularProgressIndicator(modifier = Modifier.size(size * 0.83f), strokeWidth = 3.dp)
             is LocalStatus.Error -> Icon(
                 Icons.Filled.ErrorOutline, contentDescription = stringResource(R.string.cd_failed, status.message),
                 tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(icon),

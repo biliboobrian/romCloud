@@ -152,11 +152,7 @@ fun GamesScreen(
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.refreshLocal() }
     }
 
-    fun statusOf(game: Game): LocalStatus = when (val d = downloads[game.id]) {
-        is DownloadState.Running -> LocalStatus.Downloading(d)
-        is DownloadState.Failed -> LocalStatus.Error(d.message)
-        null -> if (game.id in state.downloaded) LocalStatus.Downloaded else LocalStatus.Remote
-    }
+    fun statusOf(game: Game): LocalStatus = localStatus(downloads[game.id], game.id in state.downloaded)
 
     // Multijoueurs : jeux à assez de joueurs pour le lobby ; hôte : définir le jeu du lobby.
     val lobbyState by viewModel.lobbies.collectAsStateWithLifecycle()
@@ -178,6 +174,7 @@ fun GamesScreen(
                 if (viewModel.needsSetup(game)) onOpenGame(game.id)
                 else viewModel.play(activity, game)?.let { scope.launch { snackbar.showSnackbar(it) } }
             is LocalStatus.Downloading -> askCancel = game
+            LocalStatus.Finishing -> {} // jouable dans un instant
             else -> askDownload = game
         }
     }
@@ -482,6 +479,9 @@ private fun GameRow(
                     else (listOf(stringResource(R.string.bytes_progress, formatSize(status.state.bytes), formatSize(status.state.total))) + downloadExtras(status.state)).joinToString(" · "),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
                 )
+            }
+            if (status == LocalStatus.Finishing) {
+                Text(stringResource(R.string.download_finishing), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
         }
         DownloadIndicator(status)

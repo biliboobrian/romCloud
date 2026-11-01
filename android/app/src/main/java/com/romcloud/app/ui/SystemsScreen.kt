@@ -441,11 +441,7 @@ private fun SearchResults(
     if (search.offline) Banner(stringResource(R.string.search_offline))
     if (search.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
-    fun statusOf(game: Game): LocalStatus = when (val d = downloads[game.id]) {
-        is DownloadState.Running -> LocalStatus.Downloading(d)
-        is DownloadState.Failed -> LocalStatus.Error(d.message)
-        null -> if (game.id in search.downloaded) LocalStatus.Downloaded else LocalStatus.Remote
-    }
+    fun statusOf(game: Game): LocalStatus = localStatus(downloads[game.id], game.id in search.downloaded)
 
     val gridState = rememberLazyGridState()
     when {
@@ -520,11 +516,7 @@ private fun GamesRow(
                 GameCard(
                     game = game,
                     coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
-                    status = when (val d = downloads[game.id]) {
-                        is DownloadState.Running -> LocalStatus.Downloading(d)
-                        is DownloadState.Failed -> LocalStatus.Error(d.message)
-                        null -> if (downloaded(game)) LocalStatus.Downloaded else LocalStatus.Remote
-                    },
+                    status = localStatus(downloads[game.id], downloaded(game)),
                     onClick = { onOpenGame(game.systemId, game.id) },
                     onDetails = { onOpenGame(game.systemId, game.id) },
                     badge = { SystemBadge(system, system?.let(imageUrl)) },

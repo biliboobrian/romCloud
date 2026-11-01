@@ -162,8 +162,12 @@
     // reçu, la décompression continue (jeu jouable à la fin).
     if (d?.status === 'running') {
       const unpack = d.unpackTotal ? d.unpackBytes / d.unpackTotal : null;
+      // Tout est reçu (et décompressé) : le jeu est rangé, il sera jouable dans un instant.
+      if (d.total && d.bytes >= d.total && (unpack == null || unpack >= 1)) return { kind: 'finishing' };
       return { kind: 'running', progress: d.total ? d.bytes / d.total : 0, unpack, unpacking: unpack != null && d.bytes >= d.total && unpack < 1, d };
     }
+    // Téléchargement terminé, jeu pas encore relu parmi ceux présents : « Veuillez patienter ».
+    if (d?.status === 'finishing' && !downloaded.has(game.id)) return { kind: 'finishing' };
     if (d?.status === 'failed') return { kind: 'failed', error: errorText(d.error) };
     return downloaded.has(game.id) ? { kind: 'downloaded' } : { kind: 'remote' };
   }
@@ -174,10 +178,10 @@
    */
   function cardBarsHtml(gameId, st) {
     const pct = (v) => `${Math.round((v || 0) * 100)}%`;
-    const running = st.kind === 'running';
-    const unpack = running && st.unpack != null;
+    const running = st.kind === 'running' || st.kind === 'finishing';
+    const unpack = st.kind === 'running' && st.unpack != null;
     return `<div class="progress-bars${running ? '' : ' hidden'}" data-progress="${gameId}">
-      <div class="progress"><div style="width:${pct(st.progress)}"></div></div>
+      <div class="progress"><div style="width:${pct(st.kind === 'finishing' ? 1 : st.progress)}"></div></div>
       ${unpack ? `<div class="progress unpack"><div style="width:${pct(st.unpack)}"></div></div>` : ''}</div>`;
   }
 
@@ -210,6 +214,7 @@
     switch (st.kind) {
       case 'downloaded': return `<span class="status-icon ok" title="${esc(t('status.downloaded'))}">${icon('check', 24)}</span>`;
       case 'running': return `<span class="ring">${Math.round((st.unpacking ? st.unpack : st.progress) * 100)}%</span>`;
+      case 'finishing': return `<span class="ring" title="${esc(t('download.finishing'))}">100%</span>`;
       case 'failed': return `<span class="status-icon error" title="${esc(t('status.failed', { error: st.error }))}">${icon('error', 22)}</span>`;
       default: return `<span class="status-icon remote" title="${esc(t('status.remote'))}">${icon('cloud', 22)}</span>`;
     }
@@ -1315,6 +1320,7 @@
     const resume = canResume(game);
     const statusLine = st.kind === 'downloaded' ? `<span class="good">${esc(t('hero.ready'))}</span>`
       : st.kind === 'running' ? `<span style="color:var(--accent)">${esc(st.unpacking ? t('hero.unpacking', { p: Math.round(st.unpack * 100) }) : [t('hero.downloading', { p: Math.round(st.progress * 100) }), ...downloadExtras(st)].join(' · '))}</span>`
+      : st.kind === 'finishing' ? `<span style="color:var(--accent)">${esc(t('download.finishing'))}</span>`
       : st.kind === 'failed' ? `<span class="bad">${esc(t('status.failed', { error: st.error }))}</span>`
       : `<span class="muted">${esc(t('hero.toDownload'))}</span>`;
     hero.innerHTML = `
@@ -1327,7 +1333,7 @@
         ${game.description ? `<div class="desc">${esc(game.description)}</div>` : ''}
         <div class="actions">
           ${isLobbyHost() ? (playKind(game) ? `<button class="btn primary" id="heroLobbySet">${icon('group', 18)} ${esc(t('lobby.setGame'))}</button>` : '') : `${resume ? `<button class="btn primary" id="heroResume">${icon('play', 18)} ${esc(t('action.resume'))}</button>` : ''}
-          <button class="btn${resume ? '' : ' primary'}" id="heroMain">${icon(resume ? 'refresh' : st.kind === 'downloaded' ? 'play' : 'cloud', 18)} ${esc(st.kind === 'downloaded' ? t('action.play') : st.kind === 'running' ? `${Math.round(st.progress * 100)} %` : t('action.download'))}</button>`}
+          <button class="btn${resume ? '' : ' primary'}" id="heroMain">${icon(resume ? 'refresh' : st.kind === 'downloaded' ? 'play' : 'cloud', 18)} ${esc(st.kind === 'downloaded' ? t('action.play') : st.kind === 'running' ? `${Math.round(st.progress * 100)} %` : st.kind === 'finishing' ? t('download.finishing') : t('action.download'))}</button>`}
           <button class="btn" id="heroInfo">${icon('info', 18)} ${esc(t('action.info'))}</button>
         </div>
       </div>`;
@@ -1360,6 +1366,7 @@
       return playChecked(system, game);
     }
     if (st.kind === 'running') return askCancel(game);
+    if (st.kind === 'finishing') return toast(t('download.finishing'));
     return askDownload(system, game, st.kind === 'failed' ? st.error : null);
   }
 
@@ -2524,6 +2531,9 @@
         ${st.unpack != null ? `<div class="bar unpack"><div style="width:${Math.round(st.unpack * 100)}%"></div></div>` : ''}</div>
         <p class="muted">${esc(downloadProgressText(st))}</p></div>
         <button class="btn" id="cancelBtn">${icon('close', 18)} ${esc(t('download.cancelPercent', { p: Math.round(st.progress * 100) }))}</button>`;
+    } else if (st.kind === 'finishing') {
+      actions = `<div style="flex:1"><div class="bars"><div class="bar"><div style="width:100%"></div></div></div>
+        <p class="muted">${esc(t('download.finishing'))}</p></div>`;
     } else if (isLobbyHost()) {
       // Hôte d'un lobby : ce jeu devient celui du lobby (téléchargé au lancement de la partie).
       actions = playKind(game)

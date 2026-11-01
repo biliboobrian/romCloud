@@ -295,6 +295,9 @@ private fun HeroBanner(
                         is LocalStatus.Downloading -> OutlinedButton(onClick = onPrimary) {
                             Text(stringResource(R.string.percent, (status.state.progress * 100).toInt()))
                         }
+                        LocalStatus.Finishing -> OutlinedButton(onClick = {}, enabled = false) {
+                            Text(stringResource(R.string.download_finishing))
+                        }
                         else -> Button(onClick = onPrimary) {
                             Icon(Icons.Filled.CloudDownload, null)
                             Spacer(Modifier.width(6.dp))
