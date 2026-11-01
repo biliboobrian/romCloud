@@ -435,7 +435,7 @@ static int16_t RETRO_CALLCONV inputState(unsigned port, unsigned device, unsigne
 
 /**
  * Manette de chaque port : le premier type du cœur qui est une manette (« Amstrad Joystick »,
- * sous-type de RETRO_DEVICE_JOYPAD), sinon la manette libretro standard, comme RetroArch.
+ * sous-type de RETRO_DEVICE_JOYPAD), sinon la manette libretro standard.
  * Sans ce choix, certains cœurs (cap32) n'interrogent aucune touche de jeu.
  */
 void selectControllers(unsigned ports) {
@@ -484,7 +484,7 @@ __asm__(
 void runCore() { romcloud_call_preserving(g.api.run); }
 
 void initCore() {
-  // Ordre de RetroArch : environnement, retro_init, puis les autres fonctions. Mesen et Mesen-S
+  // Ordre attendu des cœurs libretro : environnement, retro_init, puis les autres fonctions. Mesen et Mesen-S
   // créent dans retro_init l'objet qui reçoit la fonction d'affichage (arrêt net sinon).
   g.api.set_environment(environment);
   g.api.init();

@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "oberon - RetroArch 64 - oberon",
-      "uniqueId": "oberon.ra64.oberon",
+      "name": "oberon - oberon",
+      "uniqueId": "oberon.libretro.oberon",
       "description": "Supported extensions: dsk.",
       "acceptedFilenameRegex": "^(.*)\\.(?:dsk)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO oberon\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO oberon",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

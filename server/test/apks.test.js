@@ -107,11 +107,11 @@ test('manifeste binaire : paquet, versionCode, versionName (UTF-16 et UTF-8)', (
   assert.deepEqual(parseBinaryManifest(utf8), { packageName: 'org.ppsspp.ppsspp', versionCode: 42, versionName: '1.19.3' });
   // Noms d'attributs retirés : reconnus par leur identifiant de ressource Android.
   const stripped = manifestXml({
-    strings: ['', '', 'manifest', 'package', 'com.retroarch', '1.21.0'],
+    strings: ['', '', 'manifest', 'package', 'com.example.emu', '1.21.0'],
     resourceIds: [0x0101021b, 0x0101021c],
     attrs: [[0, null, 0x10, 1741], [1, 5, 0x03, 5], [3, 4, 0x03, 4]],
   });
-  assert.deepEqual(parseBinaryManifest(stripped), { packageName: 'com.retroarch', versionCode: 1741, versionName: '1.21.0' });
+  assert.deepEqual(parseBinaryManifest(stripped), { packageName: 'com.example.emu', versionCode: 1741, versionName: '1.21.0' });
   assert.throws(() => parseBinaryManifest(Buffer.from('<manifest/>')));
 });
 
@@ -122,7 +122,7 @@ test('lecture dans l’archive (entrée stockée ou compressée)', () => {
 });
 
 test('nom lisible d’un modèle Daijishou', () => {
-  assert.equal(apks.emulatorName('psx - RetroArch 64 - swanstation'), 'RetroArch 64');
+  assert.equal(apks.emulatorName('psx - DuckStation - standalone'), 'DuckStation');
   assert.equal(apks.emulatorName('psp - PPSSPP'), 'PPSSPP');
   assert.equal(apks.emulatorName('dreamcast - Flycast (dev build)'), 'Flycast');
   assert.equal(apks.emulatorName('DuckStation'), 'DuckStation');
@@ -140,7 +140,8 @@ test('envoi, nom par défaut, remplacement, émulateurs des systèmes, suppressi
     id: 'psp', name: 'Sony PSP',
     players: [
       { name: 'psp - PPSSPP (Standalone)', uniqueId: 'psp.ppsspp', amStartArguments: '-n org.ppsspp.ppsspp/.PpssppActivity -d {file.uri}' },
-      { name: 'psp - RetroArch 64 - ppsspp', uniqueId: 'psp.ra', amStartArguments: '-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture' },
+      // Modèle de cœur libretro (émulateur intégré) : pas d'APK à proposer.
+      { name: 'psp - ppsspp', uniqueId: 'psp.core', amStartArguments: '-n com.example.frontend/.GameActivity -e LIBRETRO ppsspp' },
     ],
   });
   const first = await apks.addApk(writeApk('upload1', ppssppManifest), 'ppsspp-release.apk');
@@ -157,9 +158,9 @@ test('envoi, nom par défaut, remplacement, émulateurs des systèmes, suppressi
   assert.equal(apks.listApks().length, 1);
 
   const emus = apks.emulatorPackages();
-  assert.deepEqual(emus.map((e) => [e.packageName, e.apkId]), [['org.ppsspp.ppsspp', first.id], ['com.retroarch.aarch64', null]]);
+  assert.deepEqual(emus.map((e) => [e.packageName, e.apkId]), [['org.ppsspp.ppsspp', first.id]]);
   assert.deepEqual(emus[0].systems, [{ id: 'psp', name: 'Sony PSP' }]);
-  assert.deepEqual(emus.map((e) => e.names), [['PPSSPP'], ['RetroArch 64']]);
+  assert.deepEqual(emus.map((e) => e.names), [['PPSSPP']]);
 
   await assert.rejects(apks.addApk(writeApk('upload3', Buffer.from('nope')), 'nope.apk'), /nope\.apk/);
   apks.deleteApk(first.id);

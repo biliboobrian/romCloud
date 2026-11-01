@@ -84,7 +84,7 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
             connectivity::state()
         }
         // BIOS du système absents du PC (téléchargés avec le jeu si l'utilisateur le demande).
-        "bios:missing" => json!(library::missing_bios(api::bios(&arg(a, 0)).await)),
+        "bios:missing" => json!(library::missing_bios(&arg(a, 0), api::bios(&arg(a, 0)).await)),
         "downloads:start" => {
             downloads::start(arg(a, 0), arg(a, 1), arg(a, 2)); // la progression arrive par « downloads:update »
             Value::Null
@@ -114,7 +114,6 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         "launcher:resumeCore" => json!(launcher::resume_core(&arg(a, 0), &arg(a, 1))),
         "launcher:resumeDiscs" => launcher::resume_discs(&arg(a, 0), &arg(a, 1)),
         "launcher:resumableIds" => json!(launcher::resumable_ids(&arg(a, 0), &list(a, 1))),
-        "launcher:check" => launcher::check(&arg(a, 0)),
         "launcher:resumableOnline" => launcher::resumable_online(&arg(a, 0), &arg(a, 1)).await,
         "launcher:describe" => launcher::describe(&arg(a, 0), &arg(a, 1)),
         // Vita3K : procédure de la fiche du jeu, licence (zRIF) d'un .pkg.

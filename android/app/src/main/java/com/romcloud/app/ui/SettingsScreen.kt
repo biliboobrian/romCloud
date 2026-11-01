@@ -8,7 +8,6 @@ import android.os.Build
 import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -59,7 +58,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.GameOrder
-import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
 import com.romcloud.core.R
 import kotlinx.coroutines.launch
@@ -71,8 +69,7 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
     val current = remember { app.settings.config.value }
     var url by rememberSaveable { mutableStateOf(current.serverUrl) }
     var key by rememberSaveable { mutableStateOf(current.apiKey) }
-    var dir by rememberSaveable { mutableStateOf(current.romsDir) }
-    var biosDir by rememberSaveable { mutableStateOf(current.biosDir) }
+    var dir by rememberSaveable { mutableStateOf(current.rootDir) }
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var hasPermission by remember { mutableStateOf(app.library.hasStoragePermission()) }
@@ -231,49 +228,9 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
             Text(stringResource(R.string.report_section), style = MaterialTheme.typography.titleMedium)
             ErrorReportSection(app)
 
-            Text(stringResource(R.string.settings_emulators), style = MaterialTheme.typography.titleMedium)
-            var quitOnExit by remember { mutableStateOf(app.settings.retroArchQuitOnExit) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.quit_on_exit), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(R.string.quit_on_exit_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = quitOnExit, onCheckedChange = {
-                    quitOnExit = it
-                    app.settings.retroArchQuitOnExit = it
-                })
-            }
-
-            var safMode by remember { mutableStateOf(app.settings.retroArchSafMode) }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.retroarch_access), style = MaterialTheme.typography.bodyLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RetroArchSafMode.entries.forEach { mode ->
-                        FilterChip(
-                            selected = safMode == mode,
-                            onClick = {
-                                safMode = mode
-                                app.settings.retroArchSafMode = mode
-                            },
-                            label = { Text(stringResource(mode.label)) },
-                        )
-                    }
-                }
-                Text(
-                    stringResource(R.string.retroarch_access_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
             Text(stringResource(R.string.settings_storage), style = MaterialTheme.typography.titleMedium)
             // Icône dossier : choix du dossier avec le sélecteur d'Android.
             val pickRoms = rememberFolderPicker { dir = it }
-            val pickBios = rememberFolderPicker { biosDir = it }
             OutlinedTextField(
                 value = dir, onValueChange = { dir = it },
                 label = { Text(stringResource(R.string.local_folder)) },
@@ -285,26 +242,10 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { dir = Settings.defaultRomsDir() }) { Text(stringResource(R.string.default_folder)) }
+                TextButton(onClick = { dir = Settings.defaultRootDir() }) { Text(stringResource(R.string.default_folder)) }
                 TextButton(onClick = {
-                    dir = context.getExternalFilesDir("roms")?.absolutePath ?: dir
+                    dir = context.getExternalFilesDir("RomCloud")?.absolutePath ?: dir
                 }) { Text(stringResource(R.string.private_folder)) }
-            }
-
-            OutlinedTextField(
-                value = biosDir, onValueChange = { biosDir = it },
-                label = { Text(stringResource(R.string.bios_folder)) },
-                supportingText = { Text(stringResource(R.string.bios_folder_hint)) },
-                trailingIcon = {
-                    IconButton(onClick = { pickBios(biosDir) }) { Icon(Icons.Filled.Folder, stringResource(R.string.choose_folder)) }
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Settings.biosPresets().forEach { (label, path) ->
-                    FilterChip(selected = biosDir == path, onClick = { biosDir = path }, label = { Text(stringResource(label)) })
-                }
             }
 
             Card {
@@ -338,7 +279,7 @@ fun SettingsScreen(app: RomCloudApp, canGoBack: Boolean, onBack: () -> Unit, onS
 
             Button(
                 onClick = {
-                    app.settings.save(url, key, dir, biosDir)
+                    app.settings.save(url, key, dir)
                     app.repository.clearMemory()
                     onSaved()
                 },

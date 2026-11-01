@@ -12,7 +12,7 @@
 //  - Cemu : mode portable (dossier « portable »), keys.txt copié pour les jeux chiffrés (.wud, .wux),
 //    jeu = .wua, .wud, .wux, .rpx ou dossier code/content/meta.
 use crate::error::{AppError, Result};
-use crate::{account, api, catalog, paths, settings};
+use crate::{account, api, catalog, folders, paths};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -337,13 +337,14 @@ fn shadps4_user_dir() -> Option<PathBuf> {
     std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("shadPS4"))
 }
 
-/// Modules système du firmware PS4 (.sprx, .prx) du dossier des BIOS (« ps4\sys_modules », sinon
-/// « ps4 ») copiés dans sys_modules de shadPS4 quand ils sont nouveaux ou plus récents : plusieurs
-/// jeux en ont besoin (libSceLibcInternal, libSceNgs2…).
+/// Modules système du firmware PS4 (.sprx, .prx) envoyés comme BIOS du système (« ps4\sys_modules »,
+/// sinon « ps4 », dans le dossier BIOS d'un système) copiés dans sys_modules de shadPS4 quand ils sont
+/// nouveaux ou plus récents : plusieurs jeux en ont besoin (libSceLibcInternal, libSceNgs2…).
 fn shadps4_modules() -> Result<()> {
-    let bios = settings::bios_dir().join("ps4");
     let Some(user) = shadps4_user_dir() else { return Ok(()) };
-    copy_modules(&[bios.join("sys_modules"), bios], &user.join("sys_modules"))
+    let systems: Vec<PathBuf> = std::fs::read_dir(folders::bios_root()).into_iter().flatten().flatten().map(|e| e.path().join("ps4")).collect();
+    let sources: Vec<PathBuf> = systems.iter().flat_map(|ps4| [ps4.join("sys_modules"), ps4.clone()]).collect();
+    copy_modules(&sources, &user.join("sys_modules"))
 }
 
 /// Modules du premier dossier de [sources] qui en contient, copiés dans [target].
@@ -391,9 +392,10 @@ async fn ensure_firmware(root: &Path, exe: &Path) -> Result<()> {
     if firmware_installed(root) {
         return Ok(());
     }
-    let dir = settings::bios_dir();
-    let pup = find_named(&dir, FIRMWARE, 2)
-        .ok_or_else(|| AppError::new("errors.ps3FirmwareMissing", json!({ "dir": dir.to_string_lossy(), "file": FIRMWARE })))?;
+    // Zone « system » du dossier RomCloud : system\ps3\firmware\PS3UPDAT.PUP.
+    let dir = folders::system();
+    let pup = find_named(&dir, FIRMWARE, 3)
+        .ok_or_else(|| AppError::new("errors.ps3FirmwareMissing", json!({ "dir": dir.join("ps3").join("firmware").to_string_lossy(), "file": FIRMWARE })))?;
     let status = tokio::process::Command::new(exe)
         .args(["--headless", "--installfw"])
         .arg(&pup)
@@ -413,13 +415,12 @@ async fn ensure_firmware(root: &Path, exe: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Cemu en mode portable (données dans son dossier « portable ») ; keys.txt du dossier des BIOS
-/// (« wiiu\keys.txt », « cemu\keys.txt » ou « keys.txt ») copié quand il est plus récent.
+/// Cemu en mode portable (données dans son dossier « portable ») ; keys.txt de la zone « system »
+/// (system\wiiu\keys\keys.txt) copié quand il est plus récent.
 fn cemu_setup(root: &Path) -> Result<()> {
     let portable = root.join("portable");
     std::fs::create_dir_all(&portable)?;
-    let bios = settings::bios_dir();
-    let source = ["wiiu", "cemu", ""].iter().map(|d| bios.join(d).join("keys.txt")).find(|f| f.is_file());
+    let source = Some(folders::system().join("wiiu").join("keys").join("keys.txt")).filter(|f| f.is_file());
     if let Some(source) = source {
         let target = portable.join("keys.txt");
         if paths::mtime_ms(&target).unwrap_or(0.0) < paths::mtime_ms(&source).unwrap_or(0.0) {

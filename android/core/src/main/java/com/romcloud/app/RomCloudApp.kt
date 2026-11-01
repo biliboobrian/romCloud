@@ -21,6 +21,7 @@ import com.romcloud.app.data.Connectivity
 import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.DownloadService
 import com.romcloud.app.data.Downloader
+import com.romcloud.app.data.Folders
 import com.romcloud.app.data.LocalLibrary
 import com.romcloud.app.data.Repository
 import com.romcloud.app.data.Settings
@@ -143,6 +144,7 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         // Processus de l'émulateur intégré : mode en ligne / hors ligne repris de l'application (pas de
         // sonde du serveur), ni envoi du temps de jeu.
         if (isMainProcess()) {
+            prepareFolders()
             watchConnection()
             watchScreens()
         }
@@ -161,6 +163,15 @@ class RomCloudApp : Application(), ImageLoaderFactory {
             account.reportError("crash", crash.lineSequence().first(), crash)
         }
         DownloadService.createChannel(this)
+    }
+
+    /**
+     * Dossier RomCloud (roms, bios, system, saves, states) : ancienne organisation déplacée une fois,
+     * dès que l'application a accès aux fichiers (au démarrage, sinon au retour de l'autorisation).
+     */
+    fun prepareFolders() {
+        Folders.migrate(this, library.hasStoragePermission() || library.isAppPrivateDir())
+        settings.reload()
     }
 
     /** Présence sur le réseau local tant qu'un écran de l'application est affiché. */

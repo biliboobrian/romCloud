@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.view.WindowManager
 import com.romcloud.app.I18n
+import com.romcloud.app.data.Folders
 import com.romcloud.app.data.Player
 import com.romcloud.app.data.Settings
 import com.romcloud.core.R
@@ -191,6 +192,8 @@ object Winlator {
             .putExtra("exe", exe.absolutePath)
             .putExtra("title", title)
             .putExtra("roms_dir", romsRoot.absolutePath)
+            // Copie des téléchargements de RomCloud PC (Proton, DXVK, pilotes…) : gardée après une réinstallation.
+            .putExtra("cache_dir", File(Folders.of(activityContext).system, "windows").absolutePath)
             .putExtra("settings", settings)
         val caller = activityContext as? Activity ?: throw LaunchException(I18n.get(R.string.err_launch_refused, COMPANION_NAME))
         caller.startActivityForResult(intent, COMPANION_REQUEST)

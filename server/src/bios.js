@@ -1,5 +1,5 @@
 // BIOS des systèmes : fichiers envoyés sur le serveur (data/bios/<id du système>/<chemin>)
-// et BIOS attendus, lus dans les fiches des cœurs RetroArch des modèles d'émulateurs
+// et BIOS attendus, lus dans les fiches des cœurs libretro des modèles d'émulateurs
 // (https://github.com/libretro/libretro-core-info : firmwareN_path / _desc / _opt, MD5 dans « notes »),
 // complétés par les clés, firmwares et fichiers de données des autres émulateurs (system-files.js),
 // dont certains se récupèrent sur Internet (dernière version).
@@ -12,7 +12,7 @@ import { pipeline } from 'node:stream/promises';
 import { config } from './config.js';
 import { db } from './db.js';
 import { HttpError } from './http-error.js';
-import { SOURCES, coreFileSource, latestVersion, systemFiles } from './system-files.js';
+import { SOURCES, coreFileSource, deviceLocation, latestVersion, systemFiles } from './system-files.js';
 import { listSystems, requireSystem } from './systems.js';
 import { readZipEntries, readZipEntry } from './zip.js';
 
@@ -24,10 +24,10 @@ const infoCacheDir = () => path.join(config.dataDir, 'cache', 'core-info');
 export const biosDir = (system) => path.join(config.dataDir, 'bios', system.id);
 
 // ---------------------------------------------------------------------------
-// Catalogue : BIOS attendus par les cœurs RetroArch d'un système
+// Catalogue : BIOS attendus par les cœurs libretro d'un système
 // ---------------------------------------------------------------------------
 
-/** Cœurs RetroArch des modèles d'émulateurs (extra LIBRETRO), sans doublon. */
+/** Cœurs libretro des modèles d'émulateurs (extra LIBRETRO), sans doublon. */
 export function coresOfSystem(system) {
   const cores = [];
   for (const player of system.players || []) {
@@ -385,7 +385,8 @@ export async function systemBios(systemId, { catalog: withCatalog = true, langua
     files: files.map((f) => {
       const ref = expectedByPath.get(f.path.toLowerCase());
       const accepted = ref ?? acceptedHashes(f.path, [], extra);
-      return { ...f, description: ref?.description ?? null, required: ref?.required ?? false, hashStatus: hashStatus(f, accepted) };
+      // Emplacement sur les appareils (dossier RomCloud) : zone et chemin dans la zone.
+      return { ...f, ...deviceLocation(system, f.path), description: ref?.description ?? null, required: ref?.required ?? false, hashStatus: hashStatus(f, accepted) };
     }),
     expected,
   };

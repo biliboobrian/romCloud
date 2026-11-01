@@ -124,7 +124,7 @@ class Downloader(
                     // BIOS introuvable sur le serveur (404…) : ignoré, le jeu est téléchargé quand même
                     // (un BIOS facultatif ou absent ne doit pas empêcher de jouer). Annulation : arrêt.
                     try {
-                        fetch(api.biosFileUrl(file), library.biosFile(file), file.size, progress)
+                        fetch(api.biosFileUrl(file), library.biosFile(system, file), file.size, progress)
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
                     } catch (e: java.io.IOException) {
@@ -132,8 +132,6 @@ class Downloader(
                     }
                     done += file.size
                 }
-                // Clés et firmware importés par l'émulateur externe (Eden) : là où son sélecteur les trouve.
-                if (bios.isNotEmpty()) runCatching { library.exportForEmulators(system) }
                 if (includeRom && game.folder) {
                     fetchFolder(system, game, done) { bytes, folderTotal, unpackBytes, unpackTotal, files, filesLeft ->
                         publish(game.id, DownloadState.Running(game.title, bytes, done + folderTotal, unpackBytes, unpackTotal, files = files, filesLeft = filesLeft))

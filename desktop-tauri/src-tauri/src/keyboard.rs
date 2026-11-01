@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 /// Boutons de la manette libretro (RetroPad), dans l'ordre d'affichage.
 pub const BUTTONS: [&str; 16] = ["up", "down", "left", "right", "a", "b", "x", "y", "l", "r", "l2", "r2", "l3", "r3", "start", "select"];
 
-/// Disposition par défaut (proche de RetroArch), identique à celle du moteur sans réglage.
+/// Disposition par défaut, identique à celle du moteur sans réglage.
 pub const DEFAULTS: [(&str, &str); 16] = [
     ("up", "ArrowUp"), ("down", "ArrowDown"), ("left", "ArrowLeft"), ("right", "ArrowRight"),
     ("a", "KeyX"), ("b", "KeyZ"), ("x", "KeyS"), ("y", "KeyA"),

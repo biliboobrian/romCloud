@@ -11,13 +11,13 @@ import java.io.File
 import kotlinx.serialization.json.Json
 
 /**
- * Emplacement des ROMs sur l'appareil : <dossier ROMs>/<dossier du système>/<fichier>.
+ * Emplacement des ROMs sur l'appareil : <dossier RomCloud>/roms/<dossier du système>/<fichier>.
  * Un jeu est considéré comme téléchargé si ses fichiers existent avec la taille attendue : le
  * fichier principal et ses parties (disques, mises à jour, DLC), rangés à côté de lui.
  */
 class LocalLibrary(private val context: Context, private val settings: Settings) {
 
-    private fun root() = File(settings.config.value.romsDir)
+    private fun root() = settings.config.value.folders.roms
 
     fun systemDir(system: GameSystem) = File(root(), system.folder)
 
@@ -110,23 +110,23 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         return dir?.let { runCatching { StatFs(it.absolutePath).availableBytes }.getOrNull() } ?: -1
     }
 
-    /** Emplacement d'un BIOS : <dossier BIOS>/<chemin relatif, sous-dossiers compris>. */
-    fun biosFile(bios: BiosFile) = File(
-        settings.config.value.biosDir,
-        bios.path.split('/').filter { it.isNotEmpty() && it != "." && it != ".." }.joinToString("/"),
-    )
+    /** Emplacement d'un fichier du système (BIOS, clés, firmware, pilote) : voir [Folders]. */
+    fun biosFile(system: GameSystem, bios: BiosFile) = settings.config.value.folders.file(system, bios)
 
     /**
-     * Fichiers du dossier des BIOS que les émulateurs externes importent eux-mêmes (clés et
-     * firmware de la Switch pour Eden, pilote graphique) recopiés dans Téléchargements/RomCloud ;
-     * renvoie ceux disponibles.
+     * Fichiers que les émulateurs externes du système importent eux-mêmes (clés et firmware de la
+     * Switch pour Eden, pilote graphique) : chemins dans le dossier RomCloud.
      */
-    fun exportForEmulators(system: GameSystem): List<File> =
-        ExternalEmulatorFiles.export(context, system, File(settings.config.value.biosDir), settings.gpuDrivers)
+    fun filesForEmulators(system: GameSystem): List<String> =
+        ExternalEmulatorFiles.available(settings.config.value.folders, system, settings.gpuDrivers)
 
-    /** BIOS absents de l'appareil (ou de taille différente). */
-    fun missingBios(files: List<BiosFile>): List<BiosFile> =
-        files.filterNot { biosFile(it).let { f -> f.isFile && f.length() == it.size } }
+    /** BIOS absents de l'appareil (ou de taille différente) ; ceux de l'ancien dossier des BIOS repris d'abord. */
+    fun missingBios(system: GameSystem, files: List<BiosFile>): List<BiosFile> =
+        files.filterNot { bios ->
+            val file = biosFile(system, bios)
+            Folders.adoptLegacyBios(context, file, bios)
+            file.isFile && file.length() == bios.size
+        }
 
     /** Supprime les fichiers du jeu, ses parties et sa liste de disques. */
     fun delete(system: GameSystem, game: Game): Boolean {
@@ -147,7 +147,7 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
     /** Le dossier choisi est-il dans l'espace privé de l'application (pas de permission requise) ? */
     fun isAppPrivateDir(): Boolean {
         val appDir = context.getExternalFilesDir(null)?.absolutePath ?: return false
-        return settings.config.value.romsDir.startsWith(appDir)
+        return settings.config.value.rootDir.startsWith(appDir)
     }
 }
 

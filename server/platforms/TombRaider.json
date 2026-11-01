@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "tombraider - RetroArch 64 - openlara",
-      "uniqueId": "tombraider.ra64.openlara",
+      "name": "tombraider - openlara",
+      "uniqueId": "tombraider.libretro.openlara",
       "description": "Supported extensions: phd, psx, tr2.",
       "acceptedFilenameRegex": "^(.*)\\.(?:phd|psx|tr2)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO openlara\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO openlara",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

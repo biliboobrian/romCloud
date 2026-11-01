@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "wolf3d - RetroArch 64 - ecwolf",
-      "uniqueId": "wolf3d.ra64.ecwolf",
+      "name": "wolf3d - ecwolf",
+      "uniqueId": "wolf3d.libretro.ecwolf",
       "description": "Supported extensions: wl6, n3d, sod, sdm, wl1, pk3, exe.",
       "acceptedFilenameRegex": "^(.*)\\.(?:wl6|n3d|sod|sdm|wl1|pk3|exe)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO ecwolf\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO ecwolf",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

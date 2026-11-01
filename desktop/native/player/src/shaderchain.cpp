@@ -80,7 +80,7 @@ static std::string normalize(const std::string& path) {
 
 bool ShaderChain::compilePass(Pass& pass, const std::string& source, const std::vector<std::pair<std::string, float>>& overrides, int glslVersion) {
   // Version du contexte à la place de celle du fichier, puis VERTEX ou FRAGMENT et PARAMETER_UNIFORM
-  // (paramètres en uniformes), comme RetroArch.
+  // (paramètres en uniformes), comme le prévoient les préréglages libretro.
   std::string body = source;
   const size_t version = body.find("#version");
   if (version != std::string::npos) body.replace(version, body.find('\n', version) - version, "");

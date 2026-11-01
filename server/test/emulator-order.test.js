@@ -8,36 +8,36 @@ process.env.DATA_DIR = path.join(os.tmpdir(), `romcloud-emu-order-test-${process
 const { createSystem, getSystem, updateSystem } = await import('../src/systems.js');
 const { coreOf, emulatorCandidates, normalizeEmulatorOrder } = await import('../src/emulator-order.js');
 
-const retroArch = (core, uniqueId = `ra.${core}`) => ({
-  name: `RetroArch ${core}`,
+const coreTemplate = (core, uniqueId = `core.${core}`) => ({
+  name: `psx - ${core}`,
   uniqueId,
-  amStartArguments: `-n com.retroarch/.browser.retroactivity.RetroActivityFuture -e ROM {file.path} -e LIBRETRO /data/data/com.retroarch/cores/${core}_libretro_android.so`,
+  amStartArguments: `-n com.example.frontend/.GameActivity -e ROM {file.path} -e LIBRETRO /data/data/com.example.frontend/cores/${core}_libretro_android.so`,
 });
 const external = (uniqueId, name) => ({ name, uniqueId, amStartArguments: '-n org.example/.Main -d {file.uri}' });
 
-test('cœur libretro d’un modèle RetroArch', () => {
-  assert.equal(coreOf(retroArch('snes9x')), 'snes9x');
+test('cœur libretro d’un modèle', () => {
+  assert.equal(coreOf(coreTemplate('snes9x')), 'snes9x');
   assert.equal(coreOf({ amStartArguments: '-e LIBRETRO "mupen64plus_next_gles3"' }), 'mupen64plus_next_gles3');
   assert.equal(coreOf(external('x', 'X')), null);
 });
 
-test('émulateurs proposés : Android (intégrés triés, puis modèles sans cœur intégré), Windows', () => {
+test('émulateurs proposés : Android (intégrés triés, puis émulateurs externes sans les modèles de cœur), Windows', () => {
   const psx = {
     id: 'psx',
     shortname: 'psx',
-    players: [retroArch('pcsx_rearmed'), retroArch('duckstation'), retroArch('mednafen_psx_hw'), external('duck', 'DuckStation'), external('duck', 'DuckStation 2')],
+    players: [coreTemplate('pcsx_rearmed'), coreTemplate('duckstation'), coreTemplate('mednafen_psx_hw'), external('duck', 'DuckStation'), external('duck', 'DuckStation 2')],
   };
   const { android, androidtv, windows } = emulatorCandidates(psx);
   assert.deepEqual(android.map((e) => e.id), [
     'libretrodroid.mednafen_psx_hw', 'libretrodroid.pcsx_rearmed', 'libretrodroid.duckstation',
-    'ra.duckstation', 'duck', 'duck#2',
+    'duck', 'duck#2',
   ]);
   assert.deepEqual(androidtv, android);
   assert.deepEqual(windows.map((e) => e.id), [
-    'builtin:mednafen_psx_hw', 'builtin:pcsx_rearmed', 'builtin:duckstation', 'retroarch:duckstation',
+    'builtin:mednafen_psx_hw', 'builtin:pcsx_rearmed', 'builtin:duckstation',
   ]);
 
-  const n64 = { id: 'n64', shortname: 'n64', players: [retroArch('mupen64plus_next_gles3'), retroArch('parallel_n64')] };
+  const n64 = { id: 'n64', shortname: 'n64', players: [coreTemplate('mupen64plus_next_gles3'), coreTemplate('parallel_n64')] };
   assert.deepEqual(emulatorCandidates(n64).windows.map((e) => e.id), ['builtin:mupen64plus_next', 'builtin:parallel_n64']);
   assert.deepEqual(emulatorCandidates({ id: 'ps3', shortname: 'ps3', players: [] }).windows.map((e) => e.id), ['builtin:rpcs3', 'emu:rpcs3']);
   assert.deepEqual(emulatorCandidates({ id: 'switch', shortname: 'switch', players: [] }).windows.map((e) => e.id), ['emu:eden', 'emu:ryujinx']);

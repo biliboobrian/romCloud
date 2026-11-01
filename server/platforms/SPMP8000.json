@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "spmp8000 - RetroArch 64 - spmp8000emu",
-      "uniqueId": "spmp8000.ra64.spmp8000emu",
+      "name": "spmp8000 - spmp8000emu",
+      "uniqueId": "spmp8000.libretro.spmp8000emu",
       "description": "Supported extensions: bin.",
       "acceptedFilenameRegex": "^(.*)\\.(?:bin)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO spmp8000emu\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO spmp8000emu",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

@@ -68,10 +68,15 @@ public class LaunchActivity extends Activity {
     public static final String EXTRA_TITLE = "title";
     /** Dossier des ROMs de RomCloud (lecteur R:). */
     public static final String EXTRA_ROMS_DIR = "roms_dir";
+    /** Dossier system/windows du dossier RomCloud : copie des téléchargements ([SharedCache]). */
+    public static final String EXTRA_CACHE_DIR = "cache_dir";
     /** Réglages du jeu (Bundle de chaînes) : section « Extra Data » du raccourci (screenSize, graphicsDriver…). */
     public static final String EXTRA_SETTINGS = "settings";
 
     private static final int REQUEST_STORAGE = 1;
+
+    /** Copie des téléchargements dans le dossier RomCloud (sans dossier donné : aucune). */
+    private SharedCache cache = new SharedCache(null);
 
     /**
      * Préparation en cours (téléchargement, installation) : poursuivie même si l'écran est fermé ; un
@@ -227,11 +232,12 @@ public class LaunchActivity extends Activity {
     private void prepareAndLaunch() {
         PREPARING.lock();
         try {
+            cache = new SharedCache(getIntent().getStringExtra(EXTRA_CACHE_DIR));
             // Archives du système supprimées après installation : retéléchargées pour une mise à jour.
             boolean systemNeeded = ImageFsInstaller.isInstallNeeded(this);
             if (!ContentPack.isInstalled(this) || (systemNeeded && !ContentPack.has(this, "imagefs.txz"))) {
                 show(R.string.romcloud_downloading, 0);
-                ContentPack.download(this, (done, total) -> show(R.string.romcloud_downloading, (int) (done * 100 / Math.max(1, total))));
+                ContentPack.download(this, cache, (done, total) -> show(R.string.romcloud_downloading, (int) (done * 100 / Math.max(1, total))));
             }
             if (systemNeeded) {
                 show(R.string.romcloud_installing, 0);
@@ -369,44 +375,31 @@ public class LaunchActivity extends Activity {
 
     /**
      * Composant [type] (dxvk, vkd3d, box64, wowbox64, fexcore) en version [version] : inclus ([url] null),
-     * déjà installé, ou paquet .wcp [url] téléchargé et installé (contenus de Winlator). False si
-     * l'installation a échoué.
+     * déjà installé, ou paquet .wcp de la copie du dossier RomCloud, sinon [url] téléchargé (et gardé
+     * dans la copie), installé (contenus de Winlator). False si l'installation a échoué.
      */
     private boolean installContent(ContentsManager contents, String type, String version, String url) {
         if (url == null || version == null) return version != null;
         String entry = type + "-" + version;
         if (contents.getProfileByEntryName(entry) != null) return true;
         show(R.string.romcloud_content_downloading, -1);
+        File cached = cache.component(type, version);
         File file = new File(getCacheDir(), "content.wcp");
         try {
+            if (SharedCache.has(cached, -1)) {
+                try {
+                    installWcp(contents, entry, cached);
+                    return true;
+                } catch (IOException e) {
+                    // Copie abîmée : retéléchargée.
+                    Log.w("RomCloud", "Copie de " + entry + " inutilisable : " + e.getMessage());
+                    cached.delete();
+                    ContentsManager.cleanTmpDir(this);
+                }
+            }
             download(url, file);
-            AtomicReference<String> error = new AtomicReference<>();
-            contents.extraContentFile(Uri.fromFile(file), new ContentsManager.OnInstallFinishedCallback() {
-                @Override
-                public void onFailed(ContentsManager.InstallFailedReason reason, Exception e) {
-                    error.set(String.valueOf(reason));
-                }
-
-                @Override
-                public void onSucceed(ContentProfile profile) {
-                    if (!entry.equalsIgnoreCase(ContentsManager.getEntryName(profile))) {
-                        error.set(ContentsManager.getEntryName(profile) + " au lieu de " + entry);
-                        return;
-                    }
-                    contents.finishInstallContent(profile, new ContentsManager.OnInstallFinishedCallback() {
-                        @Override
-                        public void onFailed(ContentsManager.InstallFailedReason reason, Exception e) {
-                            if (reason != ContentsManager.InstallFailedReason.ERROR_EXIST) error.set(String.valueOf(reason));
-                        }
-
-                        @Override
-                        public void onSucceed(ContentProfile installed) {}
-                    });
-                }
-            });
-            if (error.get() != null) throw new IOException(error.get());
-            contents.syncContents();
-            if (contents.getProfileByEntryName(entry) == null) throw new IOException(entry + " introuvable après installation");
+            installWcp(contents, entry, file);
+            SharedCache.keep(file, cached);
             return true;
         } catch (IOException e) {
             Log.w("RomCloud", "Composant " + entry + " non installé, version incluse : " + e.getMessage());
@@ -418,9 +411,41 @@ public class LaunchActivity extends Activity {
         }
     }
 
+    /** Installe le paquet .wcp [file] du composant [entry] (« dxvk-2.4.1 ») ; exception en cas d'échec. */
+    private void installWcp(ContentsManager contents, String entry, File file) throws IOException {
+        AtomicReference<String> error = new AtomicReference<>();
+        contents.extraContentFile(Uri.fromFile(file), new ContentsManager.OnInstallFinishedCallback() {
+            @Override
+            public void onFailed(ContentsManager.InstallFailedReason reason, Exception e) {
+                error.set(String.valueOf(reason));
+            }
+
+            @Override
+            public void onSucceed(ContentProfile profile) {
+                if (!entry.equalsIgnoreCase(ContentsManager.getEntryName(profile))) {
+                    error.set(ContentsManager.getEntryName(profile) + " au lieu de " + entry);
+                    return;
+                }
+                contents.finishInstallContent(profile, new ContentsManager.OnInstallFinishedCallback() {
+                    @Override
+                    public void onFailed(ContentsManager.InstallFailedReason reason, Exception e) {
+                        if (reason != ContentsManager.InstallFailedReason.ERROR_EXIST) error.set(String.valueOf(reason));
+                    }
+
+                    @Override
+                    public void onSucceed(ContentProfile installed) {}
+                });
+            }
+        });
+        if (error.get() != null) throw new IOException(error.get());
+        contents.syncContents();
+        if (contents.getProfileByEntryName(entry) == null) throw new IOException(entry + " introuvable après installation");
+    }
+
     /**
      * Pilote Vulkan choisi dans RomCloud qui n'est pas inclus (réglage [SETTING_DRIVER_URL] : paquet
-     * AdrenoTools) : téléchargé et installé au premier usage. Échec : pilote par défaut, le jeu se lance.
+     * AdrenoTools) : installé au premier usage depuis la copie du dossier RomCloud, sinon téléchargé
+     * (et gardé dans la copie). Échec : pilote par défaut, le jeu se lance.
      */
     private void installDriver(Bundle settings) {
         String url = settings.getString(SETTING_DRIVER_URL);
@@ -429,18 +454,24 @@ public class LaunchActivity extends Activity {
         AdrenotoolsManager drivers = new AdrenotoolsManager(this);
         if (drivers.enumarateInstalledDrivers().contains(id)) return;
         show(R.string.romcloud_driver_downloading, -1);
+        File cached = cache.driver(id);
         File zip = new File(getCacheDir(), "driver.zip");
         try {
+            if (SharedCache.has(cached, -1)) {
+                if (id.equals(drivers.installDriver(Uri.fromFile(cached)))) return;
+                cached.delete(); // copie abîmée : retéléchargée
+            }
             download(url, zip);
             String installed = drivers.installDriver(Uri.fromFile(zip));
             if (!id.equals(installed)) throw new IOException("pilote " + installed + " au lieu de " + id);
+            SharedCache.keep(zip, cached);
         } catch (IOException e) {
             Log.w("RomCloud", "Pilote " + id + " non installé, pilote par défaut : " + e.getMessage());
             settings.putString("graphicsDriverConfig", DEFAULT_DRIVER_CONFIG);
         } finally {
             zip.delete();
+            show(R.string.romcloud_preparing, -1);
         }
-        show(R.string.romcloud_preparing, -1);
     }
 
     /** Pilote de « graphicsDriverConfig » (« version=…;… ») ; null sans pilote. */

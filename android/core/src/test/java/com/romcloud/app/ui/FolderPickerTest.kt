@@ -16,4 +16,12 @@ class FolderPickerTest {
         assertNull(folderPath("raw:/storage/emulated/0/Download"))
         assertNull(folderPath("msf:12"))
     }
+
+    @Test
+    fun `dossier actuel ouvert dans le selecteur`() {
+        assertEquals("primary:RomCloud", StorageDocuments.documentId("/storage/emulated/0/RomCloud"))
+        assertEquals("primary:Jeux", StorageDocuments.documentId("/sdcard/Jeux"))
+        assertEquals("1234-ABCD:Roms", StorageDocuments.documentId("/storage/1234-ABCD/Roms"))
+        assertNull(StorageDocuments.documentId("/data/user/0/app/files"))
+    }
 }

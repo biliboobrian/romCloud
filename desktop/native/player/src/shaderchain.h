@@ -1,6 +1,6 @@
-// Préréglages de shaders de libretro (.glslp, GLSL de RetroArch) intégrés au moteur (shaders/, données
+// Préréglages de shaders de libretro (.glslp) intégrés au moteur (shaders/, données
 // générées par CMake) : passes enchaînées dans des images intermédiaires à l'échelle de l'image source
-// ou de l'écran, avec les conventions de RetroArch (VertexCoord, TexCoord, MVPMatrix, Texture,
+// ou de l'écran, avec les conventions des shaders libretro (VertexCoord, TexCoord, MVPMatrix, Texture,
 // TextureSize, InputSize, OutputSize, OrigTexture, PassPrevNTexture, #pragma parameter et leurs valeurs
 // du préréglage). Sert aux déclinaisons de xBR (shaders/xbr). Contexte OpenGL courant.
 #pragma once

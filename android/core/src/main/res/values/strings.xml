@@ -164,7 +164,6 @@
     <string name="emulator">Emulator</string>
     <string name="emulator_not_installed">This emulator is not installed</string>
     <string name="not_installed">not installed</string>
-    <string name="configure_retroarch">Configure RetroArch</string>
     <string name="install_from_play_store">Install from the Play Store</string>
 
     <!-- Paramètres -->
@@ -186,24 +185,13 @@
     <string name="language_system">System</string>
     <string name="language_fr" translatable="false">Français</string>
     <string name="language_en" translatable="false">English</string>
-    <string name="settings_emulators">Emulators</string>
     <string name="quit_app_title">Quit RomCloud?</string>
     <string name="quit_app_text">The application will be closed.</string>
     <string name="action_quit">Quit</string>
-    <string name="quit_on_exit">Close RetroArch when leaving the game</string>
-    <string name="quit_on_exit_on">✓ Close RetroArch when leaving the game</string>
-    <string name="quit_on_exit_hint">Recommended: avoids a black screen on the next launch. Leaving RetroArch during a game (Home button, recent apps) then closes the game — save first.</string>
-    <string name="quit_on_exit_hint_tv">Recommended: avoids a black screen on the next launch. Save before leaving a game.</string>
-    <string name="retroarch_access">ROM access for RetroArch</string>
-    <string name="retroarch_access_hint">The Play Store version of RetroArch can only read the ROM folder through SAF: in RetroArch, “Load Content”, add the RomCloud ROM folder (below) and allow access. Automatic: SAF if RetroArch comes from the Play Store, classic path otherwise.</string>
-    <string name="retroarch_access_hint_tv">Automatic: “saf://” path if RetroArch comes from the Play Store (then add the ROM folder in RetroArch with “Load Content”), classic path otherwise.</string>
-    <string name="saf_auto">Automatic</string>
-    <string name="saf_saf" translatable="false">SAF</string>
-    <string name="saf_path">Classic path</string>
     <string name="settings_storage">ROM storage</string>
-    <string name="local_folder">Local folder</string>
-    <string name="local_folder_hint">A subfolder is created for each system (e.g. …/snes/).</string>
-    <string name="local_folder_tv">Local folder (one subfolder per system)</string>
+    <string name="local_folder">RomCloud folder</string>
+    <string name="local_folder_hint">Contains roms (one sub-folder per system), bios (BIOS of the cores, per system), system (keys and firmware of the external emulators), drivers, saves and states. Choosing another folder does not move the files already there.</string>
+    <string name="local_folder_tv">RomCloud folder</string>
     <string name="default_folder">Default folder</string>
     <string name="choose_folder">Choose a folder</string>
     <string name="folder_unsupported">This folder is not on the device storage: choose one in the internal storage or on the SD card.</string>
@@ -211,7 +199,7 @@
     <string name="private_folder">App private folder</string>
     <string name="all_files_granted">✓ All files access granted</string>
     <string name="all_files_denied">File access not granted</string>
-    <string name="storage_hint">Emulators (RetroArch, etc.) must be able to read the ROMs: they are therefore stored in a shared folder, which requires the “All files access” permission. The app private folder does not require it, but most emulators will not be able to read it.</string>
+    <string name="storage_hint">Emulators must be able to read the ROMs: they are therefore stored in a shared folder, which requires the “All files access” permission. The app private folder does not require it, but most emulators will not be able to read it.</string>
     <string name="storage_hint_tv">Emulators must be able to read the ROMs: they are stored in a shared folder, which requires the “All files access” permission.</string>
     <string name="tv_adb_hint">This TV does not offer the permission screen. From a computer on the same network (ADB debugging enabled in the TV developer options), run:</string>
     <string name="tv_ip_placeholder">&lt;tv-ip&gt;</string>
@@ -257,30 +245,6 @@
     <string name="dont_show_again">Don’t show again for this emulator</string>
     <string name="settings_unavailable">Settings unavailable</string>
 
-    <!-- Guide RetroArch -->
-    <string name="ra_not_installed">not installed</string>
-    <string name="ra_play_store">Play Store version</string>
-    <string name="ra_other_source">installed outside the Play Store</string>
-    <string name="ra_step1">Install the right core</string>
-    <string name="ra_core_intro">This template uses the core:</string>
-    <string name="ra_core_how">In RetroArch: Main Menu → Load Core → Download a Core, then choose this core. The name must match exactly; otherwise, choose another RetroArch template in the emulator list.</string>
-    <string name="ra_core_none">This template does not specify a core: RetroArch will use the one associated with this file type.</string>
-    <string name="ra_step2">Allow access to the ROMs</string>
-    <string name="ra_saf_how">The Play Store version of RetroArch only reads the folders you allow. In RetroArch: Load Content → add a folder, select the RomCloud ROM folder, then “Use this folder” → “Allow”:</string>
-    <string name="ra_saf_note">Allow this folder itself, not just a parent folder. RomCloud then passes the ROMs to RetroArch as “saf://” paths.</string>
-    <string name="ra_path_how">RetroArch must be able to read RomCloud files: Android Settings → Apps → RetroArch → Permissions → Files → “Allow management of all files”. ROM folder:</string>
-    <string name="ra_mode_hint">Mode configurable in the RomCloud Settings → “ROM access for RetroArch”.</string>
-    <string name="ra_step3">Close RetroArch before playing</string>
-    <string name="ra_close_manual">RetroArch cannot start a game while it is still open in the background (black screen), and since Android 14 RomCloud can no longer close it by itself. Before launching a game, use “Force stop” below if RetroArch has been opened.</string>
-    <string name="ra_close_auto">RomCloud closes RetroArch automatically before each launch.</string>
-    <string name="ra_quit_on">“Close RetroArch when leaving the game” is enabled: RetroArch closes as soon as you leave it, so the next launch works without any action. Save before leaving a game.</string>
-    <string name="ra_quit_off">Tip: enable “Close RetroArch when leaving the game” in the RomCloud Settings so you no longer have to force stop.</string>
-    <string name="ra_step4">If the screen stays black</string>
-    <string name="ra_log_how">In RetroArch: Settings → Logging → enable “Logging Verbosity” and “Log to File”, launch the game again from RomCloud, then check the log. “Could not read content file” points to a folder access problem (step 2); a core error points to step 1.</string>
-    <string name="ra_config_file">Configuration file used by this template:</string>
-    <string name="ra_open">Open RetroArch</string>
-    <string name="action_failed">Action failed</string>
-    <string name="ra_dont_show_again">Don’t show this guide automatically again</string>
 
     <!-- Erreurs -->
     <string name="err_invalid_folder">Invalid folder</string>
@@ -301,7 +265,6 @@
     <string name="err_open_emulator">Unable to open %1$s</string>
     <string name="action_open_emulator">Open %1$s</string>
     <string name="err_file_not_found">File not found: %1$s</string>
-    <string name="err_cannot_open">Unable to open %1$s</string>
     <string name="err_cannot_open_settings">Unable to open the settings of %1$s</string>
     <string name="err_no_app">No app can open this file</string>
     <string name="err_launch_refused">Launch refused by the emulator: %1$s</string>
@@ -319,11 +282,6 @@
     <string name="bios_present">BIOS: %1$d file(s) present</string>
     <string name="action_download_bios">Download the BIOS</string>
     <string name="bios_downloaded_snackbar">BIOS of %1$s downloaded</string>
-    <string name="bios_folder">BIOS folder</string>
-    <string name="bios_folder_hint">The BIOS files from the server are copied here, with their sub-folders. For RetroArch, choose its “system” folder.</string>
-    <string name="bios_preset_retroarch_play">RetroArch (Play Store)</string>
-    <string name="bios_preset_retroarch_site">RetroArch (website)</string>
-    <string name="bios_preset_romcloud">RomCloud</string>
     <string name="bios_before_play_title">Missing BIOS</string>
     <string name="bios_before_play_text">%1$d BIOS file(s) of this system (%2$s) are not on this device yet. Download them before playing?</string>
     <string name="action_play_anyway">Play anyway</string>
@@ -452,7 +410,7 @@
     <string name="libretro_options_general">General</string>
     <string name="libretro_options_tabs_hint">L1 / R1: previous / next tab</string>
     <string name="libretro_crash_title">The built-in emulator stopped</string>
-    <string name="libretro_crash_text">%1$s (core %2$s) stopped unexpectedly. Share the report to help fix the problem, or try another core or RetroArch for this system.</string>
+    <string name="libretro_crash_text">%1$s (core %2$s) stopped unexpectedly. Share the report to help fix the problem, or try another core for this system.</string>
     <string name="action_share_report">Share the report</string>
     <string name="libretro_menu_gamepad">Set up the controller</string>
     <string name="core_switch_title">Change the emulator?</string>
@@ -759,9 +717,9 @@
     <string name="settings_auto_upload_states_on">States sent online automatically</string>
     <string name="settings_gpu_drivers">Download graphics drivers</string>
     <string name="settings_gpu_drivers_on">Graphics drivers downloaded</string>
-    <string name="settings_gpu_drivers_hint">Turnip driver for Adreno GPUs (Snapdragon), when the server offers it (Switch, GameCube, Wii, PS Vita, PS3): downloaded with the BIOS and copied to Downloads/RomCloud/&lt;system&gt;, to install from the emulator\'s GPU driver manager (Eden, Dolphin, Vita3K, aPS3e). On by default on Snapdragon devices.</string>
-    <string name="emulator_files_hint">For Eden: %2$s in Downloads › %1$s. In Eden, install the keys and the firmware from its settings, choosing these files.</string>
-    <string name="driver_files_hint">Turnip graphics driver (Adreno GPUs): %2$s in Downloads › %1$s. If the game crashes or looks wrong, install it in the emulator (graphics settings, custom driver), choosing this file.</string>
+    <string name="settings_gpu_drivers_hint">Turnip driver for Adreno GPUs (Snapdragon), when the server offers it (Switch, GameCube, Wii, PS Vita, PS3): downloaded with the BIOS into the drivers folder of the RomCloud folder, to install from the emulator\'s GPU driver manager (Eden, Dolphin, Vita3K, aPS3e). On by default on Snapdragon devices.</string>
+    <string name="emulator_files_hint">For the emulator: %2$s in the %1$s folder. In the emulator, install the keys and the firmware from its settings, choosing these files.</string>
+    <string name="driver_files_hint">Turnip graphics driver (Adreno GPUs): %2$s in the %1$s folder. If the game crashes or looks wrong, install it in the emulator (graphics settings, custom driver), choosing this file.</string>
     <string name="pc_crash_reported">RomCloud PC: crash of %1$s reported to the server</string>
     <string name="report_default_title">Problem report</string>
     <string name="report_section">Report a problem</string>

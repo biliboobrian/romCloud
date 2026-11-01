@@ -14,6 +14,7 @@ mod downloads;
 mod emulator_files;
 mod emulator_updates;
 mod error;
+mod folders;
 mod events;
 mod ipc;
 mod keyboard;
@@ -54,6 +55,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![ipc::ipc, ipc::cast_chunk])
         .setup(|app| {
             events::init(app.handle().clone());
+            // Dossier RomCloud (roms, bios, system, saves, states) : ancienne organisation déplacée une fois.
+            folders::migrate();
             // Ouvert par le raccourci d'un jeu : lancé une fois l'interface prête.
             shortcuts::remember_launch(&std::env::args().collect::<Vec<_>>());
             // Plantage de l'application : signalé au serveur (au lancement suivant).
@@ -76,7 +79,7 @@ fn main() {
                 .min_inner_size(900.0, 600.0)
                 .background_color(tauri::window::Color(17, 19, 24, 255))
                 .initialization_script(include_str!("bridge.js"))
-                // Liens externes (ex. site de RetroArch) : navigateur par défaut.
+                // Liens externes (ex. site d'un émulateur) : navigateur par défaut.
                 .on_new_window(|url, _features| {
                     if url.scheme() == "http" || url.scheme() == "https" {
                         let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);

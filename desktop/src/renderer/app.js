@@ -309,7 +309,7 @@
     if (!disk) return;
     const used = 1 - disk.free / disk.total;
     bar.classList.toggle('low', disk.free / disk.total < 0.1);
-    bar.title = t('disk.tooltip', { free: formatSize(disk.free), total: formatSize(disk.total), dir: S.settings.romsDir });
+    bar.title = t('disk.tooltip', { free: formatSize(disk.free), total: formatSize(disk.total), dir: S.settings.rootDir });
     bar.innerHTML = `<div class="track"><div class="fill" style="width:${Math.round(used * 100)}%"></div></div><span>${esc(t('disk.free', { size: formatSize(disk.free) }))}</span>`;
   }
 
@@ -1938,8 +1938,6 @@
       rc.account.reportError({ context: `launch:${system.id}`, message: err.message, details: game.fileName });
       if (key === 'errors.emulatorMissing') {
         showEmulatorMissing(err.info.vars.id);
-      } else if (key === 'errors.retroarchMissing' || key === 'errors.coreMissing') {
-        toast(err.message, { type: 'error', action: t('detail.configureRetroArch'), onAction: () => showRetroArchHelp(system) });
       } else {
         toast(err.message, { type: 'error' });
       }
@@ -2279,23 +2277,8 @@
 
   async function startDownload(system, game, launchAfter, bios = []) {
     await call(rc.downloads.dismiss, game.id);
-    // Guide RetroArch après confirmation (si l'émulateur choisi est RetroArch et pas masqué) :
-    // le lancement automatique attend alors sa fermeture.
-    const check = await call(rc.launcher.check, system);
-    const showHelp = check.usesRetroArch && !S.settings.retroarchHelpDismissed && (!check.retroarchOk || !check.coreOk);
-    if (launchAfter && !showHelp) S.autoLaunch.set(game.id, {});
+    if (launchAfter) S.autoLaunch.set(game.id, {});
     await call(rc.downloads.start, system, game, { bios });
-    if (showHelp) {
-      showRetroArchHelp(system, {
-        auto: true,
-        onClose: () => {
-          if (!launchAfter) return;
-          const downloaded = S.route.name === 'systems' ? S.search.downloaded : S.games.downloaded;
-          if (statusOf(game, downloaded).kind === 'downloaded') play(system, game);
-          else S.autoLaunch.set(game.id, {});
-        },
-      });
-    }
   }
 
   function askCancel(game) {
@@ -2307,34 +2290,6 @@
         { label: t('app.continue'), kind: 'primary' },
       ],
     });
-  }
-
-  /** Guide RetroArch pour Windows, avec l'état actuel (exécutable, cœur). */
-  async function showRetroArchHelp(system, { auto = false, onClose } = {}) {
-    const c = await call(rc.launcher.check, system);
-    const root = modal({
-      title: t('ra.title'),
-      body: `
-        <div class="step"><div class="n">1</div><div class="c"><strong>${esc(t('ra.step1'))}</strong>
-          <span>${esc(t('ra.step1Text'))}</span>
-          <span class="${c.retroarchOk ? 'good' : 'bad'}">${esc(c.retroarchOk ? t('ra.step1Ok', { path: c.retroarchPath }) : t('ra.step1Missing'))}</span></div></div>
-        ${c.core ? `<div class="step"><div class="n">2</div><div class="c"><strong>${esc(t('ra.step2'))}</strong>
-          <span>${esc(t('ra.step2Text', { core: c.core }))}</span>
-          ${c.retroarchOk ? `<span class="${c.coreOk ? 'good' : 'bad'}">${esc(c.coreOk ? t('ra.step2Ok') : t('ra.step2Missing', { dir: c.coreDir }))}</span>` : ''}</div></div>` : ''}
-        <div class="step"><div class="n">3</div><div class="c"><strong>${esc(t('ra.step3'))}</strong><span>${esc(t('ra.step3Text'))}</span></div></div>
-        ${auto ? `<label class="check"><input type="checkbox" id="raDismiss"> ${esc(t('ra.dontShowAgain'))}</label>` : ''}`,
-      buttons: [
-        { label: t('ra.download'), kind: 'ghost', left: true, keepOpen: true, onClick: () => rc.shell.openExternal('https://www.retroarch.com/?page=platforms') },
-        { label: t('ra.openSettings'), kind: 'ghost', onClick: () => { onClose?.(); go({ name: 'settings' }); } },
-        { label: t('app.close'), kind: 'primary', onClick: () => onClose?.() },
-      ],
-    });
-    const box = $('#raDismiss', root);
-    if (box) {
-      box.onchange = async () => {
-        S.settings = await call(rc.settings.save, { retroarchHelpDismissed: box.checked });
-      };
-    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2497,7 +2452,6 @@
     const optionLabel = (o) => {
       if (o.kind === 'builtin' && o.name) return t(o.installed ? 'emu.builtinApp' : 'emu.builtinAppPending', { name: o.name });
       if (o.kind === 'builtin') return t(o.installed ? 'emu.builtin' : 'emu.builtinPending', { core: o.core });
-      if (o.kind === 'retroarch') return t('emu.retroarch', { core: o.core });
       if (o.kind === 'emulator') return o.installed ? o.name : t('emu.notInstalled', { name: o.name });
       return t(`emu.${o.kind}`);
     };
@@ -2591,7 +2545,6 @@
             <select id="emuSelect">${emu.options.map((o) => `<option value="${esc(o.id)}"${o.id === emu.selected ? ' selected' : ''}>${esc(optionLabel(o))}</option>`).join('')}</select>
             ${selected.kind === 'custom' ? `<label class="muted">${esc(t('detail.command'))}</label>
               <input type="text" id="emuCommand" value="${esc(emu.command)}" placeholder="${esc(t('detail.commandHint'))}">` : ''}
-            ${selected.kind === 'retroarch' ? `<div><button class="btn ghost" id="raHelpBtn">${icon('info', 18)} ${esc(t('detail.configureRetroArch'))}</button></div>` : ''}
             ${selected.kind === 'builtin' && selected.installed ? `<div><button class="btn ghost" id="resetCoreBtn">${icon('refresh', 18)} ${esc(t('crash.reset'))}</button></div>` : ''}
             ${catalogEmu ? emulatorBlock(catalogEmu) : ''}
             ${vita ? vitaProcedureHtml(vita) : ''}
@@ -2655,7 +2608,6 @@
     $('#cancelBtn')?.addEventListener('click', () => rc.downloads.cancel(game.id));
     $('#folderBtn')?.addEventListener('click', () => rc.shell.showItem(localPath));
     for (const btn of $$('[data-extra-exe]', main)) btn.addEventListener('click', () => call(rc.library.runExtra, system, game, btn.dataset.extraExe));
-    $('#raHelpBtn')?.addEventListener('click', () => showRetroArchHelp(system));
     $('#resetCoreBtn')?.addEventListener('click', () => confirmResetCore(system.id, selected.core));
     if (builtinPads) startPads(system, selected.core);
     else stopPads();
@@ -3076,13 +3028,8 @@
       <p class="muted">${esc(t('settings.gameOrderHint'))}</p>
 
       <h3>${esc(t('settings.storage'))}</h3>
-      <label>${esc(t('settings.romsDir'))}<span class="line"><input type="text" id="romsDir" value="${esc(s.romsDir)}"><button class="btn" id="romsBrowse">${esc(t('settings.browse'))}</button></span></label>
-      <label>${esc(t('settings.biosDir'))}<span class="line"><input type="text" id="biosDir" value="${esc(s.biosDir)}"><button class="btn" id="biosBrowse">${esc(t('settings.browse'))}</button></span></label>
-      <p class="muted">${esc(t('settings.biosHint', { dir: s.effectiveBiosDir }))}</p>
-
-      <h3>${esc(t('settings.retroarch'))}</h3>
-      <label>${esc(t('settings.retroarchPath'))}<span class="line"><input type="text" id="retroarchPath" value="${esc(s.retroarchPath)}" placeholder="C:\\RetroArch-Win64\\retroarch.exe"><button class="btn" id="raBrowse">${esc(t('settings.browse'))}</button></span></label>
-      <p class="muted">${esc(t('settings.retroarchHint'))}</p>
+      <label>${esc(t('settings.rootDir'))}<span class="line"><input type="text" id="rootDir" value="${esc(s.rootDir)}"><button class="btn" id="rootBrowse">${esc(t('settings.browse'))}</button></span></label>
+      <p class="muted">${esc(t('settings.rootHint'))}</p>
 
       <h3>${esc(t('settings.emulators'))}</h3>
       <p class="muted">${esc(t('settings.emulatorsHint'))}</p>
@@ -3143,29 +3090,19 @@
         for (const chip of $$('[data-order]')) chip.classList.toggle('selected', chip === el);
       };
     }
-    $('#romsBrowse').onclick = async () => {
+    $('#rootBrowse').onclick = async () => {
       const dir = await call(rc.dialog.pickFolder);
-      if (dir) $('#romsDir').value = dir;
-    };
-    $('#biosBrowse').onclick = async () => {
-      const dir = await call(rc.dialog.pickFolder);
-      if (dir) $('#biosDir').value = dir;
+      if (dir) $('#rootDir').value = dir;
     };
     $('#detectBtn').onclick = (e) => detectEmulators(e.currentTarget);
     for (const e of emulators) bindEmulatorBlock($('#main'), e, () => renderSettings());
     bindKeyboard(keys);
-    $('#raBrowse').onclick = async () => {
-      const file = await call(rc.dialog.pickFile, [{ name: t('settings.exe'), extensions: ['exe'] }]);
-      if (file) $('#retroarchPath').value = file;
-    };
     $('#saveBtn').onclick = async () => {
       const before = S.settings.serverUrl + S.settings.apiKey;
       S.settings = await call(rc.settings.save, {
         serverUrl: $('#serverUrl').value,
         apiKey: $('#apiKey').value.trim(),
-        romsDir: $('#romsDir').value,
-        biosDir: $('#biosDir').value,
-        retroarchPath: $('#retroarchPath').value.trim(),
+        rootDir: $('#rootDir').value,
       });
       toast(t('settings.saved'));
       if (before !== S.settings.serverUrl + S.settings.apiKey) {

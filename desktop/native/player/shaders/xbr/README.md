@@ -1,7 +1,7 @@
 # Déclinaisons de xBR (Hyllian)
 
 Shaders et préréglages repris tels quels de [libretro/glsl-shaders](https://github.com/libretro/glsl-shaders/tree/master/xbr)
-(dossier `xbr`), au format GLSL de RetroArch. Ils sont intégrés au moteur (`shaderchain.cpp`) et proposés dans
+(dossier `xbr`), au format GLSL des préréglages libretro (.glslp). Ils sont intégrés au moteur (`shaderchain.cpp`) et proposés dans
 « Image > xBR > Version ».
 
 Licence : MIT, Copyright (C) 2011-2016 Hyllian (texte complet en tête de chaque fichier `.glsl`).

@@ -18,7 +18,7 @@ import java.util.zip.ZipInputStream
 
 /**
  * Cœurs libretro de l'émulateur intégré, téléchargés à la demande depuis le buildbot libretro
- * (mêmes cœurs que RetroArch) dans le stockage privé de l'application : Android n'autorise le
+ * dans le stockage privé de l'application : Android n'autorise le
  * chargement de bibliothèques natives téléchargées que depuis ce dossier. La version installée
  * (date « Last-Modified » du buildbot) est comparée au plus une fois par jour à celle du buildbot :
  * un cœur corrigé depuis son téléchargement est ainsi mis à jour.
@@ -136,7 +136,7 @@ class LibretroCores(context: Context) {
     }
 
     /**
-     * Fichiers système du cœur (« Core System Files » de RetroArch : Dolphin.zip…) absents du
+     * Fichiers système du cœur (« Core System Files » du buildbot : Dolphin.zip…) absents du
      * dossier système [systemDir] ?
      */
     fun systemFilesMissing(core: String, systemDir: File): Boolean =

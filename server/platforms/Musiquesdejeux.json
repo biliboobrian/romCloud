@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "gamemusic - RetroArch 64 - gme",
-      "uniqueId": "gamemusic.ra64.gme",
+      "name": "gamemusic - gme",
+      "uniqueId": "gamemusic.libretro.gme",
       "description": "Supported extensions: ay, gbs, gym, hes, kss, nsf, nsfe, sap, spc, vgm, vgz, zip.",
       "acceptedFilenameRegex": "^(.*)\\.(?:ay|gbs|gym|hes|kss|nsf|nsfe|sap|spc|vgm|vgz|zip)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO gme\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO gme",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

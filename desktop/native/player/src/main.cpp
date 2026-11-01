@@ -69,6 +69,7 @@ namespace {
 
 struct Args {
   std::string core, rom, systemDir, saveDir, stateDir, options, title, lang = "fr";
+  std::string dlssDir;  // dossier de nvngx_dlss.dll (--dlss-dir ; par défaut à côté du dossier système)
   std::string stateName;  // nom de l'état de sauvegarde (par défaut celui de la ROM)
   std::vector<std::string> optionDefaults;  // « clé=valeur » propres au jeu (--option-default)
   std::string optionsCatalog;  // options déclarées par le cœur, écrites en JSON en quittant (--options-catalog)
@@ -112,7 +113,7 @@ Args parseArgs(int argc, char** argv) {
       {"--save-dir", &a.saveDir},    {"--state-dir", &a.stateDir}, {"--options", &a.options},
       {"--title", &a.title},         {"--lang", &a.lang},       {"--state-name", &a.stateName},
       {"--keys-file", &a.keysFile}, {"--buttons", &a.buttons}, {"--pad-style", &a.padStyle},
-      {"--pad-images", &a.padImages},
+      {"--pad-images", &a.padImages}, {"--dlss-dir", &a.dlssDir},
       {"--test-frames", &a.testFrames}, {"--screenshot", &a.screenshot}, {"--test-seconds", &a.testSeconds},
       {"--test-options", &a.testOptions},  // essai : écran des options du cœur, onglet N
       {"--test-search", &a.testSearch},    // essai : recherche dans les options du cœur
@@ -855,9 +856,10 @@ int Player::run() {
   makeDirs(g.systemDir);
   makeDirs(args_.saveDir);
   makeDirs(args_.stateDir);
-  // nvngx_dlss.dll (filtre DLSS) à côté du dossier des BIOS : « libretro\dlss ».
+  // nvngx_dlss.dll (filtre DLSS) : dossier donné par l'application, sinon à côté du dossier système.
   const size_t slash = g.systemDir.find_last_of("\\/");
-  video_.setDlssDirectory(joinPath(slash == std::string::npos ? g.systemDir : g.systemDir.substr(0, slash), "dlss"));
+  video_.setDlssDirectory(!args_.dlssDir.empty() ? args_.dlssDir
+                                                 : joinPath(slash == std::string::npos ? g.systemDir : g.systemDir.substr(0, slash), "dlss"));
   g.systemDir = compatiblePath(g.systemDir);
   g.saveDir = compatiblePath(args_.saveDir);
   g.options.load(args_.options);
@@ -865,7 +867,7 @@ int Player::run() {
   for (const auto& assignment : args_.optionsForced) g.options.setForced(assignment);
 
   // Réseau prêt avant le cœur : certains ouvrent eux-mêmes leurs connexions (câble Game Link de
-  // Gambatte, ad hoc de PPSSPP), sans initialiser Winsock comme le fait RetroArch.
+  // Gambatte, ad hoc de PPSSPP), sans initialiser Winsock eux-mêmes.
   WSADATA wsa;
   WSAStartup(MAKEWORD(2, 2), &wsa);
   std::string error;
@@ -1117,7 +1119,7 @@ void Player::startNetplay() {
   g.netplay = &netplay_;
 }
 
-/** Ordre de RetroArch et LibretroDroid : contexte du cœur, jeu, cœur, puis fenêtre. */
+/** Ordre de LibretroDroid : contexte du cœur, jeu, cœur, puis fenêtre. */
 void Player::shutdown() {
   netplay_.stop();
   g.netplay = nullptr;

@@ -9,9 +9,8 @@ import android.net.Uri
  *
  * Exemple :
  * ```
- * -n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture
- *  -e ROM {file.path}
- *  -e LIBRETRO snes9x
+ * -n org.ppsspp.ppsspp/.PpssppActivity
+ *  -d {file.uri}
  *  --activity-clear-task
  * ```
  * Les placeholders ({file.path}, {file.uri}…) sont remplacés APRÈS le découpage en jetons,

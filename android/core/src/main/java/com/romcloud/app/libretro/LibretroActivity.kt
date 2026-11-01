@@ -100,6 +100,7 @@ import androidx.lifecycle.lifecycleScope
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.Account
+import com.romcloud.app.data.Folders
 import com.romcloud.app.data.SavedState
 import com.romcloud.app.data.StateHistory
 import com.romcloud.app.data.StreamReceiver
@@ -234,7 +235,7 @@ class LibretroActivity : ComponentActivity() {
      */
     private val linkedSram by lazy {
         netplayLaunch?.saveCore?.takeIf { link != null && it != core }
-            ?.let { File(filesDir, "libretro/saves/$it/${rom.nameWithoutExtension}.srm") }
+            ?.let { File(Folders.of(this).saves, "$it/${rom.nameWithoutExtension}.srm") }
     }
 
     /**
@@ -294,7 +295,7 @@ class LibretroActivity : ComponentActivity() {
     private val padLayout by lazy { PadLayouts.forGame(systemId, core) }
     private val rom by lazy { File(intent.getStringExtra(EXTRA_ROM).orEmpty()) }
     private val isTv by lazy { packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
-    private val sramFile by lazy { File(filesDir, "libretro/saves/$core/${rom.nameWithoutExtension}.srm") }
+    private val sramFile by lazy { File(Folders.of(this).saves, "$core/${rom.nameWithoutExtension}.srm") }
     private val stateFile by lazy { stateFile(this, core, rom) }
     /** Historique des états du jeu pour ce cœur (plusieurs états, avec miniature). */
     private val history by lazy { StateHistory(StateHistory.dir(this, core, rom), core) }
@@ -918,7 +919,7 @@ class LibretroActivity : ComponentActivity() {
 
     /**
      * Manette de chaque port : le premier type proposé par le cœur qui est une manette
-     * (« Amstrad Joystick », sous-type de RETRO_DEVICE_JOYPAD), comme RetroArch. Sans ce choix,
+     * (« Amstrad Joystick », sous-type de RETRO_DEVICE_JOYPAD). Sans ce choix,
      * certains cœurs (cap32) n'interrogent aucune touche : manette tactile et physique sans effet.
      */
     private fun selectControllers(view: GLRetroView) {
@@ -2185,7 +2186,7 @@ class LibretroActivity : ComponentActivity() {
 
         /** État de sauvegarde d'un jeu pour un cœur (« Sauvegarder l'état », « Sauvegarder et quitter »). */
         fun stateFile(context: Context, core: String, rom: File): File =
-            File(context.filesDir, "libretro/states/$core/${rom.nameWithoutExtension}.state")
+            File(Folders.of(context).states, "$core/${rom.nameWithoutExtension}.state")
 
         /**
          * [systemId] : système du jeu (options du cœur mémorisées par système) ;

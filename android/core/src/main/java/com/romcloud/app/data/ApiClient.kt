@@ -200,7 +200,7 @@ class ApiClient(private val settings: Settings, val platform: String, val device
     /** Recherche dans tous les systèmes. */
     suspend fun searchRaw(query: String): String = get("/api/search?q=" + URLEncoder.encode(query, "UTF-8"))
 
-    /** BIOS présents sur le serveur pour un système (sans le catalogue des cœurs RetroArch). */
+    /** BIOS présents sur le serveur pour un système (sans le catalogue des cœurs libretro). */
     suspend fun biosRaw(systemId: String): String = get("/api/systems/$systemId/bios?catalog=0")
 
     fun biosFileUrl(bios: BiosFile): String = url("/api/bios/${bios.id}/file")

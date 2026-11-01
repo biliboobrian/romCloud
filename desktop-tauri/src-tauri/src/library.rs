@@ -1,7 +1,7 @@
-// ROMs sur le disque : <dossier ROMs>\<dossier du système>\<fichier>.
+// ROMs sur le disque : <dossier RomCloud>\roms\<dossier du système>\<fichier>.
 // Un jeu est téléchargé si ses fichiers existent avec la taille attendue : le fichier principal et
 // ses parties (disques, mises à jour, DLC regroupés par le serveur, rangés à côté de lui).
-use crate::{paths, settings};
+use crate::{folders, paths};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ pub fn n(v: &Value, key: &str) -> u64 {
 }
 
 pub fn system_dir(system: &Value) -> PathBuf {
-    PathBuf::from(settings::get_str("romsDir")).join(s(system, "folder"))
+    folders::roms().join(s(system, "folder"))
 }
 
 pub fn file_for(system: &Value, game: &Value) -> PathBuf {
@@ -241,22 +241,24 @@ pub fn usage(systems: &[Value]) -> Value {
             sizes.insert(s(system, "id").to_string(), json!(size));
         }
     }
-    let disk = paths::disk_space(Path::new(&settings::get_str("romsDir"))).map(|(free, total)| json!({ "free": free, "total": total }));
+    let disk = paths::disk_space(&folders::root()).map(|(free, total)| json!({ "free": free, "total": total }));
     json!({ "systems": sizes, "disk": disk })
 }
 
-/// Emplacement d'un BIOS : <dossier BIOS>\<chemin relatif, sous-dossiers compris>.
-pub fn bios_file(bios: &Value) -> PathBuf {
-    let mut path = settings::bios_dir();
-    for part in s(bios, "path").split('/').filter(|p| !p.is_empty() && *p != "." && *p != "..") {
-        path.push(part);
-    }
-    path
+/// Emplacement d'un fichier du système (BIOS, clés, firmware…) : voir folders.rs.
+pub fn bios_file(system: &Value, bios: &Value) -> PathBuf {
+    folders::bios_file(system, bios)
 }
 
-/// BIOS absents du PC (ou de taille différente).
-pub fn missing_bios(files: Vec<Value>) -> Vec<Value> {
-    files.into_iter().filter(|b| paths::size(&bios_file(b)) != Some(n(b, "size"))).collect()
+/// BIOS absents du PC (ou de taille différente) ; ceux de l'ancien dossier des BIOS repris d'abord.
+pub fn missing_bios(system: &Value, files: Vec<Value>) -> Vec<Value> {
+    files
+        .into_iter()
+        .filter(|b| {
+            folders::adopt_legacy_bios(system, b);
+            paths::size(&bios_file(system, b)) != Some(n(b, "size"))
+        })
+        .collect()
 }
 
 /// Supprime les fichiers du jeu, ses parties et sa liste de disques.
@@ -314,7 +316,7 @@ pub fn playlist_text(game: &Value) -> Option<String> {
     Some(names.join("\n") + "\n")
 }
 
-/// Liste des disques écrite à côté du jeu (pour le moteur intégré, RetroArch, DuckStation… : changement
+/// Liste des disques écrite à côté du jeu (pour le moteur intégré, DuckStation… : changement
 /// de disque en jeu) ; None pour un jeu d'un seul disque.
 pub fn playlist(system: &Value, game: &Value) -> Option<PathBuf> {
     let text = playlist_text(game)?;

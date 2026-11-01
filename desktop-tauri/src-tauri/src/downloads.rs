@@ -124,7 +124,7 @@ pub fn start(system: Value, game: Value, options: Value) {
             let mut done = 0u64;
             for b in &bios {
                 let id = b.get("id").map(key).unwrap_or_default();
-                let fetched = fetch_to(&format!("{server}/api/bios/{id}/file"), &library::bios_file(b), n(b, "size"), &cancelled, |bytes| {
+                let fetched = fetch_to(&format!("{server}/api/bios/{id}/file"), &library::bios_file(&system, b), n(b, "size"), &cancelled, |bytes| {
                     notify(&game_id, Some(running(done + bytes, parts)), None)
                 })
                 .await;

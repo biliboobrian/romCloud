@@ -4,7 +4,7 @@
 // options\<système>.cfg, keyboard.cfg (touches du clavier), player.log (journal).
 use crate::error::{AppError, Result};
 use crate::library::s;
-use crate::{account, api, cores, events, keyboard, managed, paths, settings, states};
+use crate::{account, api, cores, events, folders, keyboard, managed, paths, settings, states};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Read;
@@ -147,7 +147,7 @@ async fn download_core(core: &str) -> Result<PathBuf> {
     .map_err(|e| AppError::msg(e.to_string()))?
 }
 
-/// Fichiers système des cœurs (« Core System Files » de RetroArch) : cœur -> archive du buildbot et
+/// Fichiers système des cœurs (« Core System Files » du buildbot libretro) : cœur -> archive du buildbot et
 /// fichier témoin de leur présence dans le dossier des BIOS, le dernier de l'archive (installation
 /// interrompue : refaite). Dolphin : polices de la console, shaders, ressources, gestionnaire des
 /// codes ; sans eux, des jeux GameCube plantent ou n'affichent pas leurs textes.
@@ -160,10 +160,10 @@ fn missing_system_files(core: &str, bios: &Path) -> Option<&'static str> {
     (!cores::safe_entry_path(bios, marker).is_file()).then_some(*archive)
 }
 
-/// Fichiers système du cœur téléchargés et décompressés dans le dossier des BIOS s'ils manquent
+/// Fichiers système du cœur téléchargés et décompressés dans le dossier BIOS du système s'ils manquent
 /// (le jeu est lancé même en cas d'échec : le cœur signale ce qui lui manque).
-async fn ensure_system_files(core: &str) {
-    let bios = settings::bios_dir();
+async fn ensure_system_files(system: &Value, core: &str) {
+    let bios = folders::bios(system);
     let Some(archive) = missing_system_files(core, &bios) else { return };
     let lock = CORE_LOCKS.lock().unwrap().entry(format!("system:{core}")).or_default().clone();
     let _guard = lock.lock().await;
@@ -265,12 +265,12 @@ pub fn save_keys(keys: &Value) -> Result<Value> {
 
 /// État de sauvegarde du jeu dans le moteur (« Sauvegarder et quitter », F2…).
 pub fn state_path(core: &str, file: &str) -> PathBuf {
-    root().join("states").join(core).join(format!("{}.state", paths::stem(file)))
+    folders::states().join(core).join(format!("{}.state", paths::stem(file)))
 }
 
 /// Historique des états du jeu (plusieurs états avec miniature, voir states.rs).
 pub fn history_dir(core: &str, file: &str) -> PathBuf {
-    root().join("states").join(core).join(format!("{}.history", paths::stem(file)))
+    folders::states().join(core).join(format!("{}.history", paths::stem(file)))
 }
 
 fn options_file(system_id: &str) -> PathBuf {
@@ -321,7 +321,7 @@ pub fn reset_core(system_id: &str, core: &str) -> Result<()> {
 
 /// Sauvegarde du jeu (mémoire de la cartouche) écrite par le moteur : nom de la ROM lancée.
 fn sram_path(core: &str, rom: &str) -> PathBuf {
-    root().join("saves").join(core).join(format!("{}.srm", paths::stem(rom)))
+    folders::saves().join(core).join(format!("{}.srm", paths::stem(rom)))
 }
 
 /**
@@ -336,7 +336,7 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         return Err(AppError::new("errors.playerMissing", json!({ "path": player_path().to_string_lossy() })));
     }
     let dll = ensure_core(core).await?;
-    ensure_system_files(core).await;
+    ensure_system_files(system, core).await;
     let rom = {
         let (core, file) = (core.to_string(), file.to_string());
         tokio::task::spawn_blocking(move || prepare_rom(&core, &file)).await.map_err(|e| AppError::msg(e.to_string()))??
@@ -373,9 +373,9 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
     let mut args = cores::player_args(&cores::PlayerArgs {
         dll: text(dll),
         rom: rom.clone(),
-        system_dir: text(settings::bios_dir()),
-        save_dir: text(base.join("saves").join(core)),
-        state_dir: text(base.join("states").join(core)),
+        system_dir: text(folders::bios(system)),
+        save_dir: text(folders::saves().join(core)),
+        state_dir: text(folders::states().join(core)),
         state_name: Some(paths::stem(file)),
         options_file: text(options_file(s(system, "id"))),
         title,
@@ -385,6 +385,7 @@ pub async fn launch(system: &Value, game: &Value, file: &str, core: &str, resume
         keys_file: Some(text(keys_file())),
         buttons: Some(keyboard::console_buttons(system_key, core, &language)),
         pad_style: Some(keyboard::console_pad(system_key, core).to_string()),
+        dlss_dir: Some(text(folders::dlss())),
         // Options imposées par le jeu, puis celles du serveur (système, puis jeu) : sous les choix de l'utilisateur.
         option_defaults: [cores::game_option_defaults(core, &rom), cores::server_option_defaults(system, game)].concat(),
     });

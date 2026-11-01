@@ -25,7 +25,7 @@ class NetplayRulesTest {
         // Jeu à un joueur, console portable, émulateur externe, cœur trop lourd.
         assertFalse(NetplayRules.canPlayTogether(system("snes"), game("1"), builtin("snes9x")))
         assertFalse(NetplayRules.canPlayTogether(system("gba"), game("1-2"), builtin("mgba")))
-        assertFalse(NetplayRules.canPlayTogether(system("snes"), game("1-2"), Player(name = "RetroArch", uniqueId = "ra", amStartArguments = "")))
+        assertFalse(NetplayRules.canPlayTogether(system("snes"), game("1-2"), Player(name = "Externe", uniqueId = "ext", amStartArguments = "")))
         assertFalse(NetplayRules.canPlayTogether(system("gc"), game("1-4"), builtin("dolphin")))
         assertTrue(NetplayRules.canPlayTogether(system("psx"), game("1-2"), builtin("swanstation")))
         // Saturn : seul Mednafen Saturn tient une partie synchronisée.

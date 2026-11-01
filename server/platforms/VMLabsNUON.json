@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "nuon - RetroArch 64 - nuance",
-      "uniqueId": "nuon.ra64.nuance",
+      "name": "nuon - nuance",
+      "uniqueId": "nuon.libretro.nuance",
       "description": "Supported extensions: run, cof, nuon, cd, iso, img, chd.",
       "acceptedFilenameRegex": "^(.*)\\.(?:run|cof|nuon|cd|iso|img|chd)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO nuance\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO nuance",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

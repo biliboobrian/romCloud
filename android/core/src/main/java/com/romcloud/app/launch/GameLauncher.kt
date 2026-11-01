@@ -16,7 +16,6 @@ import com.romcloud.app.data.EmulatorReleases
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
-import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
 import com.romcloud.app.data.StateHistory
 import com.romcloud.app.data.StreamReceiver
@@ -37,22 +36,6 @@ class MissingEmulatorException(val emulator: MissingEmulator) :
  * mise à jour : [GameLauncher.manualUpdatePackage]).
  */
 data class MissingEmulator(val packageName: String, val playerName: String?, val installedVersion: String? = null)
-
-/** Ce qu'il faut configurer dans RetroArch pour un modèle donné (guide « ⓘ » de la fiche du jeu). */
-data class RetroArchInfo(
-    val packageName: String,
-    val installed: Boolean,
-    /** Nom du cœur demandé par le modèle (ex. mupen64plus_next_gles3), null s'il n'en impose pas. */
-    val core: String?,
-    val configFile: String?,
-    val fromPlayStore: Boolean,
-    /** La ROM est transmise en chemin saf:// (dossier à autoriser dans RetroArch). */
-    val usesSaf: Boolean,
-    val romsDir: String,
-    val quitOnExit: Boolean,
-    /** Android 14+ : RomCloud ne peut pas fermer RetroArch lui-même. */
-    val mustCloseManually: Boolean,
-)
 
 /**
  * Lancement en attente : l'émulateur doit être fermé à la main avant (Android 14+ interdit
@@ -105,8 +88,6 @@ data class BiosPrompt(
 class GameLauncher(private val context: Context, private val settings: Settings) {
 
     private companion object {
-        /** Extra lu par RetroActivityFuture : RetroArch appelle System.exit(0) dans onStop(). */
-        const val RETROARCH_QUIT_EXTRA = "QUITFOCUS"
         /** Installateur des applications du Google Play Store. */
         const val PLAY_STORE = "com.android.vending"
     }
@@ -282,7 +263,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
                 else -> disk
             }
             val intent = LibretroActivity.intent(
-                activityContext, system.id, core, file, settings.config.value.biosDir, resume, gameId, stream, streamMode, netplay,
+                activityContext, system.id, core, file, settings.config.value.folders.bios(system).absolutePath, resume, gameId, stream, streamMode, netplay,
                 state = state ?: resumeState, autoUploadStates = settings.autoUploadStates, disk = startDisk ?: 0,
                 coreOptions = coreOptions,
             )
@@ -301,7 +282,6 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         }
 
         val intent = AmStartParser.parse(player.amStartArguments, placeholders(file, packageOf(player), player))
-        if (quitOnExit(intent.component?.packageName)) intent.putExtra(RETROARCH_QUIT_EXTRA, "1")
         if (player.amStartArguments.contains("{file.uri}")) {
             // Autorise l'émulateur à lire le fichier via le FileProvider.
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
@@ -326,7 +306,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
 
     private fun placeholders(file: File, packageName: String?, player: Player) = mapOf(
-        "file.path" to (retroArchSafPath(file, packageName) ?: file.absolutePath),
+        "file.path" to file.absolutePath,
         "file.uri" to fileUri(file).toString(),
         "file.mime" to mimeOf(file),
         "file.name" to file.name,
@@ -345,77 +325,15 @@ class GameLauncher(private val context: Context, private val settings: Settings)
         }
         val values = runCatching { placeholders(file, packageOf(player), player) }
             .getOrElse { mapOf("file.path" to file.absolutePath) }
-        val lines = player.amStartArguments.lines()
+        return player.amStartArguments.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-            .map { AmStartParser.substitute(it, values) }
-        val extra = if (quitOnExit(packageOf(player))) listOf("-e $RETROARCH_QUIT_EXTRA 1") else emptyList()
-        return (lines + extra).joinToString("\n")
+            .joinToString("\n") { AmStartParser.substitute(it, values) }
     }
-
-    fun isRetroArch(packageName: String?) = packageName?.startsWith("com.retroarch") == true
-
-    /** Configuration RetroArch attendue par ce modèle, ou null si ce n'est pas RetroArch. */
-    fun retroArchInfo(player: Player): RetroArchInfo? {
-        val pkg = packageOf(player)?.takeIf(::isRetroArch) ?: return null
-        val installed = isPackageInstalled(pkg)
-        val fromPlayStore = installed && isFromPlayStore(pkg)
-        return RetroArchInfo(
-            packageName = pkg,
-            installed = installed,
-            core = LibretroPlayers.coreOf(player),
-            configFile = AmStartParser.stringExtra(player.amStartArguments, "CONFIGFILE"),
-            fromPlayStore = fromPlayStore,
-            usesSaf = when (settings.retroArchSafMode) {
-                RetroArchSafMode.SAF -> true
-                RetroArchSafMode.PATH -> false
-                RetroArchSafMode.AUTO -> fromPlayStore
-            },
-            romsDir = settings.config.value.romsDir,
-            quitOnExit = settings.retroArchQuitOnExit,
-            mustCloseManually = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
-        )
-    }
-
-    /** Ouvre RetroArch (pour installer un cœur, autoriser un dossier…). */
-    fun openApp(activityContext: Context, packageName: String) {
-        val intent = context.packageManager.getLaunchIntentForPackage(packageName)
-            ?: throw LaunchException(I18n.get(R.string.err_cannot_open, packageName))
-        activityContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }
-
-    /** RetroArch installé depuis le Play Store (sans accès à tous les fichiers). */
-    fun isFromPlayStore(packageName: String): Boolean = runCatching {
-        val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.packageManager.getInstallSourceInfo(packageName).installingPackageName
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.getInstallerPackageName(packageName)
-        }
-        installer == "com.android.vending"
-    }.getOrDefault(false)
-
-    /**
-     * Chemin saf:// pour RetroArch quand il ne peut pas lire le chemin de fichier (version
-     * Play Store) ; null pour garder le chemin classique.
-     */
-    private fun retroArchSafPath(file: File, packageName: String?): String? {
-        if (!isRetroArch(packageName)) return null
-        val useSaf = when (settings.retroArchSafMode) {
-            RetroArchSafMode.SAF -> true
-            RetroArchSafMode.PATH -> false
-            RetroArchSafMode.AUTO -> isFromPlayStore(packageName!!)
-        }
-        return if (useSaf) RetroArchSaf.path(settings.config.value.romsDir, file.absolutePath) else null
-    }
-
-    /** RetroArch (tous paquets com.retroarch*) avec l'option « se fermer en quittant le jeu ». */
-    private fun quitOnExit(packageName: String?) =
-        settings.retroArchQuitOnExit && isRetroArch(packageName)
 
     /**
      * Paquet à faire fermer par l'utilisateur avant le lancement, ou null.
-     * Les modèles « killPackageProcesses » (RetroArch…) exigent que l'émulateur soit fermé ;
+     * Les modèles « killPackageProcesses » exigent que l'émulateur soit fermé ;
      * depuis Android 14, killBackgroundProcesses() n'a plus d'effet sur les autres applications.
      */
     fun closeWarningPackage(player: Player?): String? {
@@ -436,7 +354,7 @@ class GameLauncher(private val context: Context, private val settings: Settings)
     private fun start(activityContext: Context, intent: Intent, player: Player?) {
         // Comme « am start » (utilisé par Daijishou) : toujours une nouvelle tâche. Sans ce
         // drapeau, l'émulateur s'ouvre dans la tâche de RomCloud et --activity-clear-task est
-        // ignoré, ce qui laisse RetroArch sur un écran noir.
+        // ignoré, ce qui laisse l'émulateur sur un écran noir.
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             activityContext.startActivity(intent)

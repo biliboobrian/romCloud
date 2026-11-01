@@ -26,7 +26,8 @@ import okhttp3.Response;
  * Windows : dossier « assets » de son APK, 700 Mo) : téléchargés au premier lancement depuis la
  * version publiée qui correspond au code repris, entrée par entrée (requêtes Range sur le zip de
  * l'APK, reprise après interruption), dans le dossier de l'application. Lus à la place des assets
- * de l'APK de RomCloud PC ([open], [list]).
+ * de l'APK de RomCloud PC ([open], [list]). Copie gardée dans le dossier RomCloud ([SharedCache]) :
+ * reprise après une réinstallation au lieu d'être retéléchargée.
  */
 public final class ContentPack {
     /** Version de Winlator Cmod dont le code est repris (android/pc), et son APK. */
@@ -104,10 +105,11 @@ public final class ContentPack {
     }
 
     /**
-     * Télécharge les fichiers manquants (ceux déjà complets sont gardés) ; exception en cas d'échec.
-     * Un seul téléchargement à la fois : un second appel attend la fin du premier (mêmes fichiers).
+     * Télécharge les fichiers manquants (ceux déjà complets sont gardés, ceux de la copie [cache] repris)
+     * et en garde une copie dans [cache] ; exception en cas d'échec. Un seul téléchargement à la fois :
+     * un second appel attend la fin du premier (mêmes fichiers).
      */
-    public static synchronized void download(Context context, Progress progress) throws IOException {
+    static synchronized void download(Context context, SharedCache cache, Progress progress) throws IOException {
         OkHttpClient client = new OkHttpClient.Builder().followRedirects(true).build();
         long length = contentLength(client);
         List<Entry> entries = centralDirectory(client, length);
@@ -117,7 +119,9 @@ public final class ContentPack {
         File root = dir(context);
         for (Entry entry : entries) {
             File file = new File(root, entry.name.substring("assets/".length()));
+            File cached = cache.contentPack(entry.name.substring("assets/".length()));
             if (file.isFile() && file.length() == entry.size) {
+                SharedCache.keep(file, cached);
                 done += entry.compressed;
                 progress.onProgress(done, total);
                 continue;
@@ -125,6 +129,16 @@ public final class ContentPack {
             File parent = file.getParentFile();
             if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("mkdir " + parent);
             File partial = new File(file.getPath() + ".part");
+            // Copie gardée dans le dossier RomCloud : reprise sans téléchargement.
+            if (SharedCache.has(cached, entry.size)) {
+                SharedCache.copy(cached, partial);
+                if (partial.length() == entry.size && partial.renameTo(file)) {
+                    done += entry.compressed;
+                    progress.onProgress(done, total);
+                    continue;
+                }
+                partial.delete();
+            }
             byte[] header = range(client, entry.offset, entry.offset + 29);
             ByteBuffer local = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN);
             int start = 30 + (local.getShort(26) & 0xffff) + (local.getShort(28) & 0xffff);
@@ -149,6 +163,7 @@ public final class ContentPack {
                 }
             }
             if (partial.length() != entry.size || !partial.renameTo(file)) throw new IOException("fichier incomplet " + entry.name);
+            SharedCache.keep(file, cached);
             done += entry.compressed;
             progress.onProgress(done, total);
         }

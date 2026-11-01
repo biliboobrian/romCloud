@@ -52,7 +52,6 @@ import androidx.tv.material3.Text
 import com.romcloud.app.AppLanguage
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.GameOrder
-import com.romcloud.app.data.RetroArchSafMode
 import com.romcloud.app.data.Settings
 import com.romcloud.app.ui.ErrorReportSection
 import com.romcloud.app.ui.appVersion
@@ -65,14 +64,11 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
     val current = remember { app.settings.config.value }
     var url by rememberSaveable { mutableStateOf(current.serverUrl) }
     var key by rememberSaveable { mutableStateOf(current.apiKey) }
-    var dir by rememberSaveable { mutableStateOf(current.romsDir) }
-    var biosDir by rememberSaveable { mutableStateOf(current.biosDir) }
+    var dir by rememberSaveable { mutableStateOf(current.rootDir) }
     var testResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var testing by remember { mutableStateOf(false) }
     var hasPermission by remember { mutableStateOf(app.library.hasStoragePermission()) }
     var showAdbHelp by remember { mutableStateOf(false) }
-    var safMode by remember { mutableStateOf(app.settings.retroArchSafMode) }
-    var quitOnExit by remember { mutableStateOf(app.settings.retroArchQuitOnExit) }
     var hideUnidentified by remember { mutableStateOf(app.settings.hideUnidentified) }
     var gameOrder by remember { mutableStateOf(app.settings.gameOrder) }
     val scope = rememberCoroutineScope()
@@ -202,7 +198,6 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
         Section(stringResource(R.string.settings_storage))
         // Bouton dossier à côté du chemin : choix du dossier avec le sélecteur d'Android.
         val pickRoms = rememberFolderPicker { dir = it }
-        val pickBios = rememberFolderPicker { biosDir = it }
         Row(Modifier.fillMaxWidth(0.7f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
             OutlinedTextField(
                 value = dir, onValueChange = { dir = it },
@@ -213,24 +208,10 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             FolderButton { pickRoms(dir) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
-            TvOutlinedButton(onClick = { dir = Settings.defaultRomsDir() }) { Text(stringResource(R.string.default_folder)) }
-        }
-        Row(Modifier.fillMaxWidth(0.7f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
-            OutlinedTextField(
-                value = biosDir, onValueChange = { biosDir = it },
-                label = { androidx.compose.material3.Text(stringResource(R.string.bios_folder)) },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-            FolderButton { pickBios(biosDir) }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
-            Settings.biosPresets().forEach { (label, path) ->
-                FilterChip(selected = biosDir == path, onClick = { biosDir = path }) { Text(stringResource(label)) }
-            }
+            TvOutlinedButton(onClick = { dir = Settings.defaultRootDir() }) { Text(stringResource(R.string.default_folder)) }
         }
         Text(
-            stringResource(R.string.bios_folder_hint),
+            stringResource(R.string.local_folder_hint),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -262,34 +243,9 @@ fun TvSettingsScreen(app: RomCloudApp, onSaved: () -> Unit) {
             }
         }
 
-        Section("RetroArch")
-        Text(stringResource(R.string.retroarch_access), style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(SmallGap)) {
-            RetroArchSafMode.entries.forEach { mode ->
-                FilterChip(selected = safMode == mode, onClick = {
-                    safMode = mode
-                    app.settings.retroArchSafMode = mode
-                }) { Text(stringResource(mode.label)) }
-            }
-        }
-        Text(
-            stringResource(R.string.retroarch_access_hint_tv),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        FilterChip(selected = quitOnExit, onClick = {
-            quitOnExit = !quitOnExit
-            app.settings.retroArchQuitOnExit = quitOnExit
-        }) { Text(stringResource(if (quitOnExit) R.string.quit_on_exit_on else R.string.quit_on_exit)) }
-        Text(
-            stringResource(R.string.quit_on_exit_hint_tv),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
         TvButton(
             onClick = {
-                app.settings.save(url, key, dir, biosDir)
+                app.settings.save(url, key, dir)
                 app.repository.clearMemory()
                 onSaved()
             },

@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "ti83 - RetroArch 64 - numero",
-      "uniqueId": "ti83.ra64.numero",
+      "name": "ti83 - numero",
+      "uniqueId": "ti83.libretro.numero",
       "description": "Supported extensions: 8xp, 8xk, 8xg.",
       "acceptedFilenameRegex": "^(.*)\\.(?:8xp|8xk|8xg)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO numero\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO numero",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]
