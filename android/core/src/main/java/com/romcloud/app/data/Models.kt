@@ -245,9 +245,9 @@ data class FolderListing(
 /**
  * Fin du téléchargement d'un jeu PC (fichier « .romcloud-complete » de son dossier) : empreinte
  * [stamp] et [version] du jeu téléchargé, taille, et fichiers reçus (chemin -> [taille, date sur le
- * serveur]) : à la mise à jour, seuls ceux qui ont changé sont téléchargés de nouveau, ceux retirés de
- * la nouvelle version supprimés (les fichiers créés par le jeu, sauvegardes comprises, restent).
- * Anciennes versions de l'application : la taille seule, en texte.
+ * serveur], rangés à part, voir [FolderMarkers]) : à la mise à jour, seuls ceux qui ont changé sont
+ * téléchargés de nouveau, ceux retirés de la nouvelle version supprimés (les fichiers créés par le
+ * jeu, sauvegardes comprises, restent). Anciennes versions de l'application : la taille seule, en texte.
  */
 @Serializable
 data class FolderMarker(

@@ -194,6 +194,7 @@ fn spawn_detached(exe: &str, args: &[String], game: Option<Value>) -> Result<()>
 pub fn uninstall(system: &Value, game: &Value) -> Result<bool> {
     let Some(exe) = library::folder_uninstaller(system, game).filter(|p| p.is_file()) else { return Ok(false) };
     let _ = std::fs::remove_file(library::folder_marker(system, game));
+    let _ = std::fs::remove_file(library::folder_files_record(system, game));
     run_in_folder(&exe)?;
     let folder = library::file_for(system, game);
     let (game_id, title) = (game["id"].clone(), s(game, "title").to_string());

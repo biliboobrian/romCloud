@@ -428,9 +428,7 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
     let target_of = |f: &FolderFile| f.path.split('/').fold(folder.clone(), |path, part| path.join(part));
     // Mise à jour : fichiers reçus avec la version déjà téléchargée (chemin -> [taille, date sur le
     // serveur]) ; ceux qui ont changé sont téléchargés de nouveau.
-    let previous = library::read_folder_marker(system, game)
-        .and_then(|m| m.get("files").and_then(Value::as_object).cloned())
-        .unwrap_or_default();
+    let previous = if library::read_folder_marker(system, game).is_some() { library::read_folder_files(system, game) } else { Map::new() };
     let complete = |f: &FolderFile| {
         std::fs::metadata(target_of(f)).map(|m| m.is_file() && m.len() == f.size).unwrap_or(false)
             && match (f.mtime, previous.get(&f.path).and_then(|e| e.get(1)).and_then(Value::as_u64)) {
@@ -579,9 +577,9 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
         "size": listed.iter().map(|f| f.size).sum::<u64>(),
         "stamp": listing.get("contentStamp").cloned().unwrap_or(Value::Null),
         "version": listing.get("version").cloned().unwrap_or(Value::Null),
-        "files": listed.iter().map(|f| (f.path.clone(), json!([f.size, f.mtime.unwrap_or(0)]))).collect::<serde_json::Map<String, Value>>(),
     });
-    std::fs::write(library::folder_marker(system, game), marker.to_string())?;
+    let received: Map<String, Value> = listed.iter().map(|f| (f.path.clone(), json!([f.size, f.mtime.unwrap_or(0)]))).collect();
+    library::write_folder_marker(system, game, &marker, &Value::Object(received))?;
     Ok(())
 }
 
