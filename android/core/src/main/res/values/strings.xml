@@ -334,6 +334,8 @@
     <string name="update_title">RomCloud update</string>
     <string name="update_changes">Changes from %1$s to %2$s</string>
     <string name="update_text">RomCloud %1$s is available (installed version: %2$s, download: %3$s). The update keeps your settings and downloaded games.</string>
+    <string name="update_companion_title">RomCloud PC update</string>
+    <string name="update_companion_text">RomCloud PC %1$s is available (installed version: %2$s, download: %3$s). It runs your PC games: update it before playing to get the latest fixes. Your containers and settings are kept.</string>
     <string name="action_update">Update</string>
     <string name="action_later">Later</string>
     <string name="action_install_from_server">Install from RomCloud</string>

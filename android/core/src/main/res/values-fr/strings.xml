@@ -327,6 +327,8 @@
     <string name="update_title">Mise à jour de RomCloud</string>
     <string name="update_changes">Modifications de la %1$s à la %2$s</string>
     <string name="update_text">RomCloud %1$s est disponible (version installée : %2$s, téléchargement : %3$s). La mise à jour conserve vos réglages et vos jeux téléchargés.</string>
+    <string name="update_companion_title">Mise à jour de RomCloud PC</string>
+    <string name="update_companion_text">RomCloud PC %1$s est disponible (version installée : %2$s, téléchargement : %3$s). C’est lui qui lance vos jeux PC : mettez-le à jour avant de jouer pour profiter des dernières corrections. Vos conteneurs et réglages sont conservés.</string>
     <string name="action_update">Mettre à jour</string>
     <string name="action_later">Plus tard</string>
     <string name="action_install_from_server">Installer depuis RomCloud</string>

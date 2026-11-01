@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import com.romcloud.app.data.AppUpdater
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import org.json.JSONObject
@@ -13,6 +14,12 @@ import org.json.JSONObject
  * [retry] : le dossier autorisé n'était pas celui de Winlator.
  */
 data class WinlatorDrivePrompt(val system: GameSystem, val game: Game, val initialUri: Uri, val retry: Boolean = false)
+
+/**
+ * Jeu PC à lancer avec RomCloud PC une fois sa version vérifiée (dernière Release) ; [update] : nouvelle
+ * version trouvée, proposée avant le lancement (null : vérification en cours).
+ */
+data class CompanionCheck(val system: GameSystem, val game: Game, val askDrive: Boolean, val update: AppUpdater.Update? = null)
 
 /**
  * Lecteur des ROMs ([Winlator.ROMS_DRIVE]) ajouté par RomCloud au premier conteneur de Winlator Cmod.
