@@ -10,7 +10,7 @@ delete process.env.ADMIN_KEY;
 const { default: express } = await import('express');
 const { api } = await import('../src/api.js');
 const { config } = await import('../src/config.js');
-const { exeCandidates, fileInFolder, PACK_MANIFEST, packManifestEntry, prereqsOf } = await import('../src/folder-games.js');
+const { exeCandidates, fileInFolder, PACK_MANIFEST, packManifestEntry, prereqsOf, sourceAppId, sourceGameDir, steamLaunchArgs } = await import('../src/folder-games.js');
 
 const write = (file, bytes) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -97,6 +97,11 @@ test('système PC : un jeu par dossier, exécutable choisi, fichiers listés et 
     // Exécutable choisi dans la fiche : gardé au scan suivant ; inconnu : refusé.
     assert.equal((await (await json(`/games/${game.id}`, { method: 'PUT', body: { exe: 'Tools/Editor.exe' } })).json()).exe, 'Tools/Editor.exe');
     assert.equal((await json(`/games/${game.id}`, { method: 'PUT', body: { exe: 'Absent.exe' } })).status, 400);
+    // Arguments de lancement : une ligne sans espaces superflus ; vide : aucun.
+    const withArgs = await (await json(`/games/${game.id}`, { method: 'PUT', body: { launchArgs: '  -novid   -steam ' } })).json();
+    assert.equal(withArgs.launchArgs, '-novid -steam');
+    assert.equal((await (await fetch(`${base}/games/${game.id}/files`)).json()).launchArgs, '-novid -steam');
+    assert.equal((await (await json(`/games/${game.id}`, { method: 'PUT', body: { launchArgs: '' } })).json()).launchArgs, null);
     // Désinstalleur « aucun » choisi : pas deviné de nouveau au scan.
     assert.equal((await (await json(`/games/${game.id}`, { method: 'PUT', body: { uninstallExe: '' } })).json()).uninstallExe, null);
     await fetch(`${base}/systems/windows/scan`, { method: 'POST' });
@@ -141,4 +146,21 @@ test('entrée du manifeste de compression : gardé en mémoire, relu quand il ch
   assert.deepEqual(packManifestEntry(dir, 'b.dat'), { size: 12345, format: 'zst' });
   fs.rmSync(manifest);
   assert.equal(packManifestEntry(dir, 'b.dat'), undefined);
+});
+
+test('jeu sur moteur Source avec émulateur Steam : « -steam » et AppID du jeu lancé', () => {
+  const pack = ['hl2.exe', 'Half-Life_2_Ep2.exe', 'rev.ini', 'steam_appid.txt', 'bin/Steam.dll', 'bin/steamclient.dll',
+    'hl2/gameinfo.txt', 'episodic/gameinfo.txt', 'ep2/gameinfo.txt'].map((p) => ({ path: p, size: 1 }));
+  assert.equal(sourceGameDir(pack, 'hl2.exe'), 'hl2');
+  assert.equal(sourceGameDir(pack, 'hl2.exe', '-novid -game ep2'), 'ep2');
+  assert.equal(steamLaunchArgs(pack, 'hl2.exe'), '-steam');
+  // Jeu Source sans émulateur Steam (acheté sur Steam) : rien ; autre jeu : rien.
+  assert.equal(steamLaunchArgs(pack.filter((f) => !/rev\.ini|bin\//.test(f.path)), 'hl2.exe'), null);
+  assert.equal(steamLaunchArgs([{ path: 'Game.exe', size: 1 }, { path: 'rev.ini', size: 1 }], 'Game.exe'), null);
+  // Exécutable au nom du jeu, dans un sous-dossier.
+  const l4d2 = ['Game/left4dead2.exe', 'Game/left4dead2/GameInfo.txt', 'Game/bin/steamclient.dll'].map((p) => ({ path: p, size: 1 }));
+  assert.equal(sourceGameDir(l4d2, 'Game/left4dead2.exe'), 'Game/left4dead2');
+  assert.equal(steamLaunchArgs(l4d2, 'Game/left4dead2.exe'), '-steam');
+  assert.equal(sourceAppId('"GameInfo"\n{\n  FileSystem\n  {\n    SteamAppId\t\t\t\t220\t\t// HL2\n'), '220');
+  assert.equal(sourceAppId('game "x"'), null);
 });

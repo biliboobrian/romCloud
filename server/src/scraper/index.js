@@ -25,7 +25,7 @@ import { scrapeLaunchBox } from './launchbox.js';
 import { expandAbbreviation } from './abbreviations.js';
 import { scrapeWikipedia, wikidataFacts } from './wikipedia.js';
 import { APPID_FILE_RE, appIdFromText, scrapeSteam } from './steam.js';
-import { folderFiles, packExtension } from '../folder-games.js';
+import { folderFiles, packExtension, sourceAppId, sourceGameDir } from '../folder-games.js';
 import { packedStream } from '../folder-pack.js';
 
 export { QuotaError } from './screenscraper.js';
@@ -64,14 +64,29 @@ function isPcSystem(system) {
  */
 async function folderSteamAppId(row) {
   const dir = gameFilePath(row);
-  const candidates = folderFiles(dir)
+  const files = folderFiles(dir);
+  const read = async (f) => {
+    const file = path.join(dir, ...f.path.split('/'));
+    return f.packed ? (await buffer(packedStream(`${file}${packExtension(f.format)}`, f.format))).toString('utf8') : fs.readFileSync(file, 'utf8');
+  };
+  // Jeu sur moteur Source : AppID du jeu que lance l'exécutable (« hl2/gameinfo.txt ») ; un pack
+  // de plusieurs jeux (Half-Life 2 et ses épisodes) n'a souvent qu'un steam_appid.txt, celui d'un autre.
+  const sourceDir = sourceGameDir(files, row.exe, row.launch_args);
+  const gameInfo = sourceDir && files.find((f) => f.path.toLowerCase() === `${sourceDir}/gameinfo.txt`.toLowerCase());
+  if (gameInfo && gameInfo.size <= 64 * 1024) {
+    try {
+      const appId = sourceAppId(await read(gameInfo));
+      if (appId) return appId;
+    } catch {
+      // Illisible : fichiers des émulateurs Steam.
+    }
+  }
+  const candidates = files
     .filter((f) => APPID_FILE_RE.test(f.path) && f.size <= 64 * 1024)
     .sort((a, b) => a.path.split('/').length - b.path.split('/').length);
   for (const f of candidates) {
     try {
-      const file = path.join(dir, ...f.path.split('/'));
-      const text = f.packed ? (await buffer(packedStream(`${file}${packExtension(f.format)}`, f.format))).toString('utf8') : fs.readFileSync(file, 'utf8');
-      const appId = appIdFromText(f.path, text);
+      const appId = appIdFromText(f.path, await read(f));
       if (appId) return appId;
     } catch {
       // Fichier illisible : le suivant.

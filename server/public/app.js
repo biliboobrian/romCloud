@@ -755,6 +755,9 @@ function fillGameDialog(game, bust = '') {
   // Jeu en dossier (PC) : exécutable qui lance le jeu, parmi ceux du dossier.
   $('#gameExeField').classList.toggle('hidden', !game.folder);
   form.elements.exe.disabled = !game.folder;
+  $('#gameArgsField').classList.toggle('hidden', !game.folder);
+  form.elements.launchArgs.disabled = !game.folder;
+  form.elements.launchArgs.value = game.launchArgs ?? '';
   $('#gameUninstallField').classList.toggle('hidden', !game.folder);
   form.elements.uninstallExe.disabled = !game.folder;
   $('#gameExtraField').classList.toggle('hidden', !game.folder);
