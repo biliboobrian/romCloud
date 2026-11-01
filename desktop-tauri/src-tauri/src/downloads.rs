@@ -175,6 +175,10 @@ pub fn dismiss_error(game_id: &Value) {
 /// Marge gardée libre sur le disque pendant l'installation d'un jeu PC.
 const SPACE_MARGIN: u64 = 64 * 1024 * 1024;
 
+/// Jeu PC : fichiers plus petits (à télécharger) reçus plusieurs à la fois, `SMALL_FILES_AT_ONCE` au plus.
+const SMALL_FILE: u64 = 1024 * 1024;
+const SMALL_FILES_AT_ONCE: usize = 8;
+
 /**
  * Fichier d'un jeu PC (`GET /api/games/{id}/files`) ; compressé par le serveur : `format` de son
  * archive (« zst », ou « xz » et « zip » pour les compressions d'avant le zstd) et sa taille
@@ -356,8 +360,8 @@ struct FolderProgress {
 }
 
 /**
- * Jeu PC (jeu en dossier) : ses fichiers un par un, les plus lourds d'abord, ceux déjà complets
- * gardés (reprise) ; jeu compressé : chaque archive reçue part dans une file de décompression (une à
+ * Jeu PC (jeu en dossier) : ses fichiers un par un, les plus lourds d'abord (les petits plusieurs à
+ * la fois), ceux déjà complets gardés (reprise) ; jeu compressé : chaque archive reçue part dans une file de décompression (une à
  * la fois) qui avance pendant les téléchargements suivants ; le jeu est jouable une fois la file
  * vide. Refusé d'avance s'il n'y a pas assez de place ; si la décompression prend du retard au point
  * de manquer de place, le téléchargement suivant l'attend.
@@ -415,42 +419,64 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(FolderFile, PathBuf)>();
     let downloads = async {
         let tx = tx;
-        for file in todo {
-            // Décompression en retard et disque presque plein : attente de la place libérée.
-            while let Some(free) = free() {
-                let waiting = pending.load(Ordering::SeqCst).saturating_sub(unpacking.load(Ordering::SeqCst));
-                if !must_wait(&file, waiting, free) {
-                    break;
+        // Un fichier : attente de la place, téléchargement, archive confiée à la décompression ;
+        // `track` : progression octet par octet (gros fichiers, reçus un à la fois).
+        let fetch_one = |file: FolderFile, track: bool| {
+            let (tx, id, pending, unpacking, queued, received, current, report, free, target_of) =
+                (&tx, &id, &pending, &unpacking, &queued, &received, &current, &report, &free, &target_of);
+            async move {
+                // Décompression en retard et disque presque plein : attente de la place libérée.
+                while let Some(free) = free() {
+                    let waiting = pending.load(Ordering::SeqCst).saturating_sub(unpacking.load(Ordering::SeqCst));
+                    if !must_wait(&file, waiting, free) {
+                        break;
+                    }
+                    if queued.load(Ordering::SeqCst) == 0 {
+                        return Err(AppError::new("errors.notEnoughSpace", json!({ "neededBytes": waiting + file.archive_size.unwrap_or(0), "freeBytes": free })));
+                    }
+                    if cancelled.load(Ordering::SeqCst) {
+                        return Err(AppError::msg("cancelled"));
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
-                if queued.load(Ordering::SeqCst) == 0 {
-                    return Err(AppError::new("errors.notEnoughSpace", json!({ "neededBytes": waiting + file.archive_size.unwrap_or(0), "freeBytes": free })));
+                let target = target_of(&file);
+                let archive = archive_path(&target, file.format);
+                // Archive déjà reçue (téléchargement interrompu pendant la décompression) : décompressée seulement.
+                let received_archive = file.packed() && std::fs::metadata(&archive).map(|m| m.len() == file.download_size()).unwrap_or(false);
+                if !received_archive {
+                    let url = format!("{server}/api/games/{id}/file?path={}{}", urlencoding::encode(&file.path), if file.packed() { "&packed=1&zst=1" } else { "" });
+                    fetch_to(&url, if file.packed() { &archive } else { &target }, file.download_size(), cancelled, |bytes| {
+                        if track {
+                            current.store(bytes, Ordering::SeqCst);
+                            report();
+                        }
+                    })
+                    .await?;
                 }
-                if cancelled.load(Ordering::SeqCst) {
-                    return Err(AppError::msg("cancelled"));
+                if track {
+                    current.store(0, Ordering::SeqCst);
                 }
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                received.fetch_add(file.download_size(), Ordering::SeqCst);
+                if file.packed() {
+                    queued.fetch_add(1, Ordering::SeqCst);
+                    tx.send((file, target)).map_err(|_| AppError::msg("cancelled"))?;
+                } else {
+                    pending.fetch_sub(file.size, Ordering::SeqCst);
+                }
+                report();
+                Ok::<(), AppError>(())
             }
-            let target = target_of(&file);
-            let archive = archive_path(&target, file.format);
-            // Archive déjà reçue (téléchargement interrompu pendant la décompression) : décompressée seulement.
-            let received_archive = file.packed() && std::fs::metadata(&archive).map(|m| m.len() == file.download_size()).unwrap_or(false);
-            if !received_archive {
-                let url = format!("{server}/api/games/{id}/file?path={}{}", urlencoding::encode(&file.path), if file.packed() { "&packed=1&zst=1" } else { "" });
-                fetch_to(&url, if file.packed() { &archive } else { &target }, file.download_size(), cancelled, |bytes| {
-                    current.store(bytes, Ordering::SeqCst);
-                    report();
-                })
-                .await?;
-            }
-            current.store(0, Ordering::SeqCst);
-            received.fetch_add(file.download_size(), Ordering::SeqCst);
-            if file.packed() {
-                queued.fetch_add(1, Ordering::SeqCst);
-                tx.send((file, target)).map_err(|_| AppError::msg("cancelled"))?;
-            } else {
-                pending.fetch_sub(file.size, Ordering::SeqCst);
-            }
-            report();
+        };
+        // Gros fichiers un à la fois (les plus lourds d'abord) ; petits fichiers (un jeu en compte
+        // parfois des dizaines de milliers) plusieurs à la fois : sinon, une requête après l'autre,
+        // l'attente du serveur l'emporte sur le transfert.
+        let (big, small): (Vec<FolderFile>, Vec<FolderFile>) = todo.into_iter().partition(|f| f.download_size() >= SMALL_FILE);
+        for file in big {
+            fetch_one(file, true).await?;
+        }
+        let mut small = futures_util::stream::iter(small).map(|file| fetch_one(file, false)).buffer_unordered(SMALL_FILES_AT_ONCE);
+        while let Some(result) = small.next().await {
+            result?;
         }
         // Tout est reçu : la décompression repasse en priorité normale.
         downloading.store(false, Ordering::SeqCst);

@@ -15,7 +15,7 @@ import { diskUsage } from './disk-usage.js';
 import { clearDownloads, downloadStats, listDownloads, trackDownload } from './download-logs.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { profileStats } from './profile-stats.js';
-import { fileInFolder, packExtension, packFormat, readPackManifest } from './folder-games.js';
+import { fileInFolder, packExtension, packFormat, packManifestEntry } from './folder-games.js';
 import { packedStream, queueFolderPack } from './folder-pack.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
@@ -509,7 +509,7 @@ api.get('/games/:id/file', (req, res, next) => {
     // telle quelle avec ?packed=1 (applications récentes, qui la décompressent ; reprise possible) ;
     // sinon décompressée à la volée (anciennes applications, sans reprise du téléchargement). Archive
     // zstd : envoyée telle quelle seulement avec ?zst=1 aussi (applications qui savent la lire).
-    const packed = readPackManifest(dir)[rel];
+    const packed = packManifestEntry(dir, rel);
     const archive = packed && `${file}${packExtension(packed.format)}`;
     if (packed && !fs.existsSync(file) && fs.existsSync(archive)) {
       file = archive;

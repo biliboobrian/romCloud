@@ -10,7 +10,7 @@ delete process.env.ADMIN_KEY;
 const { default: express } = await import('express');
 const { api } = await import('../src/api.js');
 const { config } = await import('../src/config.js');
-const { exeCandidates, fileInFolder, prereqsOf } = await import('../src/folder-games.js');
+const { exeCandidates, fileInFolder, PACK_MANIFEST, packManifestEntry, prereqsOf } = await import('../src/folder-games.js');
 
 const write = (file, bytes) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -124,4 +124,21 @@ test('système PC : un jeu par dossier, exécutable choisi, fichiers listés et 
   } finally {
     server.close();
   }
+});
+
+test('entrée du manifeste de compression : gardé en mémoire, relu quand il change', () => {
+  const dir = path.join(config.romsDir, 'windows', 'Manifeste');
+  const manifest = path.join(dir, PACK_MANIFEST);
+  fs.mkdirSync(dir, { recursive: true });
+  assert.equal(packManifestEntry(dir, 'a.dat'), undefined); // pas de manifeste
+  fs.writeFileSync(manifest, JSON.stringify({ files: { 'a.dat': { size: 3, format: 'zst' } } }));
+  assert.deepEqual(packManifestEntry(dir, 'a.dat'), { size: 3, format: 'zst' });
+  assert.equal(packManifestEntry(dir, 'b.dat'), undefined);
+  assert.equal(packManifestEntry(dir, 'constructor'), undefined);
+  // Manifeste réécrit (autre taille) : nouvelle lecture.
+  fs.writeFileSync(manifest, JSON.stringify({ files: { 'b.dat': { size: 12345, format: 'zst' } } }));
+  assert.equal(packManifestEntry(dir, 'a.dat'), undefined);
+  assert.deepEqual(packManifestEntry(dir, 'b.dat'), { size: 12345, format: 'zst' });
+  fs.rmSync(manifest);
+  assert.equal(packManifestEntry(dir, 'b.dat'), undefined);
 });
