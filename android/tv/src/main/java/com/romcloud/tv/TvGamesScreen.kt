@@ -75,6 +75,7 @@ import com.romcloud.app.ui.RowLabels
 import com.romcloud.app.ui.carouselRows
 import com.romcloud.app.ui.criteriaSections
 import com.romcloud.app.ui.formatSize
+import com.romcloud.app.ui.downloadExtras
 import com.romcloud.app.ui.downloadProgressText
 import com.romcloud.app.ui.gameSizeLabel
 import com.romcloud.app.ui.gamePlaytime
@@ -355,7 +356,7 @@ private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean, t
             )
             is LocalStatus.Downloading -> Text(
                 if (status.state.unpackTotal > 0) downloadProgressText(status.state)
-                else stringResource(R.string.tv_downloading_percent, (status.state.progress * 100).toInt()),
+                else (listOf(stringResource(R.string.tv_downloading_percent, (status.state.progress * 100).toInt())) + downloadExtras(status.state)).joinToString(" · "),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelLarge,
             )

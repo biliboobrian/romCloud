@@ -30,8 +30,10 @@ sealed interface DownloadState {
     val title: String
 
     /**
-     * Téléchargement : [bytes] reçus sur [total] ; jeu PC compressé : [unpackBytes] décompressés sur
-     * [unpackTotal] (0 : rien à décompresser), le jeu est jouable une fois tout décompressé.
+     * Téléchargement : [bytes] reçus sur [total], à [speed] octets par seconde ; jeu PC compressé :
+     * [unpackBytes] décompressés sur [unpackTotal] (0 : rien à décompresser), le jeu est jouable une
+     * fois tout décompressé ; jeu PC ou en plusieurs parties : [filesLeft] fichiers restant à recevoir
+     * sur [files] (0 : un seul fichier).
      */
     data class Running(
         override val title: String,
@@ -39,6 +41,9 @@ sealed interface DownloadState {
         val total: Long,
         val unpackBytes: Long = 0,
         val unpackTotal: Long = 0,
+        val speed: Long = 0,
+        val files: Int = 0,
+        val filesLeft: Int = 0,
     ) : DownloadState {
         val progress: Float get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else 0f
         val unpackProgress: Float get() = if (unpackTotal > 0) (unpackBytes.toFloat() / unpackTotal).coerceIn(0f, 1f) else 0f
@@ -75,6 +80,15 @@ class Downloader(
 
     private val jobs = ConcurrentHashMap<Long, Job>()
 
+    /** Vitesse de chaque téléchargement en cours. */
+    private val speeds = ConcurrentHashMap<Long, SpeedMeter>()
+
+    /** Publie la progression du téléchargement de [state] (jeu [gameId]), avec sa vitesse. */
+    private fun publish(gameId: Long, state: DownloadState.Running) {
+        val speed = speeds.getOrPut(gameId) { SpeedMeter() }.update(state.bytes, android.os.SystemClock.elapsedRealtime())
+        _states.update { it + (gameId to state.copy(speed = speed)) }
+    }
+
     val activeCount: Int get() = _states.value.values.count { it is DownloadState.Running }
 
     /**
@@ -85,13 +99,17 @@ class Downloader(
         if (jobs[game.id]?.isActive == true) return
         if (!includeRom && bios.isEmpty()) return
         val total = bios.sumOf { it.size } + if (includeRom) game.fullSize else 0
-        _states.update { it + (game.id to DownloadState.Running(game.title, 0, total)) }
+        // Jeu en plusieurs parties (disques, mises à jour, DLC) : fichiers restant à recevoir.
+        val parts = if (includeRom && !game.folder && game.files.size > 1) game.files.size else 0
+        speeds[game.id] = SpeedMeter()
+        _states.update { it + (game.id to DownloadState.Running(game.title, 0, total, files = parts, filesLeft = parts)) }
         ContextCompat.startForegroundService(context, Intent(context, DownloadService::class.java))
         jobs[game.id] = scope.launch(Dispatchers.IO) {
             try {
                 var done = 0L
+                var partsLeft = parts
                 val progress = { bytes: Long ->
-                    _states.update { it + (game.id to DownloadState.Running(game.title, done + bytes, total)) }
+                    publish(game.id, DownloadState.Running(game.title, done + bytes, total, files = parts, filesLeft = partsLeft))
                 }
                 for (file in bios) {
                     // BIOS introuvable sur le serveur (404…) : ignoré, le jeu est téléchargé quand même
@@ -108,13 +126,14 @@ class Downloader(
                 // Clés et firmware importés par l'émulateur externe (Eden) : là où son sélecteur les trouve.
                 if (bios.isNotEmpty()) runCatching { library.exportForEmulators(system) }
                 if (includeRom && game.folder) {
-                    fetchFolder(system, game, done) { bytes, folderTotal, unpackBytes, unpackTotal ->
-                        _states.update { it + (game.id to DownloadState.Running(game.title, bytes, done + folderTotal, unpackBytes, unpackTotal)) }
+                    fetchFolder(system, game, done) { bytes, folderTotal, unpackBytes, unpackTotal, files, filesLeft ->
+                        publish(game.id, DownloadState.Running(game.title, bytes, done + folderTotal, unpackBytes, unpackTotal, files = files, filesLeft = filesLeft))
                     }
                 } else if (includeRom) {
                     for (file in game.files) {
                         fetch(api.fileUrl(file.id), File(library.systemDir(system), file.fileName), file.size, progress)
                         done += file.size
+                        if (partsLeft > 0) partsLeft--
                     }
                 }
                 _states.update { it - game.id }
@@ -128,6 +147,7 @@ class Downloader(
                 _events.emit(DownloadEvent.Failed(game, message))
             } finally {
                 jobs.remove(game.id)
+                speeds.remove(game.id)
             }
         }
     }
@@ -147,7 +167,8 @@ class Downloader(
      * fois) qui avance pendant les téléchargements suivants ; le jeu est jouable une fois la file vide.
      * Refusé d'avance s'il n'y a pas assez de place ; si la décompression prend du retard au point de
      * manquer de place, le téléchargement suivant l'attend. [progress] reçoit les octets reçus (avec les
-     * [before] déjà comptés), le total à télécharger, puis les octets décompressés et le total à décompresser.
+     * [before] déjà comptés), le total à télécharger, les octets décompressés et le total à décompresser,
+     * puis le nombre de fichiers à recevoir (absents de l'appareil) et ceux qui restent.
      * Mise à jour (jeu déjà téléchargé, nouvelle version sur le serveur) : seuls les fichiers changés
      * (taille ou date sur le serveur) sont téléchargés de nouveau, ceux retirés de la nouvelle version
      * supprimés ; à la fin, le marqueur note l'empreinte, la version et les fichiers reçus.
@@ -156,7 +177,7 @@ class Downloader(
         system: GameSystem,
         game: Game,
         before: Long,
-        progress: (bytes: Long, total: Long, unpackBytes: Long, unpackTotal: Long) -> Unit,
+        progress: (bytes: Long, total: Long, unpackBytes: Long, unpackTotal: Long, files: Int, filesLeft: Int) -> Unit,
     ) = coroutineScope {
         val listing = api.folderListing(game.id)
         val files = listing.files
@@ -179,7 +200,8 @@ class Downloader(
         val unpackTotal = todo.filter { it.packed }.sumOf { it.size }
         val unpacked = AtomicLong(0)
         val unpacking = AtomicLong(0)
-        val reportNow = { progress(received.get() + current.get(), total, unpacked.get() + unpacking.get(), unpackTotal) }
+        val filesLeft = AtomicInteger(todo.size)
+        val reportNow = { progress(received.get() + current.get(), total, unpacked.get() + unpacking.get(), unpackTotal, todo.size, filesLeft.get()) }
         // Progression de la décompression : quelques fois par seconde (elle avance par petits morceaux).
         val lastReport = AtomicLong(0)
         val report = {
@@ -230,6 +252,7 @@ class Downloader(
             }
             current.set(0)
             received.addAndGet(file.downloadSize)
+            filesLeft.decrementAndGet()
             if (file.packed) {
                 queued.incrementAndGet()
                 unpackQueue.send(file to target)

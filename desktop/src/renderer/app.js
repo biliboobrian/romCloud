@@ -181,13 +181,29 @@
       ${unpack ? `<div class="progress unpack"><div style="width:${pct(st.unpack)}"></div></div>` : ''}</div>`;
   }
 
-  /** Progression écrite sous les barres : octets reçus, puis décompressés (jeu PC compressé). */
+  /**
+   * Vitesse du téléchargement et fichiers qui restent à recevoir (jeu PC, jeu en plusieurs
+   * parties) ; rien une fois tout reçu (décompression des derniers fichiers).
+   */
+  function downloadExtras(st) {
+    const d = st.d;
+    if (st.unpacking || d.bytes >= d.total) return [];
+    const extras = [];
+    if (d.speed > 0) extras.push(t('download.speed', { speed: formatSize(d.speed) }));
+    if (d.files > 1 && d.filesLeft > 0) extras.push(t('download.filesLeft', { n: d.filesLeft.toLocaleString(window.I18N.language) }));
+    return extras;
+  }
+
+  /**
+   * Progression écrite sous les barres : octets reçus, vitesse, fichiers restants, puis octets
+   * décompressés (jeu PC compressé).
+   */
   function downloadProgressText(st) {
     const d = st.d;
     const unpack = st.unpack != null ? t('download.unpack', { bytes: formatSize(d.unpackBytes), total: formatSize(d.unpackTotal) }) : '';
     if (st.unpacking) return `${t('download.unpackingPlayable')} ${unpack}`;
     const received = t('download.progress', { bytes: formatSize(d.bytes), total: formatSize(d.total) });
-    return unpack ? `${received} · ${unpack}` : received;
+    return [received, ...downloadExtras(st), unpack].filter(Boolean).join(' · ');
   }
 
   function statusHtml(st) {
@@ -1298,7 +1314,7 @@
     const st = statusOf(game, S.games.downloaded);
     const resume = canResume(game);
     const statusLine = st.kind === 'downloaded' ? `<span class="good">${esc(t('hero.ready'))}</span>`
-      : st.kind === 'running' ? `<span style="color:var(--accent)">${esc(st.unpacking ? t('hero.unpacking', { p: Math.round(st.unpack * 100) }) : t('hero.downloading', { p: Math.round(st.progress * 100) }))}</span>`
+      : st.kind === 'running' ? `<span style="color:var(--accent)">${esc(st.unpacking ? t('hero.unpacking', { p: Math.round(st.unpack * 100) }) : [t('hero.downloading', { p: Math.round(st.progress * 100) }), ...downloadExtras(st)].join(' · '))}</span>`
       : st.kind === 'failed' ? `<span class="bad">${esc(t('status.failed', { error: st.error }))}</span>`
       : `<span class="muted">${esc(t('hero.toDownload'))}</span>`;
     hero.innerHTML = `

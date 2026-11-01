@@ -14,6 +14,39 @@ use std::time::{Duration, Instant};
 struct Download {
     cancelled: Arc<AtomicBool>,
     state: Value,
+    speed: Speed,
+}
+
+/**
+ * Vitesse d'un téléchargement (octets par seconde) : mesurée sur des fenêtres d'au moins une
+ * seconde, lissée (une requête lente ou un fichier tout juste reçu ne la font pas bondir).
+ */
+#[derive(Default)]
+struct Speed {
+    since: Option<(Instant, u64)>,
+    bytes_per_second: f64,
+}
+
+/// Fenêtre de mesure de la vitesse.
+const SPEED_WINDOW: Duration = Duration::from_secs(1);
+
+impl Speed {
+    /// Octets reçus depuis le début, `bytes`, à l'instant `now` ; renvoie la vitesse lissée.
+    fn update(&mut self, bytes: u64, now: Instant) -> u64 {
+        match self.since {
+            Some((at, from)) if bytes >= from => {
+                let elapsed = now.saturating_duration_since(at);
+                if elapsed >= SPEED_WINDOW {
+                    let measured = (bytes - from) as f64 / elapsed.as_secs_f64();
+                    self.bytes_per_second = if self.bytes_per_second == 0.0 { measured } else { 0.5 * measured + 0.5 * self.bytes_per_second };
+                    self.since = Some((now, bytes));
+                }
+            }
+            // Premier relevé, ou compteur revenu en arrière : nouvelle fenêtre.
+            _ => self.since = Some((now, bytes)),
+        }
+        self.bytes_per_second.round() as u64
+    }
 }
 
 static ACTIVE: LazyLock<Mutex<HashMap<String, Download>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -31,9 +64,13 @@ pub fn states() -> Value {
     Value::Object(active.iter().map(|(id, d)| (id.clone(), d.state.clone())).collect::<Map<_, _>>())
 }
 
-fn notify(game_id: &Value, state: Option<Value>, event: Option<Value>) {
-    if let Some(state) = &state {
+/// Publie l'état du téléchargement ; en cours : avec sa vitesse (`speed`, octets par seconde).
+fn notify(game_id: &Value, mut state: Option<Value>, event: Option<Value>) {
+    if let Some(state) = &mut state {
         if let Some(d) = ACTIVE.lock().unwrap().get_mut(&key(game_id)) {
+            if state["status"] == "running" {
+                state["speed"] = json!(d.speed.update(n(state, "bytes"), Instant::now()));
+            }
             d.state = state.clone();
         }
     }
@@ -54,9 +91,18 @@ pub fn start(system: Value, game: Value, options: Value) {
     }
     let title = s(&game, "title").to_string();
     let total = bios.iter().map(|b| n(b, "size")).sum::<u64>() + if include_rom { library::total_size(&game) } else { 0 };
+    // Jeu en plusieurs parties (disques, mises à jour, DLC) : fichiers restant à recevoir (`filesLeft`).
+    let parts = if include_rom && !library::is_folder(&game) { library::game_files(&game).len() } else { 0 };
     let running = {
         let title = title.clone();
-        move |bytes: u64| json!({ "status": "running", "bytes": bytes, "total": total, "title": title })
+        move |bytes: u64, files_left: usize| {
+            let mut state = json!({ "status": "running", "bytes": bytes, "total": total, "title": title });
+            if parts > 1 {
+                state["files"] = json!(parts);
+                state["filesLeft"] = json!(files_left);
+            }
+            state
+        }
     };
     let cancelled = Arc::new(AtomicBool::new(false));
     {
@@ -64,9 +110,9 @@ pub fn start(system: Value, game: Value, options: Value) {
         if active.get(&key(&game_id)).map(|d| d.state["status"] == "running").unwrap_or(false) {
             return;
         }
-        active.insert(key(&game_id), Download { cancelled: cancelled.clone(), state: running(0) });
+        active.insert(key(&game_id), Download { cancelled: cancelled.clone(), state: running(0, parts), speed: Speed::default() });
     }
-    notify(&game_id, Some(running(0)), None);
+    notify(&game_id, Some(running(0, parts)), None);
     tauri::async_runtime::spawn(async move {
         let result: Result<()> = async {
             // Hors ligne : rien n'est demandé au serveur.
@@ -76,7 +122,7 @@ pub fn start(system: Value, game: Value, options: Value) {
             for b in &bios {
                 let id = b.get("id").map(key).unwrap_or_default();
                 let fetched = fetch_to(&format!("{server}/api/bios/{id}/file"), &library::bios_file(b), n(b, "size"), &cancelled, |bytes| {
-                    notify(&game_id, Some(running(done + bytes)), None)
+                    notify(&game_id, Some(running(done + bytes, parts)), None)
                 })
                 .await;
                 // BIOS introuvable sur le serveur (404…) : signalé, mais le jeu est téléchargé quand même
@@ -98,6 +144,8 @@ pub fn start(system: Value, game: Value, options: Value) {
                         "total": before + p.total,
                         "unpackBytes": p.unpack_bytes,
                         "unpackTotal": p.unpack_total,
+                        "files": p.files,
+                        "filesLeft": p.files_left,
                         "title": title,
                     });
                     notify(&game_id, Some(state), None)
@@ -109,10 +157,10 @@ pub fn start(system: Value, game: Value, options: Value) {
             } else if include_rom {
                 // Le jeu puis ses parties (disques, mises à jour, DLC), rangés à côté de lui.
                 let dir = library::system_dir(&system);
-                for file in library::game_files(&game) {
+                for (index, file) in library::game_files(&game).into_iter().enumerate() {
                     let id = file.get("id").map(key).unwrap_or_default();
                     fetch_to(&format!("{server}/api/games/{id}/file"), &dir.join(s(&file, "fileName")), n(&file, "size"), &cancelled, |bytes| {
-                        notify(&game_id, Some(running(done + bytes)), None)
+                        notify(&game_id, Some(running(done + bytes, parts - index)), None)
                     })
                     .await?;
                     done += n(&file, "size");
@@ -350,13 +398,18 @@ fn unpack_file(archive: &Path, format: &str, target: &Path, size: u64, cancelled
     result
 }
 
-/// Progression d'un jeu PC : octets reçus, total à télécharger, octets décompressés, total à décompresser.
+/**
+ * Progression d'un jeu PC : octets reçus, total à télécharger, octets décompressés, total à
+ * décompresser ; fichiers à recevoir (absents du PC) et ceux qui restent.
+ */
 #[derive(Clone, Copy, Default)]
 struct FolderProgress {
     bytes: u64,
     total: u64,
     unpack_bytes: u64,
     unpack_total: u64,
+    files: usize,
+    files_left: usize,
 }
 
 /**
@@ -404,12 +457,16 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
     // Octets encore à écrire sur le disque (fichiers en clair) ; archives en attente ou en décompression.
     let pending = Arc::new(AtomicU64::new(todo.iter().map(|f| f.size).sum()));
     let queued = Arc::new(AtomicU64::new(0));
+    let files_count = todo.len();
+    let files_left = AtomicU64::new(files_count as u64);
     let report = || {
         progress(FolderProgress {
             bytes: received.load(Ordering::SeqCst) + current.load(Ordering::SeqCst),
             total,
             unpack_bytes: unpacked.load(Ordering::SeqCst) + unpacking.load(Ordering::SeqCst),
             unpack_total,
+            files: files_count,
+            files_left: files_left.load(Ordering::SeqCst) as usize,
         })
     };
     report();
@@ -422,8 +479,8 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
         // Un fichier : attente de la place, téléchargement, archive confiée à la décompression ;
         // `track` : progression octet par octet (gros fichiers, reçus un à la fois).
         let fetch_one = |file: FolderFile, track: bool| {
-            let (tx, id, pending, unpacking, queued, received, current, report, free, target_of) =
-                (&tx, &id, &pending, &unpacking, &queued, &received, &current, &report, &free, &target_of);
+            let (tx, id, pending, unpacking, queued, received, current, files_left, report, free, target_of) =
+                (&tx, &id, &pending, &unpacking, &queued, &received, &current, &files_left, &report, &free, &target_of);
             async move {
                 // Décompression en retard et disque presque plein : attente de la place libérée.
                 while let Some(free) = free() {
@@ -457,6 +514,7 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
                     current.store(0, Ordering::SeqCst);
                 }
                 received.fetch_add(file.download_size(), Ordering::SeqCst);
+                files_left.fetch_sub(1, Ordering::SeqCst);
                 if file.packed() {
                     queued.fetch_add(1, Ordering::SeqCst);
                     tx.send((file, target)).map_err(|_| AppError::msg("cancelled"))?;
@@ -533,6 +591,20 @@ mod tests {
 
     fn file(path: &str, size: u64, archive_size: Option<u64>) -> FolderFile {
         FolderFile { path: path.into(), size, archive_size, format: "xz", mtime: None }
+    }
+
+    #[test]
+    fn vitesse_mesuree_par_seconde_et_lissee() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let mut speed = Speed::default();
+        assert_eq!(speed.update(0, at(0)), 0);
+        assert_eq!(speed.update(500_000, at(500)), 0); // fenêtre pas encore écoulée
+        assert_eq!(speed.update(1_000_000, at(1000)), 1_000_000);
+        assert_eq!(speed.update(4_000_000, at(2000)), 2_000_000); // 3 Mo/s lissés avec 1 Mo/s
+        assert_eq!(speed.update(4_000_000, at(3000)), 1_000_000); // plus rien reçu : ralentit
+        assert_eq!(speed.update(0, at(3500)), 1_000_000); // compteur revenu en arrière : nouvelle fenêtre
+        assert_eq!(speed.update(2_000_000, at(4500)), 1_500_000);
     }
 
     #[test]
