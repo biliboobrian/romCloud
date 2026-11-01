@@ -65,6 +65,7 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
             let uninstalling = launcher::uninstall(&arg(a, 0), &arg(a, 1))?;
             // Jeu plus sur le PC : son raccourci sur le bureau est retiré.
             shortcuts::remove(arg(a, 1)["id"].as_i64().unwrap_or(0));
+            downloads::forget_finished(&arg(a, 1)["id"]);
             if !uninstalling {
                 library::remove(&arg(a, 0), &arg(a, 1));
             }

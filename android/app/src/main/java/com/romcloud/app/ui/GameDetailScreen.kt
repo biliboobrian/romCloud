@@ -192,8 +192,10 @@ fun GameDetailScreen(
         // Manette ou télécommande : focus sur l'action principale (« Reprendre », sinon « Jouer »,
         // sinon « Télécharger »), aussi quand elle change (téléchargement terminé).
         val primaryFocus = remember { FocusRequester() }
+        // Tout est reçu, jeu pas encore relu parmi ceux présents : « Veuillez patienter ».
+        val finishing = localStatus(downloads[game.id], state.downloaded) == LocalStatus.Finishing
         val primaryAction = when {
-            downloads[game.id] is DownloadState.Running || lobbyState.isHost -> null
+            finishing || downloads[game.id] is DownloadState.Running || lobbyState.isHost -> null
             !state.downloaded -> "download"
             state.canResume -> "resume"
             state.issues.isNotEmpty() -> "configure"
@@ -238,7 +240,8 @@ fun GameDetailScreen(
             }
 
             // ---- Action principale : télécharger / progression / jouer ----
-            when (val d = downloads[game.id]) {
+            if (finishing) FinishingNotice(Modifier.fillMaxWidth())
+            else when (val d = downloads[game.id]) {
                 is DownloadState.Running -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     DownloadBars(d, Modifier.fillMaxWidth())
                     Row(verticalAlignment = Alignment.CenterVertically) {

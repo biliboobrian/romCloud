@@ -67,6 +67,7 @@ import com.romcloud.app.ui.GameCriteria
 import com.romcloud.app.ui.GameFilter
 import com.romcloud.app.ui.GamesViewModel
 import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.localStatus
 import com.romcloud.app.ui.TogetherBadge
 import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.PlaytimeLabel
@@ -112,11 +113,7 @@ fun TvGamesScreen(
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.refreshLocal() }
     }
 
-    fun statusOf(game: Game): LocalStatus = when (val d = downloads[game.id]) {
-        is DownloadState.Running -> LocalStatus.Downloading(d)
-        is DownloadState.Failed -> LocalStatus.Error(d.message)
-        null -> if (game.id in state.downloaded) LocalStatus.Downloaded else LocalStatus.Remote
-    }
+    fun statusOf(game: Game): LocalStatus = localStatus(downloads[game.id], game.id in state.downloaded)
 
     // Multijoueurs : jeux à assez de joueurs pour le lobby ; hôte : fiche du jeu (« Définir comme jeu du lobby »).
     val lobbyState by viewModel.lobbies.collectAsStateWithLifecycle()
@@ -130,6 +127,7 @@ fun TvGamesScreen(
                 if (viewModel.needsSetup(game)) onOpenGame(game.id)
                 else viewModel.play(activity, game)?.let(onMessage)
             is LocalStatus.Downloading -> askCancel = game
+            LocalStatus.Finishing -> {} // jouable dans un instant
             else -> askDownload = game
         }
     }
@@ -357,6 +355,11 @@ private fun GameHeroText(game: Game, status: LocalStatus?, resumable: Boolean, t
             is LocalStatus.Downloading -> Text(
                 if (status.state.unpackTotal > 0) downloadProgressText(status.state)
                 else (listOf(stringResource(R.string.tv_downloading_percent, (status.state.progress * 100).toInt())) + downloadExtras(status.state)).joinToString(" · "),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelLarge,
+            )
+            LocalStatus.Finishing -> Text(
+                stringResource(R.string.download_finishing),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelLarge,
             )

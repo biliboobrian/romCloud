@@ -50,7 +50,16 @@ sealed interface DownloadState {
 
         /** Tout est reçu, la décompression continue. */
         val unpacking: Boolean get() = unpackTotal > 0 && bytes >= total && unpackBytes < unpackTotal
+
+        /** Tout est reçu et décompressé : le jeu est rangé, il sera jouable dans un instant. */
+        val finishing: Boolean get() = total > 0 && bytes >= total && unpackBytes >= unpackTotal
     }
+
+    /**
+     * Téléchargement terminé : gardé un instant ([Downloader.FINISHING_SHOWN_MS]), le temps que les
+     * écrans relisent les jeux présents (sinon « Télécharger » réapparaît un instant).
+     */
+    data class Finishing(override val title: String) : DownloadState
 
     data class Failed(override val title: String, val message: String) : DownloadState
 }
@@ -136,8 +145,12 @@ class Downloader(
                         if (partsLeft > 0) partsLeft--
                     }
                 }
-                _states.update { it - game.id }
+                _states.update { it + (game.id to DownloadState.Finishing(game.title)) }
                 _events.emit(DownloadEvent.Completed(system, game, includeRom))
+                scope.launch {
+                    delay(FINISHING_SHOWN_MS)
+                    forgetFinished(game.id)
+                }
             } catch (e: CancellationException) {
                 _states.update { it - game.id }
                 throw e
@@ -155,6 +168,11 @@ class Downloader(
     fun cancel(gameId: Long) {
         jobs[gameId]?.cancel()
         _states.update { it - gameId }
+    }
+
+    /** Fin du « Veuillez patienter » d'un jeu téléchargé (délai écoulé, jeu supprimé de l'appareil). */
+    fun forgetFinished(gameId: Long) {
+        _states.update { if (it[gameId] is DownloadState.Finishing) it - gameId else it }
     }
 
     fun dismissError(gameId: Long) {
@@ -284,4 +302,8 @@ class Downloader(
             if (library.hasStoragePermission()) I18n.get(R.string.err_cannot_create, dir.absolutePath)
             else I18n.get(R.string.err_storage_permission)
         }
+
+    private companion object {
+        const val FINISHING_SHOWN_MS = 15_000L
+    }
 }

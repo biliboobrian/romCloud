@@ -118,6 +118,7 @@
     <string name="unpacking_progress">Unpacking %1$s / %2$s</string>
     <string name="unpacking_playable">Unpacking the last files… the game will be playable when it is done</string>
     <string name="download_speed">%1$s/s</string>
+    <string name="download_finishing">Please wait…</string>
     <plurals name="download_files_left">
         <item quantity="one">%1$s file left</item>
         <item quantity="other">%1$s files left</item>

@@ -68,6 +68,7 @@ import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.ui.LocalStatus
+import com.romcloud.app.ui.localStatus
 import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.SystemBadge
 import com.romcloud.app.ui.SystemsViewModel
@@ -346,11 +347,7 @@ private fun TvGamesRow(
                 TvGameCard(
                     game = game,
                     coverUrl = mediaUrl(game, "boxart", MediaSize.THUMB),
-                    status = when (val d = downloads[game.id]) {
-                        is DownloadState.Running -> LocalStatus.Downloading(d)
-                        is DownloadState.Failed -> LocalStatus.Error(d.message)
-                        null -> if (downloaded(game)) LocalStatus.Downloaded else LocalStatus.Remote
-                    },
+                    status = localStatus(downloads[game.id], downloaded(game)),
                     onClick = { onOpenGame(game.systemId, game.id) },
                     onLongClick = { onOpenGame(game.systemId, game.id) },
                     onFocused = { onFocused(game) },
@@ -384,11 +381,7 @@ private fun TvSearchResults(
         runCatching { restoreFocus.requestFocus() }
     }
 
-    fun statusOf(game: Game): LocalStatus = when (val d = downloads[game.id]) {
-        is DownloadState.Running -> LocalStatus.Downloading(d)
-        is DownloadState.Failed -> LocalStatus.Error(d.message)
-        null -> if (game.id in search.downloaded) LocalStatus.Downloaded else LocalStatus.Remote
-    }
+    fun statusOf(game: Game): LocalStatus = localStatus(downloads[game.id], game.id in search.downloaded)
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (search.offline) TvBanner(stringResource(R.string.search_offline))
