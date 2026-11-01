@@ -182,7 +182,7 @@ class Downloader(
         val listing = api.folderListing(game.id)
         val files = listing.files
         // Fichiers reçus avec la version déjà téléchargée (chemin -> [taille, date sur le serveur]).
-        val previous = library.readFolderMarker(system, game)?.files.orEmpty()
+        val previous = if (library.readFolderMarker(system, game) != null) library.readFolderFiles(system, game) else emptyMap()
         val complete = { f: FolderFile ->
             library.folderFile(system, game, f.path).let { it.isFile && it.length() == f.size } &&
                 (f.mtime == null || previous[f.path]?.getOrNull(1)?.let { it == f.mtime } ?: true)

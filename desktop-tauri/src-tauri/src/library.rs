@@ -44,22 +44,84 @@ pub fn is_folder(game: &Value) -> bool {
 
 /// Jeu en dossier : fichier écrit à la fin du téléchargement, absent tant qu'il manque des fichiers.
 pub fn folder_marker(system: &Value, game: &Value) -> PathBuf {
-    file_for(system, game).join(".romcloud-complete")
+    file_for(system, game).join(MARKER)
+}
+
+const MARKER: &str = ".romcloud-complete";
+const FILES_RECORD: &str = ".romcloud-files.json";
+
+/**
+ * Jeu en dossier : fichiers reçus avec la version téléchargée ({ chemin: [taille, date sur le
+ * serveur] }), lus seulement à la mise à jour du jeu ; à part du marqueur, relu sans cesse (un jeu
+ * compte parfois des dizaines de milliers de fichiers).
+ */
+pub fn folder_files_record(system: &Value, game: &Value) -> PathBuf {
+    file_for(system, game).join(FILES_RECORD)
+}
+
+/// Marqueur plus gros que ceci : écrit par la version 1.89 (liste des fichiers comprise), allégé.
+const MARKER_WITH_FILES: u64 = 64 * 1024;
+
+/**
+ * Fin du téléchargement d'un jeu en dossier : { size, stamp, version } (empreinte et version du jeu
+ * téléchargé ; fichiers reçus : voir `folder_files_record`). Anciennes versions de l'application :
+ * la taille seule, en texte ; version 1.89 : liste des fichiers comprise, rangée à part à la première
+ * lecture. None : téléchargement pas terminé.
+ */
+pub fn read_folder_marker(system: &Value, game: &Value) -> Option<Value> {
+    marker_in(&file_for(system, game))
+}
+
+/// Marqueur du jeu en dossier [dir] (voir `read_folder_marker`).
+fn marker_in(dir: &Path) -> Option<Value> {
+    let text = std::fs::read_to_string(dir.join(MARKER)).ok()?;
+    let text = text.trim();
+    if let Ok(size) = text.parse::<u64>() {
+        return Some(json!({ "size": size }));
+    }
+    let mut value: Value = serde_json::from_str(text).ok()?;
+    if text.len() as u64 > MARKER_WITH_FILES {
+        if let Some(files) = value.as_object_mut().and_then(|m| m.remove("files")) {
+            let _ = write_marker_in(dir, &value, &files);
+        }
+    }
+    value.as_object_mut().map(|m| m.remove("files"));
+    Some(value)
+}
+
+/// Fichiers reçus du jeu en dossier (voir `folder_files_record`) ; vide s'ils ne sont pas notés.
+pub fn read_folder_files(system: &Value, game: &Value) -> Map<String, Value> {
+    files_in(&file_for(system, game))
+}
+
+fn files_in(dir: &Path) -> Map<String, Value> {
+    let from_record = std::fs::read(dir.join(FILES_RECORD)).ok().and_then(|b| serde_json::from_slice::<Map<String, Value>>(&b).ok());
+    // Marqueur de la version 1.89, pas encore allégé : liste des fichiers comprise.
+    from_record
+        .or_else(|| {
+            let text = std::fs::read_to_string(dir.join(MARKER)).ok()?;
+            serde_json::from_str::<Value>(text.trim()).ok()?.get("files")?.as_object().cloned()
+        })
+        .unwrap_or_default()
 }
 
 /**
- * Fin du téléchargement d'un jeu en dossier : { size, stamp, version, files: { chemin: [taille, date
- * sur le serveur] } } (empreinte et version du jeu téléchargé, fichiers reçus : à la mise à jour, seuls
- * ceux qui ont changé sont téléchargés de nouveau, ceux retirés supprimés). Anciennes versions de
- * l'application : la taille seule, en texte. None : téléchargement pas terminé.
+ * Note la fin du téléchargement d'un jeu en dossier : ses fichiers reçus [files], puis le marqueur
+ * [marker] ({ size, stamp, version }), en dernier (sa présence : jeu complet).
  */
-pub fn read_folder_marker(system: &Value, game: &Value) -> Option<Value> {
-    let text = std::fs::read_to_string(folder_marker(system, game)).ok()?;
-    let text = text.trim();
-    match text.parse::<u64>() {
-        Ok(size) => Some(serde_json::json!({ "size": size })),
-        Err(_) => serde_json::from_str(text).ok(),
-    }
+pub fn write_folder_marker(system: &Value, game: &Value, marker: &Value, files: &Value) -> std::io::Result<()> {
+    write_marker_in(&file_for(system, game), marker, files)
+}
+
+fn write_marker_in(dir: &Path, marker: &Value, files: &Value) -> std::io::Result<()> {
+    let record = dir.join(FILES_RECORD);
+    let temp = record.with_extension("json.tmp");
+    std::fs::write(&temp, files.to_string())?;
+    std::fs::rename(&temp, &record)?;
+    let path = dir.join(MARKER);
+    let temp = path.with_extension("tmp");
+    std::fs::write(&temp, marker.to_string())?;
+    std::fs::rename(&temp, &path)
 }
 
 /// Jeu en dossier téléchargé sur le PC, dans sa version actuelle ou une plus ancienne (voir `update_available`).
@@ -317,6 +379,28 @@ mod tests {
         assert!(!marker_outdated(&json!({ "size": 120 }), &game));
         assert!(marker_outdated(&json!({ "size": 100 }), &game));
         assert!(marker_outdated(&json!({ "size": 100, "stamp": "100-1" }), &json!({ "size": 120 })));
+    }
+
+    #[test]
+    fn marqueur_d_un_jeu_pc_sans_la_liste_des_fichiers() {
+        let dir = std::env::temp_dir().join(format!("romcloud-marker-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(marker_in(&dir), None);
+        // Version 1.89 : liste des fichiers dans le marqueur, rangée à part à la première lecture.
+        let files: Map<String, Value> = (0..5000).map(|i| (format!("data/file{i}.dat"), json!([i, 1_700_000_000_000u64]))).collect();
+        std::fs::write(dir.join(MARKER), json!({ "size": 9, "stamp": "9-1", "version": "1.0", "files": files }).to_string()).unwrap();
+        assert_eq!(files_in(&dir).len(), 5000);
+        assert_eq!(marker_in(&dir), Some(json!({ "size": 9, "stamp": "9-1", "version": "1.0" })));
+        assert!(std::fs::metadata(dir.join(MARKER)).unwrap().len() < 100);
+        assert_eq!(files_in(&dir), files);
+        // Écrit par cette version, et anciennes versions (taille seule).
+        write_marker_in(&dir, &json!({ "size": 3 }), &json!({ "a": [3, 0] })).unwrap();
+        assert_eq!(marker_in(&dir), Some(json!({ "size": 3 })));
+        assert_eq!(files_in(&dir).len(), 1);
+        std::fs::write(dir.join(MARKER), "42").unwrap();
+        assert_eq!(marker_in(&dir), Some(json!({ "size": 42 })));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

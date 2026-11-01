@@ -17,8 +17,6 @@ import kotlinx.serialization.json.Json
  */
 class LocalLibrary(private val context: Context, private val settings: Settings) {
 
-    private val markerJson = Json { ignoreUnknownKeys = true; explicitNulls = false }
-
     private fun root() = File(settings.config.value.romsDir)
 
     fun systemDir(system: GameSystem) = File(root(), system.folder)
@@ -30,18 +28,16 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         else game.files.all { f -> File(systemDir(system), f.fileName).let { it.isFile && it.length() == f.size } }
 
     /** Jeu en dossier : fichier écrit à la fin du téléchargement ([FolderMarker]), absent tant qu'il manque des fichiers. */
-    fun folderMarker(system: GameSystem, game: Game) = File(fileFor(system, game), ".romcloud-complete")
+    fun folderMarker(system: GameSystem, game: Game) = File(fileFor(system, game), FolderMarkers.MARKER)
 
-    /** Téléchargement terminé du jeu en dossier (empreinte, version, fichiers reçus) ; null : pas terminé. */
-    fun readFolderMarker(system: GameSystem, game: Game): FolderMarker? = runCatching {
-        val text = folderMarker(system, game).takeIf { it.isFile }?.readText()?.trim() ?: return null
-        // Anciennes versions de l'application : la taille seule.
-        text.toLongOrNull()?.let { FolderMarker(size = it) } ?: markerJson.decodeFromString(FolderMarker.serializer(), text)
-    }.getOrNull()
+    /** Téléchargement terminé du jeu en dossier (empreinte, version ; sans ses fichiers, voir [readFolderFiles]) ; null : pas terminé. */
+    fun readFolderMarker(system: GameSystem, game: Game): FolderMarker? = FolderMarkers.read(fileFor(system, game))
 
-    fun writeFolderMarker(system: GameSystem, game: Game, marker: FolderMarker) {
-        folderMarker(system, game).writeText(markerJson.encodeToString(FolderMarker.serializer(), marker))
-    }
+    /** Fichiers reçus avec la version téléchargée du jeu en dossier (chemin -> [taille, date sur le serveur]). */
+    fun readFolderFiles(system: GameSystem, game: Game): Map<String, List<Long>> = FolderMarkers.files(fileFor(system, game))
+
+    /** Note la fin du téléchargement du jeu en dossier : ses fichiers reçus ([FolderMarker.files]), puis le marqueur. */
+    fun writeFolderMarker(system: GameSystem, game: Game, marker: FolderMarker) = FolderMarkers.write(fileFor(system, game), marker)
 
     /** Jeu en dossier téléchargé sur l'appareil, dans sa version actuelle ou une plus ancienne (voir [updateAvailable]). */
     private fun folderComplete(system: GameSystem, game: Game): Boolean = readFolderMarker(system, game) != null
@@ -174,3 +170,47 @@ fun discNames(game: Game): List<String> =
 /** Taille des fichiers d'un dossier, sous-dossiers compris (0 s'il n'existe pas). */
 fun dirSize(dir: File): Long =
     dir.listFiles()?.sumOf { if (it.isDirectory) dirSize(it) else it.length() } ?: 0L
+
+/**
+ * Marqueur de fin de téléchargement d'un jeu en dossier ([MARKER] : empreinte, version, taille) et
+ * fichiers reçus, à part ([FILES] : relus seulement à la mise à jour du jeu, alors que le marqueur
+ * l'est sans cesse ; un jeu compte parfois des dizaines de milliers de fichiers). Version 1.89 :
+ * fichiers dans le marqueur, rangés à part à la première lecture.
+ */
+object FolderMarkers {
+    const val MARKER = ".romcloud-complete"
+    const val FILES = ".romcloud-files.json"
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val filesSerializer = kotlinx.serialization.serializer<Map<String, List<Long>>>()
+
+    /** Marqueur du jeu en dossier [dir], sans ses fichiers ; null : téléchargement pas terminé. */
+    fun read(dir: File): FolderMarker? = runCatching {
+        val text = File(dir, MARKER).takeIf { it.isFile }?.readText()?.trim() ?: return null
+        // Anciennes versions de l'application : la taille seule.
+        text.toLongOrNull()?.let { return FolderMarker(size = it) }
+        val marker = json.decodeFromString(FolderMarker.serializer(), text)
+        if (marker.files.isNotEmpty()) runCatching { write(dir, marker) }
+        marker.copy(files = emptyMap())
+    }.getOrNull()
+
+    /** Fichiers reçus du jeu en dossier [dir] ; vide s'ils ne sont pas notés. */
+    fun files(dir: File): Map<String, List<Long>> {
+        read(dir) // marqueur de la version 1.89 : fichiers rangés à part
+        return runCatching { json.decodeFromString(filesSerializer, File(dir, FILES).readText()) }.getOrDefault(emptyMap())
+    }
+
+    /** Écrit les fichiers reçus de [marker], puis le marqueur sans eux (en dernier : sa présence, jeu complet). */
+    fun write(dir: File, marker: FolderMarker) {
+        replace(File(dir, FILES), json.encodeToString(filesSerializer, marker.files))
+        replace(File(dir, MARKER), json.encodeToString(FolderMarker.serializer(), marker.copy(files = emptyMap())))
+    }
+
+    private fun replace(target: File, text: String) {
+        val temp = File(target.parentFile, "${target.name}.tmp")
+        temp.writeText(text)
+        if (!temp.renameTo(target)) {
+            target.delete()
+            if (!temp.renameTo(target)) throw java.io.IOException("${target.name} non écrit")
+        }
+    }
+}
