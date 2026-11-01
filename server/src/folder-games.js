@@ -32,6 +32,34 @@ export function readPackManifest(dir) {
   }
 }
 
+// Manifestes lus pour les téléchargements (dossier -> { stamp, files }) : un jeu en compte parfois
+// des dizaines de milliers d'entrées, à ne pas relire à chaque fichier demandé.
+const manifestCache = new Map();
+const MANIFEST_CACHE_MAX = 8;
+
+/**
+ * Entrée du fichier [rel] dans le manifeste du dossier [dir] ({ size, crc32, mtime, format }), ou
+ * undefined ; manifeste gardé en mémoire tant que son fichier ne change pas (lecture seule).
+ */
+export function packManifestEntry(dir, rel) {
+  const stat = fs.statSync(path.join(dir, PACK_MANIFEST), { throwIfNoEntry: false });
+  if (!stat) {
+    manifestCache.delete(dir);
+    return undefined;
+  }
+  const stamp = `${stat.mtimeMs}:${stat.size}`;
+  let cached = manifestCache.get(dir);
+  if (cached?.stamp !== stamp) {
+    cached = { stamp, files: readPackManifest(dir) };
+    manifestCache.delete(dir);
+    if (manifestCache.size >= MANIFEST_CACHE_MAX) manifestCache.delete(manifestCache.keys().next().value);
+  } else {
+    manifestCache.delete(dir); // remis en dernier : le plus récemment utilisé
+  }
+  manifestCache.set(dir, cached);
+  return Object.hasOwn(cached.files, rel) ? cached.files[rel] : undefined;
+}
+
 // Exécutables qui ne lancent pas le jeu : installation, désinstallation, prérequis, rapports d'erreur.
 const NOT_GAME_RE = new RegExp(
   [

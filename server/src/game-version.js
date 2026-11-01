@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { db } from './db.js';
-import { readPackManifest, packExtension, packFormat } from './folder-games.js';
+import { packManifestEntry, packExtension, packFormat } from './folder-games.js';
 import { packedStream } from './folder-pack.js';
 
 /** Section des ressources (.rsrc) lue au plus (icônes comprises). */
@@ -117,7 +117,7 @@ export async function exeVersion(dir, rel) {
       fs.closeSync(fd);
     }
   }
-  const packed = readPackManifest(dir)[rel];
+  const packed = packManifestEntry(dir, rel);
   if (!packed || packed.size > MAX_PACKED_EXE) return null;
   const format = packFormat(packed.format);
   const chunks = [];
