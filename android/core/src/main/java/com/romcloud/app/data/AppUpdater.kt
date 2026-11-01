@@ -20,6 +20,8 @@ import okhttp3.Request
  * à la version installée ; si elle est plus récente, son APK (téléphone ou TV) est proposé et
  * installé par [ApkInstaller]. Une version compilée sur un PC (« 1.63.0-dev ») passe avant la version
  * publiée de même numéro ; les compilations de debug (signées autrement) ne sont pas vérifiées.
+ * RomCloud PC (jeux PC, publié dans la même Release) : vérifié avant chaque lancement d'un jeu PC
+ * ([companionUpdate]).
  */
 class AppUpdater(private val context: Context, private val api: ApiClient) {
 
@@ -47,10 +49,23 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
         if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) return
         val installed = installedVersion() ?: return
         if (parseVersion(baseVersion(installed)) == null) return
-        val update = runCatching { withContext(Dispatchers.IO) { latest(installed) } }
+        val update = runCatching { withContext(Dispatchers.IO) { latest(installed, context.packageName) } }
             .onFailure { Log.i(TAG, "Vérification de mise à jour impossible : ${it.message}") }
             .getOrNull()
         _available.value = update
+    }
+
+    /**
+     * Nouvelle version de RomCloud PC ([packageName]) dans la dernière Release ; null : à jour, pas
+     * installé, compilation de debug (signée autrement), version de développement ou pas de réseau.
+     */
+    suspend fun companionUpdate(packageName: String): Update? {
+        val info = runCatching { context.packageManager.getPackageInfo(packageName, 0) }.getOrNull() ?: return null
+        if ((info.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_DEBUGGABLE != 0) return null
+        val installed = info.versionName?.takeIf { parseVersion(baseVersion(it)) != null } ?: return null
+        return runCatching { withContext(Dispatchers.IO) { latest(installed, packageName) } }
+            .onFailure { Log.i(TAG, "Vérification de mise à jour de $packageName impossible : ${it.message}") }
+            .getOrNull()
     }
 
     fun dismiss() {
@@ -62,7 +77,8 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
         info.versionName
     }.getOrNull()
 
-    private fun latest(installed: String): Update? {
+    /** Dernière Release si elle est plus récente que [installed] : APK du paquet [packageName] (RomCloud, TV ou PC). */
+    private fun latest(installed: String, packageName: String): Update? {
         val request = Request.Builder().url(LATEST_RELEASE)
             .header("Accept", "application/vnd.github+json")
             .build()
@@ -73,15 +89,16 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
         val release = Json.parseToJsonElement(body).jsonObject
         val version = release["tag_name"]?.jsonPrimitive?.content?.removePrefix("v") ?: return null
         if (!isNewer(version, installed)) return null
-        val name = apkName(version, tv = context.packageName.endsWith(".tv"))
+        val companion = packageName == COMPANION
+        val name = if (companion) companionApkName(version) else apkName(version, tv = packageName.endsWith(".tv"))
         val asset = release["assets"]?.jsonArray?.map { it.jsonObject }
             ?.find { it["name"]?.jsonPrimitive?.content == name } ?: return null
         val url = asset["browser_download_url"]?.jsonPrimitive?.content ?: return null
         val size = asset["size"]?.jsonPrimitive?.longOrNull ?: return null
         val apk = EmulatorApk(
             id = 0,
-            packageName = context.packageName,
-            label = "RomCloud $version",
+            packageName = packageName,
+            label = "${if (companion) "RomCloud PC" else "RomCloud"} $version",
             versionName = version,
             size = size,
             url = url,
@@ -104,6 +121,8 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
         private const val TAG = "AppUpdater"
         private const val LATEST_RELEASE = "https://api.github.com/repos/biliboobrian/romCloud/releases/latest"
         private const val COMPARE = "https://api.github.com/repos/biliboobrian/romCloud/compare"
+        /** RomCloud PC (Winlator.COMPANION), publié dans la même Release. */
+        private const val COMPANION = "com.romcloud.wine"
         private val VERSION_SUFFIX = Regex(";\\s*v(\\d+(?:\\.\\d+)*)$")
 
         /**
@@ -159,5 +178,8 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
         /** Nom de l'APK dans la Release (voir .github/workflows/android.yml). */
         internal fun apkName(version: String, tv: Boolean) =
             if (tv) "RomCloud-TV-$version.apk" else "RomCloud-$version.apk"
+
+        /** Nom de l'APK de RomCloud PC dans la Release (voir .github/workflows/android.yml). */
+        internal fun companionApkName(version: String) = "RomCloud-PC-$version.apk"
     }
 }

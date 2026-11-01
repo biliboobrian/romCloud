@@ -26,6 +26,7 @@ import com.romcloud.app.data.Repository
 import com.romcloud.app.data.Settings
 import com.romcloud.app.launch.BiosPrompt
 import com.romcloud.app.launch.CloseEmulatorPrompt
+import com.romcloud.app.launch.CompanionCheck
 import com.romcloud.app.launch.CoreSwitchPrompt
 import com.romcloud.app.launch.GameLauncher
 import com.romcloud.app.launch.MissingEmulator
@@ -62,6 +63,9 @@ class RomCloudApp : Application(), ImageLoaderFactory {
 
     /** Jeu PC en attente de l'accès aux fichiers de Winlator (lecteur des ROMs à y ajouter). */
     val winlatorDrivePrompt = MutableStateFlow<WinlatorDrivePrompt?>(null)
+
+    /** Jeu PC en attente de la vérification de RomCloud PC (mise à jour proposée avant le lancement). */
+    val companionCheck = MutableStateFlow<CompanionCheck?>(null)
 
     /** Jeux à lancer automatiquement dès la fin de leur téléchargement, avec les options du lancement (reprise…). */
     val autoLaunch: MutableMap<Long, PendingLaunch> = ConcurrentHashMap()

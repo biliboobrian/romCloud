@@ -33,6 +33,7 @@ import com.romcloud.app.stream.StreamMode
 import com.romcloud.app.data.sameSaveCore
 import com.romcloud.app.launch.BiosPrompt
 import com.romcloud.app.launch.CloseEmulatorPrompt
+import com.romcloud.app.launch.CompanionCheck
 import com.romcloud.app.launch.CoreSwitchPrompt
 import com.romcloud.app.launch.GameShortcuts
 import com.romcloud.app.launch.LaunchException
@@ -146,9 +147,13 @@ fun RomCloudApp.play(
 /**
  * Jeu PC lancé par Winlator ; renvoie un message (erreur, ou lecteur des ROMs à ajouter la première
  * fois) ou null. Dossier des ROMs hors de Téléchargements : lecteur des ROMs ajouté au conteneur de
- * Winlator par RomCloud ; sans accès à ses fichiers, accès demandé d'abord ([askDrive]).
+ * Winlator par RomCloud ; sans accès à ses fichiers, accès demandé d'abord ([askDrive]). Lancé par
+ * RomCloud PC : sa version vérifiée d'abord (sauf [companionChecked]), mise à jour proposée si une
+ * plus récente est publiée ([companionCheck]).
  */
-internal fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem, game: Game, askDrive: Boolean): String? {
+internal fun RomCloudApp.playWindowsGame(
+    activity: Activity, system: GameSystem, game: Game, askDrive: Boolean, companionChecked: Boolean = false,
+): String? {
     val exe = game.exe ?: return I18n.get(R.string.err_no_exe, game.title)
     // Dossier privé de l'application (Android/data) : illisible par Winlator.
     if (library.isAppPrivateDir()) return I18n.get(R.string.winlator_private_dir)
@@ -156,6 +161,12 @@ internal fun RomCloudApp.playWindowsGame(activity: Activity, system: GameSystem,
     val romsRoot = File(settings.config.value.romsDir)
     // Application choisie dans la fiche du jeu (RomCloud PC, Winlator Cmod…).
     val chosen = launcher.selectedPlayer(system, game.fileName, folder = true)?.let(launcher::packageOf)
+    // Application qui lancera le jeu (comme Winlator.launch) : RomCloud PC, vérifié avant chaque partie.
+    val runner = if (chosen != null) chosen.takeIf { Winlator.isInstalled(activity, it) } else Winlator.installed(activity)?.first
+    if (runner == Winlator.COMPANION && !companionChecked) {
+        companionCheck.value = CompanionCheck(system, game, askDrive)
+        return null
+    }
     var driveReady = false
     if (Winlator.needsRomsDrive(gameDir, exe, romsRoot)) {
         // RomCloud PC ajoute lui-même le lecteur des ROMs à son conteneur.

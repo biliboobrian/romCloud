@@ -50,15 +50,19 @@ import com.romcloud.app.data.AppUpdater
 import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.EmulatorApk
 import com.romcloud.app.data.EmulatorReleases
+import com.romcloud.app.launch.CompanionCheck
 import com.romcloud.app.launch.LaunchException
+import com.romcloud.app.launch.Winlator
 import com.romcloud.app.libretro.CrashReport
 import com.romcloud.app.libretro.CrashReports
 import com.romcloud.app.libretro.CoreOptionsStore
 import com.romcloud.app.libretro.LibretroCores
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Comportements globaux communs aux applications téléphone et TV : fins de téléchargement
@@ -453,6 +457,49 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         )
     }
 
+    // Jeu PC lancé par RomCloud PC : sa dernière version vérifiée avant chaque partie ; plus récente :
+    // proposée comme celle de RomCloud au démarrage, « Plus tard » lance le jeu avec la version installée.
+    // Sans réseau (ou trop long) : lancé aussitôt.
+    val companion by app.companionCheck.collectAsStateWithLifecycle()
+    val companionScope = rememberCoroutineScope()
+    fun launchWithCompanion(check: CompanionCheck) {
+        app.companionCheck.value = null
+        app.playWindowsGame(activity, check.system, check.game, check.askDrive, companionChecked = true)
+            ?.let { companionScope.launch { snackbar.showSnackbar(it) } }
+    }
+    companion?.let { check ->
+        val companionUpdate = check.update
+        if (companionUpdate == null) {
+            LaunchedEffect(check) {
+                // Requête hors de l'attente : abandonnée (sans bloquer le lancement) au bout du délai.
+                val found = app.appScope.async { app.updater.companionUpdate(Winlator.COMPANION) }
+                val update = withTimeoutOrNull(COMPANION_CHECK_TIMEOUT_MS) { found.await() }
+                if (app.companionCheck.value !== check) return@LaunchedEffect
+                if (update != null) app.companionCheck.value = check.copy(update = update) else launchWithCompanion(check)
+            }
+        } else {
+            AlertDialog(
+                onDismissRequest = { app.companionCheck.value = null },
+                title = { Text(stringResource(R.string.update_companion_title)) },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.update_companion_text, companionUpdate.version, companionUpdate.installed, formatSize(companionUpdate.apk.size)))
+                        UpdateChanges(companionUpdate)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        app.companionCheck.value = null
+                        app.apkInstaller.install(activity, companionUpdate.apk)
+                    }) { Text(stringResource(R.string.action_update)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { launchWithCompanion(check) }) { Text(stringResource(R.string.action_later)) }
+                },
+            )
+        }
+    }
+
     // Android 14+ : l'émulateur (RetroArch…) doit être fermé à la main avant le lancement.
     val closePrompt by app.closeEmulatorPrompt.collectAsStateWithLifecycle()
     closePrompt?.let { prompt ->
@@ -494,6 +541,9 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         )
     }
 }
+
+/** Attente de la vérification de RomCloud PC avant le lancement d'un jeu PC (jeu lancé ensuite sans elle). */
+private const val COMPANION_CHECK_TIMEOUT_MS = 5_000L
 
 /** Modifications depuis la version installée, par version, repliées sous un bouton. */
 @Composable
