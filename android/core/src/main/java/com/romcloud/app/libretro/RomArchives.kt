@@ -4,9 +4,8 @@ import java.io.File
 import java.util.zip.ZipInputStream
 
 /**
- * ROMs compressées en .zip : RetroArch les décompresse avant de les passer au cœur, sauf pour
- * les cœurs qui lisent eux-mêmes les archives (arcade, DOS). LibretroDroid ne le fait pas :
- * on reproduit ce comportement.
+ * ROMs compressées en .zip : décompressées avant d'être passées au cœur, sauf pour les cœurs
+ * qui lisent eux-mêmes les archives (arcade, DOS). LibretroDroid ne le fait pas lui-même.
  */
 internal object RomArchives {
 

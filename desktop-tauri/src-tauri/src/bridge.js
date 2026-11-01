@@ -122,7 +122,6 @@
       running: call('launcher:running'),
       onExited: on('game:exited'),
       resumableIds: call('launcher:resumableIds'),
-      check: call('launcher:check'),
       resumableOnline: call('launcher:resumableOnline'),
       describe: call('launcher:describe'),
       issues: call('launcher:issues'),

@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Settings
@@ -478,7 +477,7 @@ fun GameDetailScreen(
                 Text(
                     stringResource(
                         // Pilote graphique seul (GameCube, PS3, Wii U…) : à installer dans l'émulateur s'il plante.
-                        if (state.emulatorFiles.all { it == ExternalEmulatorFiles.DRIVER_NAME }) R.string.driver_files_hint else R.string.emulator_files_hint,
+                        if (state.emulatorFiles.all(ExternalEmulatorFiles::isDriver)) R.string.driver_files_hint else R.string.emulator_files_hint,
                         emulatorFolder,
                         state.emulatorFiles.joinToString(", "),
                     ),
@@ -489,14 +488,12 @@ fun GameDetailScreen(
 
             GameIssuesCard(state.issues, Modifier.bringIntoViewRequester(issuesInView))
 
-            var showRetroArchHelp by remember { mutableStateOf(false) }
             PlayerSelector(
                 state = state,
                 viewModel = viewModel,
                 onInstall = { player ->
                     viewModel.installPlayer(player)?.let { scope.launch { snackbar.showSnackbar(it) } }
                 },
-                onInfo = if (state.retroArchInfo != null) ({ showRetroArchHelp = true }) else null,
                 onUpdate = if (state.canUpdateEmulator) ({ player ->
                     viewModel.updatePlayer(player)?.let { scope.launch { snackbar.showSnackbar(it) } }
                 }) else null,
@@ -508,13 +505,6 @@ fun GameDetailScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.action_open_emulator, player.name))
                 }
-            }
-            state.retroArchInfo?.takeIf { showRetroArchHelp }?.let { info ->
-                RetroArchHelpDialog(
-                    info = info,
-                    onDismiss = { showRetroArchHelp = false },
-                    onMessage = { scope.launch { snackbar.showSnackbar(it) } },
-                )
             }
 
             // Jeu PC : Proton, pilote graphique, DXVK et qualité graphique au démarrage.
@@ -675,7 +665,6 @@ private fun PlayerSelector(
     state: GameDetailViewModel.UiState,
     viewModel: GameDetailViewModel,
     onInstall: (Player) -> Unit,
-    onInfo: (() -> Unit)?,
     onUpdate: ((Player) -> Unit)?,
 ) {
     if (state.players.isEmpty()) {
@@ -732,11 +721,6 @@ private fun PlayerSelector(
         if (onUpdate != null && selected != null) {
             IconButton(onClick = { onUpdate(selected) }) {
                 Icon(Icons.Filled.Refresh, stringResource(R.string.update_emulator), tint = MaterialTheme.colorScheme.primary)
-            }
-        }
-        if (onInfo != null) {
-            IconButton(onClick = onInfo) {
-                Icon(Icons.Filled.Info, stringResource(R.string.configure_retroarch), tint = MaterialTheme.colorScheme.primary)
             }
         }
     }

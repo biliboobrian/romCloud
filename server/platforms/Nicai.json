@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "nicai - RetroArch 64 - nicaiemu",
-      "uniqueId": "nicai.ra64.nicaiemu",
+      "name": "nicai - nicaiemu",
+      "uniqueId": "nicai.libretro.nicaiemu",
       "description": "Supported extensions: cbe.",
       "acceptedFilenameRegex": "^(.*)\\.(?:cbe)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO nicaiemu\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO nicaiemu",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

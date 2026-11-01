@@ -44,7 +44,6 @@ import com.romcloud.app.launch.PendingLaunch
 import com.romcloud.app.libretro.LibretroActivity
 import com.romcloud.app.launch.GameIssue
 import com.romcloud.app.launch.GameIssues
-import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.launch.VitaGames
 import com.romcloud.app.launch.Winlator
 import com.romcloud.app.launch.WinlatorDrivePrompt
@@ -237,7 +236,7 @@ suspend fun RomCloudApp.joinNetplay(context: Context, peer: Peer): String? {
         ?: return I18n.get(R.string.netplay_game_unknown, hosted.title)
     if (!withContext(Dispatchers.IO) { library.isDownloaded(system, game) }) {
         pendingJoin = peer
-        downloader.start(system, game, withContext(Dispatchers.IO) { library.missingBios(repository.bios(system)) })
+        downloader.start(system, game, withContext(Dispatchers.IO) { library.missingBios(system, repository.bios(system)) })
         return I18n.get(R.string.netplay_downloading, game.title)
     }
     val file = library.fileFor(system, game)
@@ -576,7 +575,7 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
                 val player = app.launcher.selectedPlayer(system, game.fileName)
                 app.launcher.canResume(system, app.library.launchFile(system, game, player), player)
             }.mapTo(mutableSetOf()) { it.id }
-            LocalState(ids, app.library.missingBios(bios), resumable)
+            LocalState(ids, app.library.missingBios(system, bios), resumable)
         }
 
     fun setQuery(q: String) = _state.update { it.copy(query = q) }
@@ -604,19 +603,6 @@ class GamesViewModel(private val app: RomCloudApp, private val systemId: String)
     }
 
     fun cancel(game: Game) = app.downloader.cancel(game.id)
-
-    /**
-     * Guide RetroArch à montrer quand l'utilisateur confirme le téléchargement de ce jeu :
-     * seulement si l'émulateur sélectionné est RetroArch et que le guide n'a pas été masqué.
-     */
-    fun retroArchHelpFor(game: Game): RetroArchInfo? {
-        val system = _state.value.system ?: return null
-        val player = app.launcher.selectedPlayer(system, game.fileName) ?: return null
-        return app.launcher.retroArchInfo(player)?.takeUnless { app.settings.isRetroArchHelpDismissed(it.packageName) }
-    }
-
-    fun setRetroArchHelpDismissed(packageName: String, dismissed: Boolean) =
-        app.settings.setRetroArchHelpDismissed(packageName, dismissed)
 
     /** Émulateur externe à configurer pour ce jeu : la liste mène alors à sa fiche (« Configurer »). */
     fun needsSetup(game: Game): Boolean = _state.value.system?.let { app.gameIssues(it, game).isNotEmpty() } ?: false
@@ -654,7 +640,6 @@ class GameDetailViewModel(
         val selectedPlayer: Player? = null,
         val localPath: String? = null,
         val launchCommand: String? = null,
-        val retroArchInfo: RetroArchInfo? = null,
         /** Émulateur externe choisi, installé et ouvrable seul (RomCloud PC n'a pas d'écran d'accueil). */
         val canOpenEmulator: Boolean = false,
         /** Émulateur externe choisi à mettre à jour soi-même (APK hors Play Store) : bouton de mise à jour. */
@@ -773,13 +758,13 @@ class GameDetailViewModel(
                 app.library.isDownloaded(system, game) to
                     app.launcher.compatiblePlayers(system, game.fileName, game.folder).map { it to app.launcher.isInstalled(it) }
             }
-            val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(s.bios) }
+            val missingBios = withContext(Dispatchers.IO) { app.library.missingBios(system, s.bios) }
             val canShortcut = GameShortcuts.supported(app)
             val shortcut = canShortcut && withContext(Dispatchers.IO) { GameShortcuts.exists(app, game.id) }
             val (updateAvailable, localVersion) = withContext(Dispatchers.IO) {
                 (downloaded && app.library.updateAvailable(system, game)) to app.library.downloadedVersion(system, game)
             }
-            val emulatorFiles = withContext(Dispatchers.IO) { runCatching { app.library.exportForEmulators(system) }.getOrDefault(emptyList()) }
+            val emulatorFiles = withContext(Dispatchers.IO) { runCatching { app.library.filesForEmulators(system) }.getOrDefault(emptyList()) }
             val selected = app.launcher.selectedPlayer(system, game.fileName, game.folder)
             val file = withContext(Dispatchers.IO) { app.library.launchFile(system, game, selected) }
             val localResume = withContext(Dispatchers.IO) { downloaded && app.launcher.canResume(system, file, selected) }
@@ -827,7 +812,6 @@ class GameDetailViewModel(
                     localPath = file.absolutePath,
                     // Jeu PC : son exécutable, lancé avec Winlator.
                     launchCommand = if (game.folder) I18n.get(R.string.pc_exe) + "\n" + (game.exe ?: "—") else selected?.let { p -> app.launcher.describe(p, file) },
-                    retroArchInfo = selected?.let(app.launcher::retroArchInfo),
                     canOpenEmulator = selected?.takeIf { it.libretroCore == null }?.let(app.launcher::canOpen) == true,
                     canUpdateEmulator = selected?.let(app.launcher::manualUpdatePackage) != null,
                     missingBios = missingBios,
@@ -838,8 +822,8 @@ class GameDetailViewModel(
                     onlineSave = online,
                     resumeCore = resumeCore,
                     savedStates = savedStates,
-                    emulatorFiles = emulatorFiles.map { it.name },
-                    emulatorFilesFolder = ExternalEmulatorFiles.folderName(system),
+                    emulatorFiles = emulatorFiles,
+                    emulatorFilesFolder = ExternalEmulatorFiles.shownRoot(app.settings.config.value.folders),
                     vita = vita,
                     issues = issues,
                 )

@@ -121,7 +121,7 @@ suspend fun RomCloudApp.playLobby(context: Context, lobby: Lobby, system: GameSy
     val host = lobbies.state.value.isHost
     val message = if (host) {
         if (!withContext(Dispatchers.IO) { library.isDownloaded(system, game) }) {
-            downloader.start(system, game, withContext(Dispatchers.IO) { library.missingBios(repository.bios(system)) })
+            downloader.start(system, game, withContext(Dispatchers.IO) { library.missingBios(system, repository.bios(system)) })
             return I18n.get(R.string.lobby_downloading, game.title)
         }
         val activity = context as? Activity ?: return I18n.get(R.string.lobby_error)

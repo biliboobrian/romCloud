@@ -1,7 +1,6 @@
 // Lancement des jeux sous Windows.
-//  - moteur intégré (romcloud-player.exe) : mêmes cœurs que RetroArch, téléchargés à la demande ;
-//    PlayStation 3 et Wii U : RPCS3 et Cemu, téléchargés et gérés par RomCloud (pas de cœur libretro) ;
-//  - RetroArch : « retroarch.exe -L <cœur> <jeu> », le cœur étant repris des modèles d'émulateurs ;
+//  - moteur intégré (romcloud-player.exe) : cœurs libretro des modèles d'émulateurs, téléchargés à la
+//    demande ; PlayStation 3 et Wii U : RPCS3 et Cemu, téléchargés et gérés par RomCloud (pas de cœur libretro) ;
 //  - émulateurs du catalogue (Dolphin, PCSX2, DuckStation…) : ligne de commande connue, ou
 //    ouverture de l'émulateur seul quand il ne sait pas lancer un jeu directement ;
 //  - commande personnalisée par système (« {file} » = chemin du jeu) ;
@@ -249,11 +248,6 @@ pub fn launch_emulator(id: &str) -> Result<()> {
 // Choix de l'émulateur d'un système
 // ---------------------------------------------------------------------------
 
-fn retroarch_ok() -> bool {
-    let exe = settings::get_str("retroarchPath");
-    !exe.is_empty() && Path::new(&exe).exists()
-}
-
 /// Choix proposés pour un système, et choix courant.
 pub fn options(system: &Value) -> Value {
     ensure_detected();
@@ -262,16 +256,11 @@ pub fn options(system: &Value) -> Value {
     if let Some(app) = managed::for_system(system) {
         list.push(json!({ "id": format!("builtin:{}", app.core), "kind": "builtin", "core": app.core, "name": app.name, "installed": app.installed() }));
     }
-    // Moteur intégré en premier : mêmes cœurs que RetroArch, rien à installer.
+    // Moteur intégré en premier : cœurs libretro téléchargés à la demande, rien à installer.
     if builtin::available() {
         for core in &system_cores {
             list.push(json!({ "id": format!("builtin:{core}"), "kind": "builtin", "core": core, "installed": builtin::core_installed(core) }));
         }
-    }
-    // RetroArch : seulement pour un cœur que le moteur intégré n'a pas (absent du buildbot pour
-    // Windows), ou sans moteur intégré (développement).
-    for core in system_cores.iter().filter(|c| !builtin::available() || !cores::core_available(c)) {
-        list.push(json!({ "id": format!("retroarch:{core}"), "kind": "retroarch", "core": core }));
     }
     for emu in catalog::for_system(system) {
         list.push(json!({ "id": format!("emu:{}", emu.id), "kind": "emulator", "emuId": emu.id, "name": emu.name, "installed": emulator_path(emu.id).is_some() }));
@@ -285,7 +274,6 @@ pub fn options(system: &Value) -> Value {
     // Ordre choisi sur le serveur : le premier utilisable de cet ordre ; sinon le moteur intégré d'abord.
     let usable = |o: &Value| match o["kind"].as_str().unwrap_or("") {
         "builtin" => managed::by_core(s(o, "core")).is_some() || cores::core_available(s(o, "core")),
-        "retroarch" => retroarch_ok(),
         "emulator" => o["installed"] == true,
         _ => false,
     };
@@ -293,9 +281,8 @@ pub fn options(system: &Value) -> Value {
         .iter()
         .find(|o| order.contains(&s(o, "id").to_string()) && usable(o))
         .or_else(|| list.iter().find(|o| kind(o, "builtin")))
-        .or_else(|| if retroarch_ok() { list.iter().find(|o| kind(o, "retroarch")) } else { None })
         .or_else(|| list.iter().find(|o| kind(o, "emulator") && o["installed"] == true))
-        .or_else(|| list.iter().find(|o| kind(o, "retroarch") || kind(o, "emulator")))
+        .or_else(|| list.iter().find(|o| kind(o, "emulator")))
         .or_else(|| list.iter().find(|o| kind(o, "default")))
         .map(|o| o["id"].clone())
         .unwrap_or(Value::Null);
@@ -308,18 +295,12 @@ fn server_order(system: &Value) -> Vec<String> {
     system["emulatorOrder"]["windows"].as_array().map(|ids| ids.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default()
 }
 
-/// Choix de l'ordre [order] d'abord, dans cet ordre ; les autres après, dans leur ordre. « retroarch:<cœur> »
-/// suit « builtin:<cœur> » s'il n'est pas lui-même dans l'ordre.
+/// Choix de l'ordre [order] d'abord, dans cet ordre ; les autres après, dans leur ordre.
 fn sort_by_order(list: &mut [Value], order: &[String]) {
     if order.is_empty() {
         return;
     }
-    let rank = |o: &Value| {
-        let id = s(o, "id");
-        let builtin = id.strip_prefix("retroarch:").map(|core| format!("builtin:{core}"));
-        order.iter().position(|x| x == id).or_else(|| builtin.and_then(|b| order.iter().position(|x| *x == b))).unwrap_or(order.len())
-    };
-    list.sort_by_key(|o| rank(o));
+    list.sort_by_key(|o| order.iter().position(|x| x == s(o, "id")).unwrap_or(order.len()));
 }
 
 pub fn choose(system_id: &str, option: &Value, command: &Value) {
@@ -330,15 +311,10 @@ pub fn choose(system_id: &str, option: &Value, command: &Value) {
     settings::save(json!({ "emulators": emulators }));
 }
 
-/// Dossier des cœurs de RetroArch (à côté de retroarch.exe).
-fn core_dll(retroarch_path: &str, core: &str) -> PathBuf {
-    PathBuf::from(paths::dirname(retroarch_path)).join("cores").join(format!("{core}_libretro.dll"))
-}
-
 /// Préparation du lancement.
 enum Plan {
     Builtin { core: String, file: String, exe: String, args: Vec<String> },
-    /// [emulator] : identifiant du catalogue (fichiers du dossier des BIOS à installer avant le lancement).
+    /// [emulator] : identifiant du catalogue (fichiers de la zone « system » du dossier RomCloud à installer avant le lancement).
     Run { exe: String, args: Vec<String>, emulator: Option<&'static str> },
     Manual { exe: String, emulator: String, file: String },
     /// Vita3K : jeu démarré, ou installé d'abord (voir vita3k.rs).
@@ -410,18 +386,6 @@ fn plan(system: &Value, game: &Value) -> Result<Plan> {
                 file,
             })
         }
-        "retroarch" => {
-            let exe = settings::get_str("retroarchPath");
-            if exe.is_empty() || !Path::new(&exe).exists() {
-                return Err(AppError::new("errors.retroarchMissing", json!({})));
-            }
-            let core = s(&option, "core");
-            let dll = core_dll(&exe, core);
-            if !dll.exists() {
-                return Err(AppError::new("errors.coreMissing", json!({ "core": core, "dir": dll.parent().map(|p| p.to_string_lossy().into_owned()) })));
-            }
-            Ok(Plan::Run { exe, args: vec!["-L".into(), dll.to_string_lossy().into_owned(), playlist()], emulator: None })
-        }
         "emulator" => {
             let emu = catalog::by_id(s(&option, "emuId")).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": option["emuId"] })))?;
             let exe = emulator_path(emu.id).ok_or_else(|| AppError::new("errors.emulatorMissing", json!({ "name": emu.name, "id": emu.id })))?;
@@ -460,24 +424,6 @@ pub fn describe(system: &Value, game: &Value) -> Value {
         Ok(Plan::Vita { exe, step: vita3k::Step::InstallPkg { run, .. } }) => json!(catalog::command_line(&exe, &run)),
         _ => Value::Null,
     }
-}
-
-/// État de RetroArch pour le guide : exécutable trouvé, cœur installé.
-pub fn check(system: &Value) -> Value {
-    let opts = options(system);
-    let option = opts["options"].as_array().and_then(|l| l.iter().find(|o| o["id"] == opts["selected"]).cloned()).unwrap_or(Value::Null);
-    let exe = settings::get_str("retroarchPath");
-    let ok = retroarch_ok();
-    let core = if option["kind"] == "retroarch" { Some(s(&option, "core").to_string()) } else { None };
-    let dll = core.as_ref().filter(|_| !exe.is_empty()).map(|c| core_dll(&exe, c));
-    json!({
-        "usesRetroArch": option["kind"] == "retroarch",
-        "retroarchPath": exe,
-        "retroarchOk": ok,
-        "core": core,
-        "coreDir": dll.as_ref().and_then(|d| d.parent()).map(|p| p.to_string_lossy().into_owned()),
-        "coreOk": dll.map(|d| ok && d.exists()).unwrap_or(false),
-    })
 }
 
 /// Jeux lancés par l'application encore ouverts (moteur intégré, émulateurs gérés ou externes).
@@ -781,7 +727,7 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             Ok(json!({ "manual": false }))
         }
         Plan::Run { exe, args, emulator } => {
-            // Clés de la Switch (Eden, Ryujinx)… copiées depuis le dossier des BIOS ; eden-cli :
+            // Clés de la Switch (Eden, Ryujinx)… copiées depuis system\switch\keys ; eden-cli :
             // lancé avec la configuration d'eden.exe (manettes).
             let args = match emulator {
                 Some(id) => crate::emulator_files::prepare(id, &exe, args),
@@ -831,12 +777,9 @@ mod tests {
         let options = |names: &[&str]| names.iter().map(|id| json!({ "id": id })).collect::<Vec<_>>();
         let system = json!({ "emulatorOrder": { "windows": ["emu:ryujinx", "builtin:duckstation", "builtin:pcsx_rearmed"], "android": ["x"] } });
         let order = server_order(&system);
-        let mut list = options(&["builtin:mednafen_psx_hw", "builtin:pcsx_rearmed", "builtin:duckstation", "retroarch:duckstation", "emu:ryujinx"]);
+        let mut list = options(&["builtin:mednafen_psx_hw", "builtin:pcsx_rearmed", "builtin:duckstation", "emu:ryujinx"]);
         sort_by_order(&mut list, &order);
-        assert_eq!(
-            ids(&list),
-            ["emu:ryujinx", "builtin:duckstation", "retroarch:duckstation", "builtin:pcsx_rearmed", "builtin:mednafen_psx_hw"]
-        );
+        assert_eq!(ids(&list), ["emu:ryujinx", "builtin:duckstation", "builtin:pcsx_rearmed", "builtin:mednafen_psx_hw"]);
         // Sans ordre : celui de l'application.
         let mut list = options(&["b", "a"]);
         sort_by_order(&mut list, &server_order(&json!({ "id": "snes" })));

@@ -77,7 +77,7 @@ class Video {
  public:
   /** Crée la fenêtre et un contexte OpenGL adapté au cœur ; appelé après retro_load_game. */
   bool create(const std::string& title, bool fullscreen, bool hidden, std::string& error);
-  /** Prévient le cœur de la fin du contexte OpenGL (avant retro_unload_game, comme RetroArch). */
+  /** Prévient le cœur de la fin du contexte OpenGL (avant retro_unload_game). */
   void destroyCoreContext();
   void destroy();
 

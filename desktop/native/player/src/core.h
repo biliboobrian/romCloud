@@ -97,7 +97,7 @@ extern Session g;
 bool loadCore(const std::string& dllPath, std::string& error);
 /** retro_run, registres préservés de Windows rétablis au retour (cœurs qui les écrasent). */
 void runCore();
-/** Appelle retro_init et branche les callbacks (ordre de RetroArch). */
+/** Appelle retro_init et branche les callbacks (ordre attendu des cœurs libretro). */
 void initCore();
 /** Choisit la manette de chaque port (après le chargement du jeu). */
 void selectControllers(unsigned ports);

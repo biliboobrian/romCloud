@@ -1,11 +1,11 @@
-// Fichiers du dossier des BIOS (récupérés sur le serveur) installés là où les émulateurs du
+// Fichiers de la zone « system » du dossier RomCloud (récupérés sur le serveur) installés là où les émulateurs du
 // catalogue les attendent, avant leur lancement : clés de la Switch pour Eden (et eden-cli) et
 // Ryujinx (mode portable reconnu à son dossier « user » ou « portable » à côté de l'exécutable).
 // eden-cli lit sa propre configuration (sdl2-config.ini), que l'interface d'Eden ne modifie pas :
 // les réglages d'eden.exe (sections de qt-config.ini : manettes, système avec région et langue,
 // rendu, son…, sauf [UI] propre à l'interface) y sont recopiés avant le lancement (l'option -c
 // d'eden-cli, qui chargerait un autre fichier, le fait planter dans Eden v0.2.1).
-use crate::{paths, settings};
+use crate::{folders, paths};
 use std::path::{Path, PathBuf};
 
 /// Dossier des données d'Eden : « user » à côté de l'exécutable (portable), sinon %APPDATA%\eden.
@@ -17,8 +17,8 @@ fn eden_dir(exe_dir: &Path, appdata: &Path) -> PathBuf {
     }
 }
 
-/// Fichiers à installer pour l'émulateur : (fichier du dossier des BIOS, destination).
-fn files_for(emulator: &str, exe: &Path, bios: &Path, appdata: &Path) -> Vec<(PathBuf, PathBuf)> {
+/// Fichiers à installer pour l'émulateur : (fichier de la zone « system », destination).
+fn files_for(emulator: &str, exe: &Path, system: &Path, appdata: &Path) -> Vec<(PathBuf, PathBuf)> {
     let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     let keys_dir = match emulator {
         "eden" => eden_dir(&exe_dir, appdata).join("keys"),
@@ -26,7 +26,7 @@ fn files_for(emulator: &str, exe: &Path, bios: &Path, appdata: &Path) -> Vec<(Pa
         "ryujinx" => appdata.join("Ryujinx").join("system"),
         _ => return vec![],
     };
-    ["prod.keys", "title.keys"].iter().map(|name| (bios.join("switch").join(name), keys_dir.join(name))).collect()
+    ["prod.keys", "title.keys"].iter().map(|name| (system.join("switch").join("keys").join(name), keys_dir.join(name))).collect()
 }
 
 /// Copie [from] sur [to] s'il est plus récent (ou absent) ; renvoie vrai si copié.
@@ -122,7 +122,7 @@ fn sync_eden_cli_settings(exe: &Path, appdata: &Path) -> bool {
  */
 pub fn prepare(emulator: &str, exe: &str, args: Vec<String>) -> Vec<String> {
     let appdata = PathBuf::from(std::env::var("APPDATA").unwrap_or_default());
-    for (from, to) in files_for(emulator, Path::new(exe), &settings::bios_dir(), &appdata) {
+    for (from, to) in files_for(emulator, Path::new(exe), &folders::system(), &appdata) {
         if copy_if_newer(&from, &to) {
             eprintln!("[emulator_files] {} -> {}", paths::file_name(&from), to.display());
         }
@@ -139,7 +139,7 @@ pub fn prepare(emulator: &str, exe: &str, args: Vec<String>) -> Vec<String> {
 /// celui de l'émulateur : le jeu ne peut pas démarrer.
 pub fn missing_required(emulator: &str, exe: &str) -> Vec<String> {
     let appdata = PathBuf::from(std::env::var("APPDATA").unwrap_or_default());
-    files_for(emulator, Path::new(exe), &settings::bios_dir(), &appdata)
+    files_for(emulator, Path::new(exe), &folders::system(), &appdata)
         .into_iter()
         .filter(|(from, to)| paths::file_name(from) == "prod.keys" && !from.is_file() && !to.is_file())
         .map(|(from, _)| paths::file_name(&from))
@@ -155,8 +155,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("romcloud-emufiles-{}", std::process::id()));
         let bios = root.join("bios");
         let appdata = root.join("appdata");
-        std::fs::create_dir_all(bios.join("switch")).unwrap();
-        std::fs::write(bios.join("switch").join("prod.keys"), "prod").unwrap();
+        std::fs::create_dir_all(bios.join("switch").join("keys")).unwrap();
+        std::fs::write(bios.join("switch").join("keys").join("prod.keys"), "prod").unwrap();
 
         // Installation classique : dossier de l'utilisateur.
         let eden = root.join("Eden").join("eden.exe");

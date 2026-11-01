@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "karaoke - RetroArch 64 - pocketcdg",
-      "uniqueId": "karaoke.ra64.pocketcdg",
+      "name": "karaoke - pocketcdg",
+      "uniqueId": "karaoke.libretro.pocketcdg",
       "description": "Supported extensions: cdg.",
       "acceptedFilenameRegex": "^(.*)\\.(?:cdg)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO pocketcdg\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO pocketcdg",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

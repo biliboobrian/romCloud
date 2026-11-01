@@ -548,13 +548,26 @@ fn psp_guest(join: &Value) -> Result<Value> {
     Ok(local)
 }
 
+/// Dossier BIOS du système PSP (dossier système du cœur PPSSPP) : celui qui a déjà un dossier
+/// « PPSSPP » (fichiers du cœur), sinon bios\psp.
+fn psp_system_dir() -> std::path::PathBuf {
+    let root = crate::folders::bios_root();
+    std::fs::read_dir(&root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .find(|dir| dir.join("PPSSPP").is_dir())
+        .unwrap_or_else(|| root.join("psp"))
+}
+
 /**
  * PPSSPP : le serveur ad hoc de la boucle locale déclaré « avec relais » (mode AEMU postoffice :
  * toutes les données par le serveur) dans la liste des serveurs qu'il lit hors connexion,
- * <BIOS>/PPSSPP/adhoc-servers.json ; les autres serveurs de la liste sont gardés.
+ * <dossier BIOS de la PSP>/PPSSPP/adhoc-servers.json ; les autres serveurs de la liste sont gardés.
  */
 fn psp_relay_server_entry() {
-    let path = settings::bios_dir().join("PPSSPP").join("adhoc-servers.json");
+    let path = psp_system_dir().join("PPSSPP").join("adhoc-servers.json");
     let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
     let current = std::fs::read_to_string(&path).unwrap_or_default();
     if let Some(text) = with_psp_relay_entry(&current) {

@@ -87,7 +87,7 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
     val message: (String) -> Unit = { text -> scope.launch { snackbar.showSnackbar(text) } }
     val start = remember { if (app.settings.config.value.isConfigured) "systems" else "settings" }
 
-    // Fins de téléchargement, émulateur manquant, fermeture de RetroArch : communs avec le téléphone.
+    // Fins de téléchargement, émulateur manquant, émulateur à fermer : communs avec le téléphone.
     LaunchDialogs(app, activity, snackbar)
 
     var storageWarning by remember { mutableStateOf(false) }

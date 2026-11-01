@@ -36,7 +36,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay
@@ -83,7 +82,6 @@ import com.romcloud.app.ui.GameFact
 import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.OnlineSaveLabel
 import com.romcloud.app.ui.PlaytimeLabel
-import com.romcloud.app.ui.RetroArchHelpDialog
 import com.romcloud.app.ui.ScreenshotGallery
 import com.romcloud.app.ui.StateHistoryList
 import com.romcloud.app.ui.formatSize
@@ -127,7 +125,6 @@ fun TvGameDetailScreen(
     // « Automatique » : réglage choisi sur le serveur (système, puis jeu) s'il y en a un.
     val pcDefaults = state.system?.let { system -> state.game?.defaultCoreOptions(system) }.orEmpty()
     val pcChoices = remember(pcDefaults) { PcSettings.choices(adreno = com.romcloud.app.data.Settings.isSnapdragon(), defaults = pcDefaults) }
-    var showRetroArchHelp by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var showStates by remember { mutableStateOf(false) }
     val primaryFocus = remember { FocusRequester() }
@@ -231,7 +228,7 @@ fun TvGameDetailScreen(
                     Text(
                         stringResource(
                         // Pilote graphique seul (GameCube, PS3, Wii U…) : à installer dans l'émulateur s'il plante.
-                        if (state.emulatorFiles.all { it == ExternalEmulatorFiles.DRIVER_NAME }) R.string.driver_files_hint else R.string.emulator_files_hint,
+                        if (state.emulatorFiles.all(ExternalEmulatorFiles::isDriver)) R.string.driver_files_hint else R.string.emulator_files_hint,
                         emulatorFolder,
                         state.emulatorFiles.joinToString(", "),
                     ),
@@ -379,9 +376,6 @@ fun TvGameDetailScreen(
                             viewModel.openEmulator(activity)?.let(onMessage)
                         }
                     }
-                    if (state.retroArchInfo != null) {
-                        SecondaryButton(stringResource(R.string.configure_retroarch), Icons.Filled.Info) { showRetroArchHelp = true }
-                    }
                     if (state.downloaded && download !is DownloadState.Running) {
                         SecondaryButton(stringResource(R.string.tv_delete_from_tv), Icons.Filled.Delete) { confirmDelete = true }
                     }
@@ -448,9 +442,6 @@ fun TvGameDetailScreen(
             },
             onDismiss = { pickPcSetting = null },
         )
-    }
-    state.retroArchInfo?.takeIf { showRetroArchHelp }?.let { info ->
-        RetroArchHelpDialog(info = info, onDismiss = { showRetroArchHelp = false }, onMessage = onMessage)
     }
     if (showStates) {
         viewModel.stateHistory(onMessage)?.let { controller ->

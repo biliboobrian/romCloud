@@ -2,10 +2,7 @@ package com.romcloud.app.data
 
 import android.content.Context
 import android.os.Build
-import android.os.Environment
-import androidx.annotation.StringRes
 import com.romcloud.app.AppLanguage
-import com.romcloud.core.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,16 +11,15 @@ import java.io.File
 data class ServerConfig(
     val serverUrl: String,
     val apiKey: String,
-    val romsDir: String,
-    val biosDir: String,
+    /** Dossier RomCloud (roms, bios, system, drivers, saves, states : voir [Folders]). */
+    val rootDir: String,
 ) {
     val isConfigured: Boolean get() = serverUrl.isNotBlank()
-}
 
-enum class RetroArchSafMode(@StringRes val label: Int) {
-    AUTO(R.string.saf_auto),
-    SAF(R.string.saf_saf),
-    PATH(R.string.saf_path),
+    val folders: Folders get() = Folders(File(rootDir))
+
+    /** Dossier des ROMs : <dossier RomCloud>/roms (un sous-dossier par système). */
+    val romsDir: String get() = folders.roms.absolutePath
 }
 
 class Settings(context: Context) {
@@ -41,19 +37,21 @@ class Settings(context: Context) {
     private fun read() = ServerConfig(
         serverUrl = prefs.getString(KEY_URL, "") ?: "",
         apiKey = prefs.getString(KEY_API_KEY, "") ?: "",
-        romsDir = prefs.getString(KEY_ROMS_DIR, null) ?: defaultRomsDir(),
-        biosDir = prefs.getString(KEY_BIOS_DIR, null) ?: defaultBiosDir(),
+        rootDir = Folders.rootOf(appContext),
     )
 
-    fun save(serverUrl: String, apiKey: String, romsDir: String, biosDir: String) {
+    fun save(serverUrl: String, apiKey: String, rootDir: String) {
         val url = normalizeUrl(serverUrl)
-        val dir = romsDir.trim().trimEnd('/').ifBlank { defaultRomsDir() }
         prefs.edit()
             .putString(KEY_URL, url)
             .putString(KEY_API_KEY, apiKey.trim())
-            .putString(KEY_ROMS_DIR, dir)
-            .putString(KEY_BIOS_DIR, biosDir.trim().trimEnd('/').ifBlank { defaultBiosDir() })
+            .putString(Folders.KEY_ROOT, rootDir.trim().trimEnd('/').ifBlank { defaultRootDir() })
             .apply()
+        _config.value = read()
+    }
+
+    /** Relit le dossier RomCloud (fixé par la mise en place des dossiers, [Folders.migrate]). */
+    fun reload() {
         _config.value = read()
     }
 
@@ -65,29 +63,6 @@ class Settings(context: Context) {
             if (playerId == null) remove("player.$systemId") else putString("player.$systemId", playerId)
         }.apply()
     }
-
-    /**
-     * Chemin de ROM transmis à RetroArch : AUTO = chemin saf:// si RetroArch vient du Play Store
-     * (pas d'accès à tous les fichiers), SAF = toujours, PATH = chemin de fichier classique.
-     */
-    var retroArchSafMode: RetroArchSafMode
-        get() = runCatching { RetroArchSafMode.valueOf(prefs.getString("retroArchSafMode", null) ?: "") }
-            .getOrDefault(RetroArchSafMode.AUTO)
-        set(value) = prefs.edit().putString("retroArchSafMode", value.name).apply()
-
-    /**
-     * RetroArch se ferme complètement dès qu'on le quitte (extra QUITFOCUS). Évite l'écran noir
-     * au lancement suivant, RomCloud ne pouvant plus fermer RetroArch lui-même depuis Android 14.
-     */
-    var retroArchQuitOnExit: Boolean
-        get() = prefs.getBoolean("retroArchQuitOnExit", true)
-        set(value) = prefs.edit().putBoolean("retroArchQuitOnExit", value).apply()
-
-    /** Guide « Configurer RetroArch » masqué après confirmation d'un téléchargement, pour ce paquet. */
-    fun isRetroArchHelpDismissed(packageName: String) = prefs.getBoolean("retroArchHelp.$packageName", false)
-
-    fun setRetroArchHelpDismissed(packageName: String, dismissed: Boolean) =
-        prefs.edit().putBoolean("retroArchHelp.$packageName", dismissed).apply()
 
     /** Avertissement « fermez l'émulateur avant de jouer » masqué pour ce paquet. */
     /** Licence (zRIF) d'un jeu PS Vita en .pkg, saisie dans sa fiche pour l'installer dans Vita3K. */
@@ -162,11 +137,7 @@ class Settings(context: Context) {
         private const val KEY_GAMES_GRID = "gamesGrid"
         private const val KEY_URL = "serverUrl"
         private const val KEY_API_KEY = "apiKey"
-        private const val KEY_ROMS_DIR = "romsDir"
-        private const val KEY_BIOS_DIR = "biosDir"
 
-        @Suppress("DEPRECATION")
-        private val storage: File get() = Environment.getExternalStorageDirectory()
 
         /** Puce Qualcomm Snapdragon (carte graphique Adreno) : fabricant de la puce, sinon matériel « qcom ». */
         fun isSnapdragon(): Boolean {
@@ -175,23 +146,8 @@ class Settings(context: Context) {
                 Build.HARDWARE.startsWith("qcom", ignoreCase = true)
         }
 
-        fun defaultRomsDir(): String = File(storage, "RomCloud").absolutePath
-
-        /**
-         * Dossiers BIOS proposés : dossier « system » de RetroArch (version Play Store, dans
-         * Android/media, ou version du site) et dossier RomCloud.
-         */
-        fun biosPresets(): List<Pair<Int, String>> = listOf(
-            R.string.bios_preset_retroarch_play to File(storage, "Android/media/com.retroarch.aarch64/RetroArch/system").absolutePath,
-            R.string.bios_preset_retroarch_site to File(storage, "RetroArch/system").absolutePath,
-            R.string.bios_preset_romcloud to File(storage, "RomCloud/bios").absolutePath,
-        )
-
-        /** Par défaut : le dossier « system » de RetroArch s'il existe déjà, sinon RomCloud/bios. */
-        fun defaultBiosDir(): String {
-            val presets = biosPresets().map { it.second }
-            return presets.dropLast(1).firstOrNull { File(it).isDirectory } ?: presets.last()
-        }
+        /** Dossier RomCloud par défaut : /storage/emulated/0/RomCloud. */
+        fun defaultRootDir(): String = Folders.defaultRoot()
 
         /** "192.168.1.10:8080" -> "http://192.168.1.10:8080" */
         fun normalizeUrl(input: String): String {

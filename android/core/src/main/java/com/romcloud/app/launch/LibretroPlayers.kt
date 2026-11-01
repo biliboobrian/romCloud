@@ -4,11 +4,11 @@ import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.Player
 
 /**
- * Émulateur intégré LibretroDroid : pour chaque cœur proposé par les modèles RetroArch d'un
- * système, un émulateur « LibretroDroid - <cœur> » est ajouté en tête de liste (choix par défaut).
- * Le cœur est téléchargé depuis le buildbot libretro au premier lancement (voir LibretroCores).
- * Les modèles RetroArch de ces cœurs sont retirés (même cœur, rien à installer), sauf pour les
- * cœurs absents du buildbot pour Android, que seul un RetroArch installé à la main peut avoir.
+ * Émulateur intégré LibretroDroid : pour chaque cœur libretro des modèles d'un système (extra
+ * LIBRETRO des modèles Daijishou), un émulateur « LibretroDroid - <cœur> » est ajouté en tête de
+ * liste (choix par défaut). Le cœur est téléchargé depuis le buildbot libretro au premier lancement
+ * (voir LibretroCores). Les modèles de cœur eux-mêmes sont retirés : seul le moteur intégré lance
+ * les cœurs libretro.
  */
 object LibretroPlayers {
 
@@ -16,7 +16,7 @@ object LibretroPlayers {
     private val VALID_CORE = Regex("[A-Za-z0-9_]+")
 
     /**
-     * Nom du cœur demandé par un modèle RetroArch (extra LIBRETRO) : « snes9x »,
+     * Nom du cœur libretro demandé par un modèle (extra LIBRETRO) : « snes9x »,
      * « /data/data/…/cores/snes9x_libretro_android.so » -> « snes9x » ; null sinon.
      */
     fun coreOf(player: Player): String? =
@@ -30,6 +30,7 @@ object LibretroPlayers {
     /** Ajoute en tête les émulateurs LibretroDroid (un par cœur, du plus abouti au moins abouti : CoreRanking). */
     fun addTo(system: GameSystem): GameSystem {
         if (system.players.any { it.libretroCore != null }) return system
+        val others = system.players.filter { coreOf(it) == null }
         val added = system.players
             .mapNotNull { p -> coreOf(p)?.takeIf { VALID_CORE.matches(it) }?.let { it to p } }
             .distinctBy { it.first }
@@ -44,8 +45,6 @@ object LibretroPlayers {
                 )
             }
         if (added.isEmpty()) return system
-        val builtIn = added.mapNotNull { it.libretroCore }.filter(CoreRanking::isAvailable).toSet()
-        val others = system.players.filterNot { p -> coreOf(p)?.let { it in builtIn } == true }
         return system.copy(players = added + others)
     }
 }

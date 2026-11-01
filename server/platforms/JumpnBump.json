@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "jumpnbump - RetroArch 64 - jumpnbump",
-      "uniqueId": "jumpnbump.ra64.jumpnbump",
+      "name": "jumpnbump - jumpnbump",
+      "uniqueId": "jumpnbump.libretro.jumpnbump",
       "description": "Supported extensions: dat.",
       "acceptedFilenameRegex": "^(.*)\\.(?:dat)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO jumpnbump\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO jumpnbump",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

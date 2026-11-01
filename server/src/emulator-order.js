@@ -5,7 +5,7 @@
 //  • Android / Android TV : uniqueId des émulateurs (« libretrodroid.<cœur> » pour l'émulateur
 //    intégré, sinon celui du modèle Daijishou, suffixé « #2 »… s'il est en double) ;
 //  • Windows : « builtin:<cœur> » (moteur intégré ou émulateur géré : RPCS3, Cemu, shadPS4),
-//    « retroarch:<cœur> », « emu:<id> » (émulateur installé par l'utilisateur).
+//    « emu:<id> » (émulateur installé par l'utilisateur).
 //
 // Pour afficher l'ordre par défaut dans l'administration, ce module reprend les tables des
 // applications : CoreRanking.kt / LibretroPlayers.kt (Android), cores.rs, managed.rs et
@@ -126,11 +126,11 @@ function androidEmulators(system, platform) {
   const players = uniquePlayers(playersFor(system, platform));
   const cores = [...new Set(players.map(coreOf).filter((c) => c && /^[A-Za-z0-9_-]+$/.test(c)))];
   const ranked = rankCores(system, cores, ANDROID_UNAVAILABLE);
-  const builtIn = new Set(ranked.filter((c) => !ANDROID_UNAVAILABLE.includes(c)));
+  // Modèles de cœur : lancés par l'émulateur intégré seulement.
   return [
     ...ranked.map((core) => ({ id: `libretrodroid.${core}`, name: `LibretroDroid - ${core}`, kind: 'builtin' })),
     ...players
-      .filter((p) => !builtIn.has(coreOf(p)))
+      .filter((p) => !coreOf(p))
       .map((p) => ({ id: p.uniqueId, name: p.name, kind: 'external' })),
   ];
 }
@@ -152,9 +152,6 @@ function windowsEmulators(system) {
   const app = WINDOWS_APPS.find(forSystem);
   if (app) list.push({ id: `builtin:${app.core}`, name: app.name, kind: 'builtin' });
   for (const core of ranked) list.push({ id: `builtin:${core}`, name: `RomCloud - ${core}`, kind: 'builtin' });
-  for (const core of ranked.filter((c) => WINDOWS_UNAVAILABLE.includes(c))) {
-    list.push({ id: `retroarch:${core}`, name: `RetroArch - ${core}`, kind: 'external' });
-  }
   for (const emu of WINDOWS_EMULATORS.filter(forSystem)) list.push({ id: `emu:${emu.id}`, name: emu.name, kind: 'external' });
   return list;
 }

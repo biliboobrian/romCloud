@@ -235,8 +235,12 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
     }
     val lifecycle = activity.lifecycle
     LaunchedEffect(lifecycle) {
-        // Au retour du réglage Android, l'installation en attente reprend si elle a été autorisée.
-        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { app.apkInstaller.resumePending(activity) }
+        // Au retour du réglage Android, l'installation en attente reprend si elle a été autorisée ;
+        // accès aux fichiers donné : dossier RomCloud mis en place s'il ne l'était pas encore.
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            app.apkInstaller.resumePending(activity)
+            withContext(Dispatchers.IO) { app.prepareFolders() }
+        }
     }
     val pendingApk by app.apkInstaller.pending.collectAsStateWithLifecycle()
     pendingApk?.let { apk ->
@@ -500,7 +504,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         }
     }
 
-    // Android 14+ : l'émulateur (RetroArch…) doit être fermé à la main avant le lancement.
+    // Android 14+ : l'émulateur doit être fermé à la main avant le lancement.
     val closePrompt by app.closeEmulatorPrompt.collectAsStateWithLifecycle()
     closePrompt?.let { prompt ->
         val scope = rememberCoroutineScope()

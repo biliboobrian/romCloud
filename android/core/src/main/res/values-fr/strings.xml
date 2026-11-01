@@ -161,7 +161,6 @@
     <string name="emulator">Émulateur</string>
     <string name="emulator_not_installed">Cet émulateur n’est pas installé</string>
     <string name="not_installed">non installé</string>
-    <string name="configure_retroarch">Configurer RetroArch</string>
     <string name="install_from_play_store">Installer depuis le Play Store</string>
 
     <!-- Paramètres -->
@@ -181,23 +180,13 @@
     <string name="fullscreen_hint">Masque la barre d’état et les boutons de navigation. Glissez depuis le bord de l’écran pour les afficher.</string>
     <string name="settings_language">Langue</string>
     <string name="language_system">Système</string>
-    <string name="settings_emulators">Émulateurs</string>
     <string name="quit_app_title">Quitter RomCloud ?</string>
     <string name="quit_app_text">L’application va être fermée.</string>
     <string name="action_quit">Quitter</string>
-    <string name="quit_on_exit">Fermer RetroArch en quittant le jeu</string>
-    <string name="quit_on_exit_on">✓ Fermer RetroArch en quittant le jeu</string>
-    <string name="quit_on_exit_hint">Recommandé : évite l’écran noir au lancement suivant. Quitter RetroArch en cours de partie (bouton Accueil, applications récentes) ferme alors le jeu — sauvegardez avant.</string>
-    <string name="quit_on_exit_hint_tv">Recommandé : évite l’écran noir au lancement suivant. Sauvegardez avant de quitter une partie.</string>
-    <string name="retroarch_access">Accès aux ROMs pour RetroArch</string>
-    <string name="retroarch_access_hint">La version Play Store de RetroArch ne peut lire le dossier des ROMs qu’en SAF : dans RetroArch, « Charger du contenu », ajoutez le dossier des ROMs de RomCloud (ci-dessous) et autorisez l’accès. Automatique : SAF si RetroArch vient du Play Store, chemin classique sinon.</string>
-    <string name="retroarch_access_hint_tv">Automatique : chemin « saf:// » si RetroArch vient du Play Store (ajoutez alors le dossier des ROMs dans RetroArch via « Charger du contenu »), chemin classique sinon.</string>
-    <string name="saf_auto">Automatique</string>
-    <string name="saf_path">Chemin classique</string>
     <string name="settings_storage">Stockage des ROMs</string>
-    <string name="local_folder">Dossier local</string>
-    <string name="local_folder_hint">Un sous-dossier par système y est créé (ex. …/snes/).</string>
-    <string name="local_folder_tv">Dossier local (un sous-dossier par système)</string>
+    <string name="local_folder">Dossier RomCloud</string>
+    <string name="local_folder_hint">Contient roms (un sous-dossier par système), bios (BIOS des cœurs, par système), system (clés et firmwares des émulateurs externes), drivers, saves et states. Choisir un autre dossier ne déplace pas les fichiers déjà présents.</string>
+    <string name="local_folder_tv">Dossier RomCloud</string>
     <string name="default_folder">Dossier par défaut</string>
     <string name="choose_folder">Choisir un dossier</string>
     <string name="folder_unsupported">Ce dossier n’est pas dans le stockage de l’appareil : choisissez-en un dans la mémoire interne ou sur la carte SD.</string>
@@ -205,7 +194,7 @@
     <string name="private_folder">Dossier privé de l’app</string>
     <string name="all_files_granted">✓ Accès à tous les fichiers autorisé</string>
     <string name="all_files_denied">Accès aux fichiers non autorisé</string>
-    <string name="storage_hint">Les émulateurs (RetroArch, etc.) doivent pouvoir lire les ROMs : elles sont donc enregistrées dans un dossier partagé, ce qui nécessite l’autorisation « Accès à tous les fichiers ». Le dossier privé de l’app ne la nécessite pas, mais la plupart des émulateurs ne pourront pas le lire.</string>
+    <string name="storage_hint">Les émulateurs doivent pouvoir lire les ROMs : elles sont donc enregistrées dans un dossier partagé, ce qui nécessite l’autorisation « Accès à tous les fichiers ». Le dossier privé de l’app ne la nécessite pas, mais la plupart des émulateurs ne pourront pas le lire.</string>
     <string name="storage_hint_tv">Les émulateurs doivent pouvoir lire les ROMs : elles sont enregistrées dans un dossier partagé, ce qui nécessite l’autorisation « Accès à tous les fichiers ».</string>
     <string name="tv_adb_hint">Ce téléviseur ne propose pas l’écran d’autorisation. Depuis un ordinateur connecté au même réseau (débogage ADB activé dans les Options pour les développeurs du téléviseur), exécutez :</string>
     <string name="tv_ip_placeholder">&lt;ip-du-téléviseur&gt;</string>
@@ -251,30 +240,6 @@
     <string name="dont_show_again">Ne plus afficher pour cet émulateur</string>
     <string name="settings_unavailable">Paramètres indisponibles</string>
 
-    <!-- Guide RetroArch -->
-    <string name="ra_not_installed">non installé</string>
-    <string name="ra_play_store">version Play Store</string>
-    <string name="ra_other_source">installé hors Play Store</string>
-    <string name="ra_step1">Installer le bon cœur</string>
-    <string name="ra_core_intro">Ce modèle utilise le cœur :</string>
-    <string name="ra_core_how">Dans RetroArch : Menu principal → Charger un cœur → Télécharger un cœur, puis choisissez ce cœur. Le nom doit correspondre exactement ; sinon, choisissez un autre modèle RetroArch dans la liste des émulateurs.</string>
-    <string name="ra_core_none">Ce modèle ne précise pas de cœur : RetroArch utilisera celui associé à ce type de fichier.</string>
-    <string name="ra_step2">Autoriser l’accès aux ROMs</string>
-    <string name="ra_saf_how">La version Play Store de RetroArch ne lit que les dossiers que vous lui autorisez. Dans RetroArch : Charger du contenu → ajoutez un dossier, sélectionnez le dossier des ROMs de RomCloud, puis « Utiliser ce dossier » → « Autoriser » :</string>
-    <string name="ra_saf_note">Autorisez ce dossier lui-même, pas seulement un dossier parent. RomCloud transmet alors les ROMs à RetroArch sous forme de chemin « saf:// ».</string>
-    <string name="ra_path_how">RetroArch doit pouvoir lire les fichiers de RomCloud : Paramètres Android → Applications → RetroArch → Autorisations → Fichiers → « Autoriser la gestion de tous les fichiers ». Dossier des ROMs :</string>
-    <string name="ra_mode_hint">Mode réglable dans les Paramètres de RomCloud → « Accès aux ROMs pour RetroArch ».</string>
-    <string name="ra_step3">Fermer RetroArch avant de jouer</string>
-    <string name="ra_close_manual">RetroArch ne peut pas démarrer un jeu s’il est encore ouvert en arrière-plan (écran noir), et depuis Android 14 RomCloud ne peut plus le fermer lui-même. Avant de lancer un jeu, utilisez « Forcer l’arrêt » ci-dessous si RetroArch a été ouvert.</string>
-    <string name="ra_close_auto">RomCloud ferme automatiquement RetroArch avant chaque lancement.</string>
-    <string name="ra_quit_on">« Fermer RetroArch en quittant le jeu » est activé : RetroArch se ferme dès que vous le quittez, le lancement suivant fonctionne donc sans manipulation. Sauvegardez avant de quitter une partie.</string>
-    <string name="ra_quit_off">Conseil : activez « Fermer RetroArch en quittant le jeu » dans les Paramètres de RomCloud pour ne plus avoir à forcer l’arrêt.</string>
-    <string name="ra_step4">En cas d’écran noir</string>
-    <string name="ra_log_how">Dans RetroArch : Réglages → Journalisation → activez « Verbosité » et « Journaliser dans un fichier », relancez le jeu depuis RomCloud puis consultez le journal. « Impossible de lire le fichier de contenu » indique un problème d’accès au dossier (étape 2) ; une erreur de cœur renvoie à l’étape 1.</string>
-    <string name="ra_config_file">Fichier de configuration utilisé par ce modèle :</string>
-    <string name="ra_open">Ouvrir RetroArch</string>
-    <string name="action_failed">Action impossible</string>
-    <string name="ra_dont_show_again">Ne plus afficher ce guide automatiquement</string>
 
     <!-- Erreurs -->
     <string name="err_invalid_folder">Dossier invalide</string>
@@ -295,7 +260,6 @@
     <string name="err_open_emulator">Impossible d’ouvrir %1$s</string>
     <string name="action_open_emulator">Ouvrir %1$s</string>
     <string name="err_file_not_found">Fichier introuvable : %1$s</string>
-    <string name="err_cannot_open">Impossible d’ouvrir %1$s</string>
     <string name="err_cannot_open_settings">Impossible d’ouvrir les paramètres de %1$s</string>
     <string name="err_no_app">Aucune application ne peut ouvrir ce fichier</string>
     <string name="err_launch_refused">Lancement refusé par l’émulateur : %1$s</string>
@@ -312,11 +276,6 @@
     <string name="bios_present">BIOS : %1$d fichier(s) présent(s)</string>
     <string name="action_download_bios">Télécharger les BIOS</string>
     <string name="bios_downloaded_snackbar">BIOS %1$s téléchargés</string>
-    <string name="bios_folder">Dossier des BIOS</string>
-    <string name="bios_folder_hint">Les BIOS du serveur y sont copiés, avec leurs sous-dossiers. Pour RetroArch, choisissez son dossier « system ».</string>
-    <string name="bios_preset_retroarch_play">RetroArch (Play Store)</string>
-    <string name="bios_preset_retroarch_site">RetroArch (site)</string>
-    <string name="bios_preset_romcloud">RomCloud</string>
     <string name="bios_before_play_title">BIOS manquants</string>
     <string name="bios_before_play_text">%1$d BIOS de ce système (%2$s) ne sont pas encore sur l’appareil. Les télécharger avant de jouer ?</string>
     <string name="action_play_anyway">Jouer quand même</string>
@@ -443,7 +402,7 @@
     <string name="libretro_options_general">Général</string>
     <string name="libretro_options_tabs_hint">L1 / R1 : onglet précédent / suivant</string>
     <string name="libretro_crash_title">L’émulateur intégré s’est arrêté</string>
-    <string name="libretro_crash_text">%1$s (cœur %2$s) s’est arrêté brutalement. Partagez le rapport pour aider à corriger le problème, ou essayez un autre cœur ou RetroArch pour ce système.</string>
+    <string name="libretro_crash_text">%1$s (cœur %2$s) s’est arrêté brutalement. Partagez le rapport pour aider à corriger le problème, ou essayez un autre cœur pour ce système.</string>
     <string name="action_share_report">Partager le rapport</string>
     <string name="libretro_menu_gamepad">Configurer la manette</string>
     <string name="core_switch_title">Changer d’émulateur ?</string>
@@ -749,10 +708,10 @@
     <string name="settings_auto_upload_states_hint">Avec un profil connecté : chaque état sauvegardé dans l’émulateur intégré est envoyé sur votre profil, avec cet appareil et sa date. Sinon, envoyez-les depuis l’historique des états.</string>
     <string name="settings_gpu_drivers">Télécharger les pilotes graphiques</string>
     <string name="settings_gpu_drivers_on">Pilotes graphiques téléchargés</string>
-    <string name="settings_gpu_drivers_hint">Pilote Turnip pour les puces Adreno (Snapdragon), quand le serveur le propose (Switch, GameCube, Wii, PS Vita, PS3) : téléchargé avec les BIOS et recopié dans Téléchargements/RomCloud/&lt;système&gt;, à installer depuis le gestionnaire de pilotes de l’émulateur (Eden, Dolphin, Vita3K, aPS3e). Activé par défaut sur les appareils Snapdragon.</string>
+    <string name="settings_gpu_drivers_hint">Pilote Turnip pour les puces Adreno (Snapdragon), quand le serveur le propose (Switch, GameCube, Wii, PS Vita, PS3) : téléchargé avec les BIOS dans le dossier drivers du dossier RomCloud, à installer depuis le gestionnaire de pilotes de l’émulateur (Eden, Dolphin, Vita3K, aPS3e). Activé par défaut sur les appareils Snapdragon.</string>
     <string name="settings_auto_upload_states_on">États envoyés en ligne automatiquement</string>
-    <string name="emulator_files_hint">Pour Eden : %2$s dans Téléchargements › %1$s. Dans Eden, installez les clés et le firmware depuis ses paramètres, en choisissant ces fichiers.</string>
-    <string name="driver_files_hint">Pilote graphique Turnip (puces Adreno) : %2$s dans Téléchargements › %1$s. Si le jeu plante ou s’affiche mal, installez-le dans l’émulateur (réglages graphiques, pilote personnalisé), en choisissant ce fichier.</string>
+    <string name="emulator_files_hint">Pour l’émulateur : %2$s dans le dossier %1$s. Dans l’émulateur, installez les clés et le firmware depuis ses paramètres, en choisissant ces fichiers.</string>
+    <string name="driver_files_hint">Pilote graphique Turnip (puces Adreno) : %2$s dans le dossier %1$s. Si le jeu plante ou s’affiche mal, installez-le dans l’émulateur (réglages graphiques, pilote personnalisé), en choisissant ce fichier.</string>
     <string name="pc_crash_reported">RomCloud PC : plantage de %1$s signalé au serveur</string>
     <string name="report_default_title">Rapport de problème</string>
     <string name="report_section">Signaler un problème</string>

@@ -196,7 +196,7 @@ class StateHistory(val dir: File, private val core: String) {
         private val json = Json { ignoreUnknownKeys = true }
 
         fun dir(context: Context, core: String, rom: File): File =
-            File(context.filesDir, "libretro/states/$core/${rom.nameWithoutExtension}.history")
+            File(Folders.of(context).states, "$core/${rom.nameWithoutExtension}.history")
 
         private fun scaled(bitmap: Bitmap): Bitmap {
             if (bitmap.width <= THUMBNAIL_WIDTH) return bitmap

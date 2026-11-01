@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "bbk - RetroArch 64 - bbkemu",
-      "uniqueId": "bbk.ra64.bbkemu",
+      "name": "bbk - bbkemu",
+      "uniqueId": "bbk.libretro.bbkemu",
       "description": "Supported extensions: gam.",
       "acceptedFilenameRegex": "^(.*)\\.(?:gam)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO bbkemu\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO bbkemu",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

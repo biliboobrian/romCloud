@@ -19,23 +19,23 @@
   },
   "playerList": [
     {
-      "name": "cbm2 - RetroArch 64 - vice_xcbm2",
-      "uniqueId": "cbm2.ra64.vice_xcbm2",
+      "name": "cbm2 - vice_xcbm2",
+      "uniqueId": "cbm2.libretro.vice_xcbm2",
       "description": "Supported extensions: d64, d71, d80, d81, d82, g64, g41, x64, t64, tap, prg, p00, crt, bin, zip, gz, d6z, d7z, d8z, g6z, g4z, x6z, cmd, m3u, vfl, vsf, nib, nbz, d2m, d4m.",
       "acceptedFilenameRegex": "^(.*)\\.(?:d64|d71|d80|d81|d82|g64|g41|x64|t64|tap|prg|p00|crt|bin|zip|gz|d6z|d7z|d8z|g6z|g4z|x6z|cmd|m3u|vfl|vsf|nib|nbz|d2m|d4m)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO vice_xcbm2\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO vice_xcbm2",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     },
     {
-      "name": "cbm2 - RetroArch 64 - vice_xcbm5x0",
-      "uniqueId": "cbm2.ra64.vice_xcbm5x0",
+      "name": "cbm2 - vice_xcbm5x0",
+      "uniqueId": "cbm2.libretro.vice_xcbm5x0",
       "description": "Supported extensions: d64, d71, d80, d81, d82, g64, g41, x64, t64, tap, prg, p00, crt, bin, zip, gz, d6z, d7z, d8z, g6z, g4z, x6z, cmd, m3u, vfl, vsf, nib, nbz, d2m, d4m.",
       "acceptedFilenameRegex": "^(.*)\\.(?:d64|d71|d80|d81|d82|g64|g41|x64|t64|tap|prg|p00|crt|bin|zip|gz|d6z|d7z|d8z|g6z|g4z|x6z|cmd|m3u|vfl|vsf|nib|nbz|d2m|d4m)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO vice_xcbm5x0\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO vice_xcbm5x0",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

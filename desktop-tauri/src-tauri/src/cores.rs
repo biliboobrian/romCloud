@@ -129,7 +129,7 @@ pub fn core_of(player: &Value) -> Option<String> {
     None
 }
 
-/// Cœurs RetroArch utilisables pour un système (sans doublon), du plus abouti au moins abouti.
+/// Cœurs libretro utilisables pour un système (sans doublon), du plus abouti au moins abouti.
 pub fn cores(system: &Value) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
     for player in system.get("players").and_then(Value::as_array).cloned().unwrap_or_default() {
@@ -167,7 +167,7 @@ pub fn core_url(core: &str) -> String {
 /// Cœurs qui lisent eux-mêmes les archives (arcade : jeux = ensembles de fichiers .zip, DOS).
 const ARCHIVE_CORES: &[&str] = &["fbneo", "fbalpha", "mame", "dosbox", "neocd"];
 
-/// RetroArch décompresse les .zip avant de les passer au cœur, sauf pour ces cœurs : idem ici.
+/// .zip décompressés avant d'être passés au cœur, sauf pour ces cœurs (ils lisent eux-mêmes les archives).
 pub fn needs_extraction(core: &str, file: &str) -> bool {
     paths::extension(file) == ".zip" && !ARCHIVE_CORES.iter().any(|p| core.starts_with(p))
 }
@@ -218,6 +218,8 @@ pub struct PlayerArgs {
     pub buttons: Option<String>,
     pub pad_style: Option<String>,
     pub option_defaults: Vec<(String, String)>,
+    /// Dossier de nvngx_dlss.dll (filtre DLSS).
+    pub dlss_dir: Option<String>,
 }
 
 /// Arguments de romcloud-player.exe.
@@ -229,7 +231,13 @@ pub fn player_args(a: &PlayerArgs) -> Vec<String> {
     .iter()
     .flat_map(|(k, v)| [k.to_string(), v.to_string()])
     .collect();
-    for (key, value) in [("--state-name", &a.state_name), ("--keys-file", &a.keys_file), ("--buttons", &a.buttons), ("--pad-style", &a.pad_style)] {
+    for (key, value) in [
+        ("--state-name", &a.state_name),
+        ("--keys-file", &a.keys_file),
+        ("--buttons", &a.buttons),
+        ("--pad-style", &a.pad_style),
+        ("--dlss-dir", &a.dlss_dir),
+    ] {
         if let Some(value) = value.as_ref().filter(|v| !v.is_empty()) {
             args.push(key.into());
             args.push(value.clone());
@@ -281,25 +289,25 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn retroarch(core: &str) -> Value {
-        json!({ "amStartArguments": format!("-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {{file.path}}\n -e LIBRETRO {core}\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg") })
+    fn template(core: &str) -> Value {
+        json!({ "amStartArguments": format!("-n com.example.frontend/.GameActivity\n -e ROM {{file.path}}\n -e LIBRETRO {core}") })
     }
 
     fn system(id: &str, cores: &[&str]) -> Value {
-        json!({ "id": id, "players": cores.iter().map(|c| retroarch(c)).collect::<Vec<_>>() })
+        json!({ "id": id, "players": cores.iter().map(|c| template(c)).collect::<Vec<_>>() })
     }
 
     #[test]
     fn decoupage_d_une_commande() {
         assert_eq!(tokenize(r#""C:\Emulateurs\Dolphin 5\Dolphin.exe" -b -e "{file}""#), [r"C:\Emulateurs\Dolphin 5\Dolphin.exe", "-b", "-e", "{file}"]);
-        assert_eq!(tokenize(r"C:\RetroArch\retroarch.exe -L snes9x"), [r"C:\RetroArch\retroarch.exe", "-L", "snes9x"]);
+        assert_eq!(tokenize(r"C:\Emu\emu.exe -L snes9x"), [r"C:\Emu\emu.exe", "-L", "snes9x"]);
         assert_eq!(tokenize("a '' b"), ["a", "", "b"]);
     }
 
     #[test]
     fn coeur_d_un_modele_android() {
-        assert_eq!(core_of(&retroarch("mupen64plus_next_gles3")).as_deref(), Some("mupen64plus_next_gles3"));
-        assert_eq!(core_of(&retroarch("/data/data/com.retroarch/cores/snes9x_libretro_android.so")).as_deref(), Some("snes9x"));
+        assert_eq!(core_of(&template("mupen64plus_next_gles3")).as_deref(), Some("mupen64plus_next_gles3"));
+        assert_eq!(core_of(&template("/data/data/com.example/cores/snes9x_libretro_android.so")).as_deref(), Some("snes9x"));
         assert_eq!(core_of(&json!({ "amStartArguments": "-n org.ppsspp.ppsspp/.PpssppActivity -d {file.uri}" })), None);
     }
 

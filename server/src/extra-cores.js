@@ -1,7 +1,7 @@
 // Cœurs libretro que RomCloud ajoute aux systèmes du catalogue Daijishou, dont les modèles ne les
-// proposent pas (MesenCE, BlastEm, Geargrafx…) : un modèle RetroArch par cœur, ajouté aux émulateurs
-// envoyés aux applications. Les moteurs intégrés (Windows et Android) en font un émulateur intégré,
-// comme pour les cœurs des modèles. Les systèmes absents du catalogue ont leurs propres plateformes
+// proposent pas (MesenCE, BlastEm, Geargrafx…) : un modèle de cœur par cœur (extra LIBRETRO seul),
+// ajouté aux émulateurs envoyés aux applications. Les moteurs intégrés (Windows et Android) en font
+// un émulateur intégré, comme pour les cœurs des modèles. Les systèmes absents du catalogue ont leurs propres plateformes
 // RomCloud (server/platforms/).
 //
 // Un cœur absent du buildbot d'une plateforme, ou qui demande l'OpenGL de bureau (moteur Android :
@@ -36,7 +36,7 @@ function tokenize(input) {
   return tokens;
 }
 
-/** Cœur libretro d'un modèle RetroArch (extra LIBRETRO) : « snes9x », chemin .so compris ; null sinon. */
+/** Cœur libretro d'un modèle (extra LIBRETRO) : « snes9x », chemin .so compris ; null sinon. */
 export function coreOf(player) {
   const tokens = tokenize(player?.amStartArguments);
   for (let i = 0; i + 2 < tokens.length; i++) {
@@ -60,17 +60,16 @@ export function corePlatforms(core) {
   return CORES[core]?.platforms || ALL_PLATFORMS;
 }
 
-/** Modèle RetroArch (64 bits) d'un cœur ajouté, au format Daijishou. */
-function retroArchPlayer(system, core) {
+/** Modèle d'un cœur ajouté, au format Daijishou : seul son cœur (extra LIBRETRO) sert aux applications. */
+function corePlayer(system, core) {
   const { name, ext } = CORES[core];
   const prefix = systemKey(system);
   return {
-    name: `${prefix} - RetroArch 64 - ${core}`,
+    name: `${prefix} - ${core}`,
     uniqueId: `${prefix}.romcloud.${core}`,
     description: `${name}. Supported extensions: ${ext.join(', ')}.`,
     acceptedFilenameRegex: ext.length ? `^(.*)\\.(?:${ext.join('|')})$` : null,
-    amStartArguments: `-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO ${core}\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg`,
-    killPackageProcesses: true,
+    amStartArguments: `-e LIBRETRO ${core}`,
   };
 }
 
@@ -92,7 +91,7 @@ export function playersFor(system, platform) {
   const own = (system.players || []).filter((p) => runs(coreOf(p)));
   const added = extraCores(system)
     .filter((c) => c.platforms.includes(platform))
-    .map((c) => retroArchPlayer(system, c.core));
+    .map((c) => corePlayer(system, c.core));
   return [...own, ...added];
 }
 

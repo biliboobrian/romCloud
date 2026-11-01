@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "wqx - RetroArch 64 - wqxemu",
-      "uniqueId": "wqx.ra64.wqxemu",
+      "name": "wqx - wqxemu",
+      "uniqueId": "wqx.libretro.wqxemu",
       "description": "Supported extensions: .",
       "acceptedFilenameRegex": null,
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO wqxemu\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO wqxemu",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

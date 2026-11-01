@@ -11,16 +11,12 @@ fn defaults() -> Map<String, Value> {
     let value = json!({
         "serverUrl": "",
         "apiKey": "",
-        "romsDir": paths::documents().join("RomCloud").to_string_lossy(),
-        "retroarchPath": "",
-        "biosDir": "",
         "language": "system",
         "view": "carousel",
         "emulators": {},
         "emulatorPaths": {},
         "emulatorArgs": {},
         "emulatorsDetectedAt": "",
-        "retroarchHelpDismissed": false,
         "hideUnidentified": false,
         "gameOrder": "name",
         "session": null,
@@ -74,11 +70,10 @@ pub fn save(patch: Value) -> Value {
         for (key, value) in patch {
             let value = match key.as_str() {
                 "serverUrl" => Value::String(normalize_url(value.as_str().unwrap_or(""))),
-                "romsDir" => {
+                "rootDir" => {
                     let dir = value.as_str().unwrap_or("").trim().to_string();
                     Value::String(if dir.is_empty() { paths::documents().join("RomCloud").to_string_lossy().into_owned() } else { dir })
                 }
-                "biosDir" => Value::String(value.as_str().unwrap_or("").trim().to_string()),
                 _ => value,
             };
             map.insert(key, value);
@@ -89,20 +84,6 @@ pub fn save(patch: Value) -> Value {
         let _ = std::fs::write(file(), text);
     }
     Value::Object(map.clone())
-}
-
-/// Dossier des BIOS : choisi, sinon le dossier « system » de RetroArch, sinon Documents\RomCloud\bios.
-pub fn bios_dir() -> PathBuf {
-    let s = load();
-    let chosen = s.get("biosDir").and_then(Value::as_str).unwrap_or("");
-    if !chosen.is_empty() {
-        return PathBuf::from(chosen);
-    }
-    let retroarch = s.get("retroarchPath").and_then(Value::as_str).unwrap_or("");
-    if !retroarch.is_empty() {
-        return PathBuf::from(paths::dirname(retroarch)).join("system");
-    }
-    paths::documents().join("RomCloud").join("bios")
 }
 
 /// "192.168.1.10:8080" -> "http://192.168.1.10:8080"
@@ -129,14 +110,14 @@ pub fn language() -> String {
     if LANGUAGES.contains(&system.as_str()) { system } else { "en".into() }
 }
 
-/// Réglages tels que l'interface les attend (langue et dossier des BIOS effectifs en plus ;
+/// Réglages tels que l'interface les attend (langue et dossier RomCloud effectifs en plus ;
 /// identifiant de ce PC créé s'il manque, joint aux adresses des images).
 pub fn view() -> Value {
     crate::netplay::device_id();
     let mut s = load();
     if let Value::Object(map) = &mut s {
         map.insert("effectiveLanguage".into(), Value::String(language()));
-        map.insert("effectiveBiosDir".into(), Value::String(bios_dir().to_string_lossy().into_owned()));
+        map.insert("rootDir".into(), Value::String(crate::folders::root().to_string_lossy().into_owned()));
     }
     s
 }

@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "playdia - RetroArch 64 - playdiaemu",
-      "uniqueId": "playdia.ra64.playdiaemu",
+      "name": "playdia - playdiaemu",
+      "uniqueId": "playdia.libretro.playdiaemu",
       "description": "Supported extensions: cue, zip, iso, bin.",
       "acceptedFilenameRegex": "^(.*)\\.(?:cue|zip|iso|bin)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO playdiaemu\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO playdiaemu",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

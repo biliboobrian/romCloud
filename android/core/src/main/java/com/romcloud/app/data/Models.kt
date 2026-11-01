@@ -84,6 +84,8 @@ data class GameSystem(
 /**
  * BIOS d'un système sur le serveur ; [path] est relatif au dossier BIOS (« dc/dc_boot.bin »).
  * [version] : version d'un fichier récupéré sur Internet par le serveur (firmware, pilote).
+ * [area] et [devicePath] : emplacement sur l'appareil (zone du dossier RomCloud et chemin dans la
+ * zone, voir [Folders]) ; absents d'un serveur plus ancien.
  */
 @Serializable
 data class BiosFile(
@@ -92,9 +94,17 @@ data class BiosFile(
     val size: Long,
     val md5: String? = null,
     val version: String? = null,
+    val area: String? = null,
+    val devicePath: String? = null,
 ) {
+    /** Zone du dossier RomCloud : « bios », « system » ou « drivers » (serveur sans zone : d'après le chemin). */
+    val zone: String get() = area ?: if (path.startsWith("drivers/")) Folders.DRIVERS else Folders.BIOS
+
+    /** Chemin dans la zone. */
+    val zonePath: String get() = devicePath ?: if (area == null && zone == Folders.DRIVERS) path.removePrefix("drivers/") else path
+
     /** Pilote graphique (« drivers/turnip.zip ») : téléchargé seulement si l'option est active. */
-    val isDriver: Boolean get() = path.startsWith("drivers/")
+    val isDriver: Boolean get() = zone == Folders.DRIVERS
 }
 
 @Serializable

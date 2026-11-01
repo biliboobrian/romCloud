@@ -8,6 +8,7 @@ import { db } from './db.js';
 import { HttpError } from './http-error.js';
 import { readApkInfo } from './apk-manifest.js';
 import { hashFile } from './library.js';
+import { coreOf } from './extra-cores.js';
 import { listSystems } from './systems.js';
 
 export const apksDir = () => path.join(config.dataDir, 'apks');
@@ -33,7 +34,7 @@ export function packageOfPlayer(player) {
 
 /**
  * Nom d'émulateur lisible à partir du nom d'un modèle Daijishou, de la forme
- * « <système> - <émulateur> - <cœur> » : « psx - RetroArch 64 - swanstation » -> « RetroArch 64 »,
+ * « <système> - <émulateur> - <cœur> » : « psx - DuckStation - standalone » -> « DuckStation »,
  * « psp - PPSSPP » -> « PPSSPP », « Flycast (dev build) » -> « Flycast ».
  */
 export function emulatorName(playerName) {
@@ -43,14 +44,14 @@ export function emulatorName(playerName) {
 }
 
 /**
- * Émulateurs utilisés par les systèmes du serveur, regroupés par paquet :
- * [{ packageName, names: [noms des modèles], systems: [{ id, name }], apkId }].
+ * Émulateurs utilisés par les systèmes du serveur, regroupés par paquet (sans les modèles de cœur
+ * libretro, lancés par l'émulateur intégré) : [{ packageName, names: [noms des modèles], systems: [{ id, name }], apkId }].
  */
 export function emulatorPackages() {
   const byPackage = new Map();
   for (const system of listSystems()) {
     for (const player of system.players) {
-      const pkg = packageOfPlayer(player);
+      const pkg = coreOf(player) ? null : packageOfPlayer(player);
       if (!pkg) continue;
       const entry = byPackage.get(pkg) || { packageName: pkg, names: [], systems: [] };
       const name = emulatorName(player.name) || pkg;

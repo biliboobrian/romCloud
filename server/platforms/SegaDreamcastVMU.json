@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "vmu - RetroArch 64 - vemulator",
-      "uniqueId": "vmu.ra64.vemulator",
+      "name": "vmu - vemulator",
+      "uniqueId": "vmu.libretro.vemulator",
       "description": "Supported extensions: vms, dci, bin.",
       "acceptedFilenameRegex": "^(.*)\\.(?:vms|dci|bin)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO vemulator\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO vemulator",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

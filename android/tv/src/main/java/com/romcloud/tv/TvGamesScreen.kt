@@ -60,7 +60,6 @@ import com.romcloud.app.launch.PendingLaunch
 import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.netplay.Together
-import com.romcloud.app.launch.RetroArchInfo
 import com.romcloud.app.ui.CarouselRow
 import com.romcloud.app.ui.DownloadedGreen
 import com.romcloud.app.ui.GameCriteria
@@ -71,7 +70,6 @@ import com.romcloud.app.ui.localStatus
 import com.romcloud.app.ui.TogetherBadge
 import com.romcloud.app.ui.OfflineBadge
 import com.romcloud.app.ui.PlaytimeLabel
-import com.romcloud.app.ui.RetroArchHelpDialog
 import com.romcloud.app.ui.RowLabels
 import com.romcloud.app.ui.carouselRows
 import com.romcloud.app.ui.criteriaSections
@@ -102,8 +100,6 @@ fun TvGamesScreen(
     var focusedRow by rememberSaveable { mutableStateOf<String?>(null) }
     var askDownload by remember { mutableStateOf<Game?>(null) }
     var askCancel by remember { mutableStateOf<Game?>(null) }
-    // Guide RetroArch ouvert après confirmation d'un téléchargement (jeu, guide, lancer ensuite ?)
-    var postDownloadHelp by remember { mutableStateOf<Triple<Game, RetroArchInfo, Boolean>?>(null) }
     var searching by remember { mutableStateOf(false) }
     var showCriteria by remember { mutableStateOf(false) }
 
@@ -247,33 +243,15 @@ fun TvGamesScreen(
             error = (statusOf(game) as? LocalStatus.Error)?.message,
             missingBios = state.missingBios,
             onDownload = { launchAfter, withBios ->
-                val help = viewModel.retroArchHelpFor(game)
-                // Avec le guide ouvert, le lancement attend sa fermeture (voir plus bas).
-                if (launchAfter && help == null) autoLaunch[game.id] = PendingLaunch() else autoLaunch -= game.id
+                if (launchAfter) autoLaunch[game.id] = PendingLaunch() else autoLaunch -= game.id
                 viewModel.download(game, withBios)
                 askDownload = null
-                if (help != null) postDownloadHelp = Triple(game, help, launchAfter)
             },
             onDetails = {
                 askDownload = null
                 onOpenGame(game.id)
             },
             onDismiss = { askDownload = null },
-        )
-    }
-    postDownloadHelp?.let { (game, info, launchAfter) ->
-        RetroArchHelpDialog(
-            info = info,
-            onDismiss = {
-                postDownloadHelp = null
-                if (launchAfter) {
-                    // Déjà téléchargé : on lance ; sinon lancement automatique à la fin du téléchargement.
-                    if (statusOf(game) == LocalStatus.Downloaded) viewModel.play(activity, game)?.let(onMessage)
-                    else autoLaunch[game.id] = PendingLaunch()
-                }
-            },
-            onMessage = onMessage,
-            onDontShowAgainChange = { viewModel.setRetroArchHelpDismissed(info.packageName, it) },
         )
     }
 

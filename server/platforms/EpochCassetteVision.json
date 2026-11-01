@@ -19,13 +19,13 @@
   },
   "playerList": [
     {
-      "name": "cassettevision - RetroArch 64 - pd777",
-      "uniqueId": "cassettevision.ra64.pd777",
+      "name": "cassettevision - pd777",
+      "uniqueId": "cassettevision.libretro.pd777",
       "description": "Supported extensions: zip, bin777, ptn777.",
       "acceptedFilenameRegex": "^(.*)\\.(?:zip|bin777|ptn777)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO pd777\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO pd777",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

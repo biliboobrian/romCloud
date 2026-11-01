@@ -19,33 +19,33 @@
   },
   "playerList": [
     {
-      "name": "pc - RetroArch 64 - virtualxt",
-      "uniqueId": "pc.ra64.virtualxt",
+      "name": "pc - virtualxt",
+      "uniqueId": "pc.libretro.virtualxt",
       "description": "Supported extensions: img, zip.",
       "acceptedFilenameRegex": "^(.*)\\.(?:img|zip)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO virtualxt\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO virtualxt",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     },
     {
-      "name": "pc - RetroArch 64 - pcem",
-      "uniqueId": "pc.ra64.pcem",
+      "name": "pc - pcem",
+      "uniqueId": "pc.libretro.pcem",
       "description": "Supported extensions: exe, com, bat, conf.",
       "acceptedFilenameRegex": "^(.*)\\.(?:exe|com|bat|conf)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO pcem\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO pcem",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     },
     {
-      "name": "pc - RetroArch 64 - qemu",
-      "uniqueId": "pc.ra64.qemu",
+      "name": "pc - qemu",
+      "uniqueId": "pc.libretro.qemu",
       "description": "Supported extensions: qemu_cmd_line, iso, img, qcow, qcow2.",
       "acceptedFilenameRegex": "^(.*)\\.(?:qemu_cmd_line|iso|img|qcow|qcow2)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO qemu\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO qemu",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

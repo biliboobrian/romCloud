@@ -7,7 +7,7 @@
 
 #include "util.h"
 
-// Clavier du joueur 1 par défaut (disposition proche de RetroArch), comme DEFAULTS de l'application (desktop-tauri, keyboard.rs).
+// Clavier du joueur 1 par défaut, comme DEFAULTS de l'application (desktop-tauri, keyboard.rs).
 static const std::pair<unsigned, SDL_Scancode> kDefaultKeys[] = {
     {RETRO_DEVICE_ID_JOYPAD_UP, SDL_SCANCODE_UP},       {RETRO_DEVICE_ID_JOYPAD_DOWN, SDL_SCANCODE_DOWN},
     {RETRO_DEVICE_ID_JOYPAD_LEFT, SDL_SCANCODE_LEFT},   {RETRO_DEVICE_ID_JOYPAD_RIGHT, SDL_SCANCODE_RIGHT},

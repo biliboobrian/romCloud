@@ -206,6 +206,25 @@ export function systemFiles(system, language = 'en') {
   }));
 }
 
+/**
+ * Emplacement d'un fichier du système sur les appareils, sous le dossier RomCloud :
+ * { area, devicePath }, [devicePath] relatif au dossier de la zone [area].
+ *  - « drivers » : pilotes graphiques (drivers/turnip.zip -> drivers/turnip.zip) ;
+ *  - « system » : clés, firmwares et données des émulateurs sans cœur libretro, rangés par type
+ *    (switch/prod.keys -> system/switch/keys/prod.keys, ps3/PS3UPDAT.PUP -> system/ps3/firmware/…) ;
+ *  - « bios » : BIOS et données des cœurs libretro, chemin gardé (dossier système du cœur :
+ *    bios/<dossier du système>/<chemin>).
+ */
+export function deviceLocation(system, filePath) {
+  const lower = String(filePath).toLowerCase();
+  const entry = (FILES[system.id] || FILES[system.shortname] || [])
+    .find((f) => f.path.toLowerCase() === lower || (f.folder && lower.startsWith(`${f.path.toLowerCase()}/`)));
+  if (!entry) return { area: 'bios', devicePath: filePath };
+  if (entry.kind === 'driver') return { area: 'drivers', devicePath: filePath.replace(/^drivers\//i, '') };
+  const [head, ...rest] = String(filePath).split('/');
+  return { area: 'system', devicePath: rest.length ? [head, entry.kind, ...rest].join('/') : `${entry.kind}/${head}` };
+}
+
 /** Source d'un fichier attendu par une fiche libretro, ou null. */
 export function coreFileSource(filePath) {
   return CORE_FILE_SOURCES[String(filePath).toLowerCase()] || null;

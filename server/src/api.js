@@ -256,7 +256,7 @@ api.post('/systems/:id/games/delete', (req, res) => {
 });
 
 // ---- BIOS ----
-// { cores, coreInfoAvailable, files: BIOS présents, expected: BIOS attendus par les cœurs RetroArch }
+// { cores, coreInfoAvailable, files: BIOS présents, expected: BIOS attendus par les cœurs libretro }
 // ?catalog=0 : fichiers présents seulement (utilisé par les applications).
 api.get(
   '/systems/:id/bios',

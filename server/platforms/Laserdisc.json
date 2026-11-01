@@ -19,23 +19,23 @@
   },
   "playerList": [
     {
-      "name": "laserdisc - RetroArch 64 - daphne",
-      "uniqueId": "laserdisc.ra64.daphne",
+      "name": "laserdisc - daphne",
+      "uniqueId": "laserdisc.libretro.daphne",
       "description": "Supported extensions: zip.",
       "acceptedFilenameRegex": "^(.*)\\.(?:zip)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO daphne\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO daphne",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     },
     {
-      "name": "laserdisc - RetroArch 64 - dirksimple",
-      "uniqueId": "laserdisc.ra64.dirksimple",
+      "name": "laserdisc - dirksimple",
+      "uniqueId": "laserdisc.libretro.dirksimple",
       "description": "Supported extensions: ogv, dirksimple.",
       "acceptedFilenameRegex": "^(.*)\\.(?:ogv|dirksimple)$",
-      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO dirksimple\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
-      "killPackageProcesses": true,
-      "killPackageProcessesWarning": true,
+      "amStartArguments": "-e LIBRETRO dirksimple",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": false,
       "extra": ""
     }
   ]

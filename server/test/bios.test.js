@@ -78,9 +78,9 @@ after(() => {
   }
 });
 
-const retroarch = (core) => ({
-  name: `RetroArch ${core}`,
-  amStartArguments: `-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO /data/data/com.retroarch.aarch64/cores/${core}_libretro_android.so\n`,
+const coreTemplate = (core) => ({
+  name: `sys - ${core}`,
+  amStartArguments: `-n com.example.frontend/.GameActivity\n -e ROM {file.path}\n -e LIBRETRO /data/data/com.example.frontend/cores/${core}_libretro_android.so\n`,
 });
 
 test('fiche de cœur : BIOS, caractère obligatoire et MD5', () => {
@@ -100,7 +100,7 @@ test('fiche de cœur : BIOS, caractère obligatoire et MD5', () => {
 });
 
 test('cœurs d’un système et chemins de BIOS sûrs', () => {
-  const system = { players: [retroarch('flycast'), retroarch('flycast'), { amStartArguments: '-n x/.Y' }] };
+  const system = { players: [coreTemplate('flycast'), coreTemplate('flycast'), { amStartArguments: '-n x/.Y' }] };
   assert.deepEqual(bios.coresOfSystem(system), ['flycast']);
   assert.equal(bios.safeBiosPath('dc\\dc_boot.bin'), 'dc/dc_boot.bin');
   assert.equal(bios.safeBiosPath('/scph5501.bin'), 'scph5501.bin');
@@ -108,7 +108,7 @@ test('cœurs d’un système et chemins de BIOS sûrs', () => {
 });
 
 test('BIOS attendus, envoi, contrôle MD5, téléchargement et suppression', async () => {
-  createSystem({ id: 'dc', name: 'Dreamcast', players: [retroarch('flycast_gles2'), retroarch('mednafen_psx_hw')] });
+  createSystem({ id: 'dc', name: 'Dreamcast', players: [coreTemplate('flycast_gles2'), coreTemplate('mednafen_psx_hw')] });
 
   const empty = await bios.systemBios('dc');
   assert.equal(empty.coreInfoAvailable, true);
@@ -210,7 +210,7 @@ function makeZip(files) {
 }
 
 test('dossier attendu (PCSX2) : .zip extrait dans le dossier, ancien .zip réparé', async () => {
-  createSystem({ id: 'ps2', name: 'PlayStation 2', players: [retroarch('pcsx2')] });
+  createSystem({ id: 'ps2', name: 'PlayStation 2', players: [coreTemplate('pcsx2')] });
   const upload = (name, content) => {
     const temp = path.join(dataDir, `upload-${crypto.randomUUID()}`);
     fs.writeFileSync(temp, content);
@@ -294,6 +294,20 @@ test('clés et firmware de la Switch attendus, sans source Internet', async () =
   fs.writeFileSync(path.join(dir, 'k'), 'prod_key = 0123');
   assert.deepEqual(await bios.addBiosFiles('switch', [{ tempPath: path.join(dir, 'k'), originalName: 'prod.keys' }]), ['switch/prod.keys']);
   assert.ok((await bios.systemBios('switch')).expected.find((e) => e.path === 'switch/prod.keys').present);
+  // Emplacement sur les appareils : clés rangées par type dans la zone « system ».
+  const sent = (await bios.systemBios('switch', { catalog: false })).files.find((f) => f.path === 'switch/prod.keys');
+  assert.deepEqual([sent.area, sent.devicePath], ['system', 'switch/keys/prod.keys']);
+});
+
+test('emplacement des fichiers sur les appareils : bios, system ou drivers', () => {
+  const at = (system, file) => Object.values(systemFiles.deviceLocation(system, file));
+  assert.deepEqual(at({ id: 'switch' }, 'switch/firmware.zip'), ['system', 'switch/firmware/firmware.zip']);
+  assert.deepEqual(at({ id: 'switch' }, 'drivers/turnip.zip'), ['drivers', 'turnip.zip']);
+  assert.deepEqual(at({ id: 'x', shortname: 'ps3' }, 'ps3/PS3UPDAT.PUP'), ['system', 'ps3/firmware/PS3UPDAT.PUP']);
+  assert.deepEqual(at({ id: 'xbox' }, 'xbox/xbox_hdd.qcow2'), ['system', 'xbox/data/xbox_hdd.qcow2']);
+  // BIOS des cœurs libretro (et fichiers envoyés à la main) : chemin gardé.
+  assert.deepEqual(at({ id: 'dc' }, 'dc/dc_boot.bin'), ['bios', 'dc/dc_boot.bin']);
+  assert.deepEqual(at({ id: 'gc' }, 'dolphin-emu/Sys/GC/font.bin'), ['bios', 'dolphin-emu/Sys/GC/font.bin']);
 });
 
 test('firmware récupéré sur sa source : dernière version, mise à jour signalée, téléchargement incomplet refusé', async () => {
@@ -330,9 +344,9 @@ test('import groupé : BIOS rangés par empreinte, nom ou dossier, archive ouver
     'firmware0_opt = "true"',
     `notes = "(!) gb_bios.bin (md5): ${md5}"`,
   ].join('\n');
-  createSystem({ id: 'gbpack', name: 'Game Boy', players: [retroarch('gambatte_pack')] });
-  createSystem({ id: 'gbcpack', name: 'Game Boy Color', players: [retroarch('gambatte_pack')] });
-  if (!getSystem('ps2')) createSystem({ id: 'ps2', name: 'PlayStation 2', players: [retroarch('pcsx2')] });
+  createSystem({ id: 'gbpack', name: 'Game Boy', players: [coreTemplate('gambatte_pack')] });
+  createSystem({ id: 'gbcpack', name: 'Game Boy Color', players: [coreTemplate('gambatte_pack')] });
+  if (!getSystem('ps2')) createSystem({ id: 'ps2', name: 'PlayStation 2', players: [coreTemplate('pcsx2')] });
   const upload = (name, content, relativePath) => {
     const temp = path.join(dataDir, `upload-${crypto.randomUUID()}`);
     fs.writeFileSync(temp, content);
@@ -367,7 +381,7 @@ test('import groupé : BIOS rangés par empreinte, nom ou dossier, archive ouver
 });
 
 test('BIOS attendus incompatibles (fichier et dossier du même nom) : le fichier gardé, BIOS sans fichier retiré', async () => {
-  createSystem({ id: 'sfc', name: 'Super Nintendo', players: [retroarch('bsnes'), retroarch('higan_sfc')] });
+  createSystem({ id: 'sfc', name: 'Super Nintendo', players: [coreTemplate('bsnes'), coreTemplate('higan_sfc')] });
   const { expected } = await bios.systemBios('sfc');
   assert.deepEqual(expected.map((e) => e.path), ['SGB1.sfc']);
   const upload = (name, content) => {
