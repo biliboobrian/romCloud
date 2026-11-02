@@ -14,7 +14,7 @@ import path from 'node:path';
 import { Readable, Transform, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import zlib from 'node:zlib';
-import { BUNDLE_ID_RE, PACK_BUNDLES, PACK_MANIFEST, bundlePath, fileInFolder, folderFiles, packExtension, packFormat, readPackManifest } from './folder-games.js';
+import { BUNDLE_ID_RE, BUNDLE_MAX, PACK_BUNDLES, bundleGroups, PACK_MANIFEST, bundlePath, fileInFolder, folderFiles, packExtension, packFormat, readPackManifest } from './folder-games.js';
 import { HttpError } from './http-error.js';
 import { token } from './i18n.js';
 import { enqueueConvert } from './jobs.js';
@@ -26,11 +26,7 @@ import { zstdAvailable, zstdCompress, zstdDecompressStream } from './zstd.js';
 /** Fichiers compressés ou décompressés en même temps (chaque zstd utilise déjà plusieurs fils). */
 const CONCURRENCY = 2;
 
-/**
- * Taille (avant compression) au-delà de laquelle un fichier a sa propre archive, et taille maximale
- * d'une archive regroupée (PACK_BUNDLE_BYTES : autre taille, pour les tests).
- */
-export const BUNDLE_MAX = Number(process.env.PACK_BUNDLE_BYTES) || 100 * 1024 * 1024;
+export { BUNDLE_MAX, bundleGroups };
 
 function writeManifest(dir, files) {
   const file = path.join(dir, PACK_MANIFEST);
@@ -114,24 +110,6 @@ export function packedFileStream(dir, rel, entry, signal) {
   }
   const format = packFormat(entry.format);
   return packedStream(`${fileInFolder(dir, rel)}${packExtension(format)}`, format, signal);
-}
-
-/**
- * Répartit des fichiers ({ size }) dans des groupes de [max] octets au plus : les plus lourds
- * d'abord, chacun dans le premier groupe où il tient ; renvoie les groupes (listes de fichiers).
- */
-export function bundleGroups(files, max = BUNDLE_MAX) {
-  const groups = [];
-  for (const f of [...files].sort((a, b) => b.size - a.size)) {
-    const group = groups.find((g) => g.size + f.size <= max);
-    if (group) {
-      group.files.push(f);
-      group.size += f.size;
-    } else {
-      groups.push({ files: [f], size: f.size });
-    }
-  }
-  return groups.map((g) => g.files);
 }
 
 /**

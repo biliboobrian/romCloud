@@ -26,6 +26,39 @@ export const PACK_BUNDLES = '.romcloud-bundles';
 /** Identifiant d'archive regroupée valide (chiffres et lettres minuscules). */
 export const BUNDLE_ID_RE = /^[0-9a-z]{1,16}$/;
 
+/**
+ * Taille (avant compression) au-delà de laquelle un fichier a sa propre archive, et taille maximale
+ * d'une archive regroupée (PACK_BUNDLE_BYTES : autre taille, pour les tests).
+ */
+export const BUNDLE_MAX = Number(process.env.PACK_BUNDLE_BYTES) || 100 * 1024 * 1024;
+
+/**
+ * Répartit des fichiers ({ size }) dans des groupes de [max] octets au plus : les plus lourds
+ * d'abord, chacun dans le premier groupe où il tient ; renvoie les groupes (listes de fichiers).
+ */
+export function bundleGroups(files, max = BUNDLE_MAX) {
+  const groups = [];
+  for (const f of [...files].sort((a, b) => b.size - a.size)) {
+    const group = groups.find((g) => g.size + f.size <= max);
+    if (group) {
+      group.files.push(f);
+      group.size += f.size;
+    } else {
+      groups.push({ files: [f], size: f.size });
+    }
+  }
+  return groups.map((g) => g.files);
+}
+
+/**
+ * Archives zstd d'un seul fichier, de [BUNDLE_MAX] au plus (compressions d'avant les archives
+ * regroupées), qu'une nouvelle compression regrouperait avec d'autres : leur nombre.
+ */
+export function looseArchives(files) {
+  const loose = files.filter((f) => f.packed && !f.bundle && f.format === 'zst' && f.size <= BUNDLE_MAX);
+  return bundleGroups(loose).filter((g) => g.length > 1).reduce((n, g) => n + g.length, 0);
+}
+
 /** Archive regroupée [id] du dossier [dir]. */
 export const bundlePath = (dir, id) => path.join(dir, PACK_BUNDLES, `${id}.zst`);
 
@@ -163,6 +196,8 @@ export function folderStats(dir, files = folderFiles(dir)) {
     packed: files.filter((f) => f.packed).length,
     // Format des archives : « zst », « xz », « zip », « mixed » (plusieurs) ; null sans fichier compressé.
     format: packFormatOf(files),
+    // Archives d'un seul fichier à regrouper (voir looseArchives).
+    loose: looseArchives(files),
   };
 }
 

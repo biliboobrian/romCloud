@@ -818,11 +818,13 @@ function fillGamePack(game) {
       toast(t(job ? 'pack.queued' : 'pack.alreadyQueued'));
       refreshJobs();
     });
-  // Compression : fichiers en clair et archives xz ou zip d'avant le zstd (converties) ; décompression :
-  // s'il y a des archives.
+  // Compression : fichiers en clair, archives xz ou zip d'avant le zstd (converties) et archives zstd
+  // d'un seul fichier d'avant les archives regroupées (regroupées ; packLoose null : pas encore
+  // comptées, bouton proposé) ; décompression : s'il y a des archives.
   const pack = $('#gamePackBtn');
-  pack.classList.toggle('hidden', packed === 'zip' && game.packFormat === 'zst');
-  pack.textContent = t(packed === 'flat' ? 'pack.pack' : packed === 'zip' ? 'pack.convert' : 'pack.repack');
+  const allZst = packed === 'zip' && game.packFormat === 'zst';
+  pack.classList.toggle('hidden', allZst && game.packLoose === 0);
+  pack.textContent = t(packed === 'flat' ? 'pack.pack' : allZst ? 'pack.regroup' : packed === 'zip' ? 'pack.convert' : 'pack.repack');
   pack.onclick = () => start('zstd');
   const unpack = $('#gameUnpackBtn');
   unpack.classList.toggle('hidden', packed === 'flat');

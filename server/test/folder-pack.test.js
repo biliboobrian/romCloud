@@ -15,7 +15,7 @@ delete process.env.ADMIN_KEY;
 const { default: express } = await import('express');
 const { api } = await import('../src/api.js');
 const { config } = await import('../src/config.js');
-const { PACK_MANIFEST } = await import('../src/folder-games.js');
+const { PACK_MANIFEST, looseArchives } = await import('../src/folder-games.js');
 const { bundleGroups, packFile } = await import('../src/folder-pack.js');
 const { xzAvailable, xzCompress } = await import('../src/xz.js');
 const { zstdAvailable, zstdCompress, zstdDecompressStream } = await import('../src/zstd.js');
@@ -32,6 +32,15 @@ test("fichiers répartis en groupes de 100 Mo au plus, les plus lourds d'abord",
   // Fichier qu'aucun autre ne complète : seul dans son groupe.
   assert.deepEqual(sizes(bundleGroups([95, 30, 80].map((size) => ({ size })), 100)), [[95], [80], [30]]);
   assert.deepEqual(bundleGroups([], 100), []);
+});
+
+test("archives d'un seul fichier à regrouper comptées (bouton de compression d'un jeu déjà en zstd)", () => {
+  const zst = (size, more = {}) => ({ size, packed: true, format: 'zst', ...more });
+  // Limite des tests : 100 000 octets ; deux petites archives regroupables, la grosse et celle déjà regroupée non.
+  assert.equal(looseArchives([zst(40_000), zst(50_000), zst(500_000), zst(10, { bundle: '1' })]), 2);
+  // Deux de 95 000 : aucune ne complète l'autre, rien à regrouper.
+  assert.equal(looseArchives([zst(95_000), zst(95_000)]), 0);
+  assert.equal(looseArchives([{ size: 10 }, { size: 20 }]), 0); // en clair : déjà proposés (« Compresser le reste »)
 });
 
 test('jeu PC compressé en zstd : gros fichiers seuls, petits regroupés ; liste, archive ou fichier à la volée, anciens zip, xz et zstd convertis, retour en clair', { skip: (!zstdAvailable() || !xzAvailable()) && 'outil zstd ou xz absent' }, async () => {
@@ -109,6 +118,7 @@ test('jeu PC compressé en zstd : gros fichiers seuls, petits regroupés ; liste
     const packed = await (await fetch(`${base}/games/${game.id}`)).json();
     assert.equal(packed.packed, 'zip');
     assert.equal(packed.packFormat, 'zst');
+    assert.equal(packed.packLoose, 0); // tout est regroupé : plus de bouton de compression
     assert.equal(packed.size, game.size); // taille une fois installé : inchangée
     assert.ok(packed.packedSize < packed.size);
     assert.equal(packed.exe, 'Game.exe'); // exécutable toujours reconnu
