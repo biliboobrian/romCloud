@@ -1,6 +1,6 @@
 [package]
 name = "romcloud"
-version = "1.92.0"
+version = "1.93.0"
 description = "RomCloud pour Windows : bibliothÃ¨que de jeux du serveur RomCloud, tÃ©lÃ©chargement Ã  la demande et lancement des Ã©mulateurs"
 authors = ["biliboobrian"]
 license = "MIT"
@@ -27,6 +27,8 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 # Jeux PC compressés par le serveur : zstd (décodeur en Rust, rien à compiler en C), xz des
 # compressions d'avant (blocs en parallèle).
 ruzstd = "0.9"
+# CRC32 de chaque fichier d'une archive regroupée.
+crc32fast = "1"
 lzma-rust2 = { version = "0.22", default-features = false, features = ["std", "xz", "optimization"] }
 hex = "0.4"
 base64 = "0.23"

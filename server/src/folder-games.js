@@ -1,8 +1,10 @@
 // Jeux en dossiers (système « jeux en dossiers », PC Windows) : chaque sous-dossier du système est un
 // jeu, téléchargé fichier par fichier par les applications (liste : chemin et taille) et lancé par
 // son exécutable, choisi dans la fiche du jeu (sinon deviné au scan). Jeu compressé (folder-pack.js) :
-// chaque fichier « X » rangé dans sa propre archive, « X.zst » (zstd), ou « X.xz » et « X.zip »
-// (compressions d'avant le zstd), listée dans le manifeste du dossier.
+// chaque fichier de plus de 100 Mo rangé dans sa propre archive, « X.zst » (zstd), ou « X.xz » et
+// « X.zip » (compressions d'avant le zstd) ; les plus petits regroupés dans des archives zstd de
+// 100 Mo au plus (avant compression), rangées dans « .romcloud-bundles » ; le tout noté dans le
+// manifeste du dossier.
 import fs from 'node:fs';
 import path from 'node:path';
 import { HttpError } from './http-error.js';
@@ -12,9 +14,20 @@ const IGNORED_RE = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$|\.(part|tmp|uplo
 
 /**
  * Manifeste d'un jeu compressé, à la racine de son dossier : { files: { chemin: { size, crc32,
- * mtime, format } } } ; format « zst », « xz » ou « zip » (absent : zip).
+ * mtime, format, bundle, offset } } } ; format « zst », « xz » ou « zip » (absent : zip) ; fichier
+ * regroupé avec d'autres : [bundle], son archive (zstd), et [offset], sa place dans le contenu
+ * décompressé de l'archive (fichiers mis bout à bout).
  */
 export const PACK_MANIFEST = '.romcloud-packed.json';
+
+/** Dossier des archives regroupant plusieurs fichiers, à la racine du dossier du jeu. */
+export const PACK_BUNDLES = '.romcloud-bundles';
+
+/** Identifiant d'archive regroupée valide (chiffres et lettres minuscules). */
+export const BUNDLE_ID_RE = /^[0-9a-z]{1,16}$/;
+
+/** Archive regroupée [id] du dossier [dir]. */
+export const bundlePath = (dir, id) => path.join(dir, PACK_BUNDLES, `${id}.zst`);
 
 /** Format d'une archive : « zst », « xz » ou « zip » (absent ou inconnu : zip, les premières compressions). */
 export const packFormat = (format) => (format === 'zst' || format === 'xz' ? format : 'zip');
@@ -75,7 +88,8 @@ const NOT_GAME_RE = new RegExp(
  * Fichiers du dossier [dir] (sous-dossiers compris) : { path (séparateur « / »), size, mtime }, triés
  * par chemin. Fichier compressé : chemin et taille d'origine, packed: true, format (« zst », « xz »
  * ou « zip »), packedSize (taille de son archive), crc32 ; zip : zipSize aussi (applications d'avant le
- * xz). S'il existe aussi en clair (compression interrompue) : le fichier en clair.
+ * xz) ; regroupé : bundle, offset et bundleSize (taille de l'archive regroupée) au lieu de
+ * packedSize. S'il existe aussi en clair (compression interrompue) : le fichier en clair.
  */
 export function folderFiles(dir) {
   const manifest = readPackManifest(dir);
@@ -83,12 +97,15 @@ export function folderFiles(dir) {
   const walk = (sub) => {
     for (const entry of fs.readdirSync(path.join(dir, sub), { withFileTypes: true })) {
       const rel = sub ? `${sub}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) walk(rel);
-      else if (entry.isFile() && !IGNORED_RE.test(rel)) {
+      if (entry.isDirectory()) {
+        if (rel !== PACK_BUNDLES) walk(rel);
+      } else if (entry.isFile() && !IGNORED_RE.test(rel)) {
         const stat = fs.statSync(path.join(dir, rel));
         const ext = /\.(zst|xz|zip)$/i.exec(rel)?.[0];
         const original = ext ? rel.slice(0, -ext.length) : null;
         const packed = original ? manifest[original] : undefined;
+        // Archive d'un fichier depuis regroupé (compression interrompue avant sa suppression) : ignorée.
+        if (packed?.bundle) continue;
         if (packed && packExtension(packed.format) === ext.toLowerCase()) {
           const format = packFormat(packed.format);
           files.push({
@@ -109,6 +126,25 @@ export function folderFiles(dir) {
     }
   };
   walk('');
+  // Fichiers regroupés : listés si leur archive est là.
+  const bundles = new Map();
+  for (const [rel, packed] of Object.entries(manifest)) {
+    if (!packed?.bundle || !BUNDLE_ID_RE.test(packed.bundle)) continue;
+    if (!bundles.has(packed.bundle)) bundles.set(packed.bundle, fs.statSync(bundlePath(dir, packed.bundle), { throwIfNoEntry: false }));
+    const stat = bundles.get(packed.bundle);
+    if (!stat) continue;
+    files.push({
+      path: rel,
+      size: packed.size,
+      mtime: packed.mtime ?? Math.floor(stat.mtimeMs),
+      packed: true,
+      format: 'zst',
+      bundle: packed.bundle,
+      offset: packed.offset ?? 0,
+      bundleSize: stat.size,
+      crc32: packed.crc32,
+    });
+  }
   const flat = new Set(files.filter((f) => !f.packed).map((f) => f.path));
   return files.filter((f) => !f.packed || !flat.has(f.path)).sort((a, b) => a.path.localeCompare(b.path));
 }
@@ -123,7 +159,7 @@ export function folderStats(dir, files = folderFiles(dir)) {
     size: files.reduce((n, f) => n + f.size, 0),
     mtime: files.reduce((m, f) => Math.max(m, f.mtime), 0),
     count: files.length,
-    packedSize: files.reduce((n, f) => n + (f.packed ? f.packedSize : f.size), 0),
+    packedSize: files.reduce((n, f) => n + (f.bundle ? 0 : f.packed ? f.packedSize : f.size), 0) + bundleSizes(files),
     packed: files.filter((f) => f.packed).length,
     // Format des archives : « zst », « xz », « zip », « mixed » (plusieurs) ; null sans fichier compressé.
     format: packFormatOf(files),
@@ -214,6 +250,12 @@ export function fileInFolder(dir, rel) {
   const full = path.resolve(dir, clean);
   if (!full.startsWith(path.resolve(dir) + path.sep)) throw new HttpError(400, 'errors.invalidFilePath');
   return full;
+}
+
+/** Taille des archives regroupées des fichiers [files] (chacune comptée une fois). */
+export function bundleSizes(files) {
+  const sizes = new Map(files.filter((f) => f.bundle).map((f) => [f.bundle, f.bundleSize]));
+  return [...sizes.values()].reduce((n, s) => n + s, 0);
 }
 
 function packFormatOf(files) {

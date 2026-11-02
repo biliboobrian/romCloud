@@ -475,11 +475,13 @@ export function scanSystem(systemId) {
 }
 
 /**
- * Fichiers d'un jeu en dossier ({ path, size } ; compressé : format (xz, zip), packedSize et crc32
- * en plus, archive à demander avec ?packed=1 ; zip : zipSize aussi) et ses exécutables (le plus probable en premier) ; packed : état de compression,
- * packedSize : taille à télécharger.
+ * Fichiers d'un jeu en dossier ({ path, size } ; compressé : format (zst, xz, zip), packedSize et
+ * crc32 en plus, archive à demander avec ?packed=1 ; zip : zipSize aussi ; regroupé avec d'autres
+ * ([bundles]) : bundle et offset au lieu de packedSize, archive à demander à /games/:id/bundle) et ses
+ * exécutables (le plus probable en premier) ; bundles : archives regroupées ({ id: { packedSize,
+ * size } }) ; packed : état de compression, packedSize : taille à télécharger.
  */
-export function gameFolderFiles(row, { zst = false } = {}) {
+export function gameFolderFiles(row, { zst = false, bundles = false } = {}) {
   if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
   const files = folderFiles(gameFilePath(row));
   const stats = folderStats(null, files);
@@ -488,11 +490,18 @@ export function gameFolderFiles(row, { zst = false } = {}) {
     // autres, fichiers en clair (décompressés à la volée par le serveur au téléchargement).
     // mtime : date du fichier (d'origine s'il est compressé) ; avec la taille, les applications
     // repèrent les fichiers changés par une nouvelle version du jeu.
-    files: files.map(({ path: p, size, mtime, packed, format, packedSize, zipSize, crc32 }) =>
-      packed && (zst || format !== 'zst')
-        ? { path: p, size, mtime, format, packedSize, crc32, ...(zipSize !== undefined ? { zipSize } : {}) }
-        : { path: p, size, mtime },
+    // Fichiers regroupés : listés en clair pour les applications qui ne savent pas lire ces archives
+    // (décompressés à la volée par le serveur au téléchargement).
+    files: files.map(({ path: p, size, mtime, packed, format, packedSize, zipSize, crc32, bundle, offset }) =>
+      bundle
+        ? bundles
+          ? { path: p, size, mtime, format, crc32, bundle, offset }
+          : { path: p, size, mtime }
+        : packed && (zst || format !== 'zst')
+          ? { path: p, size, mtime, format, packedSize, crc32, ...(zipSize !== undefined ? { zipSize } : {}) }
+          : { path: p, size, mtime },
     ),
+    ...(bundles ? { bundles: bundlesOf(files) } : {}),
     version: row.version ?? null,
     contentStamp: `${row.size}-${row.mtime}`,
     packed: stats.packed === 0 ? 'flat' : stats.packed === files.length ? 'zip' : 'partial',
@@ -505,6 +514,16 @@ export function gameFolderFiles(row, { zst = false } = {}) {
     uninstallExe: row.uninstall_exe || null,
     extraExes: extraExesOf(row),
   };
+}
+
+/** Archives regroupées des fichiers [files] : { id: { packedSize, size (fichiers décompressés) } }. */
+function bundlesOf(files) {
+  const bundles = {};
+  for (const f of files.filter((f) => f.bundle)) {
+    bundles[f.bundle] ??= { packedSize: f.bundleSize, size: 0 };
+    bundles[f.bundle].size += f.size;
+  }
+  return bundles;
 }
 
 /** Jeu PC compressé : « zip » (tous ses fichiers), « partial » (une partie) ou « flat » (aucun). */

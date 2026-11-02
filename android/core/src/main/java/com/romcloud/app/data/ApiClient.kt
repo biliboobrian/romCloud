@@ -124,12 +124,19 @@ class ApiClient(private val settings: Settings, val platform: String, val device
     fun folderFileUrl(id: Long, path: String, packed: Boolean = false): String =
         url("/api/games/$id/file?path=${java.net.URLEncoder.encode(path, "UTF-8").replace("+", "%20")}${if (packed) "&packed=1&zst=1" else ""}")
 
+    /** Archive [bundle] d'un jeu en dossier (PC), regroupant plusieurs de ses fichiers (zstd). */
+    fun folderBundleUrl(id: Long, bundle: String): String =
+        url("/api/games/$id/bundle?id=${java.net.URLEncoder.encode(bundle, "UTF-8")}")
+
     /** Fichiers d'un jeu en dossier (PC), à télécharger un par un (archives zstd comprises : zst=1). */
     suspend fun folderFiles(id: Long): List<FolderFile> = folderListing(id).files
 
-    /** Fichiers d'un jeu en dossier, avec sa version et l'empreinte de ses fichiers. */
+    /**
+     * Fichiers d'un jeu en dossier, avec sa version et l'empreinte de ses fichiers (archives zstd
+     * et archives regroupant plusieurs fichiers comprises : zst=1, bundles=1).
+     */
     suspend fun folderListing(id: Long): FolderListing =
-        json.decodeFromString(FolderListing.serializer(), get("/api/games/$id/files?zst=1"))
+        json.decodeFromString(FolderListing.serializer(), get("/api/games/$id/files?zst=1&bundles=1"))
 
     private suspend fun get(path: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url(path)).build()

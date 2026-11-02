@@ -15,8 +15,8 @@ import { diskUsage } from './disk-usage.js';
 import { clearDownloads, downloadStats, listDownloads, trackDownload } from './download-logs.js';
 import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { profileStats } from './profile-stats.js';
-import { fileInFolder, packExtension, packFormat, packManifestEntry } from './folder-games.js';
-import { packedStream, queueFolderPack } from './folder-pack.js';
+import { BUNDLE_ID_RE, bundlePath, fileInFolder, packExtension, packManifestEntry } from './folder-games.js';
+import { packedFileStream, queueFolderPack } from './folder-pack.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
 import { setGroup } from './groups.js';
@@ -509,16 +509,18 @@ api.get('/games/:id/file', (req, res, next) => {
     // telle quelle avec ?packed=1 (applications récentes, qui la décompressent ; reprise possible) ;
     // sinon décompressée à la volée (anciennes applications, sans reprise du téléchargement). Archive
     // zstd : envoyée telle quelle seulement avec ?zst=1 aussi (applications qui savent la lire).
+    // Fichier regroupé avec d'autres : toujours tiré de son archive regroupée et envoyé décompressé
+    // (applications qui ne savent pas lire ces archives, voir /games/:id/bundle).
     const packed = packManifestEntry(dir, rel);
-    const archive = packed && `${file}${packExtension(packed.format)}`;
-    if (packed && !fs.existsSync(file) && fs.existsSync(archive)) {
+    const archive = packed && (packed.bundle ? BUNDLE_ID_RE.test(packed.bundle) && bundlePath(dir, packed.bundle) : `${file}${packExtension(packed.format)}`);
+    if (archive && !fs.existsSync(file) && fs.existsSync(archive)) {
       file = archive;
       // Applications d'avant le xz : elles ne demandent ?packed=1 que pour les archives zip.
-      if (req.query.packed !== '1' || (packed.format === 'zst' && req.query.zst !== '1')) {
+      if (packed.bundle || req.query.packed !== '1' || (packed.format === 'zst' && req.query.zst !== '1')) {
         if (packed.size >= FOLDER_LOG_MIN_BYTES) {
           logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: `${row.file_name}/${rel}`, fileSize: packed.size });
         }
-        const stream = packedStream(archive, packFormat(packed.format));
+        const stream = packedFileStream(dir, rel, packed);
         res.set({ 'Content-Type': 'application/octet-stream', 'Content-Length': String(packed.size), 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` });
         res.on('close', () => stream.destroy());
         stream.on('error', () => res.destroy()).pipe(res);
@@ -542,8 +544,27 @@ api.get('/games/:id/file', (req, res, next) => {
 });
 
 // Jeu en dossier (PC) : ses fichiers ({ path, size }), à télécharger un par un, et ses exécutables ;
-// ?zst=1 : application qui sait lire les archives zstd.
-api.get('/games/:id/files', (req, res) => res.json(gameFolderFiles(requireGameRow(req.params.id), { zst: req.query.zst === '1' })));
+// ?zst=1 : application qui sait lire les archives zstd ; ?bundles=1 : et les archives regroupées.
+api.get('/games/:id/files', (req, res) =>
+  res.json(gameFolderFiles(requireGameRow(req.params.id), { zst: req.query.zst === '1', bundles: req.query.zst === '1' && req.query.bundles === '1' })),
+);
+
+// Jeu PC compressé : archive regroupée ?id=… (plusieurs fichiers mis bout à bout, puis compressés en
+// zstd, voir /games/:id/files?bundles=1), téléchargée telle quelle (reprise possible).
+api.get('/games/:id/bundle', (req, res, next) => {
+  const row = requireGameRow(req.params.id);
+  if (!row.is_folder) throw new HttpError(400, 'errors.notFolderGame');
+  const id = String(req.query.id ?? '');
+  if (!BUNDLE_ID_RE.test(id)) throw new HttpError(400, 'errors.invalidFilePath');
+  const file = bundlePath(gameFilePath(row), id);
+  const size = fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0;
+  if (size >= FOLDER_LOG_MIN_BYTES) {
+    logDownload(req, res, { kind: 'game', itemId: row.id, systemId: row.system_id, label: `${row.file_name}/${id}.zst`, fileSize: size });
+  }
+  res.download(file, `${id}.zst`, { dotfiles: 'allow' }, (err) => {
+    if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
+  });
+});
 
 // Jeu PC : compression fichier par fichier en zstd ({ mode: "zstd" ; « xz », « zip » acceptés, même effet) ou
 // retour en clair ({ mode: "flat" }), en tâche de fond (voir /jobs).

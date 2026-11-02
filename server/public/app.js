@@ -802,7 +802,7 @@ function fillGameDialog(game, bust = '') {
 }
 
 /**
- * Jeu PC : compression en zstd (une archive par fichier, téléchargées une à une et décompressées par
+ * Jeu PC : compression en zstd (archives de 100 Mo au plus, plus gros fichiers à part, téléchargées une à une et décompressées par
  * les applications) ou retour en clair, en tâche de fond ; état, format et tailles compressée et installée.
  */
 function fillGamePack(game) {

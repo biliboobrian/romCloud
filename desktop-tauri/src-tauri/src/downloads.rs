@@ -256,7 +256,8 @@ const SMALL_FILES_AT_ONCE: usize = 8;
 /**
  * Fichier d'un jeu PC (`GET /api/games/{id}/files`) ; compressé par le serveur : `format` de son
  * archive (« zst », ou « xz » et « zip » pour les compressions d'avant le zstd) et sa taille
- * `archive_size`.
+ * `archive_size` ; regroupé avec d'autres dans une archive zstd : `bundle` (son archive) et
+ * `offset` (sa place dans le contenu décompressé de l'archive, fichiers mis bout à bout).
  */
 #[derive(Clone)]
 struct FolderFile {
@@ -266,7 +267,13 @@ struct FolderFile {
     format: &'static str,
     /// Date du fichier sur le serveur (ms) : avec la taille, repère un fichier changé par une nouvelle version.
     mtime: Option<u64>,
+    bundle: Option<String>,
+    offset: u64,
+    crc32: Option<String>,
 }
+
+/// Dossier des archives regroupant plusieurs fichiers, dans le dossier du jeu (comme sur le serveur).
+const BUNDLES_DIR: &str = ".romcloud-bundles";
 
 impl FolderFile {
     fn from_json(v: &Value) -> Self {
@@ -276,7 +283,16 @@ impl FolderFile {
             Some("xz") => "xz",
             _ => "zip",
         };
-        FolderFile { path: s(v, "path").to_string(), size: n(v, "size"), archive_size, format, mtime: v.get("mtime").and_then(Value::as_u64) }
+        FolderFile {
+            path: s(v, "path").to_string(),
+            size: n(v, "size"),
+            archive_size,
+            format,
+            mtime: v.get("mtime").and_then(Value::as_u64),
+            bundle: v.get("bundle").and_then(Value::as_str).map(str::to_string),
+            offset: n(v, "offset"),
+            crc32: v.get("crc32").and_then(Value::as_str).map(str::to_string),
+        }
     }
 
     fn packed(&self) -> bool {
@@ -287,6 +303,45 @@ impl FolderFile {
     fn download_size(&self) -> u64 {
         self.archive_size.unwrap_or(self.size)
     }
+}
+
+/**
+ * Téléchargements pour recevoir `todo` (fichiers absents du PC, parmi tous ceux du jeu `files`),
+ * les plus lourds d'abord : chaque fichier, ou l'archive regroupée de ceux qui en ont une
+ * (`bundles` de la liste du serveur), téléchargée une fois pour tous ses fichiers (tous réécrits) et
+ * vue comme un fichier « .romcloud-bundles/<id> » au format zst (son archive :
+ * « .romcloud-bundles/<id>.zst ») ; renvoie aussi les fichiers de chaque archive regroupée.
+ */
+fn downloads(files: &[FolderFile], todo: Vec<FolderFile>, bundles: &Value) -> Result<(Vec<FolderFile>, HashMap<String, Vec<FolderFile>>)> {
+    let mut members: HashMap<String, Vec<FolderFile>> = HashMap::new();
+    for f in files {
+        if let Some(id) = &f.bundle {
+            members.entry(id.clone()).or_default().push(f.clone());
+        }
+    }
+    let mut needed: Vec<String> = todo.iter().filter_map(|f| f.bundle.clone()).collect();
+    needed.sort();
+    needed.dedup();
+    let mut units: Vec<FolderFile> = todo.into_iter().filter(|f| f.bundle.is_none()).collect();
+    for id in needed {
+        let packed = bundles
+            .get(&id)
+            .and_then(|b| b.get("packedSize"))
+            .and_then(Value::as_u64)
+            .ok_or_else(|| AppError::msg(format!("zstd : archive regroupée {id} absente de la liste")))?;
+        units.push(FolderFile {
+            path: format!("{BUNDLES_DIR}/{id}"),
+            size: members[&id].iter().map(|f| f.size).sum(),
+            archive_size: Some(packed),
+            format: "zst",
+            mtime: None,
+            bundle: Some(id),
+            offset: 0,
+            crc32: None,
+        });
+    }
+    units.sort_by(|a, b| b.download_size().cmp(&a.download_size()));
+    Ok((units, members))
 }
 
 /**
@@ -425,6 +480,95 @@ fn unpack_file(archive: &Path, format: &str, target: &Path, size: u64, cancelled
 }
 
 /**
+ * Décompresse l'archive regroupée `archive` (zstd, fichiers mis bout à bout) : chaque fichier de
+ * `members` (fichier du jeu et sa place sur le PC) écrit à sa place (via un fichier temporaire),
+ * vérifié par sa taille et son CRC32 (l'archive entière aussi, par son empreinte zstd) ; l'archive
+ * est ensuite supprimée (abîmée aussi). `on_bytes` reçoit les octets décompressés depuis le début ;
+ * priorité comme pour `unpack_file`.
+ */
+fn unpack_bundle(archive: &Path, members: &[(FolderFile, PathBuf)], cancelled: &AtomicBool, downloading: &AtomicBool, on_bytes: impl Fn(u64)) -> Result<()> {
+    let mut background = Background(false);
+    // Par place ; fichier vide avant celui qui commence au même endroit.
+    let mut sorted: Vec<&(FolderFile, PathBuf)> = members.iter().collect();
+    sorted.sort_by_key(|(f, _)| (f.offset, f.size));
+    let mut temp_file: Option<PathBuf> = None;
+    let result = (|| -> Result<()> {
+        let reader = std::io::BufReader::with_capacity(1 << 20, std::fs::File::open(archive)?);
+        // Fenêtre des archives du serveur : 128 Mo (zstd -19 --long=27).
+        let mut decoder =
+            ruzstd::decoding::StreamingDecoder::new_with_max_window_size(reader, 1 << 27).map_err(|e| AppError::msg(format!("zstd : {e}")))?;
+        let mut buf = vec![0u8; 1 << 20];
+        let mut position = 0u64;
+        let mut last = Instant::now();
+        // Octets à passer ou à copier (`out` : fichier et son CRC32 ; aucun : passés).
+        let mut copy = |count: u64, mut out: Option<(&mut dyn Write, &mut crc32fast::Hasher)>, position: &mut u64| -> Result<()> {
+            let mut left = count;
+            while left > 0 {
+                if cancelled.load(Ordering::SeqCst) {
+                    return Err(AppError::msg("cancelled"));
+                }
+                background.set(downloading.load(Ordering::SeqCst));
+                let read = decoder.read(&mut buf[..left.min(1 << 20) as usize])?;
+                if read == 0 {
+                    return Err(AppError::msg("zstd : archive regroupée tronquée"));
+                }
+                if let Some((file, crc)) = out.as_mut() {
+                    file.write_all(&buf[..read])?;
+                    crc.update(&buf[..read]);
+                }
+                left -= read as u64;
+                *position += read as u64;
+                if last.elapsed() > Duration::from_millis(200) {
+                    last = Instant::now();
+                    on_bytes(*position);
+                }
+            }
+            Ok(())
+        };
+        for (file, target) in &sorted {
+            if file.offset < position {
+                return Err(AppError::msg("zstd : fichiers mal placés dans l'archive regroupée"));
+            }
+            copy(file.offset - position, None, &mut position)?;
+            make_parent_dirs(target)?;
+            let temp = target.with_file_name(format!("{}.unpack", target.file_name().unwrap_or_default().to_string_lossy()));
+            temp_file = Some(temp.clone());
+            let mut out = std::io::BufWriter::with_capacity(1 << 20, std::fs::File::create(&temp)?);
+            let mut crc = crc32fast::Hasher::new();
+            copy(file.size, Some((&mut out, &mut crc)), &mut position)?;
+            out.flush()?;
+            drop(out);
+            if let Some(expected) = &file.crc32 {
+                if !format!("{:08x}", crc.finalize()).eq_ignore_ascii_case(expected) {
+                    return Err(AppError::msg(format!("zstd : contenu incorrect ({})", file.path)));
+                }
+            }
+            let _ = std::fs::remove_file(target);
+            std::fs::rename(&temp, target)?;
+            temp_file = None;
+        }
+        drop(copy);
+        // Reste de l'archive lu : empreinte zstd vérifiée.
+        while decoder.read(&mut buf)? > 0 {}
+        let frame = &decoder.decoder;
+        if let (Some(expected), Some(got)) = (frame.get_checksum_from_data(), frame.get_calculated_checksum()) {
+            if expected != got {
+                return Err(AppError::msg("zstd : somme de contrôle incorrecte"));
+            }
+        }
+        on_bytes(position);
+        Ok(())
+    })();
+    if let Some(temp) = temp_file {
+        let _ = std::fs::remove_file(temp);
+    }
+    if result.is_ok() || !cancelled.load(Ordering::SeqCst) {
+        let _ = std::fs::remove_file(archive);
+    }
+    result
+}
+
+/**
  * Progression d'un jeu PC : octets reçus, total à télécharger, octets décompressés, total à
  * décompresser ; fichiers à recevoir (absents du PC) et ceux qui restent.
  */
@@ -448,8 +592,9 @@ struct FolderProgress {
 async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Arc<AtomicBool>, progress: impl Fn(FolderProgress)) -> Result<()> {
     let folder = library::file_for(system, game);
     let id = game.get("id").map(key).unwrap_or_default();
-    // ?zst=1 : archives zstd lues par l'application (sinon listées en clair par le serveur).
-    let listing: Value = serde_json::from_str(&api::request(&format!("/api/games/{id}/files?zst=1"), None).await?)?;
+    // ?zst=1 : archives zstd lues par l'application (sinon listées en clair par le serveur) ;
+    // ?bundles=1 : archives regroupant plusieurs fichiers aussi.
+    let listing: Value = serde_json::from_str(&api::request(&format!("/api/games/{id}/files?zst=1&bundles=1"), None).await?)?;
     let files: Vec<FolderFile> = listing["files"].as_array().map(|a| a.iter().map(FolderFile::from_json).collect()).unwrap_or_default();
     let target_of = |f: &FolderFile| f.path.split('/').fold(folder.clone(), |path, part| path.join(part));
     // Mise à jour : fichiers reçus avec la version déjà téléchargée (chemin -> [taille, date sur le
@@ -462,8 +607,8 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
                 _ => true,
             }
     };
-    let mut todo: Vec<FolderFile> = files.iter().filter(|f| !complete(f)).cloned().collect();
-    todo.sort_by(|a, b| b.download_size().cmp(&a.download_size()));
+    // Fichiers regroupés dans une archive : l'archive, téléchargée une fois pour tous ses fichiers.
+    let (todo, bundled) = downloads(&files, files.iter().filter(|f| !complete(f)).cloned().collect(), &listing["bundles"])?;
     let free = || crate::paths::disk_space(&folder).map(|(free, _)| free);
     let needed = needed_bytes(&todo);
     if let Some(free) = free() {
@@ -525,7 +670,10 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
                 // Archive déjà reçue (téléchargement interrompu pendant la décompression) : décompressée seulement.
                 let received_archive = file.packed() && std::fs::metadata(&archive).map(|m| m.len() == file.download_size()).unwrap_or(false);
                 if !received_archive {
-                    let url = format!("{server}/api/games/{id}/file?path={}{}", urlencoding::encode(&file.path), if file.packed() { "&packed=1&zst=1" } else { "" });
+                    let url = match &file.bundle {
+                        Some(bundle) => format!("{server}/api/games/{id}/bundle?id={}", urlencoding::encode(bundle)),
+                        None => format!("{server}/api/games/{id}/file?path={}{}", urlencoding::encode(&file.path), if file.packed() { "&packed=1&zst=1" } else { "" }),
+                    };
                     fetch_to(&url, if file.packed() { &archive } else { &target }, file.download_size(), cancelled, |bytes| {
                         if track {
                             current.store(bytes, Ordering::SeqCst);
@@ -567,14 +715,22 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
     let unpacks = async {
         while let Some((file, target)) = rx.recv().await {
             let (cancelled, downloading, unpacking_bytes) = (cancelled.clone(), downloading.clone(), unpacking.clone());
+            let size = file.size;
+            // Archive regroupée : ses fichiers et leur place sur le PC.
+            let members: Option<Vec<(FolderFile, PathBuf)>> = file.bundle.as_ref().map(|b| bundled[b].iter().map(|f| (f.clone(), target_of(f))).collect());
             tokio::task::spawn_blocking(move || {
-                unpack_file(&archive_path(&target, file.format), file.format, &target, file.size, &cancelled, &downloading, |bytes| unpacking_bytes.store(bytes, Ordering::SeqCst))
+                let archive = archive_path(&target, file.format);
+                let on_bytes = |bytes| unpacking_bytes.store(bytes, Ordering::SeqCst);
+                match members {
+                    Some(members) => unpack_bundle(&archive, &members, &cancelled, &downloading, on_bytes),
+                    None => unpack_file(&archive, file.format, &target, file.size, &cancelled, &downloading, on_bytes),
+                }
             })
             .await
             .map_err(|e| AppError::msg(e.to_string()))??;
             unpacking.store(0, Ordering::SeqCst);
-            unpacked.fetch_add(file.size, Ordering::SeqCst);
-            pending.fetch_sub(file.size, Ordering::SeqCst);
+            unpacked.fetch_add(size, Ordering::SeqCst);
+            pending.fetch_sub(size, Ordering::SeqCst);
             queued.fetch_sub(1, Ordering::SeqCst);
             report();
         }
@@ -594,6 +750,8 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
         result = async { tokio::try_join!(downloads, unpacks) } => { result?; }
         _ = ticker => {}
     }
+    // Dossier des archives regroupées : vide une fois toutes décompressées.
+    let _ = std::fs::remove_dir(folder.join(BUNDLES_DIR));
     // Fichiers de la version précédente absents de la nouvelle : supprimés.
     let paths: std::collections::HashSet<&str> = listed.iter().map(|f| f.path.as_str()).collect();
     for old in previous.keys().filter(|p| !paths.contains(p.as_str())) {
@@ -614,7 +772,7 @@ mod tests {
     use super::*;
 
     fn file(path: &str, size: u64, archive_size: Option<u64>) -> FolderFile {
-        FolderFile { path: path.into(), size, archive_size, format: "xz", mtime: None }
+        FolderFile { path: path.into(), size, archive_size, format: "xz", mtime: None, bundle: None, offset: 0, crc32: None }
     }
 
     #[test]
@@ -645,6 +803,61 @@ mod tests {
         assert_eq!((xz.archive_size, xz.format), (Some(3), "xz"));
         let zst = FolderFile::from_json(&json!({ "path": "x", "size": 10, "packedSize": 3, "format": "zst" }));
         assert_eq!((zst.archive_size, zst.format), (Some(3), "zst"));
+    }
+
+    #[test]
+    fn fichiers_regroupes_telecharges_en_une_archive_puis_ecrits_chacun_a_sa_place() {
+        let listed = |v: Value| FolderFile::from_json(&v);
+        let files = [
+            listed(json!({ "path": "big.pak", "size": 500, "packedSize": 300, "format": "zst" })),
+            listed(json!({ "path": "data/a.dat", "size": 0, "format": "zst", "bundle": "1", "offset": 0 })),
+            listed(json!({ "path": "b.dat", "size": 0, "format": "zst", "bundle": "1", "offset": 0 })),
+            listed(json!({ "path": "c.dat", "size": 30, "format": "zst", "bundle": "2", "offset": 0 })),
+        ];
+        // a.dat absent : l'archive 1 entière ; c.dat déjà là : archive 2 pas téléchargée.
+        let bundles = json!({ "1": { "packedSize": 12, "size": 0 }, "2": { "packedSize": 9, "size": 30 } });
+        let (todo, members) = downloads(&files, vec![files[0].clone(), files[1].clone()], &bundles).unwrap();
+        assert_eq!(todo.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["big.pak", ".romcloud-bundles/1"]);
+        assert_eq!((todo[1].download_size(), todo[1].format, todo[1].bundle.as_deref()), (12, "zst", Some("1")));
+        assert_eq!(archive_path(Path::new(&todo[1].path), "zst").file_name().unwrap(), "1.zst");
+        assert_eq!(members["1"].len(), 2);
+        assert!(downloads(&files, vec![files[3].clone()], &json!({})).is_err());
+
+        let dir = std::env::temp_dir().join(format!("romcloud-bundle-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(BUNDLES_DIR)).unwrap();
+        let a: Vec<u8> = (0..300_000u32).map(|i| (i % 97) as u8).collect();
+        let c: Vec<u8> = (0..200_000u32).map(|i| (i % 13) as u8).collect();
+        let crc = |d: &[u8]| format!("{:08x}", crc32fast::hash(d));
+        let members = [
+            ("data/a.dat", &a, 0u64),
+            ("c.dat", &c, a.len() as u64),
+            ("empty.txt", &Vec::new(), a.len() as u64), // vide, au même endroit que c.dat
+        ]
+        .map(|(path, data, offset)| {
+            let file = listed(json!({ "path": path, "size": data.len(), "crc32": crc(data), "bundle": "1", "offset": offset, "format": "zst" }));
+            (file, path.split('/').fold(dir.clone(), |p, part| p.join(part)))
+        });
+        let archive = dir.join(BUNDLES_DIR).join("1.zst");
+        let write = |content: &[u8]| {
+            let mut zst = Vec::new();
+            ruzstd::encoding::compress(content, &mut zst, ruzstd::encoding::CompressionLevel::Fastest);
+            std::fs::write(&archive, zst).unwrap();
+        };
+        let (cancelled, downloading) = (AtomicBool::new(false), AtomicBool::new(false));
+        write(&[a.clone(), c.clone()].concat());
+        unpack_bundle(&archive, &members, &cancelled, &downloading, |_| {}).unwrap();
+        assert_eq!(std::fs::read(dir.join("data").join("a.dat")).unwrap(), a);
+        assert_eq!(std::fs::read(dir.join("c.dat")).unwrap(), c);
+        assert!(dir.join("empty.txt").is_file());
+        assert!(!archive.exists());
+        // Contenu qui ne correspond pas au CRC32 d'un fichier : refusé, archive supprimée.
+        std::fs::remove_file(dir.join("c.dat")).unwrap();
+        let mut wrong = c.clone();
+        wrong.reverse();
+        write(&[a.clone(), wrong].concat());
+        assert!(unpack_bundle(&archive, &members, &cancelled, &downloading, |_| {}).is_err());
+        assert!(!dir.join("c.dat").exists() && !dir.join("c.dat.unpack").exists() && !archive.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

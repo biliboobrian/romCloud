@@ -25,8 +25,8 @@ import { scrapeLaunchBox } from './launchbox.js';
 import { expandAbbreviation } from './abbreviations.js';
 import { scrapeWikipedia, wikidataFacts } from './wikipedia.js';
 import { APPID_FILE_RE, appIdFromText, scrapeSteam } from './steam.js';
-import { folderFiles, packExtension, sourceAppId, sourceGameDir } from '../folder-games.js';
-import { packedStream } from '../folder-pack.js';
+import { folderFiles, sourceAppId, sourceGameDir } from '../folder-games.js';
+import { packedFileStream } from '../folder-pack.js';
 
 export { QuotaError } from './screenscraper.js';
 
@@ -67,7 +67,7 @@ async function folderSteamAppId(row) {
   const files = folderFiles(dir);
   const read = async (f) => {
     const file = path.join(dir, ...f.path.split('/'));
-    return f.packed ? (await buffer(packedStream(`${file}${packExtension(f.format)}`, f.format))).toString('utf8') : fs.readFileSync(file, 'utf8');
+    return f.packed ? (await buffer(packedFileStream(dir, f.path, f))).toString('utf8') : fs.readFileSync(file, 'utf8');
   };
   // Jeu sur moteur Source : AppID du jeu que lance l'exécutable (« hl2/gameinfo.txt ») ; un pack
   // de plusieurs jeux (Half-Life 2 et ses épisodes) n'a souvent qu'un steam_appid.txt, celui d'un autre.
