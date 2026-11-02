@@ -300,6 +300,9 @@ if (!gameColumns.includes('launch_args')) db.exec('ALTER TABLE games ADD COLUMN 
 if (!gameColumns.includes('folder_files')) db.exec('ALTER TABLE games ADD COLUMN folder_files INTEGER');
 // Format des archives du jeu PC compressé : xz, zip (compressions d'avant le xz) ou mixed.
 if (!gameColumns.includes('pack_format')) db.exec('ALTER TABLE games ADD COLUMN pack_format TEXT');
+// Archives zstd d'un seul fichier qu'une nouvelle compression regrouperait (compressions d'avant les
+// archives regroupées) ; null : pas encore compté (jeu pas rescanné depuis).
+if (!gameColumns.includes('pack_loose')) db.exec('ALTER TABLE games ADD COLUMN pack_loose INTEGER');
 // Identifiant Steam (AppID) d'un jeu PC, choisi dans la fiche : jeu retrouvé dans la boutique Steam au scraping.
 if (!gameColumns.includes('steam_app_id')) db.exec('ALTER TABLE games ADD COLUMN steam_app_id TEXT');
 // Version d'un jeu PC (game-version.js) : devinée (nom du dossier, version de l'exécutable) tant

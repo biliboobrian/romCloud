@@ -115,6 +115,8 @@ export function rowToGame(row, parts = []) {
           packedSize: row.packed_size ?? row.size,
           // Format des archives : « xz », « zip » (compressions d'avant le xz), « mixed » ; null : aucune.
           packFormat: row.packed_files ? row.pack_format || 'zip' : null,
+          // Archives d'un seul fichier qu'une nouvelle compression regrouperait (null : pas encore compté).
+          packLoose: row.packed_files ? (row.pack_loose ?? null) : 0,
           // AppID Steam choisi dans la fiche (null : retrouvé par les fichiers du jeu ou son titre).
           steamAppId: row.steam_app_id ?? null,
           // Version du jeu (game-version.js) : devinée, ou choisie dans la fiche (versionChosen).
@@ -448,7 +450,7 @@ export function scanSystem(systemId) {
       const files = folderFiles(path.join(dir, row.file_name));
       // Compression (folder-pack.js) : fichiers compressés et taille à télécharger.
       const stats = folderStats(null, files);
-      db.prepare('UPDATE games SET packed_files = ?, packed_size = ?, folder_files = ?, pack_format = ? WHERE id = ?').run(stats.packed, stats.packedSize, stats.count, stats.format, row.id);
+      db.prepare('UPDATE games SET packed_files = ?, packed_size = ?, folder_files = ?, pack_format = ?, pack_loose = ? WHERE id = ?').run(stats.packed, stats.packedSize, stats.count, stats.format, stats.loose, row.id);
       const candidates = exeCandidates(files);
       const exe = row.exe && candidates.includes(row.exe) ? row.exe : candidates[0] ?? null;
       if (exe !== row.exe) db.prepare('UPDATE games SET exe = ? WHERE id = ?').run(exe, row.id);
