@@ -41,8 +41,27 @@ object FolderInstall {
     /** Mémoire d'un décodeur xz (dictionnaire de 64 Mo de xz -9e, et ses tampons). */
     private const val XZ_DECODER_BYTES = 80L * 1024 * 1024
 
+    /** Dossier des archives regroupant plusieurs fichiers, dans le dossier du jeu (comme sur le serveur). */
+    const val BUNDLES_DIR = ".romcloud-bundles"
+
     /** Fichiers à télécharger, les plus lourds d'abord. */
     fun order(files: List<FolderFile>): List<FolderFile> = files.sortedByDescending { it.downloadSize }
+
+    /**
+     * Téléchargements pour recevoir [todo] (fichiers absents de l'appareil, parmi tous ceux du jeu
+     * [files]) : chaque fichier, ou l'archive regroupée de ceux qui en ont une, téléchargée une fois
+     * pour tous ses fichiers (tous réécrits) et vue comme un fichier « .romcloud-bundles/<id> » au
+     * format zst (son archive : « .romcloud-bundles/<id>.zst », voir [archiveFile]) ; renvoie aussi
+     * les fichiers de chaque archive regroupée.
+     */
+    fun downloads(files: List<FolderFile>, todo: List<FolderFile>, bundles: Map<String, FolderBundle>): Pair<List<FolderFile>, Map<String, List<FolderFile>>> {
+        val members = files.filter { it.bundle != null }.groupBy { it.bundle!! }
+        val needed = todo.mapNotNull { it.bundle }.distinct().map { id ->
+            val bundle = bundles[id] ?: throw IOException("zstd: archive regroupée $id absente de la liste")
+            FolderFile(path = "$BUNDLES_DIR/$id", size = members.getValue(id).sumOf { it.size }, format = "zst", packedSize = bundle.packedSize, bundle = id)
+        }
+        return order(todo.filter { it.bundle == null } + needed) to members
+    }
 
     /**
      * Place nécessaire pour installer [todo] (fichiers absents de l'appareil) : leur taille
@@ -208,6 +227,73 @@ object FolderInstall {
                     if (written != size) throw IOException("zstd: taille $written au lieu de $size (${archive.name})")
                 }
             }
+        } finally {
+            priority.restore()
+        }
+    }
+
+    /**
+     * Décompresse l'archive regroupée [archive] (zstd, fichiers mis bout à bout) : chaque fichier de
+     * [members] (fichier du jeu et sa place sur l'appareil) écrit à sa place (via un fichier
+     * temporaire), vérifié par sa taille et son CRC32 (l'archive entière aussi, par son empreinte zstd) ; l'archive
+     * est ensuite supprimée (abîmée aussi). [progress] reçoit les octets décompressés depuis le
+     * début ; priorité comme pour [unpack].
+     */
+    suspend fun unpackBundle(
+        archive: File,
+        members: List<Pair<FolderFile, File>>,
+        downloading: () -> Boolean = { false },
+        progress: (Long) -> Unit = {},
+    ) {
+        // Par place ; fichier vide avant celui qui commence au même endroit.
+        val sorted = members.sortedWith(compareBy({ it.first.offset }, { it.first.size }))
+        val priority = Priority()
+        try {
+            withContext(Dispatchers.IO) {
+                ZstdInputStream(BufferedInputStream(FileInputStream(archive), BUFFER)).use { input ->
+                    input.setLongMax(ZSTD_WINDOW_LOG)
+                    val buffer = ByteArray(BUFFER)
+                    var position = 0L
+                    // Octets à passer ou à copier de l'archive ([out] null : passés), comptés dans [crc].
+                    suspend fun copy(count: Long, out: FileOutputStream?, crc: CRC32? = null) {
+                        var left = count
+                        while (left > 0) {
+                            currentCoroutineContext().ensureActive()
+                            priority.set(downloading())
+                            val read = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                            if (read < 0) throw IOException("zstd: archive tronquée (${archive.name})")
+                            out?.write(buffer, 0, read)
+                            crc?.update(buffer, 0, read)
+                            left -= read
+                            position += read
+                            progress(position)
+                        }
+                    }
+                    for ((file, target) in sorted) {
+                        if (file.offset < position) throw IOException("zstd: fichiers mal placés (${archive.name})")
+                        copy(file.offset - position, null)
+                        target.parentFile?.mkdirs()
+                        val temp = File(target.parentFile, "${target.name}.unpack")
+                        try {
+                            val crc = CRC32()
+                            FileOutputStream(temp).use { copy(file.size, it, crc) }
+                            if (file.crc32 != null && !"%08x".format(crc.value).equals(file.crc32, ignoreCase = true)) {
+                                throw IOException("zstd: contenu incorrect (${file.path})")
+                            }
+                            if (target.exists()) target.delete()
+                            if (!temp.renameTo(target)) throw IOException("zstd: impossible de renommer ${temp.name}")
+                        } finally {
+                            temp.delete()
+                        }
+                    }
+                    // Reste de l'archive lu : empreinte zstd vérifiée par le décodeur.
+                    while (input.read(buffer) >= 0) currentCoroutineContext().ensureActive()
+                }
+            }
+            archive.delete()
+        } catch (e: IOException) {
+            archive.delete()
+            throw e
         } finally {
             priority.restore()
         }

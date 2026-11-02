@@ -217,7 +217,9 @@ data class GameLink(val label: String, val url: String)
 /**
  * Fichier d'un jeu en dossier (PC) : chemin dans son dossier (« Bin/Game.exe ») et taille ;
  * compressé par le serveur : [format] de son archive (« zst », « xz », « zip »), sa taille
- * [packedSize] ([zipSize] pour les serveurs d'avant le xz) et [crc32] du fichier décompressé.
+ * [packedSize] ([zipSize] pour les serveurs d'avant le xz) et [crc32] du fichier décompressé ;
+ * regroupé avec d'autres dans une archive zstd : [bundle] (son archive, voir [FolderListing.bundles])
+ * et [offset] (sa place dans le contenu décompressé de l'archive, fichiers mis bout à bout).
  */
 @Serializable
 data class FolderFile(
@@ -229,6 +231,8 @@ data class FolderFile(
     val packedSize: Long? = null,
     /** Date du fichier sur le serveur (ms) : avec la taille, repère un fichier changé par une nouvelle version. */
     val mtime: Long? = null,
+    val bundle: String? = null,
+    val offset: Long = 0,
 ) {
     val packed: Boolean get() = archiveSize != null
 
@@ -250,7 +254,13 @@ data class FolderListing(
     val packed: String = "flat",
     val version: String? = null,
     val contentStamp: String? = null,
+    /** Archives regroupant plusieurs fichiers (identifiant -> tailles), demandées avec bundles=1. */
+    val bundles: Map<String, FolderBundle> = emptyMap(),
 )
+
+/** Archive zstd regroupant plusieurs fichiers d'un jeu PC : sa taille et celle de ses fichiers décompressés. */
+@Serializable
+data class FolderBundle(val packedSize: Long, val size: Long = 0)
 
 /**
  * Fin du téléchargement d'un jeu PC (fichier « .romcloud-complete » de son dossier) : empreinte

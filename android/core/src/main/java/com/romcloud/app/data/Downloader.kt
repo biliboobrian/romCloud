@@ -203,7 +203,8 @@ class Downloader(
             library.folderFile(system, game, f.path).let { it.isFile && it.length() == f.size } &&
                 (f.mtime == null || previous[f.path]?.getOrNull(1)?.let { it == f.mtime } ?: true)
         }
-        val todo = FolderInstall.order(files.filterNot(complete))
+        // Fichiers regroupés dans une archive : l'archive, téléchargée une fois pour tous ses fichiers.
+        val (todo, bundled) = FolderInstall.downloads(files, files.filterNot(complete), listing.bundles)
         val folder = library.fileFor(system, game)
         val needed = FolderInstall.neededBytes(todo)
         val free = library.freeBytes(folder)
@@ -237,9 +238,16 @@ class Downloader(
         val unpackQueue = Channel<Pair<FolderFile, File>>(Channel.UNLIMITED)
         val unpacker = launch {
             for ((file, target) in unpackQueue) {
-                FolderInstall.unpack(FolderInstall.archiveFile(target, file.archiveFormat), file.archiveFormat, target, file.size, file.crc32, downloading::get) { bytes ->
+                val onBytes = { bytes: Long ->
                     unpacking.set(bytes)
                     report()
+                }
+                val archive = FolderInstall.archiveFile(target, file.archiveFormat)
+                if (file.bundle != null) {
+                    val members = bundled.getValue(file.bundle).map { it to library.folderFile(system, game, it.path) }
+                    FolderInstall.unpackBundle(archive, members, downloading::get, onBytes)
+                } else {
+                    FolderInstall.unpack(archive, file.archiveFormat, target, file.size, file.crc32, downloading::get, onBytes)
                 }
                 unpacking.set(0)
                 unpacked.addAndGet(file.size)
@@ -261,7 +269,8 @@ class Downloader(
             val archive = FolderInstall.archiveFile(target, file.archiveFormat)
             // Archive déjà reçue (téléchargement interrompu pendant la décompression) : décompressée seulement.
             if (!(file.packed && archive.isFile && archive.length() == file.archiveSize)) {
-                fetch(api.folderFileUrl(game.id, file.path, file.packed), if (file.packed) archive else target, file.downloadSize) { bytes ->
+                val url = if (file.bundle != null) api.folderBundleUrl(game.id, file.bundle) else api.folderFileUrl(game.id, file.path, file.packed)
+                fetch(url, if (file.packed) archive else target, file.downloadSize) { bytes ->
                     current.set(bytes)
                     report()
                 }
@@ -281,6 +290,7 @@ class Downloader(
         downloading.set(false)
         unpackQueue.close()
         unpacker.join()
+        File(folder, FolderInstall.BUNDLES_DIR).delete() // vide une fois les archives regroupées décompressées
         // Fichiers de la version précédente absents de la nouvelle : supprimés.
         val paths = files.mapTo(HashSet()) { it.path }
         for (path in previous.keys - paths) library.folderFile(system, game, path).delete()

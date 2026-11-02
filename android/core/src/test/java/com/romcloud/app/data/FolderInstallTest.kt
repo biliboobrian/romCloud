@@ -64,6 +64,66 @@ class FolderInstallTest {
     }
 
     @Test
+    fun `fichiers regroupes telecharges en une archive, avec tous ses fichiers`() {
+        val files = listOf(
+            FolderFile("big.pak", 200 * mb, format = "zst", packedSize = 50 * mb),
+            FolderFile("a.dat", 10, format = "zst", bundle = "1", offset = 0),
+            FolderFile("b.dat", 20, format = "zst", bundle = "1", offset = 10),
+            FolderFile("c.dat", 30, format = "zst", bundle = "2", offset = 0),
+            FolderFile("flat.txt", 5),
+        )
+        // a.dat absent : l'archive 1 entière ; c.dat déjà là : archive 2 pas téléchargée.
+        val (todo, members) = FolderInstall.downloads(files, listOf(files[0], files[1], files[4]), mapOf("1" to FolderBundle(12), "2" to FolderBundle(9)))
+        assertEquals(listOf("big.pak", ".romcloud-bundles/1", "flat.txt"), todo.map { it.path })
+        val bundle = todo[1]
+        assertEquals(30L, bundle.size)
+        assertEquals(12L, bundle.downloadSize)
+        assertEquals("1", bundle.bundle)
+        assertEquals("1.zst", FolderInstall.archiveFile(File(bundle.path), bundle.archiveFormat).name)
+        assertEquals(listOf("a.dat", "b.dat"), members.getValue("1").map { it.path })
+        assertThrows(IOException::class.java) { FolderInstall.downloads(files, listOf(files[3]), emptyMap()) }
+    }
+
+    @Test
+    fun `archive regroupee decompressee fichier par fichier, puis supprimee, abimee refusee`() = runBlocking {
+        val dir = Files.createTempDirectory("folder-bundle").toFile()
+        try {
+            val a = ByteArray(300_000) { (it % 97).toByte() }
+            val b = ByteArray(0)
+            val c = ByteArray(200_000) { (it % 13).toByte() }
+            val files = listOf(
+                FolderFile("data/a.dat", a.size.toLong(), crc32 = crcOf(a), bundle = "1", offset = 0),
+                FolderFile("empty.txt", 0, crc32 = crcOf(b), bundle = "1", offset = a.size.toLong()),
+                FolderFile("c.dat", c.size.toLong(), crc32 = crcOf(c), bundle = "1", offset = a.size.toLong()),
+            )
+            val archive = File(dir, ".romcloud-bundles/1.zst").apply { parentFile.mkdirs() }
+            fun write(content: ByteArray) = ZstdOutputStream(archive.outputStream(), 19).use { zst ->
+                zst.setLong(27)
+                zst.setChecksum(true)
+                zst.write(content)
+            }
+            write(a + b + c)
+            var last = 0L
+            FolderInstall.unpackBundle(archive, files.reversed().map { it to File(dir, it.path) }) { last = it }
+            assertArrayEquals(a, File(dir, "data/a.dat").readBytes())
+            assertTrue(File(dir, "empty.txt").isFile)
+            assertArrayEquals(c, File(dir, "c.dat").readBytes())
+            assertEquals((a.size + c.size).toLong(), last)
+            assertFalse(archive.exists())
+            assertTrue(dir.walk().none { it.name.endsWith(".unpack") })
+
+            // Contenu qui ne correspond pas au CRC32 d'un fichier : refusé, archive supprimée.
+            write(a + b + c.reversedArray())
+            File(dir, "c.dat").delete()
+            assertThrows(IOException::class.java) { runBlocking { FolderInstall.unpackBundle(archive, files.map { it to File(dir, it.path) }) } }
+            assertFalse(File(dir, "c.dat").exists())
+            assertFalse(archive.exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `archive zstd decompressee, puis supprimee, abimee refusee et supprimee`() = runBlocking {
         val dir = Files.createTempDirectory("folder-install").toFile()
         try {

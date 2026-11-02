@@ -489,7 +489,7 @@
     <string name="info_size">Size</string>
     <string name="info_size_zip">Download size (compressed)</string>
     <string name="info_compression">Compression</string>
-    <string name="info_compression_zip">%1$s (one archive per file, unpacked as it arrives)</string>
+    <string name="info_compression_zip">%1$s (archives of up to 100 MB, unpacked as they arrive)</string>
     <string name="info_compression_partial">%1$s, partly</string>
     <string name="size_flat_zip">%1$s (compressed: %2$s)</string>
     <string name="info_parts">Other files</string>

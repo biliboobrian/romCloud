@@ -9,8 +9,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { db } from './db.js';
-import { packManifestEntry, packExtension, packFormat } from './folder-games.js';
-import { packedStream } from './folder-pack.js';
+import { packManifestEntry } from './folder-games.js';
+import { packedFileStream } from './folder-pack.js';
 
 /** Section des ressources (.rsrc) lue au plus (icônes comprises). */
 const MAX_RESOURCES = 64 * 1024 * 1024;
@@ -119,9 +119,8 @@ export async function exeVersion(dir, rel) {
   }
   const packed = packManifestEntry(dir, rel);
   if (!packed || packed.size > MAX_PACKED_EXE) return null;
-  const format = packFormat(packed.format);
   const chunks = [];
-  for await (const chunk of packedStream(`${file}${packExtension(format)}`, format)) chunks.push(chunk);
+  for await (const chunk of packedFileStream(dir, rel, packed)) chunks.push(chunk);
   return exeVersionFrom(bufferReader(Buffer.concat(chunks)));
 }
 

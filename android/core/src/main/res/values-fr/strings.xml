@@ -481,7 +481,7 @@
     <string name="info_size">Taille</string>
     <string name="info_size_zip">Taille à télécharger (compressé)</string>
     <string name="info_compression">Compression</string>
-    <string name="info_compression_zip">%1$s (une archive par fichier, décompressée à la réception)</string>
+    <string name="info_compression_zip">%1$s (archives de 100 Mo au plus, décompressées à la réception)</string>
     <string name="info_compression_partial">%1$s, en partie</string>
     <string name="size_flat_zip">%1$s (compressé : %2$s)</string>
     <string name="info_parts">Autres fichiers</string>
