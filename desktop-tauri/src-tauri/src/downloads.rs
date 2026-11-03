@@ -13,8 +13,21 @@ use std::time::{Duration, Instant};
 
 struct Download {
     cancelled: Arc<AtomicBool>,
+    /// Abandonné pendant une pause : fichiers reçus supprimés une fois la tâche arrêtée.
+    abandoned: Arc<AtomicBool>,
     state: Value,
     speed: Speed,
+    /// Système, jeu et options du téléchargement : reprise après une pause.
+    request: (Value, Value, Value),
+    /// Mis en pause (`paused` dans l'état) : tâche arrêtée, plus aucun fichier écrit.
+    stopped: bool,
+    /// « Reprendre » choisi pendant que la tâche s'arrêtait : reprise à son arrêt.
+    resume_after_stop: bool,
+}
+
+/// Téléchargement mis en pause : fichiers reçus (et « .part ») gardés, reprise ou abandon au choix.
+fn is_paused(state: &Value) -> bool {
+    state["status"] == "running" && state["paused"] == true
 }
 
 /**
@@ -71,7 +84,11 @@ pub fn states() -> Value {
 fn notify(game_id: &Value, mut state: Option<Value>, event: Option<Value>) {
     if let Some(state) = &mut state {
         if let Some(d) = ACTIVE.lock().unwrap().get_mut(&key(game_id)) {
-            if state["status"] == "running" {
+            // Mis en pause : dernière progression de la tâche arrêtée ignorée.
+            if is_paused(&d.state) && state["status"] == "running" && !is_paused(state) {
+                return;
+            }
+            if state["status"] == "running" && !is_paused(state) {
                 state["speed"] = json!(d.speed.update(n(state, "bytes"), Instant::now()));
             }
             d.state = state.clone();
@@ -86,6 +103,7 @@ fn notify(game_id: &Value, mut state: Option<Value>, event: Option<Value>) {
  * Tâche de fond.
  */
 pub fn start(system: Value, game: Value, options: Value) {
+    let request = (system.clone(), game.clone(), options.clone());
     let game_id = game.get("id").cloned().unwrap_or(Value::Null);
     let bios: Vec<Value> = options.get("bios").and_then(Value::as_array).cloned().unwrap_or_default();
     let include_rom = options.get("includeRom").and_then(Value::as_bool).unwrap_or(true);
@@ -108,14 +126,31 @@ pub fn start(system: Value, game: Value, options: Value) {
         }
     };
     let cancelled = Arc::new(AtomicBool::new(false));
-    {
+    let abandoned = Arc::new(AtomicBool::new(false));
+    let initial = {
         let mut active = ACTIVE.lock().unwrap();
-        if active.get(&key(&game_id)).map(|d| d.state["status"] == "running").unwrap_or(false) {
-            return;
+        let mut initial = running(0, parts);
+        if let Some(d) = active.get(&key(&game_id)).filter(|d| d.state["status"] == "running") {
+            // Reprise après une pause (tâche arrêtée) : progression atteinte affichée en attendant la suivante.
+            if !(is_paused(&d.state) && d.stopped) {
+                return;
+            }
+            initial = d.state.clone();
+            initial["paused"] = json!(false);
         }
-        active.insert(key(&game_id), Download { cancelled: cancelled.clone(), state: running(0, parts), speed: Speed::default() });
-    }
-    notify(&game_id, Some(running(0, parts)), None);
+        let download = Download {
+            cancelled: cancelled.clone(),
+            abandoned: abandoned.clone(),
+            state: initial.clone(),
+            speed: Speed::default(),
+            request,
+            stopped: false,
+            resume_after_stop: false,
+        };
+        active.insert(key(&game_id), download);
+        initial
+    };
+    notify(&game_id, Some(initial), None);
     tauri::async_runtime::spawn(async move {
         let result: Result<()> = async {
             // Hors ligne : rien n'est demandé au serveur.
@@ -176,8 +211,30 @@ pub fn start(system: Value, game: Value, options: Value) {
         }
         .await;
         if cancelled.load(Ordering::SeqCst) {
-            ACTIVE.lock().unwrap().remove(&key(&game_id));
-            notify(&game_id, None, None);
+            // Mis en pause : état gardé, et « Reprendre » choisi pendant l'arrêt appliqué ; annulé :
+            // retiré (sauf s'il a été relancé depuis : nouvelle tâche gardée).
+            let (removed, resume) = {
+                let mut active = ACTIVE.lock().unwrap();
+                let k = key(&game_id);
+                match active.get_mut(&k).filter(|d| Arc::ptr_eq(&d.cancelled, &cancelled)) {
+                    Some(d) if is_paused(&d.state) => {
+                        d.stopped = true;
+                        (false, d.resume_after_stop)
+                    }
+                    Some(_) => (active.remove(&k).is_some(), false),
+                    None => (false, false),
+                }
+            };
+            // Abandonné pendant l'arrêt : fichiers reçus supprimés maintenant que plus rien n'y écrit.
+            if abandoned.load(Ordering::SeqCst) && include_rom {
+                library::remove_partial(&system, &game);
+            }
+            if removed {
+                notify(&game_id, None, None);
+            }
+            if resume {
+                self::resume(&game_id);
+            }
             return;
         }
         match result {
@@ -221,6 +278,58 @@ pub fn cancel(game_id: &Value) {
         d.cancelled.store(true, Ordering::SeqCst);
     }
     notify(game_id, None, None);
+}
+
+/// Met le téléchargement en pause : la tâche s'arrête, les fichiers reçus (et « .part ») sont gardés.
+pub fn pause(game_id: &Value) {
+    let state = {
+        let mut active = ACTIVE.lock().unwrap();
+        let Some(d) = active.get_mut(&key(game_id)) else { return };
+        if d.state["status"] != "running" || is_paused(&d.state) {
+            return;
+        }
+        d.cancelled.store(true, Ordering::SeqCst);
+        d.state["paused"] = json!(true);
+        d.state["speed"] = json!(0);
+        d.state.clone()
+    };
+    notify(game_id, Some(state), None);
+}
+
+/// Reprend un téléchargement mis en pause là où il s'était arrêté (fichiers complets et « .part » repris).
+pub fn resume(game_id: &Value) {
+    let (system, game, options) = {
+        let mut active = ACTIVE.lock().unwrap();
+        let Some(d) = active.get_mut(&key(game_id)).filter(|d| is_paused(&d.state)) else { return };
+        // Tâche pas encore arrêtée : reprise à son arrêt (un seul écrivain par fichier).
+        if !d.stopped {
+            d.resume_after_stop = true;
+            return;
+        }
+        d.request.clone()
+    };
+    start(system, game, options);
+}
+
+/// Abandonne un téléchargement mis en pause : fichiers du jeu déjà reçus supprimés (BIOS gardés).
+pub fn abandon(game_id: &Value) {
+    let delete_now = {
+        let mut active = ACTIVE.lock().unwrap();
+        let k = key(game_id);
+        if !active.get(&k).is_some_and(|d| is_paused(&d.state)) {
+            return;
+        }
+        let d = active.remove(&k).unwrap();
+        // Tâche pas encore arrêtée : fichiers supprimés par elle à son arrêt.
+        d.abandoned.store(true, Ordering::SeqCst);
+        d.stopped.then_some(d.request)
+    };
+    if let Some((system, game, options)) = delete_now {
+        if options.get("includeRom").and_then(Value::as_bool).unwrap_or(true) {
+            library::remove_partial(&system, &game);
+        }
+    }
+    notify(game_id, None, Some(json!({ "type": "abandoned", "gameId": game_id })));
 }
 
 /// Jeu supprimé du PC tout juste après son téléchargement : plus de « Veuillez patienter ».

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay
@@ -280,8 +281,13 @@ fun TvGameDetailScreen(
                             Text(stringResource(R.string.lobby_not_network), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         finishing -> ActionButton(stringResource(R.string.download_finishing), Icons.Filled.CloudDownload, primary) {}
-                        download is DownloadState.Running ->
-                            ActionButton(stringResource(R.string.tv_cancel_percent, (download.progress * 100).toInt()), Icons.Filled.Close, primary) { viewModel.cancel() }
+                        // Pause : fichiers reçus gardés, puis reprise là où il s'était arrêté ou abandon (fichiers supprimés).
+                        download is DownloadState.Running -> if (download.paused) {
+                            ActionButton(stringResource(R.string.tv_resume_percent, (download.progress * 100).toInt()), Icons.Filled.PlayArrow, primary) { viewModel.resume() }
+                            SecondaryButton(stringResource(R.string.download_abandon), Icons.Filled.Close) { viewModel.abandon() }
+                        } else {
+                            ActionButton(stringResource(R.string.tv_pause_percent, (download.progress * 100).toInt()), Icons.Filled.Pause, primary) { viewModel.pause() }
+                        }
                         state.downloaded -> {
                             // Partie sauvegardée dans l'émulateur intégré : « Reprendre » d'abord, puis « Jouer ».
                             if (state.canResume) {

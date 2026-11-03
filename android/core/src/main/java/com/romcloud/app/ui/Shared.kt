@@ -184,10 +184,11 @@ fun DownloadBars(state: DownloadState.Running, modifier: Modifier = Modifier, he
 
 /**
  * Vitesse du téléchargement et fichiers qui restent à recevoir (jeu PC, jeu en plusieurs parties) ;
- * rien une fois tout reçu (décompression des derniers fichiers).
+ * rien une fois tout reçu (décompression des derniers fichiers) ; « En pause » s'il est mis en pause.
  */
 @Composable
 fun downloadExtras(state: DownloadState.Running): List<String> {
+    if (state.paused) return listOf(stringResource(R.string.download_paused))
     if (state.unpacking || state.bytes >= state.total) return emptyList()
     return listOfNotNull(
         if (state.speed > 0) stringResource(R.string.download_speed, formatSize(state.speed)) else null,
@@ -213,7 +214,7 @@ fun FinishingNotice(modifier: Modifier = Modifier, height: Dp = 4.dp) {
 @Composable
 fun downloadProgressText(state: DownloadState.Running): String {
     val unpack = stringResource(R.string.unpacking_progress, formatSize(state.unpackBytes), formatSize(state.unpackTotal))
-    if (state.unpacking) return stringResource(R.string.unpacking_playable) + " " + unpack
+    if (state.unpacking && !state.paused) return stringResource(R.string.unpacking_playable) + " " + unpack
     val received = stringResource(R.string.downloading_progress, formatSize(state.bytes), formatSize(state.total))
     return (listOf(received) + downloadExtras(state) + listOfNotNull(unpack.takeIf { state.unpackTotal > 0 })).joinToString(" · ")
 }

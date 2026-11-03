@@ -60,6 +60,7 @@
     search: 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
     close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
     play: 'M8 5v14l11-7z',
+    pause: 'M6 19h4V5H6v14zm8-14v14h4V5h-4z',
     cloudOff: 'M19.35 10.04A7.49 7.49 0 0 0 12 4c-1.48 0-2.85.43-4.01 1.17l1.46 1.46A5.497 5.497 0 0 1 17.5 11v.5H19c1.66 0 3 1.34 3 3 0 1.13-.64 2.11-1.56 2.62l1.45 1.45C23.16 17.16 24 15.68 24 14c0-2.64-2.05-4.78-4.65-4.96zM3 5.27l2.75 2.74C2.56 8.15 0 10.77 0 14c0 3.31 2.69 6 6 6h11.73l2 2L21 20.73 4.27 4 3 5.27zM7.73 10l8 8H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h1.73z',
     cloud: 'M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z',
     check: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
@@ -187,10 +188,12 @@
 
   /**
    * Vitesse du téléchargement et fichiers qui restent à recevoir (jeu PC, jeu en plusieurs
-   * parties) ; rien une fois tout reçu (décompression des derniers fichiers).
+   * parties) ; rien une fois tout reçu (décompression des derniers fichiers) ; « En pause » s'il
+   * est mis en pause.
    */
   function downloadExtras(st) {
     const d = st.d;
+    if (d.paused) return [t('download.paused')];
     if (st.unpacking || d.bytes >= d.total) return [];
     const extras = [];
     if (d.speed > 0) extras.push(t('download.speed', { speed: formatSize(d.speed) }));
@@ -205,7 +208,7 @@
   function downloadProgressText(st) {
     const d = st.d;
     const unpack = st.unpack != null ? t('download.unpack', { bytes: formatSize(d.unpackBytes), total: formatSize(d.unpackTotal) }) : '';
-    if (st.unpacking) return `${t('download.unpackingPlayable')} ${unpack}`;
+    if (st.unpacking && !d.paused) return `${t('download.unpackingPlayable')} ${unpack}`;
     const received = t('download.progress', { bytes: formatSize(d.bytes), total: formatSize(d.total) });
     return [received, ...downloadExtras(st), unpack].filter(Boolean).join(' · ');
   }
@@ -1365,7 +1368,8 @@
       if ((await gameIssues(system, game)).length) return openGameDetail(system.id, game.id);
       return playChecked(system, game);
     }
-    if (st.kind === 'running') return askCancel(game);
+    // Mis en pause : la fiche du jeu (« Reprendre » ou « Abandonner »).
+    if (st.kind === 'running') return st.d.paused ? openGameDetail(system.id, game.id) : askCancel(game);
     if (st.kind === 'finishing') return toast(t('download.finishing'));
     return askDownload(system, game, st.kind === 'failed' ? st.error : null);
   }
@@ -2484,7 +2488,11 @@
       actions = `<div style="flex:1"><div class="bars"><div class="bar"><div style="width:${Math.round(st.progress * 100)}%"></div></div>
         ${st.unpack != null ? `<div class="bar unpack"><div style="width:${Math.round(st.unpack * 100)}%"></div></div>` : ''}</div>
         <p class="muted">${esc(downloadProgressText(st))}</p></div>
-        <button class="btn" id="cancelBtn">${icon('close', 18)} ${esc(t('download.cancelPercent', { p: Math.round(st.progress * 100) }))}</button>`;
+        ${st.d.paused
+          // Pause : fichiers reçus gardés, puis reprise là où il s'était arrêté ou abandon (fichiers supprimés).
+          ? `<button class="btn primary" id="resumeDownloadBtn">${icon('play', 18)} ${esc(t('download.resumePercent', { p: Math.round(st.progress * 100) }))}</button>
+            <button class="btn" id="abandonDownloadBtn">${icon('close', 18)} ${esc(t('download.abandon'))}</button>`
+          : `<button class="btn" id="pauseDownloadBtn">${icon('pause', 18)} ${esc(t('download.pausePercent', { p: Math.round(st.progress * 100) }))}</button>`}`;
     } else if (st.kind === 'finishing') {
       actions = `<div style="flex:1"><div class="bars"><div class="bar"><div style="width:100%"></div></div></div>
         <p class="muted">${esc(t('download.finishing'))}</p></div>`;
@@ -2605,7 +2613,9 @@
       await call(rc.downloads.dismiss, game.id);
       await call(rc.downloads.start, system, game, { bios: missingBios, includeRom: false });
     });
-    $('#cancelBtn')?.addEventListener('click', () => rc.downloads.cancel(game.id));
+    $('#pauseDownloadBtn')?.addEventListener('click', () => rc.downloads.pause(game.id));
+    $('#resumeDownloadBtn')?.addEventListener('click', () => rc.downloads.resume(game.id));
+    $('#abandonDownloadBtn')?.addEventListener('click', () => { S.autoLaunch.delete(game.id); rc.downloads.abandon(game.id); });
     $('#folderBtn')?.addEventListener('click', () => rc.shell.showItem(localPath));
     for (const btn of $$('[data-extra-exe]', main)) btn.addEventListener('click', () => call(rc.library.runExtra, system, game, btn.dataset.extraExe));
     $('#resetCoreBtn')?.addEventListener('click', () => confirmResetCore(system.id, selected.core));
@@ -3158,6 +3168,10 @@
       }
       if (S.route.name === 'games') renderGamesBody();
       else if (S.route.name === 'systems' && S.search.query) renderSystemsBody();
+    } else if (event?.type === 'abandoned') {
+      // Téléchargement abandonné : fichiers reçus supprimés (jeu PC mis à jour : plus sur le PC).
+      await refreshDownloaded();
+      loadUsage();
     } else if (event?.type === 'uninstalled') {
       // Jeu PC désinstallé : dossier effacé (ou laissé si la désinstallation n'a pas abouti).
       await refreshDownloaded();

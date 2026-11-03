@@ -385,6 +385,27 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         )
     }
 
+    // Téléchargement de plus de 50 Mo hors Wi-Fi (données mobiles) : confirmé d'abord.
+    val meteredPrompt by app.downloader.meteredPrompt.collectAsStateWithLifecycle()
+    meteredPrompt?.let { prompt ->
+        // TV : « Annuler » sélectionné à la télécommande.
+        val focus = remember { FocusRequester() }
+        if (app.account.isTv) LaunchedEffect(prompt) { runCatching { focus.requestFocus() } }
+        AlertDialog(
+            onDismissRequest = app.downloader::dismissMetered,
+            title = { Text(stringResource(R.string.metered_download_title)) },
+            text = { Text(stringResource(R.string.metered_download_text, prompt.title, formatSize(prompt.bytes))) },
+            confirmButton = {
+                TextButton(onClick = app.downloader::confirmMetered) { Text(stringResource(R.string.metered_download_anyway)) }
+            },
+            dismissButton = {
+                TextButton(onClick = app.downloader::dismissMetered, modifier = Modifier.focusRequester(focus)) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     // BIOS du système absents : les télécharger avant de jouer (jeu lancé à la fin, mêmes options) ou jouer quand même.
     val biosPrompt by app.biosPrompt.collectAsStateWithLifecycle()
     biosPrompt?.let { prompt ->

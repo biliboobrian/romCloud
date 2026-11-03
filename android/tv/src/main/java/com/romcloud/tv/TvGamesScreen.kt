@@ -117,12 +117,13 @@ fun TvGamesScreen(
 
     fun onClick(game: Game) {
         if (lobbyHost) return onOpenGame(game.id)
-        when (statusOf(game)) {
+        when (val status = statusOf(game)) {
             // Émulateur externe à configurer : la fiche du jeu explique quoi corriger.
             LocalStatus.Downloaded ->
                 if (viewModel.needsSetup(game)) onOpenGame(game.id)
                 else viewModel.play(activity, game)?.let(onMessage)
-            is LocalStatus.Downloading -> askCancel = game
+            // Mis en pause : la fiche du jeu (« Reprendre » ou « Abandonner »).
+            is LocalStatus.Downloading -> if (status.state.paused) onOpenGame(game.id) else askCancel = game
             LocalStatus.Finishing -> {} // jouable dans un instant
             else -> askDownload = game
         }

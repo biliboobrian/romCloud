@@ -93,6 +93,20 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
             downloads::cancel(&arg(a, 0));
             Value::Null
         }
+        "downloads:pause" => {
+            downloads::pause(&arg(a, 0));
+            Value::Null
+        }
+        "downloads:resume" => {
+            downloads::resume(&arg(a, 0));
+            Value::Null
+        }
+        // Fichiers reçus supprimés : appelé hors du fil principal (gros dossier d'un jeu PC).
+        "downloads:abandon" => {
+            let id = arg(a, 0);
+            tauri::async_runtime::spawn_blocking(move || downloads::abandon(&id));
+            Value::Null
+        }
         "downloads:dismiss" => {
             downloads::dismiss_error(&arg(a, 0));
             Value::Null

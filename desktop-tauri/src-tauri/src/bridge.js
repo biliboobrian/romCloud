@@ -108,6 +108,9 @@
     downloads: {
       start: call('downloads:start'),
       cancel: call('downloads:cancel'),
+      pause: call('downloads:pause'),
+      resume: call('downloads:resume'),
+      abandon: call('downloads:abandon'),
       dismiss: call('downloads:dismiss'),
       states: call('downloads:states'),
       onUpdate: on('downloads:update'),
