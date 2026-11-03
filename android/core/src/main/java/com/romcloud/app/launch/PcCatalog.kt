@@ -3,7 +3,7 @@ package com.romcloud.app.launch
 // Fichier généré par android/scripts/pc-catalog.mjs : ne pas modifier à la main.
 
 /**
- * Pilotes graphiques et composants de Winlator (DXVK, VKD3D-Proton, Box64, WOWBox64, FEXCore) publiés
+ * Pilotes graphiques et composants de Winlator (Proton, DXVK, VKD3D-Proton, Box64, WOWBox64, FEXCore) publiés
  * sur GitHub, téléchargés par RomCloud PC au premier usage : versions stables, de développement et
  * expérimentales, de la plus récente à la plus ancienne.
  */
@@ -369,7 +369,7 @@ object PcCatalog {
         PcSettings.Driver("Qualcomm v0615v4 Vulkan driver", "v615v4-patched", "https://github.com/K11MCH1/AdrenoToolsDrivers/releases/download/v615.4/v615v4-patched.adpkg.zip"),
     )
 
-    /** Composants .wcp (Arihany/WinlatorWCPHub) : type (dxvk, vkd3d, box64, wowbox64, fexcore), version (« versionName-versionCode »), paquet. */
+    /** Composants .wcp (Arihany/WinlatorWCPHub) : type (wine, dxvk, vkd3d, box64, wowbox64, fexcore), version (« versionName-versionCode »), paquet. */
     val CONTENTS: List<PcSettings.Content> = listOf(
         PcSettings.Content("box64", "0.4.2-0", "0.4.2", "https://github.com/Arihany/WinlatorWCPHub/releases/download/BOX64-BIONIC/box64-bionic-0.4.2.wcp"),
         PcSettings.Content("box64", "0.4.0-0", "0.4.0", "https://github.com/Arihany/WinlatorWCPHub/releases/download/BOX64-BIONIC/box64-bionic-0.4.0.wcp"),
@@ -423,10 +423,13 @@ object PcCatalog {
         PcSettings.Content("fexcore", "2609-0", "2609", "https://github.com/Arihany/WinlatorWCPHub/releases/download/FEXCore/FEXCore-2609.wcp"),
         PcSettings.Content("fexcore", "2608-0", "2608", "https://github.com/Arihany/WinlatorWCPHub/releases/download/FEXCore/FEXCore-2608.wcp"),
         PcSettings.Content("fexcore", "2607-0", "2607", "https://github.com/Arihany/WinlatorWCPHub/releases/download/FEXCore/FEXCore-2607.wcp"),
+        PcSettings.Content("vkd3d", "3.1-0", "3.1", "https://github.com/Arihany/WinlatorWCPHub/releases/download/VKD3D-PROTON/vkd3d-proton-3.1.wcp"),
         PcSettings.Content("vkd3d", "3.0.1-0", "3.0.1", "https://github.com/Arihany/WinlatorWCPHub/releases/download/VKD3D-PROTON/vkd3d-proton-3.0.1.wcp"),
         PcSettings.Content("vkd3d", "3.0.1-arm64ec-0", "3.0.1-arm64ec", "https://github.com/Arihany/WinlatorWCPHub/releases/download/VKD3D-PROTON-ARM64EC/vkd3d-proton-arm64ec-3.0.1.wcp"),
         PcSettings.Content("vkd3d", "2.14.1-0", "2.14.1", "https://github.com/Arihany/WinlatorWCPHub/releases/download/VKD3D-PROTON/vkd3d-proton-2.14.1.wcp"),
         PcSettings.Content("vkd3d", "2.14.1-arm64ec-0", "2.14.1-arm64ec", "https://github.com/Arihany/WinlatorWCPHub/releases/download/VKD3D-PROTON-ARM64EC/vkd3d-proton-arm64ec-2.14.1.wcp"),
+        PcSettings.Content("wine", "proton-11.0-1-custom-0", "proton-11.0-1-custom", "https://github.com/Arihany/WinlatorWCPHub/releases/download/WINE/proton-11.0-1-custom-arm64ec.wcp"),
+        PcSettings.Content("wine", "proton-11.0-1-beta5-custom-0", "proton-11.0-1-beta5-custom", "https://github.com/Arihany/WinlatorWCPHub/releases/download/WINE/proton-11.0-1-beta5-custom-arm64ec.wcp"),
         PcSettings.Content("wowbox64", "0.4.3-260622-59c6aa4-0", "0.4.3-260622-59c6aa4", "https://github.com/Arihany/WinlatorWCPHub/releases/download/WOWBOX64-NIGHTLY/wowbox64-0.4.3-260622-59c6aa4.wcp"),
         PcSettings.Content("wowbox64", "0.4.3-260623-a6f44ac-0", "0.4.3-260623-a6f44ac", "https://github.com/Arihany/WinlatorWCPHub/releases/download/WOWBOX64-NIGHTLY/wowbox64-0.4.3-260623-a6f44ac.wcp"),
         PcSettings.Content("wowbox64", "0.4.3-260624-6656708-0", "0.4.3-260624-6656708", "https://github.com/Arihany/WinlatorWCPHub/releases/download/WOWBOX64-NIGHTLY/wowbox64-0.4.3-260624-6656708.wcp"),

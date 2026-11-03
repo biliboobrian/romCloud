@@ -91,6 +91,11 @@ public class LaunchActivity extends Activity {
      * qui plantent sous Box64 avec Proton x86_64). Jeux Unity IL2CPP : Proton x86_64 ([UNITY_WINE]).
      */
     public static final String SETTING_WINE = "wineVersion";
+    /**
+     * Proton téléchargé choisi dans RomCloud (« wineVersion » au format « type:version », par exemple
+     * « wine:proton-11.0-1-custom-0 ») : paquet .wcp à installer au premier usage ([installWine]).
+     */
+    static final String SETTING_WINE_URL = "romcloudWineUrl";
 
     /**
      * Proton des jeux Unity compilés en IL2CPP (UnityPlayer.dll et GameAssembly.dll) : x86_64, tout
@@ -257,6 +262,7 @@ public class LaunchActivity extends Activity {
             Bundle requested = launch.getBundleExtra(EXTRA_SETTINGS);
             String wineVersion = requested != null && requested.getString(SETTING_WINE) != null ? requested.getString(SETTING_WINE)
                     : isUnityIl2cpp(new File(launch.getStringExtra(EXTRA_EXE)).getParentFile()) ? UNITY_WINE : DEFAULT_WINE;
+            if (wineVersion.contains(":")) wineVersion = installWine(wineVersion, requested.getString(SETTING_WINE_URL));
             Container container = container(wineVersion);
             if (container == null) {
                 fail(getString(R.string.romcloud_container_failed));
@@ -272,8 +278,12 @@ public class LaunchActivity extends Activity {
             // Réglages du jeu choisis dans RomCloud : pilote téléchargé installé, qualité graphique en
             // arguments du jeu selon son moteur (réglages propres à RomCloud retirés du raccourci).
             Bundle settings = requested != null ? new Bundle(requested) : new Bundle();
+            settings.remove(SETTING_WINE_URL);
+            if (settings.containsKey(SETTING_WINE)) settings.putString(SETTING_WINE, container.getWineVersion());
             installDriver(settings);
-            boolean arm64ec = container.getWineVersion().contains("arm64ec");
+            ContentsManager installed = new ContentsManager(this);
+            installed.syncContents();
+            boolean arm64ec = WineInfo.fromIdentifier(this, installed, container.getWineVersion()).isArm64EC();
             boolean customDxvk = applyContents(settings, arm64ec);
             String vkd3dVersion = settings.getString(SETTING_VKD3D, VKD3D_VERSION);
             for (String key : CONTENT_SETTINGS) settings.remove(key);
@@ -409,6 +419,24 @@ public class LaunchActivity extends Activity {
             ContentsManager.cleanTmpDir(this);
             show(R.string.romcloud_preparing, -1);
         }
+    }
+
+    /**
+     * Proton téléchargé [choice] (« type:version ») : installé au premier usage (paquet .wcp de la
+     * copie du dossier RomCloud, sinon [url]) ; renvoie son nom de version pour le conteneur
+     * (« Wine-proton-11.0-1-custom-0 »). Échec : Proton par défaut, le jeu se lance.
+     */
+    private String installWine(String choice, String url) {
+        String type = choice.substring(0, choice.indexOf(':'));
+        String version = choice.substring(type.length() + 1);
+        ContentsManager contents = new ContentsManager(this);
+        contents.syncContents();
+        if (installContent(contents, type, version, url)) {
+            ContentProfile profile = contents.getProfileByEntryName(type + "-" + version);
+            if (profile != null) return ContentsManager.getEntryName(profile);
+        }
+        Log.w("RomCloud", "Proton " + choice + " non installé, Proton par défaut");
+        return DEFAULT_WINE;
     }
 
     /** Installe le paquet .wcp [file] du composant [entry] (« dxvk-2.4.1 ») ; exception en cas d'échec. */
@@ -664,6 +692,7 @@ public class LaunchActivity extends Activity {
     private Container container(String wineVersion) throws Exception {
         ContainerManager manager = new ContainerManager(this);
         ContentsManager contents = new ContentsManager(this);
+        contents.syncContents(); // Proton installé en contenu : retrouvé par son nom
         Container container = null;
         for (Container existing : manager.getContainers()) {
             if (wineVersion.equals(existing.getWineVersion())) {

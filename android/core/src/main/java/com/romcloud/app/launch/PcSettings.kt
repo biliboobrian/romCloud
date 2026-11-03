@@ -74,6 +74,9 @@ object PcSettings {
         "2.3.1-arm64ec-gplasync", "2.4-gplasync", "2.4-24-gplasync", "2.4.1", "2.4.1-gplasync"))
     val DXVK_VERSIONS: List<String> get() = DXVK.map { it.version }
 
+    /** Versions de Proton téléchargées au premier usage (un conteneur par version) : valeur « type:version ». */
+    val WINES = PcCatalog.CONTENTS.filter { it.type == "wine" || it.type == "proton" }
+
     /** Versions de VKD3D-Proton (DirectX 12). */
     val VKD3D = contents("vkd3d", builtin("vkd3d", "2.14.1-0", "2.13-0", "2.12-0", "2.8-0"))
 
@@ -127,7 +130,8 @@ object PcSettings {
         val auto = null to I18n.get(R.string.pc_setting_auto)
         return listOfNotNull(
             Choice(KEY_WINE, I18n.get(R.string.pc_setting_wine), listOf(auto,
-                WINE_VERSIONS[0] to I18n.get(R.string.pc_wine_arm64ec), WINE_VERSIONS[1] to I18n.get(R.string.pc_wine_x86_64))),
+                WINE_VERSIONS[0] to I18n.get(R.string.pc_wine_arm64ec), WINE_VERSIONS[1] to I18n.get(R.string.pc_wine_x86_64)) +
+                WINES.map { boxValue(it) to contentLabel(it) }),
             if (adreno) Choice(KEY_DRIVER, I18n.get(R.string.pc_setting_driver), listOf(auto) + DRIVERS.map { driver ->
                 driver.id to when {
                     driver.id == SYSTEM_DRIVER -> I18n.get(R.string.pc_driver_qualcomm)
@@ -156,6 +160,12 @@ object PcSettings {
     /** Libellé d'un composant : version, avec le Proton visé (Box64) et « (téléchargé) » s'il n'est pas inclus. */
     private fun contentLabel(c: Content): String {
         val name = when (c.type) {
+            // « proton-11.0-1-custom » (paquet …-arm64ec.wcp) : « Proton 11.0-1 arm64ec (FEX) ».
+            "wine", "proton" -> {
+                val version = c.name.removePrefix("proton-").removePrefix("wine-").removeSuffix("-custom")
+                val title = if (c.name.startsWith("wine-")) "Wine" else "Proton"
+                if (c.url?.contains("arm64ec") == true) "$title $version arm64ec (FEX)" else "$title $version"
+            }
             "box64" -> "Box64 ${c.name} (Proton x86_64)"
             "wowbox64" -> "WOWBox64 ${c.name} (Proton arm64ec)"
             else -> c.name
@@ -167,7 +177,8 @@ object PcSettings {
 
     /**
      * Réglages de RomCloud PC (section « Extra Data » du raccourci) d'après les réglages [chosen] du jeu,
-     * ajoutés à ceux de l'appareil [base] : Proton (« wineVersion »), pilote (« graphicsDriverConfig » et,
+     * ajoutés à ceux de l'appareil [base] : Proton (« wineVersion » ; téléchargé : « type:version » et
+     * « romcloudWineUrl »), pilote (« graphicsDriverConfig » et,
      * pour un pilote téléchargé, « adrenotoolsDriverUrl »), DXVK (« dxwrapperConfig »), résolution
      * (« screenSize », au format de celle de l'appareil), images par seconde (« romcloudFramerate »,
      * et dans « dxwrapperConfig » si DXVK est choisi, pour Winlator Cmod) et qualité
@@ -178,6 +189,10 @@ object PcSettings {
     fun apply(base: Map<String, String>, chosen: Map<String, String>): Map<String, String> {
         val result = LinkedHashMap(base)
         chosen[KEY_WINE]?.takeIf { it in WINE_VERSIONS }?.let { result[KEY_WINE] = it }
+        chosen[KEY_WINE]?.let { v -> WINES.find { boxValue(it) == v } }?.let {
+            result[KEY_WINE] = boxValue(it)
+            it.url?.let { url -> result["romcloudWineUrl"] = url }
+        }
         chosen[KEY_DRIVER]?.let { id -> DRIVERS.find { it.id == id } }?.let { driver ->
             val turnip = driver.id != SYSTEM_DRIVER
             result["graphicsDriverConfig"] = "version=${driver.id};blacklistedExtensions=;maxDeviceMemory=0;adrenotoolsTurnip=${if (turnip) 1 else 0};frameSync=Normal"

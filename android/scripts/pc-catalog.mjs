@@ -1,4 +1,4 @@
-// Catalogue des pilotes graphiques et composants (DXVK, VKD3D-Proton, Box64, WOWBox64, FEXCore) à
+// Catalogue des pilotes graphiques et composants (Proton, DXVK, VKD3D-Proton, Box64, WOWBox64, FEXCore) à
 // télécharger pour les jeux PC (RomCloud PC) : lit les publications GitHub de leurs dépôts et écrit
 // core/src/main/java/com/romcloud/app/launch/PcCatalog.kt.
 //
@@ -20,9 +20,9 @@ const cache = fs.existsSync(cacheFile) ? JSON.parse(fs.readFileSync(cacheFile, '
 
 const DRIVER_REPOS = ['tiagosouzacandido/AdrenoToolsTurnipDrivers', 'K11MCH1/AdrenoToolsDrivers'];
 const WCP_REPO = 'Arihany/WinlatorWCPHub';
-/** Publications du dépôt des .wcp gardées (FEXCore-unixlib, Proton : pour d'autres versions de Proton). */
+/** Publications du dépôt des .wcp gardées (FEXCore-unixlib : pour d'autres versions de Proton) ; « WINE » : Proton arm64ec. */
 const WCP_RELEASES = [
-  'DXVK', 'DXVK-ARM64EC', 'DXVK-GPLASYNC', 'DXVK-GPLASYNC-ARM64EC', 'DXVK-SAREK-ASYNC', 'DXVK-SAREK-ASYNC-ARM64EC',
+  'WINE', 'DXVK', 'DXVK-ARM64EC', 'DXVK-GPLASYNC', 'DXVK-GPLASYNC-ARM64EC', 'DXVK-SAREK-ASYNC', 'DXVK-SAREK-ASYNC-ARM64EC',
   'VKD3D-PROTON', 'VKD3D-PROTON-ARM64EC', 'BOX64-BIONIC', 'WOWBOX64', 'WOWBOX64-NIGHTLY', 'FEXCore',
 ];
 
@@ -163,7 +163,7 @@ async function main() {
     '// Fichier généré par android/scripts/pc-catalog.mjs : ne pas modifier à la main.',
     '',
     '/**',
-    ' * Pilotes graphiques et composants de Winlator (DXVK, VKD3D-Proton, Box64, WOWBox64, FEXCore) publiés',
+    ' * Pilotes graphiques et composants de Winlator (Proton, DXVK, VKD3D-Proton, Box64, WOWBox64, FEXCore) publiés',
     ' * sur GitHub, téléchargés par RomCloud PC au premier usage : versions stables, de développement et',
     ' * expérimentales, de la plus récente à la plus ancienne.',
     ' */',
@@ -174,7 +174,7 @@ async function main() {
     ...drivers.map((d) => `        PcSettings.Driver(${kotlin(d.id)}, ${kotlin(d.label)}, ${kotlin(d.url)}),`),
     '    )',
     '',
-    `    /** Composants .wcp (${WCP_REPO}) : type (dxvk, vkd3d, box64, wowbox64, fexcore), version (« versionName-versionCode »), paquet. */`,
+    `    /** Composants .wcp (${WCP_REPO}) : type (wine, dxvk, vkd3d, box64, wowbox64, fexcore), version (« versionName-versionCode »), paquet. */`,
     '    val CONTENTS: List<PcSettings.Content> = listOf(',
     ...contents.map((c) => `        PcSettings.Content(${kotlin(c.type)}, ${kotlin(c.version)}, ${kotlin(c.name)}, ${kotlin(c.url)}),`),
     '    )',
