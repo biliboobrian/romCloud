@@ -136,6 +136,17 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         return game.files.map { File(systemDir(system), it.fileName).delete() }.first()
     }
 
+    /**
+     * Téléchargement partiel : jeu incomplet dont des fichiers sont déjà sur l'appareil (jeu en dossier :
+     * son dossier ; sinon un de ses fichiers ou un « .part »).
+     */
+    fun hasPartial(system: GameSystem, game: Game): Boolean {
+        if (isDownloaded(system, game)) return false
+        if (game.folder) return fileFor(system, game).list()?.isNotEmpty() == true
+        val dir = systemDir(system)
+        return game.files.any { File(dir, it.fileName).exists() || File(dir, "${it.fileName}.part").exists() }
+    }
+
     /** Supprime un téléchargement abandonné : fichiers du jeu déjà reçus et ceux en cours (« .part »). */
     fun deletePartial(system: GameSystem, game: Game) {
         delete(system, game)

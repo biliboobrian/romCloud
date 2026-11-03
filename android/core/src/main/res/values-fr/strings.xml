@@ -161,6 +161,9 @@
     <string name="screenshot">Capture d’écran</string>
     <string name="screenshot_n">Capture %1$d sur %2$d</string>
     <string name="delete_device_title">Supprimer de l’appareil ?</string>
+    <string name="delete_partial">Supprimer le téléchargement partiel</string>
+    <string name="delete_partial_title">Supprimer le téléchargement partiel ?</string>
+    <string name="delete_partial_text">Les fichiers du jeu déjà reçus seront supprimés. Le prochain téléchargement repartira de zéro.</string>
     <string name="delete_device_text">Le fichier local sera supprimé pour libérer de l’espace. Le jeu reste disponible sur le serveur.</string>
     <string name="launch_command_show">Voir la commande de lancement</string>
     <string name="launch_command_hide">Masquer la commande de lancement</string>

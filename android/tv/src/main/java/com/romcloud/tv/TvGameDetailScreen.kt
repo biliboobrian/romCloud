@@ -127,6 +127,7 @@ fun TvGameDetailScreen(
     val pcDefaults = state.system?.let { system -> state.game?.defaultCoreOptions(system) }.orEmpty()
     val pcChoices = remember(pcDefaults) { PcSettings.choices(adreno = com.romcloud.app.data.Settings.isSnapdragon(), defaults = pcDefaults) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDeletePartial by remember { mutableStateOf(false) }
     var showStates by remember { mutableStateOf(false) }
     val primaryFocus = remember { FocusRequester() }
 
@@ -335,12 +336,18 @@ fun TvGameDetailScreen(
                                 SecondaryButton(stringResource(R.string.action_update_game), Icons.Filled.CloudDownload) { viewModel.download() }
                             }
                         }
-                        else -> ActionButton(
-                            if (download is DownloadState.Failed) stringResource(R.string.action_retry)
-                            else stringResource(R.string.download_with_size, gameSizeLabel(game)),
-                            Icons.Filled.CloudDownload,
-                            primary,
-                        ) { viewModel.download() }
+                        else -> {
+                            ActionButton(
+                                if (download is DownloadState.Failed) stringResource(R.string.action_retry)
+                                else stringResource(R.string.download_with_size, gameSizeLabel(game)),
+                                Icons.Filled.CloudDownload,
+                                primary,
+                            ) { viewModel.download() }
+                            // Téléchargement partiel sur le téléviseur : fichiers reçus supprimés.
+                            if (state.partial) {
+                                SecondaryButton(stringResource(R.string.delete_partial), Icons.Filled.Delete) { confirmDeletePartial = true }
+                            }
+                        }
                     }
                     // Ce jeu proposé par un autre appareil : partie rejointe (jeu téléchargé d'abord s'il manque).
                     if (download !is DownloadState.Running) {
@@ -467,6 +474,19 @@ fun TvGameDetailScreen(
                 )
             }
         } ?: run { showStates = false }
+    }
+
+    if (confirmDeletePartial) {
+        ConfirmDialog(
+            title = stringResource(R.string.delete_partial_title),
+            text = stringResource(R.string.delete_partial_text),
+            confirm = stringResource(R.string.action_delete),
+            onConfirm = {
+                viewModel.deletePartial()
+                confirmDeletePartial = false
+            },
+            onDismiss = { confirmDeletePartial = false },
+        )
     }
 
     if (confirmDelete) {

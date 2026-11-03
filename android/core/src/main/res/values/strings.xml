@@ -164,6 +164,9 @@
     <string name="screenshot">Screenshot</string>
     <string name="screenshot_n">Screenshot %1$d of %2$d</string>
     <string name="delete_device_title">Delete from the device?</string>
+    <string name="delete_partial">Delete the partial download</string>
+    <string name="delete_partial_title">Delete the partial download?</string>
+    <string name="delete_partial_text">The game files already received will be deleted. The next download will start from scratch.</string>
     <string name="delete_device_text">The local file will be deleted to free up space. The game remains available on the server.</string>
     <string name="launch_command_show">Show the launch command</string>
     <string name="launch_command_hide">Hide the launch command</string>
