@@ -309,7 +309,9 @@ class Downloader(
         if (free in 0 until needed) {
             throw java.io.IOException(I18n.get(R.string.err_not_enough_space, formatSize(needed), formatSize(free)))
         }
-        val total = files.sumOf { it.downloadSize }
+        // Octets à télécharger pour tout le jeu : archives regroupées comptées une fois, à leur taille
+        // (leurs fichiers n'ont que leur taille décompressée) ; ceux des fichiers déjà là, reçus.
+        val total = FolderInstall.downloads(files, files, listing.bundles).first.sumOf { it.downloadSize }
         val received = AtomicLong(before + total - todo.sumOf { it.downloadSize })
         val current = AtomicLong(0)
         val unpackTotal = todo.filter { it.packed }.sumOf { it.size }
