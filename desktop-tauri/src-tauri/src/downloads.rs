@@ -726,7 +726,9 @@ async fn fetch_folder(server: &str, system: &Value, game: &Value, cancelled: &Ar
         }
     }
 
-    let total: u64 = files.iter().map(FolderFile::download_size).sum();
+    // Octets à télécharger pour tout le jeu : archives regroupées comptées une fois, à leur taille
+    // (leurs fichiers n'ont que leur taille décompressée) ; ceux des fichiers déjà là, reçus.
+    let total: u64 = downloads(&files, files.clone(), &listing["bundles"])?.0.iter().map(FolderFile::download_size).sum();
     let received = AtomicU64::new(total - todo.iter().map(FolderFile::download_size).sum::<u64>());
     let current = AtomicU64::new(0);
     let unpack_total: u64 = todo.iter().filter(|f| f.packed()).map(|f| f.size).sum();
@@ -931,6 +933,9 @@ mod tests {
         assert_eq!(archive_path(Path::new(&todo[1].path), "zst").file_name().unwrap(), "1.zst");
         assert_eq!(members["1"].len(), 2);
         assert!(downloads(&files, vec![files[3].clone()], &json!({})).is_err());
+        // Tout le jeu : chaque archive regroupée comptée une fois, à sa taille (12 + 9, pas 0 + 0 + 30).
+        let all = downloads(&files, files.to_vec(), &bundles).unwrap().0;
+        assert_eq!(all.iter().map(FolderFile::download_size).sum::<u64>(), 300 + 12 + 9);
 
         let dir = std::env::temp_dir().join(format!("romcloud-bundle-{}", std::process::id()));
         std::fs::create_dir_all(dir.join(BUNDLES_DIR)).unwrap();

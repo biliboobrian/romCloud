@@ -82,6 +82,9 @@ class FolderInstallTest {
         assertEquals("1.zst", FolderInstall.archiveFile(File(bundle.path), bundle.archiveFormat).name)
         assertEquals(listOf("a.dat", "b.dat"), members.getValue("1").map { it.path })
         assertThrows(IOException::class.java) { FolderInstall.downloads(files, listOf(files[3]), emptyMap()) }
+        // Tout le jeu : chaque archive regroupée comptée une fois, à sa taille (12 + 9, pas 10 + 20 + 30).
+        val all = FolderInstall.downloads(files, files, mapOf("1" to FolderBundle(12), "2" to FolderBundle(9))).first
+        assertEquals(50 * mb + 12 + 9 + 5, all.sumOf { it.downloadSize })
     }
 
     @Test
