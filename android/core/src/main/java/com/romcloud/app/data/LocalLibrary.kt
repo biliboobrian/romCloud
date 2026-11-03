@@ -136,6 +136,12 @@ class LocalLibrary(private val context: Context, private val settings: Settings)
         return game.files.map { File(systemDir(system), it.fileName).delete() }.first()
     }
 
+    /** Supprime un téléchargement abandonné : fichiers du jeu déjà reçus et ceux en cours (« .part »). */
+    fun deletePartial(system: GameSystem, game: Game) {
+        delete(system, game)
+        if (!game.folder) game.files.forEach { File(systemDir(system), "${it.fileName}.part").delete() }
+    }
+
     fun hasStoragePermission(): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Environment.isExternalStorageManager()

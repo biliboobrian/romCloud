@@ -919,7 +919,18 @@ class GameDetailViewModel(
         app.downloader.start(system, game, s.missingBios, includeRom = false)
     }
 
-    fun cancel() = app.downloader.cancel(gameId)
+    /** Téléchargement mis en pause : fichiers reçus gardés, puis « Reprendre » ou « Abandonner ». */
+    fun pause() = app.downloader.pause(gameId)
+
+    fun resume() = app.downloader.resume(gameId)
+
+    /** Téléchargement abandonné : fichiers du jeu déjà reçus supprimés. */
+    fun abandon() {
+        viewModelScope.launch {
+            app.downloader.abandon(gameId).join()
+            refreshLocal()
+        }
+    }
 
     fun deleteLocal() {
         val s = _state.value

@@ -5,11 +5,14 @@ import com.romcloud.app.ui.formatSize
 import com.romcloud.core.R
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -33,7 +36,8 @@ sealed interface DownloadState {
      * Téléchargement : [bytes] reçus sur [total], à [speed] octets par seconde ; jeu PC compressé :
      * [unpackBytes] décompressés sur [unpackTotal] (0 : rien à décompresser), le jeu est jouable une
      * fois tout décompressé ; jeu PC ou en plusieurs parties : [filesLeft] fichiers restant à recevoir
-     * sur [files] (0 : un seul fichier).
+     * sur [files] (0 : un seul fichier) ; [paused] : mis en pause (fichiers reçus gardés, reprise
+     * ou abandon au choix).
      */
     data class Running(
         override val title: String,
@@ -44,6 +48,7 @@ sealed interface DownloadState {
         val speed: Long = 0,
         val files: Int = 0,
         val filesLeft: Int = 0,
+        val paused: Boolean = false,
     ) : DownloadState {
         val progress: Float get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else 0f
         val unpackProgress: Float get() = if (unpackTotal > 0) (unpackBytes.toFloat() / unpackTotal).coerceIn(0f, 1f) else 0f
@@ -63,6 +68,12 @@ sealed interface DownloadState {
 
     data class Failed(override val title: String, val message: String) : DownloadState
 }
+
+/**
+ * Téléchargement de plus de [Downloader.METERED_WARNING_BYTES] hors Wi-Fi (données mobiles) : en
+ * attente de confirmation ; [bytes] à télécharger.
+ */
+class MeteredPrompt(val title: String, val bytes: Long, internal val confirm: () -> Unit)
 
 sealed interface DownloadEvent {
     /** [romIncluded] = false : seuls les BIOS manquants ont été téléchargés (jeu déjà présent). */
@@ -89,31 +100,82 @@ class Downloader(
 
     private val jobs = ConcurrentHashMap<Long, Job>()
 
+    private val _meteredPrompt = MutableStateFlow<MeteredPrompt?>(null)
+    val meteredPrompt: StateFlow<MeteredPrompt?> = _meteredPrompt.asStateFlow()
+
+    /** Téléchargement hors Wi-Fi confirmé : lancé. */
+    fun confirmMetered() {
+        val prompt = _meteredPrompt.value ?: return
+        _meteredPrompt.value = null
+        prompt.confirm()
+    }
+
+    fun dismissMetered() {
+        _meteredPrompt.value = null
+    }
+
+    /**
+     * Réseau sans limite de données : Wi-Fi ou Ethernet (téléviseur) ; aucun réseau : rien à
+     * signaler (le téléchargement échouera de lui-même).
+     */
+    private fun onWifi(): Boolean {
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return true
+        val network = manager.activeNetwork ?: return true
+        val caps = manager.getNetworkCapabilities(network) ?: return true
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+
+    /** Demande de chaque téléchargement lancé : reprise après une pause. */
+    private val requests = ConcurrentHashMap<Long, Request>()
+
+    private class Request(val system: GameSystem, val game: Game, val bios: List<BiosFile>, val includeRom: Boolean)
+
     /** Vitesse de chaque téléchargement en cours. */
     private val speeds = ConcurrentHashMap<Long, SpeedMeter>()
 
     /** Publie la progression du téléchargement de [state] (jeu [gameId]), avec sa vitesse. */
     private fun publish(gameId: Long, state: DownloadState.Running) {
         val speed = speeds.getOrPut(gameId) { SpeedMeter() }.update(state.bytes, android.os.SystemClock.elapsedRealtime())
-        _states.update { it + (gameId to state.copy(speed = speed)) }
+        // Mis en pause : dernière progression de la tâche arrêtée ignorée.
+        _states.update { if (isPaused(it[gameId])) it else it + (gameId to state.copy(speed = speed)) }
     }
 
-    val activeCount: Int get() = _states.value.values.count { it is DownloadState.Running }
+    private fun isPaused(state: DownloadState?) = (state as? DownloadState.Running)?.paused == true
+
+    val activeCount: Int get() = _states.value.values.count { it is DownloadState.Running && !it.paused }
 
     /**
      * Télécharge d'abord les [bios] indiqués (BIOS manquants du système), puis le jeu et ses parties
      * (disques, mises à jour, DLC) sauf si [includeRom] vaut false. La progression affichée couvre l'ensemble.
+     * Plus de [METERED_WARNING_BYTES] à télécharger hors Wi-Fi : lancé seulement une fois confirmé
+     * ([meteredPrompt]), sauf si [meteredConfirmed].
      */
-    fun start(system: GameSystem, game: Game, bios: List<BiosFile> = emptyList(), includeRom: Boolean = true) {
+    fun start(system: GameSystem, game: Game, bios: List<BiosFile> = emptyList(), includeRom: Boolean = true, meteredConfirmed: Boolean = false) {
         if (jobs[game.id]?.isActive == true) return
         if (!includeRom && bios.isEmpty()) return
         val total = bios.sumOf { it.size } + if (includeRom) game.fullSize else 0
+        if (!meteredConfirmed) {
+            // Octets à recevoir : jeu PC compressé, ses archives ; reprise après une pause, ce qui reste.
+            val paused = (_states.value[game.id] as? DownloadState.Running)?.takeIf { it.paused }
+            val bytes = paused?.let { it.total - it.bytes }
+                ?: (bios.sumOf { it.size } + if (includeRom) (if (game.zipped) game.packedSize ?: game.fullSize else game.fullSize) else 0)
+            if (bytes > METERED_WARNING_BYTES && !onWifi()) {
+                _meteredPrompt.value = MeteredPrompt(game.title, bytes) { start(system, game, bios, includeRom, meteredConfirmed = true) }
+                return
+            }
+        }
         // Jeu en plusieurs parties (disques, mises à jour, DLC) : fichiers restant à recevoir.
         val parts = if (includeRom && !game.folder && game.files.size > 1) game.files.size else 0
+        requests[game.id] = Request(system, game, bios, includeRom)
         speeds[game.id] = SpeedMeter()
-        _states.update { it + (game.id to DownloadState.Running(game.title, 0, total, files = parts, filesLeft = parts)) }
+        _states.update {
+            // Reprise après une pause : progression déjà atteinte affichée en attendant la suivante.
+            val paused = (it[game.id] as? DownloadState.Running)?.takeIf { s -> s.paused }
+            it + (game.id to (paused?.copy(paused = false) ?: DownloadState.Running(game.title, 0, total, files = parts, filesLeft = parts)))
+        }
         ContextCompat.startForegroundService(context, Intent(context, DownloadService::class.java))
         jobs[game.id] = scope.launch(Dispatchers.IO) {
+            val self = coroutineContext[Job]
             try {
                 var done = 0L
                 var partsLeft = parts
@@ -144,21 +206,23 @@ class Downloader(
                     }
                 }
                 _states.update { it + (game.id to DownloadState.Finishing(game.title)) }
+                requests.remove(game.id)
                 _events.emit(DownloadEvent.Completed(system, game, includeRom))
                 scope.launch {
                     delay(FINISHING_SHOWN_MS)
                     forgetFinished(game.id)
                 }
             } catch (e: CancellationException) {
-                _states.update { it - game.id }
+                // Mis en pause : état gardé (reprise ou abandon).
+                _states.update { if (isPaused(it[game.id])) it else it - game.id }
                 throw e
             } catch (e: Exception) {
                 val message = e.message ?: e.javaClass.simpleName
                 _states.update { it + (game.id to DownloadState.Failed(game.title, message)) }
                 _events.emit(DownloadEvent.Failed(game, message))
             } finally {
-                jobs.remove(game.id)
-                speeds.remove(game.id)
+                // Repris aussitôt après une pause : la nouvelle tâche est gardée.
+                if (self != null && jobs.remove(game.id, self)) speeds.remove(game.id)
             }
         }
     }
@@ -166,6 +230,40 @@ class Downloader(
     fun cancel(gameId: Long) {
         jobs[gameId]?.cancel()
         _states.update { it - gameId }
+    }
+
+    /** Met le téléchargement en pause : la tâche s'arrête, les fichiers reçus (et « .part ») sont gardés. */
+    fun pause(gameId: Long) {
+        _states.update {
+            val running = it[gameId] as? DownloadState.Running ?: return@update it
+            it + (gameId to running.copy(paused = true, speed = 0))
+        }
+        jobs[gameId]?.cancel()
+    }
+
+    /** Reprend un téléchargement mis en pause là où il s'était arrêté (fichiers complets et « .part » repris). */
+    fun resume(gameId: Long) {
+        if (!isPaused(_states.value[gameId])) return
+        val request = requests[gameId] ?: return
+        val previous = jobs[gameId]
+        scope.launch {
+            previous?.join() // tâche arrêtée tout à fait : un seul écrivain par fichier
+            if (isPaused(_states.value[gameId])) start(request.system, request.game, request.bios, request.includeRom)
+        }
+    }
+
+    /**
+     * Abandonne un téléchargement mis en pause : fichiers du jeu déjà reçus supprimés (BIOS gardés).
+     * Terminé quand la tâche renvoyée l'est.
+     */
+    fun abandon(gameId: Long): Job {
+        val request = requests.remove(gameId)
+        val previous = jobs[gameId]
+        _states.update { it - gameId }
+        return scope.launch(Dispatchers.IO) {
+            previous?.cancelAndJoin()
+            if (request != null && request.includeRom) library.deletePartial(request.system, request.game)
+        }
     }
 
     /** Fin du « Veuillez patienter » d'un jeu téléchargé (délai écoulé, jeu supprimé de l'appareil). */
@@ -311,7 +409,10 @@ class Downloader(
             else I18n.get(R.string.err_storage_permission)
         }
 
-    private companion object {
-        const val FINISHING_SHOWN_MS = 15_000L
+    companion object {
+        private const val FINISHING_SHOWN_MS = 15_000L
+
+        /** Au-delà, téléchargement hors Wi-Fi confirmé d'abord. */
+        const val METERED_WARNING_BYTES = 50L * 1024 * 1024
     }
 }

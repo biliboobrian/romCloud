@@ -40,7 +40,7 @@ class DownloadService : Service() {
             started = true
             scope.launch {
                 downloader.states.collectLatest { states ->
-                    val running = states.values.filterIsInstance<DownloadState.Running>()
+                    val running = states.values.filterIsInstance<DownloadState.Running>().filterNot { it.paused }
                     if (running.isEmpty()) {
                         ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                         stopSelf()

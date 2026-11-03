@@ -114,6 +114,13 @@
     <string name="downloading_title">Download in progress</string>
     <string name="downloading_text">“%1$s” is being downloaded. Do you want to cancel it?</string>
     <string name="cancel_download">Cancel the download</string>
+    <string name="download_pause">Pause</string>
+    <string name="metered_download_title">Download without Wi-Fi?</string>
+    <string name="metered_download_text">You are not on Wi-Fi: “%1$s” (%2$s) will be downloaded using your mobile data.</string>
+    <string name="metered_download_anyway">Download anyway</string>
+    <string name="download_paused">Paused</string>
+    <string name="download_resume">Resume</string>
+    <string name="download_abandon">Abandon</string>
     <string name="downloading_progress">Downloading… %1$s / %2$s</string>
     <string name="unpacking_progress">Unpacking %1$s / %2$s</string>
     <string name="unpacking_playable">Unpacking the last files… the game will be playable when it is done</string>
@@ -211,7 +218,8 @@
     <string name="tv_to_download">To download — OK to download · long press: game details</string>
     <string name="tv_on_tv">✓ On the TV</string>
     <string name="tv_must_download">Must be downloaded before you can play it.</string>
-    <string name="tv_cancel_percent">Cancel (%1$d %%)</string>
+    <string name="tv_pause_percent">Pause (%1$d %%)</string>
+    <string name="tv_resume_percent">Resume (%1$d %%)</string>
     <string name="tv_emulator_value">Emulator: %1$s</string>
     <string name="tv_install_emulator">Install the emulator</string>
     <string name="tv_delete_from_tv">Delete from the TV</string>

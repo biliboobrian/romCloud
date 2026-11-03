@@ -111,6 +111,13 @@
     <string name="downloading_title">Téléchargement en cours</string>
     <string name="downloading_text">« %1$s » est en cours de téléchargement. Voulez-vous l’annuler ?</string>
     <string name="cancel_download">Annuler le téléchargement</string>
+    <string name="download_pause">Mettre en pause</string>
+    <string name="metered_download_title">Télécharger sans Wi-Fi ?</string>
+    <string name="metered_download_text">Vous n’êtes pas connecté en Wi-Fi : « %1$s » (%2$s) sera téléchargé avec vos données mobiles.</string>
+    <string name="metered_download_anyway">Télécharger quand même</string>
+    <string name="download_paused">En pause</string>
+    <string name="download_resume">Reprendre</string>
+    <string name="download_abandon">Abandonner</string>
     <string name="downloading_progress">Téléchargement… %1$s / %2$s</string>
     <string name="unpacking_progress">Décompression %1$s / %2$s</string>
     <string name="unpacking_playable">Décompression des derniers fichiers… le jeu sera jouable à la fin</string>
@@ -206,7 +213,8 @@
     <string name="tv_to_download">À télécharger — OK pour télécharger · appui long : fiche du jeu</string>
     <string name="tv_on_tv">✓ Sur le téléviseur</string>
     <string name="tv_must_download">Doit être téléchargé avant de pouvoir y jouer.</string>
-    <string name="tv_cancel_percent">Annuler (%1$d %%)</string>
+    <string name="tv_pause_percent">Mettre en pause (%1$d %%)</string>
+    <string name="tv_resume_percent">Reprendre (%1$d %%)</string>
     <string name="tv_emulator_value">Émulateur : %1$s</string>
     <string name="tv_install_emulator">Installer l’émulateur</string>
     <string name="tv_delete_from_tv">Supprimer du téléviseur</string>

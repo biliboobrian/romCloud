@@ -274,6 +274,17 @@ pub fn remove(system: &Value, game: &Value) {
     let _ = std::fs::remove_file(playlist_path(&file_for(system, game)));
 }
 
+/// Supprime un téléchargement abandonné : fichiers du jeu déjà reçus et ceux en cours (« .part »).
+pub fn remove_partial(system: &Value, game: &Value) {
+    remove(system, game);
+    if !is_folder(game) {
+        let dir = system_dir(system);
+        for f in game_files(game) {
+            let _ = std::fs::remove_file(dir.join(format!("{}.part", s(&f, "fileName"))));
+        }
+    }
+}
+
 /// Liste des disques (.m3u) d'un jeu : nom du premier disque (sauvegardes et états du jeu gardent
 /// leur nom), à côté de lui.
 fn playlist_path(main: &Path) -> PathBuf {

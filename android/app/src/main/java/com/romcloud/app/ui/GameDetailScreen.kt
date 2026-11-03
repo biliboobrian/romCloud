@@ -7,6 +7,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import coil.compose.AsyncImage
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -216,25 +221,50 @@ fun GameDetailScreen(
                 .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row {
-                Cover(mediaUrl(game, "boxart", MediaSize.THUMB), game.title, 130.dp, 175.dp)
-                Spacer(Modifier.width(16.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(game.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    listOfNotNull(
-                        game.releaseDate?.let { stringResource(R.string.meta_release, it) },
-                        game.genre,
-                        game.developer?.let { stringResource(R.string.meta_developer, it) },
-                        game.publisher?.let { stringResource(R.string.meta_publisher, it) },
-                        game.players?.let { stringResource(R.string.meta_players, it) },
-                        // Jeu PC : version sur le serveur.
-                        game.version?.let { stringResource(R.string.game_version, it) },
-                        game.stars?.let { stringResource(R.string.meta_rating, starsText(it)) },
-                    ).forEach {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Comme la bannière de la liste des jeux : capture du jeu (sinon sa jaquette) derrière la
+            // jaquette et les informations, sur toute la largeur, fondue vers le fond de l'écran.
+            Box(
+                Modifier.layout { measurable, constraints ->
+                    val margin = 16.dp.roundToPx()
+                    val width = constraints.maxWidth + 2 * margin
+                    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                    layout(constraints.maxWidth, placeable.height) { placeable.place(-margin, 0) }
+                },
+            ) {
+                val background = MaterialTheme.colorScheme.background
+                (mediaUrl(game, "screenshot", MediaSize.MEDIUM) ?: mediaUrl(game, "boxart", MediaSize.MEDIUM))?.let { url ->
+                    AsyncImage(
+                        model = url,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
+                Box(
+                    Modifier.matchParentSize().background(
+                        Brush.verticalGradient(0f to background.copy(alpha = 0.15f), 0.55f to background.copy(alpha = 0.7f), 1f to background),
+                    ),
+                )
+                Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
+                    Cover(mediaUrl(game, "boxart", MediaSize.THUMB), game.title, 130.dp, 175.dp)
+                    Spacer(Modifier.width(16.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(game.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                        listOfNotNull(
+                            game.releaseDate?.let { stringResource(R.string.meta_release, it) },
+                            game.genre,
+                            game.developer?.let { stringResource(R.string.meta_developer, it) },
+                            game.publisher?.let { stringResource(R.string.meta_publisher, it) },
+                            game.players?.let { stringResource(R.string.meta_players, it) },
+                            // Jeu PC : version sur le serveur.
+                            game.version?.let { stringResource(R.string.game_version, it) },
+                            game.stars?.let { stringResource(R.string.meta_rating, starsText(it)) },
+                        ).forEach {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        PlaytimeLabel(gamePlaytime(game.id), Modifier.padding(top = 4.dp))
+                        state.onlineSave?.let { OnlineSaveLabel(it) }
                     }
-                    PlaytimeLabel(gamePlaytime(game.id), Modifier.padding(top = 4.dp))
-                    state.onlineSave?.let { OnlineSaveLabel(it) }
                 }
             }
 
@@ -248,7 +278,13 @@ fun GameDetailScreen(
                             downloadProgressText(d),
                             style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = viewModel::cancel) { Text(stringResource(R.string.action_cancel)) }
+                        // Pause : fichiers reçus gardés, puis reprise là où il s'était arrêté ou abandon (fichiers supprimés).
+                        if (d.paused) {
+                            TextButton(onClick = viewModel::abandon) { Text(stringResource(R.string.download_abandon)) }
+                            TextButton(onClick = viewModel::resume) { Text(stringResource(R.string.download_resume)) }
+                        } else {
+                            TextButton(onClick = viewModel::pause) { Text(stringResource(R.string.download_pause)) }
+                        }
                     }
                 }
                 // Hôte d'un lobby : seulement « Définir comme jeu du lobby ».
