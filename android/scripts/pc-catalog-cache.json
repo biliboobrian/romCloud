@@ -696,5 +696,20 @@
   "type": "DXVK",
   "versionName": "3.1",
   "versionCode": 0
+ },
+ "https://github.com/Arihany/WinlatorWCPHub/releases/download/WINE/proton-11.0-1-beta5-custom-arm64ec.wcp": {
+  "type": "Wine",
+  "versionName": "proton-11.0-1-beta5-custom",
+  "versionCode": 0
+ },
+ "https://github.com/Arihany/WinlatorWCPHub/releases/download/WINE/proton-11.0-1-custom-arm64ec.wcp": {
+  "type": "Wine",
+  "versionName": "proton-11.0-1-custom",
+  "versionCode": 0
+ },
+ "https://github.com/Arihany/WinlatorWCPHub/releases/download/VKD3D-PROTON/vkd3d-proton-3.1.wcp": {
+  "type": "VKD3D",
+  "versionName": "3.1",
+  "versionCode": 0
  }
 }

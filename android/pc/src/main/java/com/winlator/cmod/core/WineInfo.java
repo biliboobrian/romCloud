@@ -130,6 +130,12 @@ public class WineInfo implements Parcelable {
         }
 
         Matcher matcher = pattern.matcher(identifier);
+        // RomCloud : contenu dont le nom ne porte pas l'architecture (« Wine-proton-11.0-1-custom-0 ») :
+        // déduite de ses bibliothèques Windows (aarch64-windows : arm64ec).
+        if (!matcher.find() && wineProfile != null && (wineProfile.type == ContentProfile.ContentType.CONTENT_TYPE_WINE || wineProfile.type == ContentProfile.ContentType.CONTENT_TYPE_PROTON)) {
+            return fromContent(context, contentsManager, wineProfile);
+        }
+        matcher.reset();
 
         if (matcher.find()) {
             String[] wineVersions = context.getResources().getStringArray(R.array.wine_entries);
@@ -146,6 +152,21 @@ public class WineInfo implements Parcelable {
             return new WineInfo(matcher.group(1), matcher.group(2), matcher.group(4), path);
         }
         else return new WineInfo(MAIN_WINE_VERSION.type, MAIN_WINE_VERSION.version, MAIN_WINE_VERSION.arch, imageFs.getRootDir().getPath() + "/opt/" + MAIN_WINE_VERSION.identifier());
+    }
+
+    /** Wine ou Proton installé en contenu, d'après son nom (« proton-11.0-1-custom ») et ses bibliothèques. */
+    private static WineInfo fromContent(Context context, ContentsManager contentsManager, ContentProfile profile) {
+        File dir = contentsManager.getInstallDir(context, profile);
+        String libPath = profile.type == ContentProfile.ContentType.CONTENT_TYPE_PROTON ? profile.protonLibPath : profile.wineLibPath;
+        File windows = new File(dir, libPath + "/wine");
+        String arch = new File(windows, "aarch64-windows").isDirectory() ? "arm64ec"
+                : new File(windows, "x86_64-windows").isDirectory() ? "x86_64" : "x86";
+        String name = profile.verName.toLowerCase();
+        String type = name.startsWith("proton") ? "proton" : "wine";
+        Matcher version = Pattern.compile("([0-9]+(?:\\.[0-9]+)*)(?:-(.+))?").matcher(name.substring(name.indexOf('-') + 1));
+        String number = version.find() ? version.group(1) : profile.verName;
+        String sub = version.groupCount() >= 2 && version.group(2) != null ? version.group(2) : null;
+        return new WineInfo(type, number, sub, arch, dir.getPath());
     }
 
     public static boolean isMainWineVersion(String wineVersion) {

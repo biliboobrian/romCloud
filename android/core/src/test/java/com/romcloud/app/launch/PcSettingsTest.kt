@@ -32,6 +32,15 @@ class PcSettingsTest {
     }
 
     @Test
+    fun protonTelecharge() {
+        val proton = PcSettings.WINES.first { it.version == "proton-11.0-1-custom-0" }
+        val result = PcSettings.apply(base, mapOf(PcSettings.KEY_WINE to "wine:proton-11.0-1-custom-0"))
+        assertEquals("wine:proton-11.0-1-custom-0", result["wineVersion"])
+        assertEquals(proton.url, result["romcloudWineUrl"])
+        assertFalse(PcSettings.apply(base, mapOf(PcSettings.KEY_WINE to "proton-9.0-arm64ec")).containsKey("romcloudWineUrl"))
+    }
+
+    @Test
     fun piloteQualcommEtPiloteInclus() {
         val qualcomm = PcSettings.apply(base, mapOf(PcSettings.KEY_DRIVER to PcSettings.SYSTEM_DRIVER))
         assertEquals("version=System;blacklistedExtensions=;maxDeviceMemory=0;adrenotoolsTurnip=0;frameSync=Normal", qualcomm["graphicsDriverConfig"])
