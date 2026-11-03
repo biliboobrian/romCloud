@@ -19,6 +19,7 @@ import androidx.lifecycle.viewModelScope
 import com.romcloud.app.RomCloudApp
 import com.romcloud.app.data.BiosFile
 import com.romcloud.app.data.DownloadEvent
+import com.romcloud.app.data.DownloadState
 import com.romcloud.app.data.Game
 import com.romcloud.app.data.GameSystem
 import com.romcloud.app.data.OnlineSave
@@ -55,6 +56,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -627,6 +629,8 @@ class GameDetailViewModel(
         val system: GameSystem? = null,
         val game: Game? = null,
         val downloaded: Boolean = false,
+        /** Téléchargement partiel sur l'appareil (fichiers reçus, jeu incomplet) : corbeille à côté de « Télécharger ». */
+        val partial: Boolean = false,
         /** Présence du jeu sur l'appareil vérifiée ([downloaded] connu). */
         val localChecked: Boolean = false,
         /** Raccourci du jeu sur l'écran d'accueil (actif) ; [canShortcut] : le lanceur les accepte. */
@@ -707,6 +711,12 @@ class GameDetailViewModel(
         }
         viewModelScope.launch {
             app.downloader.events.collect { if (it is DownloadEvent.Completed && it.system.id == systemId) refreshLocal() }
+        }
+        // Téléchargement arrêté (échec, annulé, abandonné) : fichiers partiels relus.
+        viewModelScope.launch {
+            app.downloader.states.map { it[gameId] is DownloadState.Running }.distinctUntilChanged().collect { running ->
+                if (!running) refreshPartial()
+            }
         }
         // TV du profil prêtes à recevoir (allumées, RomCloud ouvert) : relues régulièrement (téléphone).
         if (!app.account.isTv) viewModelScope.launch {
@@ -799,9 +809,11 @@ class GameDetailViewModel(
                 }
                 StateHistory.merge(local, app.account.onlineStates(game.id).orEmpty(), cores).size
             }
+            val partial = withContext(Dispatchers.IO) { app.library.hasPartial(system, game) }
             _state.update {
                 it.copy(
                     downloaded = downloaded,
+                    partial = partial,
                     localChecked = true,
                     shortcut = shortcut,
                     canShortcut = canShortcut,
@@ -928,6 +940,28 @@ class GameDetailViewModel(
     fun abandon() {
         viewModelScope.launch {
             app.downloader.abandon(gameId).join()
+            refreshLocal()
+        }
+    }
+
+    private fun refreshPartial() {
+        val s = _state.value
+        val system = s.system ?: return
+        val game = s.game ?: return
+        viewModelScope.launch {
+            val partial = withContext(Dispatchers.IO) { app.library.hasPartial(system, game) }
+            _state.update { it.copy(partial = partial) }
+        }
+    }
+
+    /** Supprime les fichiers d'un téléchargement partiel (jeu incomplet) : le prochain repart de zéro. */
+    fun deletePartial() {
+        val s = _state.value
+        val system = s.system ?: return
+        val game = s.game ?: return
+        if (app.downloader.states.value[game.id] is DownloadState.Running) return
+        viewModelScope.launch(Dispatchers.IO) {
+            app.library.deletePartial(system, game)
             refreshLocal()
         }
     }

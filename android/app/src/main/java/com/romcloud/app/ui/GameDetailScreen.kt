@@ -134,6 +134,7 @@ fun GameDetailScreen(
     // « Configurer » : fait défiler jusqu'aux problèmes à corriger.
     val issuesInView = remember { BringIntoViewRequester() }
     var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDeletePartial by remember { mutableStateOf(false) }
     /** Historique des états affiché (« États sauvegardés »). */
     var showStates by remember { mutableStateOf(false) }
     // Plusieurs TV du profil allumées : choix de celle qui affiche le jeu.
@@ -471,13 +472,21 @@ fun GameDetailScreen(
                             )
                         }
                     } else {
-                        Button(onClick = viewModel::download, modifier = Modifier.fillMaxWidth().height(52.dp).focusRequester(primaryFocus)) {
-                            Icon(Icons.Filled.CloudDownload, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                if (d is DownloadState.Failed) stringResource(R.string.action_retry)
-                                else stringResource(R.string.download_with_size, gameSizeLabel(game)),
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = viewModel::download, modifier = Modifier.weight(1f).height(52.dp).focusRequester(primaryFocus)) {
+                                Icon(Icons.Filled.CloudDownload, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    if (d is DownloadState.Failed) stringResource(R.string.action_retry)
+                                    else stringResource(R.string.download_with_size, gameSizeLabel(game)),
+                                )
+                            }
+                            // Téléchargement partiel sur l'appareil : fichiers reçus supprimés.
+                            if (state.partial) {
+                                OutlinedButton(onClick = { confirmDeletePartial = true }, modifier = Modifier.height(52.dp)) {
+                                    Icon(Icons.Filled.Delete, stringResource(R.string.delete_partial))
+                                }
+                            }
                         }
                         Text(
                             stringResource(R.string.must_download),
@@ -656,6 +665,18 @@ fun GameDetailScreen(
                 )
             }
         } ?: run { showStates = false }
+    }
+
+    if (confirmDeletePartial) {
+        AlertDialog(
+            onDismissRequest = { confirmDeletePartial = false },
+            title = { Text(stringResource(R.string.delete_partial_title)) },
+            text = { Text(stringResource(R.string.delete_partial_text)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.deletePartial(); confirmDeletePartial = false }) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeletePartial = false }) { Text(stringResource(R.string.action_cancel)) } },
+        )
     }
 
     if (confirmDelete) {
