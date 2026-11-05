@@ -3068,7 +3068,7 @@ dependencies = [
 
 [[package]]
 name = "romcloud"
-version = "1.95.2"
+version = "1.96.0"
 dependencies = [
  "base64 0.23.1",
  "chrono",

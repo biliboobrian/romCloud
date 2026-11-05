@@ -127,6 +127,7 @@ Utilisation à la télécommande :
     | Émulateur | Systèmes | Lancement |
     |---|---|---|
     | Eden | Switch | indiqué par son **dossier** (`eden.exe` et `eden-cli.exe`) : jeux lancés avec `eden-cli -f -g {file}`, réglages d’`eden.exe` recopiés (toutes les sections de `qt-config.ini` sauf `[UI]` : manettes, système avec région et langue, rendu, son… dans `sdl2-config.ini`, original gardé en `.romcloud.bak`) ; *Ouvrir Eden* lance `eden.exe` |
+    | Lichii | Switch, Switch 2 | fork d’Eden ([zortos293/Lichii](https://github.com/zortos293/Lichii), préversions) : `lichii.exe -f -g {file}` ; utilisé à la place d’Eden ou de Ryujinx pour les jeux de la Switch 2 (archives `.nup` de NSP Box, identifiants `[04…]` dans le nom du fichier) ; dernière version téléchargée et installée par RomCloud (`lichii-windows-x86_64-pgo.zip`) ; données partagées avec Eden (`%APPDATA%\eden`, mêmes clés) |
     | Ryujinx | Switch | `--fullscreen {file}` |
     | RPCS3 | PlayStation 3 (aussi géré par le moteur intégré) | `--no-gui {file}` |
     | Cemu | Wii U (aussi géré par le moteur intégré) | `-f -g {file}` |

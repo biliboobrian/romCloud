@@ -29,7 +29,7 @@ fn stored_location(id: &str) -> Option<String> {
 }
 
 /// Exécutable qui lance les jeux : choisi par l'utilisateur ou trouvé par la dernière recherche.
-fn emulator_path(id: &str) -> Option<String> {
+pub fn emulator_path(id: &str) -> Option<String> {
     let stored = stored_location(id)?;
     match catalog::folder_exes(id) {
         Some(exes) => catalog::exe_in_folder(Path::new(&stored), exes.game).map(|p| p.to_string_lossy().into_owned()),
@@ -322,6 +322,25 @@ enum Plan {
     Open(String),
 }
 
+/// Émulateurs de la Switch qui ne lancent pas les jeux de la Switch 2 : remplacés par Lichii pour ceux-là.
+const SWITCH1_EMULATORS: &[&str] = &["eden", "ryujinx"];
+
+/**
+ * Jeu de la Switch 2 : archive .nup (NSP Box : jeu, mises à jour et DLC regroupés, lue par Lichii)
+ * ou identifiant de titre « 04… » entre crochets dans le nom du fichier (« [0400486024dec000] » ;
+ * ceux de la Switch commencent par « 01 »).
+ */
+pub fn is_switch2(file: &str) -> bool {
+    let name = paths::file_name(Path::new(file)).to_lowercase();
+    if name.ends_with(".nup") {
+        return true;
+    }
+    name.match_indices("[04").any(|(i, _)| {
+        let id = &name[i + 1..];
+        id.len() > 16 && id.as_bytes()[16] == b']' && id[..16].bytes().all(|c| c.is_ascii_hexdigit())
+    })
+}
+
 /// Émulateurs du catalogue qui lisent une liste de disques (.m3u).
 const PLAYLIST_EMULATORS: &[&str] = &["mednafen"];
 
@@ -387,7 +406,11 @@ fn plan(system: &Value, game: &Value) -> Result<Plan> {
             })
         }
         "emulator" => {
-            let emu = catalog::by_id(s(&option, "emuId")).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": option["emuId"] })))?;
+            let mut emu = catalog::by_id(s(&option, "emuId")).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": option["emuId"] })))?;
+            // Jeu de la Switch 2 : Lichii à la place d'Eden ou de Ryujinx (qui ne savent pas l'ouvrir).
+            if SWITCH1_EMULATORS.contains(&emu.id) && is_switch2(&file) {
+                emu = catalog::by_id("lichii").expect("Lichii au catalogue");
+            }
             let exe = emulator_path(emu.id).ok_or_else(|| AppError::new("errors.emulatorMissing", json!({ "name": emu.name, "id": emu.id })))?;
             let file = if PLAYLIST_EMULATORS.contains(&emu.id) { playlist() } else { file };
             // Vita3K sans ligne de commande personnalisée : installation du jeu puis démarrage.
@@ -770,6 +793,16 @@ pub fn vita_status(system: &Value, game: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jeux_de_la_switch_2() {
+        assert!(is_switch2(r"D:\roms\switch\The Legend of Zelda Ocarina of Time [0400486024dec000][v131072].nup"));
+        assert!(is_switch2(r"D:\roms\switch\Mario Kart World [0400ABCDEF012000][v0].nsp"));
+        assert!(is_switch2("jeu.NUP"));
+        assert!(!is_switch2(r"D:\roms\switch\Zelda TOTK [0100F2C0115B6000][v0].nsp"));
+        assert!(!is_switch2(r"D:\roms\switch\Jeu [04].xci"));
+        assert!(!is_switch2(r"D:\roms\switch\Jeu [0400486024dec00z].xci"));
+    }
 
     #[test]
     fn ordre_des_emulateurs_choisi_sur_le_serveur() {

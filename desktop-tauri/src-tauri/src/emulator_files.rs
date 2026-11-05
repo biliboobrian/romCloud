@@ -1,5 +1,5 @@
 // Fichiers de la zone « system » du dossier RomCloud (récupérés sur le serveur) installés là où les émulateurs du
-// catalogue les attendent, avant leur lancement : clés de la Switch pour Eden (et eden-cli) et
+// catalogue les attendent, avant leur lancement : clés de la Switch pour Eden (et eden-cli), Lichii et
 // Ryujinx (mode portable reconnu à son dossier « user » ou « portable » à côté de l'exécutable).
 // eden-cli lit sa propre configuration (sdl2-config.ini), que l'interface d'Eden ne modifie pas :
 // les réglages d'eden.exe (sections de qt-config.ini : manettes, système avec région et langue,
@@ -21,7 +21,8 @@ fn eden_dir(exe_dir: &Path, appdata: &Path) -> PathBuf {
 fn files_for(emulator: &str, exe: &Path, system: &Path, appdata: &Path) -> Vec<(PathBuf, PathBuf)> {
     let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     let keys_dir = match emulator {
-        "eden" => eden_dir(&exe_dir, appdata).join("keys"),
+        // Lichii (fork d'Eden) : même dossier de données qu'Eden.
+        "eden" | "lichii" => eden_dir(&exe_dir, appdata).join("keys"),
         "ryujinx" if exe_dir.join("portable").is_dir() => exe_dir.join("portable").join("system"),
         "ryujinx" => appdata.join("Ryujinx").join("system"),
         _ => return vec![],
@@ -171,6 +172,8 @@ mod tests {
         std::fs::create_dir_all(root.join("Ryujinx").join("portable")).unwrap();
         assert_eq!(files_for("ryujinx", &ryujinx, &bios, &appdata)[0].1, root.join("Ryujinx").join("portable").join("system").join("prod.keys"));
         assert!(files_for("dolphin", &eden, &bios, &appdata).is_empty());
+        let lichii = root.join("Lichii").join("lichii.exe");
+        assert_eq!(files_for("lichii", &lichii, &bios, &appdata)[0].1, appdata.join("eden").join("keys").join("prod.keys"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

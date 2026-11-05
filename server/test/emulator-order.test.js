@@ -40,7 +40,7 @@ test('émulateurs proposés : Android (intégrés triés, puis émulateurs exter
   const n64 = { id: 'n64', shortname: 'n64', players: [coreTemplate('mupen64plus_next_gles3'), coreTemplate('parallel_n64')] };
   assert.deepEqual(emulatorCandidates(n64).windows.map((e) => e.id), ['builtin:mupen64plus_next', 'builtin:parallel_n64']);
   assert.deepEqual(emulatorCandidates({ id: 'ps3', shortname: 'ps3', players: [] }).windows.map((e) => e.id), ['builtin:rpcs3', 'emu:rpcs3']);
-  assert.deepEqual(emulatorCandidates({ id: 'switch', shortname: 'switch', players: [] }).windows.map((e) => e.id), ['emu:eden', 'emu:ryujinx']);
+  assert.deepEqual(emulatorCandidates({ id: 'switch', shortname: 'switch', players: [] }).windows.map((e) => e.id), ['emu:eden', 'emu:lichii', 'emu:ryujinx']);
 });
 
 test('ordre enregistré : plateformes connues, sans doublon, listes vides retirées', () => {
