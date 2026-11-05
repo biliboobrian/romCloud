@@ -322,8 +322,16 @@ enum Plan {
     Open(String),
 }
 
-/// Émulateurs de la Switch qui ne lancent pas les jeux de la Switch 2 : remplacés par Lichii pour ceux-là.
+/// Émulateurs de la Switch qui ne lancent pas les jeux de la Switch 2 : remplacés pour ceux-là.
 const SWITCH1_EMULATORS: &[&str] = &["eden", "ryujinx"];
+
+/// Émulateurs des jeux de la Switch 2, par ordre de préférence (Orchid : rendu d'Ocarina of Time).
+const SWITCH2_EMULATORS: &[&str] = &["orchid", "lichii"];
+
+/// Émulateur d'un jeu de la Switch 2 : le premier installé, sinon le premier (à télécharger).
+fn switch2_emulator(installed: impl Fn(&str) -> bool) -> &'static str {
+    SWITCH2_EMULATORS.iter().copied().find(|id| installed(id)).unwrap_or(SWITCH2_EMULATORS[0])
+}
 
 /**
  * Jeu de la Switch 2 : archive .nup (NSP Box : jeu, mises à jour et DLC regroupés, lue par Lichii)
@@ -407,9 +415,9 @@ fn plan(system: &Value, game: &Value) -> Result<Plan> {
         }
         "emulator" => {
             let mut emu = catalog::by_id(s(&option, "emuId")).ok_or_else(|| AppError::new("errors.unknownEmulator", json!({ "id": option["emuId"] })))?;
-            // Jeu de la Switch 2 : Lichii à la place d'Eden ou de Ryujinx (qui ne savent pas l'ouvrir).
+            // Jeu de la Switch 2 : Orchid ou Lichii à la place d'Eden ou de Ryujinx (qui ne savent pas l'ouvrir).
             if SWITCH1_EMULATORS.contains(&emu.id) && is_switch2(&file) {
-                emu = catalog::by_id("lichii").expect("Lichii au catalogue");
+                emu = catalog::by_id(switch2_emulator(|id| emulator_path(id).is_some())).expect("émulateur Switch 2 au catalogue");
             }
             let exe = emulator_path(emu.id).ok_or_else(|| AppError::new("errors.emulatorMissing", json!({ "name": emu.name, "id": emu.id })))?;
             let file = if PLAYLIST_EMULATORS.contains(&emu.id) { playlist() } else { file };
@@ -802,6 +810,13 @@ mod tests {
         assert!(!is_switch2(r"D:\roms\switch\Zelda TOTK [0100F2C0115B6000][v0].nsp"));
         assert!(!is_switch2(r"D:\roms\switch\Jeu [04].xci"));
         assert!(!is_switch2(r"D:\roms\switch\Jeu [0400486024dec00z].xci"));
+        // Orchid d'abord, Lichii s'il est seul installé, Orchid à télécharger sinon.
+        assert_eq!(switch2_emulator(|_| true), "orchid");
+        assert_eq!(switch2_emulator(|id| id == "lichii"), "lichii");
+        assert_eq!(switch2_emulator(|_| false), "orchid");
+        for id in SWITCH2_EMULATORS {
+            assert!(catalog::by_id(id).is_some() && crate::emulator_updates::supported(id), "{id}");
+        }
     }
 
     #[test]

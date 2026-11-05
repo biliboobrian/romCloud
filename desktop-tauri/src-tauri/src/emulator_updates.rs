@@ -2,8 +2,8 @@
 // celle installée (lue dans l'exécutable), puis téléchargée et décompressée à la place de
 // l'ancienne. Eden (et eden-cli, même archive) : Releases de git.eden-emu.dev, archive Windows de
 // la même variante que celle installée (MSVC, clang PGO ou GCC ; PGO, recommandée par Eden, sinon).
-// Lichii (fork d'Eden pour la Switch 2) : Releases GitHub de zortos293/Lichii, toutes publiées en
-// préversion (« build-75 ») : la plus récente qui a une archive Windows (PGO, sinon standard).
+// Forks d'Eden pour la Switch 2 (Lichii, Orchid) : Releases GitHub (préversions comprises : Lichii
+// ne publie que des « build-75 » en préversion), la plus récente qui a une archive Windows.
 use crate::error::{AppError, Result};
 use crate::{api, launcher, paths, settings};
 use serde_json::{json, Value};
@@ -14,64 +14,114 @@ const EDEN_RELEASES: &str = "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden
 /// Variantes Windows d'Eden, de la plus recommandée à la moins (PGO : « peuvent améliorer les performances »).
 const EDEN_VARIANTS: &[&str] = &["clang-pgo", "msvc-standard", "gcc-standard", "clang-standard"];
 
-/// Préversions comprises : « releases/latest » de GitHub les ignore.
-const LICHII_RELEASES: &str = "https://api.github.com/repos/zortos293/Lichii/releases?per_page=10";
-/// Archives Windows de Lichii (« lichii-windows-x86_64-pgo.zip »), de la plus recommandée à la moins.
-const LICHII_VARIANTS: &[&str] = &["x86_64-pgo", "x86_64"];
+/// Fork d'Eden pour la Switch 2 publié sur GitHub.
+pub struct Nx2Fork {
+    pub id: &'static str,
+    pub name: &'static str,
+    /// Liste des Releases (préversions comprises : « releases/latest » de GitHub les ignore).
+    releases: &'static str,
+    /// Début du nom des archives (« lichii-windows-x86_64.zip », « orchid-v0.7.4-windows-x86_64.zip »).
+    prefix: &'static str,
+    /// Exécutable de l'interface (jeux lancés avec lui : il lit nx2_switches.txt).
+    pub exe: &'static str,
+    /// Version écrite dans l'exécutable : « Lichii build-75 », « Orchid v0.7.4 ».
+    marker: &'static [u8],
+}
+
+pub const NX2_FORKS: &[Nx2Fork] = &[
+    Nx2Fork { id: "orchid", name: "Orchid", releases: "https://api.github.com/repos/MythosOfs/Orchid/releases?per_page=10", prefix: "orchid", exe: "orchid.exe", marker: b"Orchid " },
+    Nx2Fork { id: "lichii", name: "Lichii", releases: "https://api.github.com/repos/zortos293/Lichii/releases?per_page=10", prefix: "lichii", exe: "lichii.exe", marker: b"Lichii " },
+];
+
+/// Archives Windows des forks Switch 2, de la plus recommandée à la moins : la standard d'abord,
+/// seule à contenir le décodeur AV1 (dav1d) des vidéos des jeux de la Switch 2 (sans lui, écran
+/// noir pendant la vidéo d'ouverture : Ocarina of Time), la PGO à défaut.
+const NX2_VARIANTS: &[&str] = &["x86_64", "x86_64-pgo"];
+
+pub fn nx2_fork(id: &str) -> Option<&'static Nx2Fork> {
+    NX2_FORKS.iter().find(|f| f.id == id)
+}
 
 /// Émulateurs dont RomCloud sait trouver et installer la dernière version.
 pub fn supported(id: &str) -> bool {
-    matches!(id, "eden" | "lichii")
+    id == "eden" || nx2_fork(id).is_some()
 }
 
 fn display_name(id: &str) -> &'static str {
-    if id == "lichii" { "Lichii" } else { "Eden" }
+    nx2_fork(id).map(|f| f.name).unwrap_or("Eden")
 }
 
-/// Version de Lichii écrite dans son exécutable (« Lichii build-75 » -> « build-75 »).
-pub fn lichii_version(exe: &[u8]) -> Option<String> {
-    let marker = b"Lichii build-";
-    let start = exe.windows(marker.len()).position(|w| w == marker)? + marker.len();
-    let digits: String = exe[start..].iter().take(8).take_while(|c| c.is_ascii_digit()).map(|c| *c as char).collect();
-    (!digits.is_empty()).then(|| format!("build-{digits}"))
-}
-
-/// Archive Windows de Lichii pour la variante voulue, sinon la plus recommandée : (nom, adresse, variante).
-pub fn lichii_asset(release: &Value, wanted: &str) -> Option<(String, String, String)> {
-    let assets = release["assets"].as_array()?;
-    std::iter::once(wanted).chain(LICHII_VARIANTS.iter().copied()).filter(|v| !v.is_empty()).find_map(|variant| {
-        let file = format!("lichii-windows-{variant}.zip");
-        let asset = assets.iter().find(|a| a["name"].as_str() == Some(file.as_str()))?;
-        Some((file, asset["browser_download_url"].as_str()?.to_string(), variant.to_string()))
+/// Version d'un fork écrite dans son exécutable (« Lichii build-75 » -> « build-75 », « Orchid v0.7.4 » -> « v0.7.4 »).
+pub fn nx2_version(fork: &Nx2Fork, exe: &[u8]) -> Option<String> {
+    let marker = fork.marker;
+    exe.windows(marker.len()).enumerate().filter(|(_, w)| *w == marker).find_map(|(i, _)| {
+        let version: String = exe[i + marker.len()..]
+            .iter()
+            .take(32)
+            .take_while(|c| c.is_ascii_alphanumeric() || **c == b'.' || **c == b'-')
+            .map(|c| *c as char)
+            .collect();
+        let valid = version.strip_prefix("build-").or_else(|| version.strip_prefix('v')).is_some_and(|n| n.starts_with(|c: char| c.is_ascii_digit()));
+        valid.then_some(version)
     })
 }
 
-/// Releases de Lichii (les plus récentes d'abord) : la première qui a une archive Windows.
-pub fn lichii_release(releases: &Value) -> Value {
+/// Variante d'un exécutable de fork : standard avec le décodeur AV1 (dav1d), sinon PGO.
+pub fn nx2_variant(exe: &[u8]) -> &'static str {
+    let marker = b"dav1d";
+    if exe.windows(marker.len()).any(|w| w == marker) { NX2_VARIANTS[0] } else { NX2_VARIANTS[1] }
+}
+
+/// Archive Windows du fork pour la variante voulue, sinon la plus recommandée : (nom, adresse, variante).
+pub fn nx2_asset(fork: &Nx2Fork, release: &Value, wanted: &str) -> Option<(String, String, String)> {
+    let assets = release["assets"].as_array()?;
+    let tag = release["tag_name"].as_str().unwrap_or("");
+    std::iter::once(wanted).chain(NX2_VARIANTS.iter().copied()).filter(|v| !v.is_empty()).find_map(|variant| {
+        // Avec ou sans la version dans le nom (« orchid-v0.7.4-windows-x86_64.zip »).
+        let names = [format!("{}-windows-{variant}.zip", fork.prefix), format!("{}-{tag}-windows-{variant}.zip", fork.prefix)];
+        let asset = assets.iter().find(|a| a["name"].as_str().is_some_and(|n| names.iter().any(|x| x == n)))?;
+        Some((asset["name"].as_str()?.to_string(), asset["browser_download_url"].as_str()?.to_string(), variant.to_string()))
+    })
+}
+
+/// Releases du fork (les plus récentes d'abord) : la première qui a une archive Windows.
+pub fn nx2_release(fork: &Nx2Fork, releases: &Value) -> Value {
     releases
         .as_array()
-        .and_then(|list| list.iter().find(|r| !r["draft"].as_bool().unwrap_or(false) && lichii_asset(r, "").is_some()))
+        .and_then(|list| list.iter().find(|r| !r["draft"].as_bool().unwrap_or(false) && nx2_asset(fork, r, "").is_some()))
         .cloned()
         .unwrap_or_else(|| json!({}))
 }
 
-/// Numéro d'une version de Lichii (« build-75 » -> 75).
+/// Numéro d'une version « build-75 » (-> 75).
 fn build_number(version: &str) -> u64 {
     version.rsplit('-').next().and_then(|n| n.parse().ok()).unwrap_or(0)
 }
 
 /// Archive Windows de la Release pour l'émulateur [id] et la variante voulue.
 fn asset_for(id: &str, release: &Value, wanted: &str) -> Option<(String, String, String)> {
-    if id == "lichii" { lichii_asset(release, wanted) } else { pick_asset(release, wanted) }
+    match nx2_fork(id) {
+        Some(fork) => nx2_asset(fork, release, wanted),
+        None => pick_asset(release, wanted),
+    }
 }
 
-/// Version [candidate] plus récente que celle installée, selon l'émulateur.
-fn newer(id: &str, candidate: &str, installed: &str) -> bool {
-    if id == "lichii" { build_number(candidate) > build_number(installed) } else { is_newer(candidate, installed) }
+/// Version [candidate] plus récente que celle installée : numéros de build (Lichii), sinon « v0.7.4 ».
+fn newer(_id: &str, candidate: &str, installed: &str) -> bool {
+    if candidate.starts_with("build-") && installed.starts_with("build-") {
+        build_number(candidate) > build_number(installed)
+    } else {
+        is_newer(candidate, installed)
+    }
+}
+
+/// Variante à installer : celle installée (Eden), la plus recommandée (forks : la standard).
+fn wanted_variant(id: &str, installed: &str) -> String {
+    if nx2_fork(id).is_some() { default_variant(id).into() } else { installed.into() }
 }
 
 fn default_variant(id: &str) -> &'static str {
-    if id == "lichii" { LICHII_VARIANTS[0] } else { "amd64-clang-pgo" }
+    if nx2_fork(id).is_some() { NX2_VARIANTS[0] } else { "amd64-clang-pgo" }
 }
 
 /// Version d'Eden écrite dans son exécutable (« Eden v0.2.1 » -> « v0.2.1 »).
@@ -148,9 +198,9 @@ fn setting_map(key: &str) -> serde_json::Map<String, Value> {
     settings::load().get(key).and_then(Value::as_object).cloned().unwrap_or_default()
 }
 
-/// Exécutable installé : Eden (eden.exe, sinon eden-cli.exe) dans le dossier enregistré, Lichii (lichii.exe).
+/// Exécutable installé : Eden (eden.exe, sinon eden-cli.exe) dans le dossier enregistré, forks (lichii.exe, orchid.exe).
 fn installed_exe(id: &str) -> Option<PathBuf> {
-    if id == "lichii" {
+    if nx2_fork(id).is_some() {
         return launcher::emulator_path(id).map(PathBuf::from);
     }
     crate::catalog::exe_in_folder(&launcher::emulator_folder(id)?, &["eden.exe", "eden-cli.exe"])
@@ -177,8 +227,8 @@ async fn get_json(url: &str) -> Result<Value> {
 }
 
 async fn latest_release(id: &str) -> Result<Value> {
-    if id == "lichii" {
-        return Ok(lichii_release(&get_json(LICHII_RELEASES).await?));
+    if let Some(fork) = nx2_fork(id) {
+        return Ok(nx2_release(fork, &get_json(fork.releases).await?));
     }
     get_json(EDEN_RELEASES).await
 }
@@ -189,14 +239,18 @@ pub async fn check(id: &str) -> Result<Value> {
         return Err(AppError::new("errors.unknownEmulator", json!({ "id": id })));
     }
     let exe = installed_exe(id);
-    let lichii = id == "lichii";
+    let fork = nx2_fork(id);
     let (installed, detected) = match &exe {
         Some(path) => {
             let path = path.clone();
             tokio::task::spawn_blocking(move || {
                 // eden.exe de préférence (version et variante identiques à celles d'eden-cli).
                 let data = std::fs::read(&path).unwrap_or_default();
-                if lichii { (lichii_version(&data), None) } else { (eden_version(&data), eden_variant(&data)) }
+                if let Some(fork) = fork {
+                    (nx2_version(fork, &data), Some(nx2_variant(&data).to_string()))
+                } else {
+                    (eden_version(&data), eden_variant(&data))
+                }
             })
             .await
             .map_err(|e| AppError::msg(e.to_string()))?
@@ -204,11 +258,16 @@ pub async fn check(id: &str) -> Result<Value> {
         None => (None, None),
     };
     // Variante installée par RomCloud, sinon reconnue dans l'exécutable, sinon la plus recommandée.
-    let variant = setting_map("emulatorVariants").get(id).and_then(Value::as_str).map(String::from).or(detected).unwrap_or_else(|| default_variant(id).into());
+    // Forks Switch 2 : variante reconnue dans l'exécutable ; la standard (vidéos AV1) remplace la PGO.
+    let variant = if fork.is_some() { detected.clone() } else { None }
+        .or_else(|| setting_map("emulatorVariants").get(id).and_then(Value::as_str).map(String::from))
+        .or(detected)
+        .unwrap_or_else(|| default_variant(id).into());
     let release = latest_release(id).await?;
     let latest = release["tag_name"].as_str().unwrap_or("").to_string();
-    let asset = asset_for(id, &release, &variant);
-    let update = asset.is_some() && installed.as_deref().is_none_or(|v| newer(id, &latest, v));
+    let asset = asset_for(id, &release, &wanted_variant(id, &variant));
+    let replace_variant = fork.is_some() && installed.is_some() && asset.as_ref().is_some_and(|(_, _, v)| *v != variant);
+    let update = asset.is_some() && (replace_variant || installed.as_deref().is_none_or(|v| newer(id, &latest, v)));
     Ok(json!({
         "installed": installed,
         "variant": variant,
@@ -248,11 +307,11 @@ fn extract(zip: &[u8], dir: &Path, name: &str) -> Result<()> {
 
 /// Télécharge la dernière version et l'installe dans [dir] (choisi à la première installation,
 /// créé s'il n'existe pas), sinon à la place de l'actuelle (ou dans le dossier par défaut) ;
-/// emplacement enregistré (dossier d'Eden, lichii.exe) ; renvoie le nouvel état ([check]).
+/// emplacement enregistré (dossier d'Eden, exécutable d'un fork : lichii.exe, orchid.exe) ; renvoie le nouvel état ([check]).
 pub async fn install(id: &str, dir: Option<&str>) -> Result<Value> {
     let state = check(id).await?;
     let release = latest_release(id).await?;
-    let variant = state["variant"].as_str().unwrap_or(default_variant(id)).to_string();
+    let variant = wanted_variant(id, state["variant"].as_str().unwrap_or(default_variant(id)));
     let (name, url, picked) = asset_for(id, &release, &variant).ok_or_else(|| AppError::msg("archive Windows introuvable".to_string()))?;
     let res = api::client()
         .get(&url)
@@ -278,8 +337,11 @@ pub async fn install(id: &str, dir: Option<&str>) -> Result<Value> {
     let mut variants = setting_map("emulatorVariants");
     variants.insert(id.into(), json!(picked));
     settings::save(json!({ "emulatorVariants": variants }));
-    // Dossier d'Eden enregistré (eden.exe et eden-cli.exe) ; Lichii : son exécutable.
-    let location = if id == "lichii" { dir.join("lichii.exe") } else { dir.clone() };
+    // Dossier d'Eden enregistré (eden.exe et eden-cli.exe) ; fork : son exécutable.
+    let location = match nx2_fork(id) {
+        Some(fork) => dir.join(fork.exe),
+        None => dir.clone(),
+    };
     launcher::set_emulator_path(id, &location.to_string_lossy())?;
     eprintln!("[emulator_updates] {name} -> {}", paths::file_name(&dir));
     check(id).await
@@ -355,37 +417,60 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Releases de Lichii telles que publiées (préversions, les plus récentes d'abord).
-    fn lichii_releases() -> Value {
-        let release = |tag: &str, names: &[&str]| {
-            json!({ "tag_name": tag, "prerelease": true, "draft": false,
-                "assets": names.iter().map(|n| json!({ "name": n, "browser_download_url": format!("https://x/{tag}/{n}") })).collect::<Vec<_>>() })
-        };
-        json!([
-            release("build-76", &["lichii-linux-x86_64.AppImage"]), // pas encore d'archive Windows
-            release("build-75", &["lichii-linux-x86_64-pgo.tar.gz", "lichii-macos-arm64.zip", "lichii-windows-x86_64-pgo.zip", "lichii-windows-x86_64.zip"]),
-            release("build-70", &["lichii-windows-x86_64-pgo.zip", "lichii-windows-x86_64.zip"]),
-        ])
+    fn github_release(tag: &str, names: &[&str]) -> Value {
+        json!({ "tag_name": tag, "prerelease": true, "draft": false,
+            "assets": names.iter().map(|n| json!({ "name": n, "browser_download_url": format!("https://x/{tag}/{n}") })).collect::<Vec<_>>() })
     }
 
     #[test]
     fn releases_de_lichii() {
-        let latest = lichii_release(&lichii_releases());
+        let lichii = nx2_fork("lichii").unwrap();
+        // Préversions, les plus récentes d'abord.
+        let releases = json!([
+            github_release("build-76", &["lichii-linux-x86_64.AppImage"]), // pas encore d'archive Windows
+            github_release("build-75", &["lichii-linux-x86_64-pgo.tar.gz", "lichii-macos-arm64.zip", "lichii-windows-x86_64-pgo.zip", "lichii-windows-x86_64.zip"]),
+            github_release("build-70", &["lichii-windows-x86_64-pgo.zip", "lichii-windows-x86_64.zip"]),
+        ]);
+        let latest = nx2_release(lichii, &releases);
         assert_eq!(latest["tag_name"], "build-75");
-        let pgo = lichii_asset(&latest, "x86_64-pgo").unwrap();
+        assert_eq!(nx2_asset(lichii, &latest, "").unwrap().0, "lichii-windows-x86_64.zip"); // standard d'abord (AV1)
+        assert_eq!(wanted_variant("lichii", "x86_64-pgo"), "x86_64");
+        assert_eq!(nx2_variant(b"..libdav1d 1.5.1.."), "x86_64");
+        assert_eq!(nx2_variant(b"..h264_.."), "x86_64-pgo");
+        let pgo = nx2_asset(lichii, &latest, "x86_64-pgo").unwrap();
         assert_eq!((pgo.0.as_str(), pgo.1.as_str(), pgo.2.as_str()), ("lichii-windows-x86_64-pgo.zip", "https://x/build-75/lichii-windows-x86_64-pgo.zip", "x86_64-pgo"));
-        assert_eq!(lichii_asset(&latest, "x86_64").unwrap().0, "lichii-windows-x86_64.zip");
-        assert_eq!(lichii_asset(&latest, "arm64").unwrap().2, "x86_64-pgo"); // absente : la PGO
-        assert_eq!(lichii_release(&json!([])), json!({}));
+        assert_eq!(nx2_asset(lichii, &latest, "arm64").unwrap().2, "x86_64"); // absente : la standard
+        assert_eq!(nx2_release(lichii, &json!([])), json!({}));
         assert!(asset_for("lichii", &json!({}), "x86_64-pgo").is_none());
 
         let mut exe = b"..Lichii Version: {}\0Lichii build-75 \0".to_vec();
-        assert_eq!(lichii_version(&exe).as_deref(), Some("build-75"));
+        assert_eq!(nx2_version(lichii, &exe).as_deref(), Some("build-75"));
         exe.truncate(4);
-        assert_eq!(lichii_version(&exe), None);
+        assert_eq!(nx2_version(lichii, &exe), None);
         assert!(newer("lichii", "build-100", "build-75"));
         assert!(!newer("lichii", "build-75", "build-75"));
-        assert!(supported("lichii") && supported("eden") && !supported("ryujinx"));
+        assert!(supported("lichii") && supported("orchid") && supported("eden") && !supported("ryujinx"));
+    }
+
+    #[test]
+    fn releases_d_orchid() {
+        let orchid = nx2_fork("orchid").unwrap();
+        // Versions publiées (pas des préversions), la version dans le nom des archives.
+        let releases = json!([
+            github_release("v0.7.4", &["orchid-v0.7.4-macos-arm64.zip", "orchid-v0.7.4-windows-x86_64-pgo.zip", "orchid-v0.7.4-windows-x86_64.zip"]),
+            github_release("v0.7.3", &["orchid-v0.7.3-windows-x86_64.zip"]),
+        ]);
+        let latest = nx2_release(orchid, &releases);
+        assert_eq!(latest["tag_name"], "v0.7.4");
+        let std = asset_for("orchid", &latest, &wanted_variant("orchid", "x86_64-pgo")).unwrap();
+        assert_eq!((std.0.as_str(), std.2.as_str()), ("orchid-v0.7.4-windows-x86_64.zip", "x86_64"));
+        assert_eq!(nx2_asset(orchid, &latest, "x86_64-pgo").unwrap().0, "orchid-v0.7.4-windows-x86_64-pgo.zip");
+        // « Orchid Version: {} » ignoré, « Orchid v0.7.4 » lu.
+        let exe = b"..Orchid Version: {}\0Orchid v0.7.4   v0.7.4  main\0".to_vec();
+        assert_eq!(nx2_version(orchid, &exe).as_deref(), Some("v0.7.4"));
+        assert!(newer("orchid", "v0.7.10", "v0.7.4"));
+        assert!(!newer("orchid", "v0.7.4", "v0.7.4"));
+        assert_eq!(orchid.exe, "orchid.exe");
     }
 
     #[test]
