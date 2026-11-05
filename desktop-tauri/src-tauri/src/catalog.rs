@@ -47,6 +47,11 @@ pub static EMULATORS: &[Emulator] = &[
     // Eden : indiqué par son dossier (folder_exes) ; jeux lancés avec eden-cli (sans l'interface,
     // manettes reprises d'eden.exe : emulator_files.rs), eden.exe pour l'ouvrir seul.
     emu!("eden", "Eden", ["switch"], "https://eden-emu.dev/downloads/", ["eden-cli.exe", "eden.exe"], ["Eden", "eden"], ["-f", "-g", "{file}"]),
+    // Lichii : fork d'Eden qui lance aussi les jeux de la Switch 2 (.nup, identifiants « 04… ») ; jeux
+    // lancés avec lichii.exe (son interface lit nx2_switches.txt, réglages de performance de la
+    // Switch 2, et ses manettes), données partagées avec Eden (%APPDATA%\eden : mêmes clés).
+    emu!("lichii", "Lichii", ["switch"], "https://github.com/zortos293/Lichii/releases", ["lichii.exe"], ["Lichii", "lichii"],
+        ["-f", "-g", "{file}"]),
     emu!("ryujinx", "Ryujinx", ["switch"], "https://ryujinx.app/download", ["Ryujinx.exe"], ["Ryujinx", "ryujinx"],
         ["--fullscreen", "{file}"]),
     emu!("snes9x", "Snes9x", ["satellaview"], "https://www.snes9x.com/", ["snes9x-x64.exe", "snes9x.exe"], ["Snes9x", "snes9x"], ["{file}"]),
@@ -238,7 +243,9 @@ fn detect_in(env: Env, emulators: &[&Emulator]) -> HashMap<String, String> {
         let entries: Vec<_> = entries.flatten().collect();
         for e in &entries {
             if e.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                for emu in by_exe.get(&e.file_name().to_string_lossy().to_lowercase()).into_iter().flatten() {
+                // Lichii contient aussi un eden-cli.exe : son dossier n'est pas celui d'Eden.
+                let lichii = entries.iter().any(|f| f.file_name().to_string_lossy().eq_ignore_ascii_case("lichii.exe"));
+                for emu in by_exe.get(&e.file_name().to_string_lossy().to_lowercase()).into_iter().flatten().filter(|emu| !(lichii && emu.id == "eden")) {
                     found.entry(emu.id.into()).or_insert_with(|| e.path().to_string_lossy().into_owned());
                 }
             }
@@ -300,7 +307,7 @@ mod tests {
         assert_eq!(names(json!({ "id": "wiiware", "shortname": "wiiware" })), ["dolphin"]);
         assert_eq!(names(json!({ "id": "naomi", "shortname": "naomi" })), ["flycast", "mame"]);
         assert_eq!(names(json!({ "id": "vita", "shortname": "vita" })), ["vita3k"]);
-        assert_eq!(names(json!({ "id": "switch", "shortname": "switch" })), ["eden", "ryujinx"]);
+        assert_eq!(names(json!({ "id": "switch", "shortname": "switch" })), ["eden", "lichii", "ryujinx"]);
         assert!(names(json!({ "id": "custom", "shortname": "custom" })).is_empty());
     }
 
@@ -326,6 +333,8 @@ mod tests {
             file
         };
         let rpcs3 = put(&["pf", "RPCS3", "rpcs3.exe"]);
+        let lichii = put(&["home", "Downloads", "lichii-windows-x86_64", "lichii.exe"]);
+        put(&["home", "Downloads", "lichii-windows-x86_64", "eden-cli.exe"]); // pas Eden
         let supermodel = put(&["home", "Downloads", "Supermodel_0.3a", "bin", "SUPERMODEL.EXE"]);
         put(&["home", "Downloads", "a", "b", "c", "xemu.exe"]); // trop profond
         let vars = HashMap::from([
@@ -335,12 +344,14 @@ mod tests {
         ]);
         let env = |name: &str| vars.get(name).map(|p| p.to_string_lossy().into_owned());
         assert_eq!(default_location_in(by_id("rpcs3").unwrap(), &env), rpcs3);
-        let emulators = [by_id("rpcs3").unwrap(), by_id("supermodel").unwrap(), by_id("xemu").unwrap()];
+        let emulators = [by_id("rpcs3").unwrap(), by_id("supermodel").unwrap(), by_id("xemu").unwrap(), by_id("eden").unwrap(), by_id("lichii").unwrap()];
         let found = detect_in(&env, &emulators);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(found.get("rpcs3"), Some(&rpcs3.to_string_lossy().into_owned()));
         assert_eq!(found.get("supermodel").map(|p| p.to_lowercase()), Some(supermodel.to_string_lossy().to_lowercase()));
         assert_eq!(found.get("xemu"), None);
+        assert_eq!(found.get("lichii"), Some(&lichii.to_string_lossy().into_owned()));
+        assert_eq!(found.get("eden"), None);
     }
 
     #[test]

@@ -1970,6 +1970,7 @@
     modal({
       title: t('emulator.missingTitle', { name: emu.name }),
       body: `<p>${esc(t('emulator.missingText', { name: emu.name }))}</p>
+        ${emu.id === 'lichii' ? `<p class="muted small">${esc(t('emulator.lichiiSetup'))}</p>` : ''}
         <p class="muted">${esc(t('emulator.defaultLocation', { path: emu.defaultLocation }))}</p>`,
       buttons: [
         { label: t('app.cancel'), kind: 'ghost', left: true },
@@ -2012,7 +2013,7 @@
         <label>${esc(t('emulator.installDir'))}<span class="line"><input type="text" id="emuInstallDir" value="${esc(u.dir)}">
         <button class="btn" id="emuInstallBrowse">${esc(t('settings.browse'))}</button></span></label>
         <p class="muted small">${esc(t('emulator.installDirHint'))}</p>
-        ${emu.id === 'eden' ? `<p class="muted small">${esc(t('emulator.edenSetup'))}</p>` : ''}`,
+        ${emu.id === 'eden' || emu.id === 'lichii' ? `<p class="muted small">${esc(t(`emulator.${emu.id}Setup`))}</p>` : ''}`,
       buttons: [
         { label: t('app.cancel'), kind: 'ghost', left: true },
         { label: t('emulator.website'), keepOpen: true, onClick: () => rc.shell.openExternal(emu.url) },
@@ -2670,7 +2671,7 @@
         ${emu.updatable ? `<button class="btn ghost" data-emu-check>${icon('refresh', 18)} ${esc(t('emulator.checkUpdate'))}</button>` : ''}
       </div>
       ${emu.updatable ? '<div class="emu-update" data-emu-update></div>' : ''}
-      ${emu.id === 'eden' ? `<div class="muted small">${esc(t('emulator.edenSetup'))}</div>` : ''}
+      ${emu.id === 'eden' || emu.id === 'lichii' ? `<div class="muted small">${esc(t(`emulator.${emu.id}Setup`))}</div>` : ''}
       ${args}
     </div>`;
   }

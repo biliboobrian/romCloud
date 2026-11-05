@@ -2,6 +2,8 @@
 // celle installée (lue dans l'exécutable), puis téléchargée et décompressée à la place de
 // l'ancienne. Eden (et eden-cli, même archive) : Releases de git.eden-emu.dev, archive Windows de
 // la même variante que celle installée (MSVC, clang PGO ou GCC ; PGO, recommandée par Eden, sinon).
+// Lichii (fork d'Eden pour la Switch 2) : Releases GitHub de zortos293/Lichii, toutes publiées en
+// préversion (« build-75 ») : la plus récente qui a une archive Windows (PGO, sinon standard).
 use crate::error::{AppError, Result};
 use crate::{api, launcher, paths, settings};
 use serde_json::{json, Value};
@@ -12,9 +14,64 @@ const EDEN_RELEASES: &str = "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden
 /// Variantes Windows d'Eden, de la plus recommandée à la moins (PGO : « peuvent améliorer les performances »).
 const EDEN_VARIANTS: &[&str] = &["clang-pgo", "msvc-standard", "gcc-standard", "clang-standard"];
 
+/// Préversions comprises : « releases/latest » de GitHub les ignore.
+const LICHII_RELEASES: &str = "https://api.github.com/repos/zortos293/Lichii/releases?per_page=10";
+/// Archives Windows de Lichii (« lichii-windows-x86_64-pgo.zip »), de la plus recommandée à la moins.
+const LICHII_VARIANTS: &[&str] = &["x86_64-pgo", "x86_64"];
+
 /// Émulateurs dont RomCloud sait trouver et installer la dernière version.
 pub fn supported(id: &str) -> bool {
-    id == "eden"
+    matches!(id, "eden" | "lichii")
+}
+
+fn display_name(id: &str) -> &'static str {
+    if id == "lichii" { "Lichii" } else { "Eden" }
+}
+
+/// Version de Lichii écrite dans son exécutable (« Lichii build-75 » -> « build-75 »).
+pub fn lichii_version(exe: &[u8]) -> Option<String> {
+    let marker = b"Lichii build-";
+    let start = exe.windows(marker.len()).position(|w| w == marker)? + marker.len();
+    let digits: String = exe[start..].iter().take(8).take_while(|c| c.is_ascii_digit()).map(|c| *c as char).collect();
+    (!digits.is_empty()).then(|| format!("build-{digits}"))
+}
+
+/// Archive Windows de Lichii pour la variante voulue, sinon la plus recommandée : (nom, adresse, variante).
+pub fn lichii_asset(release: &Value, wanted: &str) -> Option<(String, String, String)> {
+    let assets = release["assets"].as_array()?;
+    std::iter::once(wanted).chain(LICHII_VARIANTS.iter().copied()).filter(|v| !v.is_empty()).find_map(|variant| {
+        let file = format!("lichii-windows-{variant}.zip");
+        let asset = assets.iter().find(|a| a["name"].as_str() == Some(file.as_str()))?;
+        Some((file, asset["browser_download_url"].as_str()?.to_string(), variant.to_string()))
+    })
+}
+
+/// Releases de Lichii (les plus récentes d'abord) : la première qui a une archive Windows.
+pub fn lichii_release(releases: &Value) -> Value {
+    releases
+        .as_array()
+        .and_then(|list| list.iter().find(|r| !r["draft"].as_bool().unwrap_or(false) && lichii_asset(r, "").is_some()))
+        .cloned()
+        .unwrap_or_else(|| json!({}))
+}
+
+/// Numéro d'une version de Lichii (« build-75 » -> 75).
+fn build_number(version: &str) -> u64 {
+    version.rsplit('-').next().and_then(|n| n.parse().ok()).unwrap_or(0)
+}
+
+/// Archive Windows de la Release pour l'émulateur [id] et la variante voulue.
+fn asset_for(id: &str, release: &Value, wanted: &str) -> Option<(String, String, String)> {
+    if id == "lichii" { lichii_asset(release, wanted) } else { pick_asset(release, wanted) }
+}
+
+/// Version [candidate] plus récente que celle installée, selon l'émulateur.
+fn newer(id: &str, candidate: &str, installed: &str) -> bool {
+    if id == "lichii" { build_number(candidate) > build_number(installed) } else { is_newer(candidate, installed) }
+}
+
+fn default_variant(id: &str) -> &'static str {
+    if id == "lichii" { LICHII_VARIANTS[0] } else { "amd64-clang-pgo" }
 }
 
 /// Version d'Eden écrite dans son exécutable (« Eden v0.2.1 » -> « v0.2.1 »).
@@ -91,19 +148,22 @@ fn setting_map(key: &str) -> serde_json::Map<String, Value> {
     settings::load().get(key).and_then(Value::as_object).cloned().unwrap_or_default()
 }
 
-/// Exécutable installé d'Eden (eden.exe, sinon eden-cli.exe), dans le dossier enregistré.
+/// Exécutable installé : Eden (eden.exe, sinon eden-cli.exe) dans le dossier enregistré, Lichii (lichii.exe).
 fn installed_exe(id: &str) -> Option<PathBuf> {
+    if id == "lichii" {
+        return launcher::emulator_path(id).map(PathBuf::from);
+    }
     crate::catalog::exe_in_folder(&launcher::emulator_folder(id)?, &["eden.exe", "eden-cli.exe"])
 }
 
 /// Dossier d'installation par défaut (première installation par RomCloud).
-fn default_dir() -> PathBuf {
-    PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default()).join("Programs").join("Eden")
+fn default_dir(id: &str) -> PathBuf {
+    PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default()).join("Programs").join(display_name(id))
 }
 
-async fn latest_release() -> Result<Value> {
+async fn get_json(url: &str) -> Result<Value> {
     let res = api::client()
-        .get(EDEN_RELEASES)
+        .get(url)
         .header("Accept", "application/json")
         .header("User-Agent", "RomCloud")
         .timeout(std::time::Duration::from_secs(20))
@@ -116,19 +176,27 @@ async fn latest_release() -> Result<Value> {
     Ok(res.json().await?)
 }
 
+async fn latest_release(id: &str) -> Result<Value> {
+    if id == "lichii" {
+        return Ok(lichii_release(&get_json(LICHII_RELEASES).await?));
+    }
+    get_json(EDEN_RELEASES).await
+}
+
 /// État : { installed, variant, latest, asset, updateAvailable, dir }.
 pub async fn check(id: &str) -> Result<Value> {
     if !supported(id) {
         return Err(AppError::new("errors.unknownEmulator", json!({ "id": id })));
     }
     let exe = installed_exe(id);
+    let lichii = id == "lichii";
     let (installed, detected) = match &exe {
         Some(path) => {
             let path = path.clone();
             tokio::task::spawn_blocking(move || {
                 // eden.exe de préférence (version et variante identiques à celles d'eden-cli).
                 let data = std::fs::read(&path).unwrap_or_default();
-                (eden_version(&data), eden_variant(&data))
+                if lichii { (lichii_version(&data), None) } else { (eden_version(&data), eden_variant(&data)) }
             })
             .await
             .map_err(|e| AppError::msg(e.to_string()))?
@@ -136,23 +204,23 @@ pub async fn check(id: &str) -> Result<Value> {
         None => (None, None),
     };
     // Variante installée par RomCloud, sinon reconnue dans l'exécutable, sinon la plus recommandée.
-    let variant = setting_map("emulatorVariants").get("eden").and_then(Value::as_str).map(String::from).or(detected).unwrap_or_else(|| "amd64-clang-pgo".into());
-    let release = latest_release().await?;
+    let variant = setting_map("emulatorVariants").get(id).and_then(Value::as_str).map(String::from).or(detected).unwrap_or_else(|| default_variant(id).into());
+    let release = latest_release(id).await?;
     let latest = release["tag_name"].as_str().unwrap_or("").to_string();
-    let asset = pick_asset(&release, &variant);
-    let update = asset.is_some() && installed.as_deref().is_none_or(|v| is_newer(&latest, v));
+    let asset = asset_for(id, &release, &variant);
+    let update = asset.is_some() && installed.as_deref().is_none_or(|v| newer(id, &latest, v));
     Ok(json!({
         "installed": installed,
         "variant": variant,
         "latest": latest,
         "asset": asset.map(|(name, _, _)| name),
         "updateAvailable": update,
-        "dir": exe.and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned())).unwrap_or_else(|| default_dir().to_string_lossy().into_owned()),
+        "dir": exe.and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned())).unwrap_or_else(|| default_dir(id).to_string_lossy().into_owned()),
     }))
 }
 
-/// Extrait l'archive dans [dir] (fichiers remplacés) ; refusé si Eden est ouvert (fichier utilisé).
-fn extract(zip: &[u8], dir: &Path) -> Result<()> {
+/// Extrait l'archive dans [dir] (fichiers remplacés) ; refusé si l'émulateur [name] est ouvert (fichier utilisé).
+fn extract(zip: &[u8], dir: &Path, name: &str) -> Result<()> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).map_err(|e| AppError::msg(e.to_string()))?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| AppError::msg(e.to_string()))?;
@@ -169,7 +237,7 @@ fn extract(zip: &[u8], dir: &Path) -> Result<()> {
         entry.read_to_end(&mut data)?;
         std::fs::write(&target, &data).map_err(|e| {
             if e.raw_os_error() == Some(32) {
-                AppError::new("errors.emulatorRunning", json!({ "name": "Eden" }))
+                AppError::new("errors.emulatorRunning", json!({ "name": name }))
             } else {
                 e.into()
             }
@@ -180,12 +248,12 @@ fn extract(zip: &[u8], dir: &Path) -> Result<()> {
 
 /// Télécharge la dernière version et l'installe dans [dir] (choisi à la première installation,
 /// créé s'il n'existe pas), sinon à la place de l'actuelle (ou dans le dossier par défaut) ;
-/// chemins d'Eden et d'eden-cli enregistrés ; renvoie le nouvel état ([check]).
+/// emplacement enregistré (dossier d'Eden, lichii.exe) ; renvoie le nouvel état ([check]).
 pub async fn install(id: &str, dir: Option<&str>) -> Result<Value> {
     let state = check(id).await?;
-    let release = latest_release().await?;
-    let variant = state["variant"].as_str().unwrap_or("amd64-clang-pgo").to_string();
-    let (name, url, picked) = pick_asset(&release, &variant).ok_or_else(|| AppError::msg("archive Windows introuvable".to_string()))?;
+    let release = latest_release(id).await?;
+    let variant = state["variant"].as_str().unwrap_or(default_variant(id)).to_string();
+    let (name, url, picked) = asset_for(id, &release, &variant).ok_or_else(|| AppError::msg("archive Windows introuvable".to_string()))?;
     let res = api::client()
         .get(&url)
         .header("User-Agent", "RomCloud")
@@ -200,17 +268,19 @@ pub async fn install(id: &str, dir: Option<&str>) -> Result<Value> {
     let dir = PathBuf::from(dir.map(str::trim).filter(|d| !d.is_empty()).unwrap_or(state["dir"].as_str().unwrap_or("")));
     {
         let dir = dir.clone();
+        let emulator = display_name(id);
         tokio::task::spawn_blocking(move || {
             std::fs::create_dir_all(&dir)?;
-            extract(&zip, &dir)
+            extract(&zip, &dir, emulator)
         }).await.map_err(|e| AppError::msg(e.to_string()))??;
     }
     // Variante gardée pour les prochaines mises à jour (celle de l'archive installée).
     let mut variants = setting_map("emulatorVariants");
-    variants.insert("eden".into(), json!(picked));
+    variants.insert(id.into(), json!(picked));
     settings::save(json!({ "emulatorVariants": variants }));
-    // Dossier d'Eden enregistré (eden.exe et eden-cli.exe).
-    launcher::set_emulator_path("eden", &dir.to_string_lossy())?;
+    // Dossier d'Eden enregistré (eden.exe et eden-cli.exe) ; Lichii : son exécutable.
+    let location = if id == "lichii" { dir.join("lichii.exe") } else { dir.clone() };
+    launcher::set_emulator_path(id, &location.to_string_lossy())?;
     eprintln!("[emulator_updates] {name} -> {}", paths::file_name(&dir));
     check(id).await
 }
@@ -279,10 +349,43 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("romcloud-edenzip-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("eden.exe"), "v0.2.1").unwrap();
-        extract(&bytes, &dir).unwrap();
+        extract(&bytes, &dir, "Eden").unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("eden.exe")).unwrap(), "v0.3.0");
         assert_eq!(std::fs::read_to_string(dir.join("LICENSES").join("GPL.txt")).unwrap(), "gpl");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Releases de Lichii telles que publiées (préversions, les plus récentes d'abord).
+    fn lichii_releases() -> Value {
+        let release = |tag: &str, names: &[&str]| {
+            json!({ "tag_name": tag, "prerelease": true, "draft": false,
+                "assets": names.iter().map(|n| json!({ "name": n, "browser_download_url": format!("https://x/{tag}/{n}") })).collect::<Vec<_>>() })
+        };
+        json!([
+            release("build-76", &["lichii-linux-x86_64.AppImage"]), // pas encore d'archive Windows
+            release("build-75", &["lichii-linux-x86_64-pgo.tar.gz", "lichii-macos-arm64.zip", "lichii-windows-x86_64-pgo.zip", "lichii-windows-x86_64.zip"]),
+            release("build-70", &["lichii-windows-x86_64-pgo.zip", "lichii-windows-x86_64.zip"]),
+        ])
+    }
+
+    #[test]
+    fn releases_de_lichii() {
+        let latest = lichii_release(&lichii_releases());
+        assert_eq!(latest["tag_name"], "build-75");
+        let pgo = lichii_asset(&latest, "x86_64-pgo").unwrap();
+        assert_eq!((pgo.0.as_str(), pgo.1.as_str(), pgo.2.as_str()), ("lichii-windows-x86_64-pgo.zip", "https://x/build-75/lichii-windows-x86_64-pgo.zip", "x86_64-pgo"));
+        assert_eq!(lichii_asset(&latest, "x86_64").unwrap().0, "lichii-windows-x86_64.zip");
+        assert_eq!(lichii_asset(&latest, "arm64").unwrap().2, "x86_64-pgo"); // absente : la PGO
+        assert_eq!(lichii_release(&json!([])), json!({}));
+        assert!(asset_for("lichii", &json!({}), "x86_64-pgo").is_none());
+
+        let mut exe = b"..Lichii Version: {}\0Lichii build-75 \0".to_vec();
+        assert_eq!(lichii_version(&exe).as_deref(), Some("build-75"));
+        exe.truncate(4);
+        assert_eq!(lichii_version(&exe), None);
+        assert!(newer("lichii", "build-100", "build-75"));
+        assert!(!newer("lichii", "build-75", "build-75"));
+        assert!(supported("lichii") && supported("eden") && !supported("ryujinx"));
     }
 
     #[test]
