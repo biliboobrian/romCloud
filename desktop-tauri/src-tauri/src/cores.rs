@@ -66,6 +66,15 @@ const UNAVAILABLE: &[&str] = &["bnes", "duckstation", "goosestation", "mamearcad
 #[cfg(test)]
 const ANDROID_UNAVAILABLE: &[&str] = &["bnes", "duckstation", "goosestation", "azahar", "mame", "mupen64plus_next"];
 
+/// Cœurs pas encore essayés dans le moteur intégré (xemu, ajouté par le serveur à la Xbox) : proposés
+/// après l'émulateur externe du système, choisis par défaut seulement s'il n'est pas installé
+/// (même liste que AFTER_EXTERNAL de core-ranking.js du serveur).
+const AFTER_EXTERNAL: &[&str] = &["xemu"];
+
+pub fn after_external(core: &str) -> bool {
+    AFTER_EXTERNAL.contains(&core)
+}
+
 /// Cœur téléchargeable pour le moteur intégré (présent sur le buildbot libretro pour Windows).
 pub fn core_available(core: &str) -> bool {
     !UNAVAILABLE.contains(&core)
@@ -295,6 +304,15 @@ mod tests {
 
     fn system(id: &str, cores: &[&str]) -> Value {
         json!({ "id": id, "players": cores.iter().map(|c| template(c)).collect::<Vec<_>>() })
+    }
+
+    #[test]
+    fn coeurs_pas_encore_essayes_apres_les_emulateurs_externes() {
+        // Même liste que AFTER_EXTERNAL du serveur (core-ranking.js).
+        let server = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../server/src/core-ranking.js")).unwrap_or_default();
+        assert!(server.is_empty() || server.contains("AFTER_EXTERNAL = ['xemu']"));
+        assert!(after_external("xemu"));
+        assert!(!after_external("mesen2") && !after_external("flycast"));
     }
 
     #[test]

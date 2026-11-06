@@ -61,6 +61,7 @@ import {
 import { emulatorCandidates } from './emulator-order.js';
 import { deleteFile as deleteEmulatorFile, listReleases, mirrorSummary, prepareFile, refreshMirror, requireSource, storedFile } from './emulator-mirror.js';
 import { listCatalog, reportCatalog, systemCatalog } from './core-options.js';
+import { systemFor } from './extra-cores.js';
 
 // Version du serveur : celle de l'image Docker (tag v1.2.3 de la publication), sinon package.json.
 const VERSION = process.env.ROMCLOUD_VERSION || JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
@@ -182,7 +183,13 @@ api.get('/status', (req, res) => {
 // proposés sont listés et cherchés ; sans plateforme (administration), tous.
 const platformOf = (req) => String(req.get('x-romcloud-platform') || req.query.platform || '').toLowerCase();
 
-api.get('/systems', (req, res) => res.json(listSystems({ platform: platformOf(req) })));
+// Systèmes tels qu'envoyés à la plateforme de l'application (extra-cores.js) : cœurs ajoutés par
+// RomCloud qu'elle fait tourner, sans ceux qu'elle ne peut pas faire tourner ; Android : sans les
+// émulateurs externes des consoles émulées par le moteur intégré. Administration : inchangés.
+api.get('/systems', (req, res) => {
+  const platform = platformOf(req);
+  res.json(listSystems({ platform }).map((s) => systemFor(s, platform)));
+});
 
 api.post('/systems', (req, res) => {
   const system = createSystem(req.body || {});

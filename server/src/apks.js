@@ -8,7 +8,7 @@ import { db } from './db.js';
 import { HttpError } from './http-error.js';
 import { readApkInfo } from './apk-manifest.js';
 import { hashFile } from './library.js';
-import { coreOf } from './extra-cores.js';
+import { coreOf, playersFor } from './extra-cores.js';
 import { listSystems } from './systems.js';
 
 export const apksDir = () => path.join(config.dataDir, 'apks');
@@ -50,7 +50,9 @@ export function emulatorName(playerName) {
 export function emulatorPackages() {
   const byPackage = new Map();
   for (const system of listSystems()) {
-    for (const player of system.players) {
+    // Modèles proposés aux applications Android (sans les émulateurs externes des consoles du moteur intégré).
+    const players = [...playersFor(system, 'android'), ...playersFor(system, 'androidtv')];
+    for (const player of players) {
       const pkg = coreOf(player) ? null : packageOfPlayer(player);
       if (!pkg) continue;
       const entry = byPackage.get(pkg) || { packageName: pkg, names: [], systems: [] };

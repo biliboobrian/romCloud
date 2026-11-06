@@ -256,14 +256,18 @@ pub fn options(system: &Value) -> Value {
     if let Some(app) = managed::for_system(system) {
         list.push(json!({ "id": format!("builtin:{}", app.core), "kind": "builtin", "core": app.core, "name": app.name, "installed": app.installed() }));
     }
-    // Moteur intégré en premier : cœurs libretro téléchargés à la demande, rien à installer.
+    // Moteur intégré en premier : cœurs libretro téléchargés à la demande, rien à installer ; cœurs
+    // pas encore essayés (cores::after_external : xemu) après les émulateurs externes.
+    let builtin_core = |core: &String| json!({ "id": format!("builtin:{core}"), "kind": "builtin", "core": core, "installed": builtin::core_installed(core), "late": cores::after_external(core) });
+    let (late, first): (Vec<&String>, Vec<&String>) = system_cores.iter().partition(|c| cores::after_external(c));
     if builtin::available() {
-        for core in &system_cores {
-            list.push(json!({ "id": format!("builtin:{core}"), "kind": "builtin", "core": core, "installed": builtin::core_installed(core) }));
-        }
+        list.extend(first.into_iter().map(builtin_core));
     }
     for emu in catalog::for_system(system) {
         list.push(json!({ "id": format!("emu:{}", emu.id), "kind": "emulator", "emuId": emu.id, "name": emu.name, "installed": emulator_path(emu.id).is_some() }));
+    }
+    if builtin::available() {
+        list.extend(late.into_iter().map(builtin_core));
     }
     let order = server_order(system);
     sort_by_order(&mut list, &order);
@@ -280,8 +284,9 @@ pub fn options(system: &Value) -> Value {
     let fallback = list
         .iter()
         .find(|o| order.contains(&s(o, "id").to_string()) && usable(o))
-        .or_else(|| list.iter().find(|o| kind(o, "builtin")))
+        .or_else(|| list.iter().find(|o| kind(o, "builtin") && o["late"] != true))
         .or_else(|| list.iter().find(|o| kind(o, "emulator") && o["installed"] == true))
+        .or_else(|| list.iter().find(|o| kind(o, "builtin")))
         .or_else(|| list.iter().find(|o| kind(o, "emulator")))
         .or_else(|| list.iter().find(|o| kind(o, "default")))
         .map(|o| o["id"].clone())

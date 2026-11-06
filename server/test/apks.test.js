@@ -136,12 +136,20 @@ test('paquet d’un modèle d’émulateur', () => {
 });
 
 test('envoi, nom par défaut, remplacement, émulateurs des systèmes, suppression', async () => {
+  // PSP émulée par le moteur intégré (cœur ppsspp) : PPSSPP n'y est pas proposé ; PSP Minis (hors moteur intégré) : proposé.
   createSystem({
     id: 'psp', name: 'Sony PSP',
     players: [
       { name: 'psp - PPSSPP (Standalone)', uniqueId: 'psp.ppsspp', amStartArguments: '-n org.ppsspp.ppsspp/.PpssppActivity -d {file.uri}' },
-      // Modèle de cœur libretro (émulateur intégré) : pas d'APK à proposer.
       { name: 'psp - ppsspp', uniqueId: 'psp.core', amStartArguments: '-n com.example.frontend/.GameActivity -e LIBRETRO ppsspp' },
+    ],
+  });
+  createSystem({
+    id: 'pspminis', name: 'PSP Minis',
+    players: [
+      { name: 'pspminis - PPSSPP (Standalone)', uniqueId: 'pspminis.ppsspp', amStartArguments: '-n org.ppsspp.ppsspp/.PpssppActivity -d {file.uri}' },
+      // Modèle de cœur libretro (émulateur intégré) : pas d'APK à proposer.
+      { name: 'pspminis - ppsspp', uniqueId: 'pspminis.core', amStartArguments: '-n com.example.frontend/.GameActivity -e LIBRETRO ppsspp' },
     ],
   });
   const first = await apks.addApk(writeApk('upload1', ppssppManifest), 'ppsspp-release.apk');
@@ -159,7 +167,7 @@ test('envoi, nom par défaut, remplacement, émulateurs des systèmes, suppressi
 
   const emus = apks.emulatorPackages();
   assert.deepEqual(emus.map((e) => [e.packageName, e.apkId]), [['org.ppsspp.ppsspp', first.id]]);
-  assert.deepEqual(emus[0].systems, [{ id: 'psp', name: 'Sony PSP' }]);
+  assert.deepEqual(emus[0].systems, [{ id: 'pspminis', name: 'PSP Minis' }]);
   assert.deepEqual(emus.map((e) => e.names), [['PPSSPP']]);
 
   await assert.rejects(apks.addApk(writeApk('upload3', Buffer.from('nope')), 'nope.apk'), /nope\.apk/);

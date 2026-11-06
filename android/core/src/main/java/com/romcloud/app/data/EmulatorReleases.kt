@@ -105,7 +105,12 @@ class EmulatorReleases(private val api: ApiClient) {
         private const val GITHUB = "github.com"
         private const val EDEN = "git.eden-emu.dev"
 
-        /** Paquets des modèles d'émulateurs Daijishou -> source du miroir du serveur qui publie leur APK. */
+        /**
+         * Paquets des modèles d'émulateurs Daijishou -> source du miroir du serveur qui publie leur APK.
+         * Consoles sans moteur intégré seulement (3DS, DS, Game Boy… : cœurs de LibretroDroid, leurs
+         * émulateurs externes ne sont plus proposés, voir LibretroPlayers) : Flycast pour Naomi et
+         * Atomiswave, ARMSX2 pour le Namco System 246, MAME4droid pour les Game & Watch.
+         */
         val SOURCES: Map<String, Source> = mapOf(
             "dev.eden.eden_emulator" to Source("Eden", "eden", EDEN, Regex("""Eden-Android-.*-standard\.apk""")),
             // Jeux PC (Wine / Proton) : RomCloud PC (android/pc, publié avec RomCloud), Winlator Cmod.
@@ -113,9 +118,6 @@ class EmulatorReleases(private val api: ApiClient) {
             "com.winlator.cmod" to Source("Winlator Cmod", "winlator-cmod", GITHUB, Regex("""Winlator-Cmod-.*\.apk"""), playStore = false),
             "dev.legacy.eden_emulator" to Source("Eden (Legacy)", "eden", EDEN, Regex("""Eden-Android-.*-legacy\.apk""")),
             "com.miHoYo.Yuanshen" to Source("Eden (Optimized)", "eden", EDEN, Regex("""Eden-Android-.*-optimized\.apk""")),
-            "org.azahar_emu.azahar" to Source("Azahar", "azahar", GITHUB, Regex("""azahar-android-vanilla-.*\.apk""")),
-            "io.github.lime3ds.android" to Source("Azahar", "azahar", GITHUB, Regex("""azahar-android-googleplay-.*\.apk""")),
-            "me.magnum.melonds" to Source("melonDS", "melonds", GITHUB, Regex("""app-gitHub-prod-release\.apk""")),
             "com.flycast.emulator" to Source("Flycast", "flycast", GITHUB, Regex("""flycast-.*\.apk""")),
             "org.vita3k.emulator" to Source("Vita3K", "vita3k-android", GITHUB, Regex("""vita3k-android-.*\.apk""")),
             // Une variante par version d'Android (« -sdk30 », « -sdk33 »…) : la plus récente acceptée.
@@ -123,7 +125,6 @@ class EmulatorReleases(private val api: ApiClient) {
             "info.cemu.cemu" to Source("Cemu", "cemu-android", GITHUB, Regex("""Cemu-.*\.apk""")),
             "aenu.aps3e" to Source("aPS3e", "aps3e", GITHUB, Regex("""[\w.-]+\.apk""")),
             "com.seleuco.mame4d2024" to Source("MAME4droid", "mame4droid", GITHUB, Regex("""MAME4droid.*\.apk""")),
-            "com.sky.SkyEmu" to Source("SkyEmu", "skyemu", GITHUB, Regex("""SkyEmu-.*-Android\.apk""")),
         )
 
         private val SDK = Regex("""-sdk(\d+)\.apk$""")

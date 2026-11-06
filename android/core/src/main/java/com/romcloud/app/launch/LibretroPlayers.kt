@@ -8,7 +8,9 @@ import com.romcloud.app.data.Player
  * LIBRETRO des modèles Daijishou), un émulateur « LibretroDroid - <cœur> » est ajouté en tête de
  * liste (choix par défaut). Le cœur est téléchargé depuis le buildbot libretro au premier lancement
  * (voir LibretroCores). Les modèles de cœur eux-mêmes sont retirés : seul le moteur intégré lance
- * les cœurs libretro.
+ * les cœurs libretro. Console émulée par le moteur intégré ([CoreRanking.covers] : NES, PlayStation,
+ * DS, 3DS, GameCube…) : ses émulateurs externes (DuckStation, melonDS, Azahar, Dolphin…) sont retirés
+ * aussi ; ils restent proposés pour les autres (Switch, PS3, Vita, Wii U, Naomi…).
  */
 object LibretroPlayers {
 
@@ -45,6 +47,8 @@ object LibretroPlayers {
                 )
             }
         if (added.isEmpty()) return system
-        return system.copy(players = added + others)
+        val key = system.shortname.ifEmpty { system.id }
+        val covered = CoreRanking.covers(key, added.mapNotNull { it.libretroCore })
+        return system.copy(players = if (covered) added else added + others)
     }
 }
