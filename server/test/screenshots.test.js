@@ -22,14 +22,14 @@ const content = (type) => {
   return row.f && fs.readFileSync(path.join(gameMediaDir(id), row.f), 'utf8');
 };
 
-test('jusqu’à 4 captures : ajoutées sans trou, supprimées en remontant les suivantes', () => {
-  saveCustomMedia(id, 'screenshot', png(1), 'image/png');
+test('jusqu’à 4 captures : ajoutées sans trou, supprimées en remontant les suivantes', async () => {
+  await saveCustomMedia(id, 'screenshot', png(1), 'image/png');
   // Capture envoyée à la 4e place alors que la 2e est vide : remontée à la 2e.
-  let game = saveCustomMedia(id, 'screenshot4', png(2), 'image/jpeg');
+  let game = await saveCustomMedia(id, 'screenshot4', png(2), 'image/jpeg');
   assert.equal(game.screenshotCount, 2);
   assert.deepEqual(files(), ['screenshot.png', 'screenshot2.jpg']);
-  saveCustomMedia(id, 'screenshot3', png(3), 'image/png');
-  game = saveCustomMedia(id, 'screenshot4', png(4), 'image/png');
+  await saveCustomMedia(id, 'screenshot3', png(3), 'image/png');
+  game = await saveCustomMedia(id, 'screenshot4', png(4), 'image/png');
   assert.equal(game.screenshotCount, 4);
   assert.equal(game.hasScreenshot, true);
 

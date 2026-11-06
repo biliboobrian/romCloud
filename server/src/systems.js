@@ -8,6 +8,7 @@ import { DEFAULT_SYSTEM_COLORS, normalizeColor } from './system-colors.js';
 import { normalizeEmulatorOrder } from './emulator-order.js';
 import { normalizeCoreOptions, parseCoreOptions } from './core-options.js';
 import { usefulPlayers } from './extra-cores.js';
+import { optimizeOriginal } from './media-optimize.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
@@ -225,15 +226,16 @@ function removeImageFile(id) {
   if (image) fs.rmSync(path.join(systemImagesDir(), image), { force: true });
 }
 
-export function setSystemImage(id, buffer, mimeType) {
+export async function setSystemImage(id, buffer, mimeType) {
   requireSystem(id);
-  const ext = IMAGE_EXT[mimeType];
-  if (!ext) throw new HttpError(415, 'errors.imageFormat');
+  if (!IMAGE_EXT[mimeType]) throw new HttpError(415, 'errors.imageFormat');
   if (!buffer?.length) throw new HttpError(400, 'errors.imageMissing');
+  // Enregistrée au plus léger (WebP, au plus 1600 px : media-optimize.js).
+  const { buffer: data, ext } = await optimizeOriginal(buffer, IMAGE_EXT[mimeType]);
   fs.mkdirSync(systemImagesDir(), { recursive: true });
   removeImageFile(id);
   const file = `${id}-${Date.now()}${ext}`;
-  fs.writeFileSync(path.join(systemImagesDir(), file), buffer);
+  fs.writeFileSync(path.join(systemImagesDir(), file), data);
   db.prepare('UPDATE systems SET image = ? WHERE id = ?').run(file, id);
   return getSystem(id);
 }

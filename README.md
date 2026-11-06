@@ -269,7 +269,8 @@ Toutes les routes (sauf `/api/info`) exigent `Authorization: Bearer <clé>` (ou 
 | GET | `/api/core-options` | Options déclarées par les cœurs des émulateurs intégrés, envoyées par les applications (`?system=<id>` : cœurs lancés pour ce système) |
 | PUT | `/api/games/:id/group` | Rattache le fichier à un jeu `{ "parentId": 12, "kind": "disc\|update\|dlc" }`, en fait un jeu à part entière `{ "parentId": null }` ou le rend au regroupement automatique `{ "auto": true }` |
 | GET | `/api/games/:id/file` | Téléchargement de la ROM (Range / reprise) |
-| GET/PUT | `/api/games/:id/media/boxart\|screenshot` | Images |
+| GET/PUT | `/api/games/:id/media/boxart\|screenshot` | Images(`?size=thumb` 400 px, `medium` 800 px, `icon` : versions allégées). Images gardées au plus léger : WebP de 1600 px au plus (qualité 90 ; captures des consoles 8 à 32 bits sans perte), ou l’original s’il est déjà plus léger ; versions allégées en WebP qualité 75, l’original servi quand il est déjà plus léger |
+| POST | `/api/media/recompress` | Recompression des images déjà gardées (tâche, bouton *Recompresser les images* de l’onglet *Espace disque*) : seulement celles qui y gagnent au moins 5 % |
 | POST | `/api/games/:id/scrape` | `{ "source": "auto\|screenscraper\|libretro" }` |
 | POST | `/api/systems/:id/scrape` | Tâche de fond `{ "onlyMissing": true }` |
 | GET/DELETE | `/api/jobs[/:id]` | Suivi / annulation des tâches |

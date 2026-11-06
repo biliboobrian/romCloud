@@ -21,15 +21,17 @@ test('image du système : originale, ou vignette WebP avec ?size=thumb', async (
     const png = await sharp({ create: { width: 1000, height: 500, channels: 4, background: '#3366cc' } }).png().toBuffer();
     const put = await fetch(base, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: png });
     assert.equal(put.status, 200);
+    // Original enregistré au plus léger (PNG ou WebP, media-optimize.js).
     const original = await fetch(base);
-    assert.equal(original.headers.get('content-type'), 'image/png');
+    const originalType = original.headers.get('content-type');
+    assert.ok(['image/png', 'image/webp'].includes(originalType), originalType);
     const thumb = await fetch(`${base}?size=thumb`);
     assert.equal(thumb.status, 200);
     assert.equal(thumb.headers.get('content-type'), 'image/webp');
     assert.match(thumb.headers.get('cache-control'), /max-age=2592000/);
     assert.equal((await sharp(Buffer.from(await thumb.arrayBuffer())).metadata()).width, 400);
     // Taille inconnue : l'original.
-    assert.equal((await fetch(`${base}?size=enorme`)).headers.get('content-type'), 'image/png');
+    assert.equal((await fetch(`${base}?size=enorme`)).headers.get('content-type'), originalType);
   } finally {
     server.close();
   }
