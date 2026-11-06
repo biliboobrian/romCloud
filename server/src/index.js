@@ -6,6 +6,7 @@ import { handleUpgrade } from './play.js';
 import { config, screenscraperEnabled } from './config.js';
 import { defaultLanguage, t, translateToken } from './i18n.js';
 import { scanAll } from './library.js';
+import { startMirrorRefresh } from './emulator-mirror.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -18,6 +19,9 @@ try {
 } catch (err) {
   console.error(t(defaultLanguage, 'log.initialScanFailed', { error: translateToken(err.message, defaultLanguage) }));
 }
+
+// Miroir des émulateurs : nouvelles versions des fichiers déjà gardés récupérées d'avance.
+startMirrorRefresh();
 
 const server = app.listen(config.port, config.host, () => {
   const addresses = Object.values(os.networkInterfaces())

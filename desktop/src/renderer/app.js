@@ -589,6 +589,15 @@
     watch.observe(root, { childList: true });
   }
 
+  // Émulateur géré (RPCS3, shadPS4, Cemu…) récupéré par le serveur avant son premier lancement : signalé une fois.
+  const mirroring = new Set();
+  rc.emulators.onMirror?.(({ name, done }) => {
+    if (done) return mirroring.delete(name);
+    if (mirroring.has(name)) return;
+    mirroring.add(name);
+    toast(t('emulator.serverPreparingLaunch', { name }), { duration: 8000 });
+  });
+
   rc.connectivity.onUpdate(async (state) => {
     const wasOnline = S.connectivity.online;
     paintConnectivity(state);
@@ -1998,6 +2007,9 @@
     let u;
     try {
       u = await call(rc.emulators.checkUpdate, emu.id);
+      u = await waitServerCopy(emu, u, (text) => {
+        if (button) button.textContent = text;
+      });
     } catch (err) {
       toast(err.message, { type: 'error' });
       return;
@@ -2051,6 +2063,22 @@
       const dir = await call(rc.dialog.pickFolder);
       if (dir) $('#emuInstallDir', root).value = dir;
     };
+  }
+
+  /**
+   * Version pas encore sur le serveur RomCloud (il la récupère sur Internet et en garde une copie) :
+   * état relu toutes les 2 s, progression passée à [show], jusqu'à ce qu'elle y soit. Renvoie le
+   * dernier état ; erreur si le serveur n'a pas pu la récupérer.
+   */
+  async function waitServerCopy(emu, u, show) {
+    while (u.preparing) {
+      const pct = u.serverTotal ? Math.floor((u.serverReceived / u.serverTotal) * 100) : 0;
+      show(t('emulator.serverPreparing', { version: u.latest, pct }));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      u = await call(rc.emulators.checkUpdate, emu.id);
+    }
+    if (u.server === 'error' && !u.updateAvailable) throw new Error(t('errors.mirrorFetch', { name: `${emu.name} ${u.latest}`, detail: u.serverError || '' }));
+    return u;
   }
 
   /** Choix manuel de l'exécutable d'un émulateur. */
@@ -2734,7 +2762,9 @@
     button.disabled = true;
     box.innerHTML = `<span class="muted">${esc(t('emulator.checking'))}</span>`;
     try {
-      const u = await call(rc.emulators.checkUpdate, emu.id);
+      const u = await waitServerCopy(emu, await call(rc.emulators.checkUpdate, emu.id), (text) => {
+        box.innerHTML = `<span class="muted">${esc(text)}</span>`;
+      });
       const installed = u.installed ? t('emulator.installedVersion', { version: u.installed, variant: u.variant }) : t('emulator.notInstalledVersion');
       const status = !u.asset ? t('emulator.noBuild') : u.updateAvailable ? t(u.installed ? 'emulator.updateAvailable' : 'emulator.installAvailable', { version: u.latest }) : t('emulator.upToDate');
       box.innerHTML = `<div class="${u.updateAvailable ? 'good' : 'muted'}">${esc(installed)} · ${esc(t('emulator.latestVersion', { version: u.latest }))} — ${esc(status)}</div>

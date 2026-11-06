@@ -130,6 +130,7 @@ function refreshTexts() {
   if ($('#dupDialog').open) openDuplicates();
   if ($('#biosDialog').open) openBios();
   if ($('#apksDialog').open) openApks();
+  if ($('#mirrorDialog').open) openMirror();
   guard(async () => {
     await loadSystems();
     await refreshJobs();
@@ -1422,6 +1423,80 @@ function renderApks(emulators, list) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Miroir des émulateurs externes : versions gardées par le serveur (data/emulators)
+// ---------------------------------------------------------------------------
+
+let mirrorTimer = null;
+
+async function openMirror() {
+  if (!$('#mirrorDialog').open) {
+    $('#mirrorContent').innerHTML = `<p class="muted">${escapeHtml(t('apks.loading'))}</p>`;
+    $('#mirrorDialog').showModal();
+  }
+  await guard(async () => renderMirror(await api('/emulators')));
+}
+
+function renderMirror(sources) {
+  clearTimeout(mirrorTimer);
+  const box = $('#mirrorContent');
+  box.innerHTML = '';
+  const used = sources.filter((s) => s.files.length || s.fetching.length);
+  const total = used.reduce((n, s) => n + s.totalSize, 0);
+  const summary = document.createElement('p');
+  summary.textContent = used.length ? t('mirror.summary', { n: used.length, size: formatSize(total) }) : t('mirror.empty');
+  box.append(summary);
+  const row = (html) => {
+    const div = document.createElement('div');
+    div.className = 'dup-row bios-row';
+    div.innerHTML = html;
+    return div;
+  };
+  const note = (text) => {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = text;
+    return p;
+  };
+  for (const s of sources) {
+    const h = document.createElement('h4');
+    h.innerHTML = `${escapeHtml(s.name)} <span class="muted">· ${escapeHtml(s.platforms.map((p) => t(`mirror.platform.${p}`)).join(', '))} · ${escapeHtml(s.host)}</span>`;
+    const group = document.createElement('div');
+    group.className = 'dup-group';
+    if (s.upstreamError) group.append(note(t('mirror.upstreamError', { host: s.host, error: s.upstreamError })));
+    for (const f of s.fetching) {
+      const pct = f.total ? Math.floor((f.received / f.total) * 100) : 0;
+      group.append(row(f.state === 'error'
+        ? `<span class="bios-state missing">!</span><span class="name">${escapeHtml(f.file)}<br><span class="muted">${escapeHtml(t('mirror.fetchError', { error: f.error || '' }))}</span></span>`
+        : `<span class="bios-state">…</span><span class="name">${escapeHtml(f.file)}<br><span class="muted">${escapeHtml(t('mirror.fetching', { pct, size: formatSize(f.total) }))}</span></span>`));
+    }
+    for (const f of s.files) {
+      const details = [
+        formatSize(f.size),
+        f.publishedAt && t('mirror.published', { date: new Date(f.publishedAt).toLocaleDateString() }),
+        t('mirror.stored', { date: new Date(`${f.storedAt.replace(' ', 'T')}Z`).toLocaleDateString() }),
+      ].filter(Boolean).join(' · ');
+      const line = row(`<span class="bios-state ${f.present ? 'ok' : 'missing'}">${f.present ? '✓' : '–'}</span>
+        <span class="name"><strong>${escapeHtml(f.tag)}</strong>${f.prerelease ? ` <span class="tag">${escapeHtml(t('mirror.prerelease'))}</span>` : ''} <code>${escapeHtml(f.name)}</code><br>
+          <span class="muted">${escapeHtml(details)}</span></span>
+        <a class="btn small" href="${withKey(f.path)}" download>${escapeHtml(t('bios.download'))}</a>
+        <button class="btn small danger" data-delete>${escapeHtml(t('bios.delete'))}</button>`);
+      $('[data-delete]', line).onclick = () => guard(async () => {
+        if (!confirm(t('mirror.confirmDelete', { name: s.name, version: f.tag, file: f.name }))) return;
+        await api(f.path.replace(/^\/api/, ''), { method: 'DELETE' });
+        await openMirror();
+      });
+      group.append(line);
+    }
+    if (!s.files.length && !s.fetching.length) group.append(note(t('mirror.none')));
+    box.append(h, group);
+  }
+  // Récupérations en cours : progression suivie tant que la fenêtre est ouverte.
+  if (sources.some((s) => s.fetching.some((f) => f.state === 'fetching'))) {
+    mirrorTimer = setTimeout(() => $('#mirrorDialog').open && guard(async () => renderMirror(await api('/emulators'))), 2000);
+  }
+}
+
 /** Envoie des APK (avec progression : un APK d'émulateur pèse souvent plus de 100 Mo). */
 function uploadApks(files, expectedPackage) {
   if (!files.length) return;
@@ -1607,6 +1682,12 @@ function bindEvents() {
     e.target.value = '';
   };
   $('#apksBtn').onclick = openApks;
+  $('#mirrorBtn').onclick = openMirror;
+  $('#mirrorRefreshBtn').onclick = () => guard(async () => {
+    const started = await api('/emulators/refresh', { method: 'POST' });
+    toast(started.length ? t('mirror.refreshStarted', { n: started.length }) : t('mirror.refreshNone'));
+    await openMirror();
+  });
   $('#apksInput').onchange = (e) => {
     uploadApks([...e.target.files]);
     e.target.value = '';

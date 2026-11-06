@@ -42,6 +42,10 @@ export const config = {
   // Jeux scrapés en même temps par une tâche (1 à 16) ; ScreenScraper limite aussi le nombre de
   // requêtes simultanées selon le compte (maxthreads), respecté dès sa première réponse.
   scrapeConcurrency: Math.min(16, Math.max(1, Math.floor(Number(env.SCRAPE_CONCURRENCY) || 1))),
+  // Miroir des émulateurs (emulator-mirror.js) : nouvelles versions récupérées toutes les N heures
+  // (0 : seulement à la demande des applications) ; jeton GitHub facultatif (limite de l'API).
+  emulatorRefreshHours: Number(env.EMULATOR_REFRESH_HOURS ?? 6),
+  githubToken: env.GITHUB_TOKEN || '',
   daijishouBaseUrl:
     env.DAIJISHOU_BASE_URL || 'https://raw.githubusercontent.com/TapiocaFox/Daijishou/main/platforms/',
   screenscraper: {

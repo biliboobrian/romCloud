@@ -119,16 +119,19 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
     }
 
     // Émulateur absent : proposer la dernière version publiée par l'émulateur (Release GitHub ou
-    // Forgejo), à défaut l'APK du serveur RomCloud (s'il en a un), ou le Google Play Store.
+    // Forgejo, téléchargée depuis le miroir du serveur RomCloud, qui la récupère d'abord s'il ne l'a
+    // pas : progression affichée), à défaut l'APK envoyé sur le serveur (s'il en a un), ou le Google Play Store.
     // Mise à jour d'un émulateur installé hors Play Store (installedVersion) : même dialogue, sans le Play Store.
     val missing by app.missingEmulator.collectAsStateWithLifecycle()
     missing?.let { emulator ->
         val update = emulator.installedVersion
         val scope = rememberCoroutineScope()
         val unavailable = stringResource(R.string.play_store_unavailable)
+        // Récupération de l'APK par le serveur (octets reçus, taille), null sinon.
+        var serverProgress by remember(emulator) { mutableStateOf<Pair<Long, Long>?>(null) }
         // null = recherche en cours.
         val apk by produceState<Result<EmulatorApk?>?>(null, emulator) {
-            val release = app.emulatorReleases.latest(emulator.packageName)
+            val release = app.emulatorReleases.latest(emulator.packageName) { received, total -> serverProgress = received to total }
             value = Result.success(release ?: app.repository.apks().find { it.packageName == emulator.packageName })
         }
         val found = apk?.getOrNull()
@@ -154,7 +157,11 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                         )
                     }
                     when {
-                        apk == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                        apk == null -> serverProgress?.let { (received, total) ->
+                            Text(stringResource(R.string.apk_server_fetching, emulator.playerName ?: emulator.packageName), style = MaterialTheme.typography.bodySmall)
+                            if (total > 0) LinearProgressIndicator(progress = { received.toFloat() / total }, modifier = Modifier.fillMaxWidth())
+                            else LinearProgressIndicator(Modifier.fillMaxWidth())
+                        } ?: LinearProgressIndicator(Modifier.fillMaxWidth())
                         update != null && found == null -> Text(stringResource(R.string.update_emulator_not_found), style = MaterialTheme.typography.bodySmall)
                         release != null -> Text(
                             stringResource(R.string.apk_release_available, release.label, release.versionName.orEmpty(), formatSize(release.size), release.source.orEmpty()),

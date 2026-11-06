@@ -55,6 +55,15 @@ pub fn network_detail(e: &reqwest::Error) -> String {
 
 /// Requête GET ; renvoie le corps. [server]/[key] : ceux des réglages, ou ceux en cours de test.
 pub async fn request(api_path: &str, target: Option<(&str, &str)>) -> Result<String> {
+    send(reqwest::Method::GET, api_path, target).await
+}
+
+/// Requête POST sans corps au serveur configuré ; renvoie le corps.
+pub async fn post(api_path: &str) -> Result<String> {
+    send(reqwest::Method::POST, api_path, None).await
+}
+
+async fn send(method: reqwest::Method, api_path: &str, target: Option<(&str, &str)>) -> Result<String> {
     let (server, key) = match target {
         Some((s, k)) => (s.to_string(), k.to_string()),
         None => (settings::get_str("serverUrl"), settings::get_str("apiKey")),
@@ -68,7 +77,7 @@ pub async fn request(api_path: &str, target: Option<(&str, &str)>) -> Result<Str
     if tracked {
         connectivity::ensure_online()?;
     }
-    let res = match client().get(format!("{server}{api_path}")).headers(headers(&key)).timeout(Duration::from_secs(10)).send().await {
+    let res = match client().request(method, format!("{server}{api_path}")).headers(headers(&key)).timeout(Duration::from_secs(10)).send().await {
         Ok(res) => res,
         Err(e) => {
             if tracked {

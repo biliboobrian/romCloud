@@ -59,6 +59,7 @@ import {
   updateSystem,
 } from './systems.js';
 import { emulatorCandidates } from './emulator-order.js';
+import { deleteFile as deleteEmulatorFile, listReleases, mirrorSummary, prepareFile, refreshMirror, requireSource, storedFile } from './emulator-mirror.js';
 import { listCatalog, reportCatalog, systemCatalog } from './core-options.js';
 
 // Version du serveur : celle de l'image Docker (tag v1.2.3 de la publication), sinon package.json.
@@ -124,6 +125,8 @@ export function access(method, given, { apiKey, adminKey }) {
  */
 export function routeMethod(method, routePath) {
   if (routePath.startsWith('/account/')) return 'GET';
+  // Récupération d'un émulateur par le serveur (miroir) : demandée par les applications (clé des applications).
+  if (method === 'POST' && /^\/emulators\/[^/]+\/files\/[^/]+\/[^/]+\/prepare$/.test(routePath)) return 'GET';
   if (routePath.startsWith('/users') || routePath.startsWith('/logs') || routePath.startsWith('/tokens')) return 'POST';
   return method;
 }
@@ -388,6 +391,49 @@ api.get('/apks/:id/file', (req, res, next) => {
   res.download(apkFilePath(row), `${row.package_name}-${row.version_name || row.version_code}.apk`, { dotfiles: 'allow' }, (err) => {
     if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
   });
+});
+
+// ---- Miroir des émulateurs externes (emulator-mirror.js) ----
+// Sources et fichiers gardés (administration).
+api.get('/emulators', (req, res) => res.json(mirrorSummary()));
+
+// Nouvelles versions des fichiers gardés récupérées maintenant.
+api.post('/emulators/refresh', h(async (req, res) => res.json(await refreshMirror())));
+
+// Versions d'un émulateur (format des Releases GitHub), les plus récentes d'abord ; « offline » :
+// Internet injoignable, seules les versions gardées par le serveur sont listées.
+api.get(
+  '/emulators/:source/releases',
+  h(async (req, res) => {
+    const { offline, releases } = await listReleases(req.params.source);
+    res.set('X-RomCloud-Mirror-Offline', offline ? '1' : '0').json(releases);
+  }),
+);
+
+api.get(
+  '/emulators/:source/releases/latest',
+  h(async (req, res) => {
+    const { offline, releases } = await listReleases(req.params.source);
+    if (!releases.length) throw new HttpError(404, 'errors.emulatorNoRelease', { name: requireSource(req.params.source).name });
+    res.set('X-RomCloud-Mirror-Offline', offline ? '1' : '0').json(releases[0]);
+  }),
+);
+
+// Fichier récupéré sur Internet par le serveur s'il ne l'a pas encore : { state, received, total, error }.
+api.post('/emulators/:source/files/:tag/:name/prepare', h(async (req, res) => res.json(await prepareFile(req.params.source, req.params.tag, req.params.name))));
+
+api.get('/emulators/:source/files/:tag/:name', (req, res, next) => {
+  const { path: file, row } = storedFile(req.params.source, req.params.tag, req.params.name);
+  logDownload(req, res, { kind: 'emulator', label: `${requireSource(row.source).name} ${row.tag} (${row.name})`, fileSize: row.size });
+  if (row.name.toLowerCase().endsWith('.apk')) res.type('application/vnd.android.package-archive');
+  res.download(file, row.name, { dotfiles: 'allow' }, (err) => {
+    if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
+  });
+});
+
+api.delete('/emulators/:source/files/:tag/:name', (req, res) => {
+  deleteEmulatorFile(req.params.source, req.params.tag, req.params.name);
+  res.status(204).end();
 });
 
 api.post('/systems/:id/scan', (req, res) => res.json(scanSystem(req.params.id)));

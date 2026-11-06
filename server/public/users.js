@@ -214,7 +214,7 @@ function renderDownloads(box, stats, rows) {
   box.innerHTML = `
     <div class="line dl-filters">
       ${select('days', [[7, t('downloads.days', { n: 7 })], [30, t('downloads.days', { n: 30 })], [90, t('downloads.days', { n: 90 })], [0, t('downloads.allTime')]], dlFilters.days)}
-      ${select('kind', [['', t('downloads.allKinds')], ...['game', 'bios', 'apk'].map((k) => [k, kindLabel(k)])], dlFilters.kind)}
+      ${select('kind', [['', t('downloads.allKinds')], ...['game', 'bios', 'apk', 'emulator'].map((k) => [k, kindLabel(k)])], dlFilters.kind)}
       ${active.map((a) => `<span class="tag">${e(a)}</span>`).join('')}
       ${active.length ? `<button class="btn small" data-dl-reset>${e(t('downloads.resetFilters'))}</button>` : ''}
     </div>
