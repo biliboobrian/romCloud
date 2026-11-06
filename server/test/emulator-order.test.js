@@ -88,3 +88,20 @@ test('Xbox sous Windows : xemu installé avant le cœur xemu (pas encore essayé
   assert.deepEqual(emulatorCandidates(xbox).windows.map((e) => e.id), ['emu:xemu', 'builtin:xemu']);
   assert.deepEqual(emulatorCandidates(xbox).android, []);
 });
+
+test('réglages du système : émulateurs externes des consoles du moteur intégré retirés des modèles enregistrés', async () => {
+  const { cleanStoredPlayers } = await import('../src/systems.js');
+  const { db } = await import('../src/db.js');
+  const psx = createSystem({ id: 'psx', name: 'PlayStation', players: [coreTemplate('mednafen_psx_hw'), external('duck', 'DuckStation')] });
+  assert.deepEqual(psx.players.map((p) => p.uniqueId), ['core.mednafen_psx_hw']);
+  // Ajout (copie depuis un autre système) : externe non gardé.
+  assert.deepEqual(updateSystem('psx', { players: [...psx.players, external('epsxe', 'ePSXe')] }).players.map((p) => p.uniqueId), ['core.mednafen_psx_hw']);
+  // Hors moteur intégré (Naomi), ou aucun cœur téléchargeable sous Android : gardés.
+  assert.equal(createSystem({ id: 'naomi', name: 'Naomi', players: [coreTemplate('flycast'), external('fly', 'Flycast')] }).players.length, 2);
+  assert.equal(createSystem({ id: 'psxduck', shortname: 'psx', name: 'PSX', players: [coreTemplate('duckstation'), external('duck', 'DuckStation')] }).players.length, 2);
+  // Systèmes enregistrés par une version précédente : nettoyés au démarrage.
+  db.prepare('UPDATE systems SET players = ? WHERE id = ?').run(JSON.stringify([coreTemplate('mednafen_psx_hw'), external('duck', 'DuckStation'), external('fpse', 'FPse')]), 'psx');
+  assert.equal(cleanStoredPlayers(), 2);
+  assert.equal(getSystem('psx').players.length, 1);
+  assert.equal(cleanStoredPlayers(), 0);
+});

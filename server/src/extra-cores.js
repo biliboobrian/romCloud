@@ -7,7 +7,7 @@
 // Un cœur absent du buildbot d'une plateforme, ou qui demande l'OpenGL de bureau (moteur Android :
 // OpenGL ES seulement), n'est pas envoyé à cette plateforme, même s'il vient d'un modèle enregistré.
 import { CORES, SYSTEM_EXTRA } from './extra-cores-data.js';
-import { withoutCoveredExternals } from './core-ranking.js';
+import { coveredOnAndroid, withoutCoveredExternals } from './core-ranking.js';
 
 const ALL_PLATFORMS = ['android', 'androidtv', 'windows'];
 
@@ -72,6 +72,15 @@ function corePlayer(system, core) {
     acceptedFilenameRegex: ext.length ? `^(.*)\\.(?:${ext.join('|')})$` : null,
     amStartArguments: `-e LIBRETRO ${core}`,
   };
+}
+
+/**
+ * Modèles utiles d'un système, ceux enregistrés : pour une console émulée par le moteur intégré
+ * (core-ranking.js), sans les émulateurs externes, proposés à aucune application ; inchangés sinon.
+ */
+export function usefulPlayers(system, players) {
+  const list = players || [];
+  return coveredOnAndroid(system, list.map(coreOf)) ? list.filter((p) => coreOf(p)) : list;
 }
 
 /** Cœurs ajoutés au système (absents de ses modèles), avec leurs plateformes : affichés dans l'administration. */
