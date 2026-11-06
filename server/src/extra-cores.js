@@ -7,6 +7,7 @@
 // Un cœur absent du buildbot d'une plateforme, ou qui demande l'OpenGL de bureau (moteur Android :
 // OpenGL ES seulement), n'est pas envoyé à cette plateforme, même s'il vient d'un modèle enregistré.
 import { CORES, SYSTEM_EXTRA } from './extra-cores-data.js';
+import { withoutCoveredExternals } from './core-ranking.js';
 
 const ALL_PLATFORMS = ['android', 'androidtv', 'windows'];
 
@@ -83,7 +84,8 @@ export function extraCores(system) {
 
 /**
  * Émulateurs envoyés à la plateforme [platform] : modèles du système sans les cœurs qu'elle ne peut
- * pas faire tourner, puis les cœurs ajoutés par RomCloud qu'elle fait tourner.
+ * pas faire tourner, puis les cœurs ajoutés par RomCloud qu'elle fait tourner ; Android : sans les
+ * émulateurs externes d'une console émulée par le moteur intégré (core-ranking.js).
  */
 export function playersFor(system, platform) {
   if (!ALL_PLATFORMS.includes(platform)) return system.players || [];
@@ -92,7 +94,7 @@ export function playersFor(system, platform) {
   const added = extraCores(system)
     .filter((c) => c.platforms.includes(platform))
     .map((c) => corePlayer(system, c.core));
-  return [...own, ...added];
+  return withoutCoveredExternals(system, [...own, ...added], platform, coreOf);
 }
 
 /** Système tel qu'envoyé à l'application de la plateforme [platform] (inconnue : inchangé). */

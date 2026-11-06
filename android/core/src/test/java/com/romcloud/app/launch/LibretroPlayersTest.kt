@@ -33,9 +33,9 @@ class LibretroPlayersTest {
         val result = LibretroPlayers.addTo(
             system(coreTemplate("ra64.snes9x", "snes9x"), other, coreTemplate("ra32.snes9x", "snes9x"), coreTemplate("ra64.bsnes", "bsnes", regex = null)),
         )
-        // Modèles de cœur retirés ; autres émulateurs gardés.
+        // Modèles de cœur retirés ; Super Nintendo émulée par le moteur intégré : émulateurs externes retirés aussi.
         assertEquals(
-            listOf("libretrodroid.bsnes", "libretrodroid.snes9x", "snes.ex"),
+            listOf("libretrodroid.bsnes", "libretrodroid.snes9x"),
             result.players.map { it.uniqueId },
         )
         assertEquals("bsnes", result.players[0].libretroCore)
@@ -60,6 +60,20 @@ class LibretroPlayersTest {
         assertEquals(listOf("libretrodroid.citra", "libretrodroid.panda3ds", "libretrodroid.azahar"), n3ds.players.take(3).map { it.uniqueId })
         // Aucun modèle de cœur gardé, même pour le cœur absent du buildbot Android.
         assertEquals(emptyList<String>(), n3ds.players.drop(3).map { it.uniqueId })
+    }
+
+    @Test
+    fun `emulateurs externes gardes pour les consoles hors moteur integre`() {
+        val flycast = Player(name = "Flycast", uniqueId = "naomi.flycast", amStartArguments = "-n com.flycast.emulator/.MainActivity")
+        // Naomi : absente de la table du moteur intégré, Flycast reste proposé après le cœur.
+        val naomi = LibretroPlayers.addTo(system(coreTemplate("ra.flycast", "flycast"), flycast).copy(id = "naomi", shortname = "naomi"))
+        assertEquals(listOf("libretrodroid.flycast", "naomi.flycast"), naomi.players.map { it.uniqueId })
+        // Console de la table dont aucun cœur n'est téléchargeable sous Android : émulateur externe gardé.
+        val psx = Player(name = "DuckStation", uniqueId = "psx.duck", amStartArguments = "-n com.github.stenzek.duckstation/.EmulationActivity")
+        val onlyMissing = LibretroPlayers.addTo(system(coreTemplate("ra.duck", "duckstation"), psx).copy(id = "psx", shortname = "psx"))
+        assertEquals(listOf("libretrodroid.duckstation", "psx.duck"), onlyMissing.players.map { it.uniqueId })
+        val covered = LibretroPlayers.addTo(system(coreTemplate("ra.duck", "duckstation"), coreTemplate("ra.psx", "mednafen_psx_hw"), psx).copy(id = "psx", shortname = "psx"))
+        assertEquals(listOf("libretrodroid.mednafen_psx_hw", "libretrodroid.duckstation"), covered.players.map { it.uniqueId })
     }
 
     @Test

@@ -21,7 +21,7 @@ test('cœur libretro d’un modèle', () => {
   assert.equal(coreOf(external('x', 'X')), null);
 });
 
-test('émulateurs proposés : Android (intégrés triés, puis émulateurs externes sans les modèles de cœur), Windows', () => {
+test('émulateurs proposés : Android (intégrés triés, sans les émulateurs externes d’une console du moteur intégré), Windows', () => {
   const psx = {
     id: 'psx',
     shortname: 'psx',
@@ -30,8 +30,13 @@ test('émulateurs proposés : Android (intégrés triés, puis émulateurs exter
   const { android, androidtv, windows } = emulatorCandidates(psx);
   assert.deepEqual(android.map((e) => e.id), [
     'libretrodroid.mednafen_psx_hw', 'libretrodroid.pcsx_rearmed', 'libretrodroid.duckstation',
-    'duck', 'duck#2',
   ]);
+  // Console hors moteur intégré (Naomi) : émulateur externe gardé après le cœur.
+  const naomi = { id: 'naomi', shortname: 'naomi', players: [coreTemplate('flycast'), external('flycast-app', 'Flycast')] };
+  assert.deepEqual(emulatorCandidates(naomi).android.map((e) => e.id), ['libretrodroid.flycast', 'flycast-app']);
+  // Seul cœur de la console absent du buildbot Android : émulateur externe gardé.
+  const onlyDuck = { id: 'psx', shortname: 'psx', players: [coreTemplate('duckstation'), external('duck', 'DuckStation')] };
+  assert.deepEqual(emulatorCandidates(onlyDuck).android.map((e) => e.id), ['libretrodroid.duckstation', 'duck']);
   assert.deepEqual(androidtv, android);
   assert.deepEqual(windows.map((e) => e.id), [
     'builtin:mednafen_psx_hw', 'builtin:pcsx_rearmed', 'builtin:duckstation',
@@ -39,7 +44,7 @@ test('émulateurs proposés : Android (intégrés triés, puis émulateurs exter
 
   const n64 = { id: 'n64', shortname: 'n64', players: [coreTemplate('mupen64plus_next_gles3'), coreTemplate('parallel_n64')] };
   assert.deepEqual(emulatorCandidates(n64).windows.map((e) => e.id), ['builtin:mupen64plus_next', 'builtin:parallel_n64']);
-  assert.deepEqual(emulatorCandidates({ id: 'ps3', shortname: 'ps3', players: [] }).windows.map((e) => e.id), ['builtin:rpcs3', 'emu:rpcs3']);
+  assert.deepEqual(emulatorCandidates({ id: 'ps3', shortname: 'ps3', players: [] }).windows.map((e) => e.id), ['builtin:rpcs3']);
   assert.deepEqual(emulatorCandidates({ id: 'switch', shortname: 'switch', players: [] }).windows.map((e) => e.id), ['emu:eden', 'emu:lichii', 'emu:orchid', 'emu:ryujinx']);
 });
 
@@ -59,4 +64,27 @@ test('ordre gardé avec le système, modifiable, remis par défaut', () => {
   assert.deepEqual(updateSystem('snes', { emulatorOrder: order }).emulatorOrder, order);
   assert.deepEqual(updateSystem('snes', { name: 'Super Nintendo' }).emulatorOrder, order);
   assert.deepEqual(updateSystem('snes', { emulatorOrder: { windows: [] } }).emulatorOrder, {});
+});
+
+test('cœurs ajoutés par RomCloud envoyés aux applications (systemFor) : selon la plateforme, cœur par défaut inchangé', async () => {
+  const { coreOf, systemFor } = await import('../src/extra-cores.js');
+  const saturn = { id: 'saturn', shortname: 'saturn', players: [coreTemplate('mednafen_saturn'), coreTemplate('yabasanshiro')] };
+  const ids = (s) => s.players.map(coreOf);
+  // Kronos : Windows seulement (OpenGL de bureau).
+  assert.deepEqual(ids(systemFor(saturn, 'windows')), ['mednafen_saturn', 'yabasanshiro', 'kronos']);
+  assert.deepEqual(ids(systemFor(saturn, 'android')), ['mednafen_saturn', 'yabasanshiro']);
+  // Administration (pas de plateforme) : modèles enregistrés tels quels.
+  assert.equal(systemFor(saturn, '').players.length, 2);
+  // Cœurs ajoutés après ceux de la table : le premier choix ne change pas.
+  const nes = { id: 'nes', shortname: 'nes', players: [coreTemplate('fceumm'), coreTemplate('nestopia')] };
+  const android = emulatorCandidates(nes).android.map((e) => e.id);
+  assert.equal(android[0], 'libretrodroid.nestopia');
+  assert.ok(android.includes('libretrodroid.mesen2'));
+  assert.equal(emulatorCandidates(nes).windows[0].id, 'builtin:nestopia');
+});
+
+test('Xbox sous Windows : xemu installé avant le cœur xemu (pas encore essayé)', () => {
+  const xbox = { id: 'xbox', shortname: 'xbox', players: [] };
+  assert.deepEqual(emulatorCandidates(xbox).windows.map((e) => e.id), ['emu:xemu', 'builtin:xemu']);
+  assert.deepEqual(emulatorCandidates(xbox).android, []);
 });

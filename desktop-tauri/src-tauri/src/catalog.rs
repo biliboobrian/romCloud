@@ -32,17 +32,15 @@ macro_rules! emu {
 // Seulement les systèmes sans cœur du moteur intégré (Windows et Android, voir cores.rs) : les
 // consoles déjà émulées par le moteur intégré n'ont pas d'émulateur externe (Mesen, Snes9x, mGBA,
 // Stella, DuckStation, PCSX2, Project64, melonDS, Azahar, Redream retirés) ; un émulateur qui gère
-// aussi d'autres systèmes n'est proposé que pour ceux-là. PS3 et Wii U : moteur intégré sous Windows
-// seulement (RPCS3, Cemu gérés par RomCloud), émulateurs gardés pour qui les a déjà installés.
+// aussi d'autres systèmes n'est proposé que pour ceux-là. PS3, PS4, PS5 et Wii U : émulateurs gérés
+// par RomCloud (managed.rs : RPCS3, shadPS4, KytyPS5, Cemu), pas d'émulateur externe non plus.
 pub static EMULATORS: &[Emulator] = &[
-    emu!("rpcs3", "RPCS3", ["ps3"], "https://rpcs3.net/download", ["rpcs3.exe"], ["RPCS3"], ["--no-gui", "{file}"]),
     emu!("ppsspp", "PPSSPP", ["pspminis"], "https://www.ppsspp.org/download/", ["PPSSPPWindows64.exe", "PPSSPPWindows.exe"],
         ["PPSSPP"], ["--fullscreen", "{file}"]),
     // Jeux installés dans Vita3K puis démarrés par leur identifiant (vita3k.rs) : pas de ligne de commande fixe.
     emu!("vita3k", "Vita3K", ["vita"], "https://vita3k.org/", ["Vita3K.exe"], ["Vita3K"], None),
     emu!("dolphin", "Dolphin", ["wiiware", "triforce"], "https://dolphin-emu.org/download/", ["Dolphin.exe"],
         ["Dolphin", "Dolphin-x64", "Dolphin Emulator"], ["-b", "-e", "{file}"]),
-    emu!("cemu", "Cemu", ["wiiu"], "https://cemu.info/", ["Cemu.exe"], ["Cemu"], ["-f", "-g", "{file}"]),
     // Switch : clés (prod.keys) et firmware à installer dans l'émulateur.
     // Eden : indiqué par son dossier (folder_exes) ; jeux lancés avec eden-cli (sans l'interface,
     // manettes reprises d'eden.exe : emulator_files.rs), eden.exe pour l'ouvrir seul.
@@ -295,7 +293,13 @@ mod tests {
                 assert!(!crate::cores::has_builtin_cores(system), "{} : {system} est émulé par le moteur intégré", emu.id);
             }
         }
-        for removed in ["mesen", "mgba", "stella", "duckstation", "pcsx2", "project64", "melonds", "azahar", "redream"] {
+        // Consoles des émulateurs gérés par RomCloud (RPCS3, shadPS4, KytyPS5, Cemu) : pas d'émulateur externe.
+        for emu in EMULATORS {
+            for system in emu.systems {
+                assert!(crate::managed::for_system(&json!({ "id": system })).is_none(), "{} : {system} a un émulateur géré", emu.id);
+            }
+        }
+        for removed in ["mesen", "mgba", "stella", "duckstation", "pcsx2", "project64", "melonds", "azahar", "redream", "rpcs3", "cemu"] {
             assert!(by_id(removed).is_none(), "{removed}");
         }
     }
@@ -335,7 +339,7 @@ mod tests {
             std::fs::write(&file, b"").unwrap();
             file
         };
-        let rpcs3 = put(&["pf", "RPCS3", "rpcs3.exe"]);
+        let dolphin = put(&["pf", "Dolphin", "Dolphin.exe"]);
         let lichii = put(&["home", "Downloads", "lichii-windows-x86_64", "lichii.exe"]);
         put(&["home", "Downloads", "lichii-windows-x86_64", "eden-cli.exe"]); // pas Eden
         let orchid = put(&["home", "Downloads", "orchid-v0.7.4-windows-x86_64", "orchid.exe"]);
@@ -348,11 +352,11 @@ mod tests {
             ("USERPROFILE", root.join("home")),
         ]);
         let env = |name: &str| vars.get(name).map(|p| p.to_string_lossy().into_owned());
-        assert_eq!(default_location_in(by_id("rpcs3").unwrap(), &env), rpcs3);
-        let emulators = [by_id("rpcs3").unwrap(), by_id("supermodel").unwrap(), by_id("xemu").unwrap(), by_id("eden").unwrap(), by_id("lichii").unwrap(), by_id("orchid").unwrap()];
+        assert_eq!(default_location_in(by_id("dolphin").unwrap(), &env), dolphin);
+        let emulators = [by_id("dolphin").unwrap(), by_id("supermodel").unwrap(), by_id("xemu").unwrap(), by_id("eden").unwrap(), by_id("lichii").unwrap(), by_id("orchid").unwrap()];
         let found = detect_in(&env, &emulators);
         let _ = std::fs::remove_dir_all(&root);
-        assert_eq!(found.get("rpcs3"), Some(&rpcs3.to_string_lossy().into_owned()));
+        assert_eq!(found.get("dolphin"), Some(&dolphin.to_string_lossy().into_owned()));
         assert_eq!(found.get("supermodel").map(|p| p.to_lowercase()), Some(supermodel.to_string_lossy().to_lowercase()));
         assert_eq!(found.get("xemu"), None);
         assert_eq!(found.get("lichii"), Some(&lichii.to_string_lossy().into_owned()));

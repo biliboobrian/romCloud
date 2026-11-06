@@ -59,6 +59,13 @@ internal object CoreRanking {
     /** Cœur téléchargeable pour l'émulateur intégré (présent sur le buildbot libretro pour Android). */
     fun isAvailable(core: String): Boolean = core !in UNAVAILABLE
 
+    /**
+     * Console émulée par le moteur intégré : dans la table, avec au moins un des cœurs [cores] (ceux
+     * de ses modèles) téléchargeable. Ses émulateurs externes ne sont pas proposés (LibretroPlayers).
+     */
+    fun covers(systemId: String, cores: Collection<String>): Boolean =
+        RANKING.containsKey(systemId.lowercase()) && cores.any(::isAvailable)
+
     /** Cœurs [cores] du système [systemId] triés selon la table ; ordre conservé pour les autres. */
     fun <T> sort(systemId: String, cores: List<T>, coreOf: (T) -> String): List<T> {
         val order = RANKING[systemId.lowercase()].orEmpty()

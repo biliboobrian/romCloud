@@ -193,6 +193,6 @@ test('sources demandées par les applications connues du serveur', (t) => {
   for (const m of fs.readFileSync(managed, 'utf8').matchAll(/^\s+core: "([^"]+)",/gm)) ids.add(m[1]);
   for (const m of fs.readFileSync(updates, 'utf8').matchAll(/Nx2Fork \{ id: "([^"]+)"/g)) ids.add(m[1]);
   ids.add('eden');
-  assert.ok(ids.size >= 18, [...ids].join(', '));
+  assert.ok(ids.size >= 15, [...ids].join(', '));
   for (const id of ids) assert.ok(mirror.SOURCES[id], `source ${id} absente de emulator-mirror.js`);
 });

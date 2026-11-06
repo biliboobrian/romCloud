@@ -49,18 +49,16 @@ export const SOURCES = {
   shadps4: { name: 'shadPS4', releases: github('shadps4-emu/shadPS4'), platforms: ['windows'] },
   kytyps5: { name: 'KytyPS5', releases: github('KytyPS5/KytyPS5'), prereleases: true, platforms: ['windows'] },
   cemu: { name: 'Cemu', releases: github('cemu-project/Cemu'), platforms: ['windows'] },
-  // Android.
+  // Android, consoles sans moteur intégré seulement (3DS, DS, Game Boy : cœurs Citra, melonDS, mGBA…) :
+  // Flycast pour Naomi et Atomiswave, ARMSX2 pour le Namco System 246, MAME4droid pour les Game & Watch.
   'romcloud-pc': { name: 'RomCloud PC', releases: github('biliboobrian/romCloud'), platforms: ['android'] },
   'winlator-cmod': { name: 'Winlator Cmod', releases: github('coffincolors/winlator'), platforms: ['android'] },
-  azahar: { name: 'Azahar', releases: github('azahar-emu/azahar'), platforms: ['android'] },
-  melonds: { name: 'melonDS', releases: github('rafaelvcaetano/melonDS-android'), platforms: ['android'] },
   flycast: { name: 'Flycast', releases: github('flyinghead/flycast'), platforms: ['android'] },
   'vita3k-android': { name: 'Vita3K', releases: github('Vita3K/Vita3K-Android'), platforms: ['android'] },
   armsx2: { name: 'ARMSX2', releases: github('ARMSX2/ARMSX2'), platforms: ['android'] },
   'cemu-android': { name: 'Cemu', releases: github('SSimco/Cemu'), platforms: ['android'] },
   aps3e: { name: 'aPS3e', releases: github('aenu1/aps3e'), platforms: ['android'] },
   mame4droid: { name: 'MAME4droid', releases: github('seleuco/MAME4droid-Current'), platforms: ['android'] },
-  skyemu: { name: 'SkyEmu', releases: github('skylersaleh/SkyEmu'), platforms: ['android'] },
 };
 
 export const mirrorDir = () => path.join(config.dataDir, 'emulators');

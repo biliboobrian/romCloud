@@ -30,11 +30,18 @@ class EmulatorReleasesTest {
     }
 
     @Test
-    fun `variante d'Azahar et APK absent`() {
-        val azahar = arrayOf("azahar-android-googleplay-2126.2.apk", "azahar-android-vanilla-2126.2.apk", "azahar-2126.2-windows.zip")
-        assertEquals("azahar-android-vanilla-2126.2.apk", pick("org.azahar_emu.azahar", 34, *azahar))
-        assertEquals("azahar-android-googleplay-2126.2.apk", pick("io.github.lime3ds.android", 34, *azahar))
-        assertNull(pick("org.azahar_emu.azahar", 34, "azahar-2126.2-windows.zip"))
+    fun `APK de Flycast et APK absent`() {
+        val flycast = arrayOf("flycast-2.5.apk", "flycast-win64-2.5.zip")
+        assertEquals("flycast-2.5.apk", pick("com.flycast.emulator", 34, *flycast))
+        assertNull(pick("com.flycast.emulator", 34, "flycast-win64-2.5.zip"))
+    }
+
+    @Test
+    fun `pas d'emulateur externe des consoles de LibretroDroid`() {
+        // 3DS, DS, Game Boy : cœurs Citra, melonDS, mGBA… du moteur intégré.
+        for (pkg in listOf("org.azahar_emu.azahar", "io.github.lime3ds.android", "me.magnum.melonds", "com.sky.SkyEmu")) {
+            assertNull(pkg, EmulatorReleases.SOURCES[pkg])
+        }
     }
 
     @Test

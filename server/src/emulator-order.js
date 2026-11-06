@@ -10,69 +10,12 @@
 // Pour afficher l'ordre par défaut dans l'administration, ce module reprend les tables des
 // applications : CoreRanking.kt / LibretroPlayers.kt (Android), cores.rs, managed.rs et
 // catalog.rs (Windows). À mettre à jour avec elles.
+import { AFTER_EXTERNAL, ANDROID_UNAVAILABLE, RANKING, WINDOWS_UNAVAILABLE } from './core-ranking.js';
 import { coreOf, playersFor } from './extra-cores.js';
 import { HttpError } from './http-error.js';
 import { PLATFORMS } from './systems.js';
 
 export { coreOf };
-
-const NES = ['mesen', 'nestopia', 'fceumm', 'bnes', 'quicknes'];
-const GAME_BOY = ['sameboy', 'gambatte', 'mgba', 'mesen-s', 'gearboy', 'tgbdual', 'vbam', 'DoubleCherryGB', 'skyemu'];
-const SEGA_8BIT = ['genesis_plus_gx', 'gearsystem', 'smsplus', 'picodrive', 'genesis_plus_gx_wide'];
-const GENESIS = ['genesis_plus_gx', 'picodrive', 'genesis_plus_gx_wide'];
-const PCE = ['mednafen_pce', 'mednafen_pce_fast', 'mednafen_supergrafx'];
-
-/** Cœurs libretro de chaque console, du plus abouti au moins abouti. */
-const RANKING = {
-  nes: NES,
-  fds: NES,
-  snes: [
-    'bsnes', 'snes9x', 'mesen-s', 'bsnes_hd_beta', 'higan_sfc', 'higan_sfc_balanced', 'bsnes_mercury_accuracy',
-    'bsnes_mercury_balanced', 'bsnes2014_accuracy', 'bsnes2014_balanced', 'mednafen_supafaust', 'snes9x2010',
-    'bsnes_mercury_performance', 'bsnes2014_performance', 'mednafen_snes', 'bsnes_cplusplus98', 'snes9x2005_plus',
-    'snes9x2005', 'snes9x2002',
-  ],
-  gb: GAME_BOY,
-  gbc: GAME_BOY,
-  gba: ['mgba', 'vbam', 'mednafen_gba', 'vba_next', 'gpsp', 'skyemu', 'noods', 'meteor'],
-  n64: ['mupen64plus_next_gles3', 'mupen64plus_next', 'mupen64plus_next_gles2', 'parallel_n64'],
-  nds: ['melondsds', 'desmume', 'melonds', 'desmume2015', 'noods', 'skyemu'],
-  ndsi: ['melondsds', 'melonds', 'desmume', 'desmume2015'],
-  '3ds': ['citra', 'panda3ds', 'azahar'],
-  gc: ['dolphin'],
-  wii: ['dolphin'],
-  virtualboy: ['mednafen_vb'],
-  master: SEGA_8BIT,
-  gamegear: SEGA_8BIT,
-  sg1000: ['genesis_plus_gx', 'gearsystem', 'smsplus', 'picodrive'],
-  genesis: GENESIS,
-  segacd: GENESIS,
-  sega32x: ['picodrive'],
-  saturn: ['mednafen_saturn', 'ymir', 'yabasanshiro', 'yabause', 'kronos'],
-  dreamcast: ['flycast'],
-  psx: ['mednafen_psx_hw', 'swanstation', 'mednafen_psx', 'pcsx_rearmed', 'duckstation', 'goosestation'],
-  ps2: ['pcsx2', 'pcee2', 'play', 'armsx2'],
-  psp: ['ppsspp'],
-  tg16: PCE,
-  tgcd: PCE,
-  supergrafx: ['mednafen_supergrafx', 'mednafen_pce'],
-  ngp: ['mednafen_ngp', 'race'],
-  ngpc: ['mednafen_ngp', 'race'],
-  ws: ['mednafen_wswan'],
-  wsc: ['mednafen_wswan'],
-  atari2600: ['stella', 'stella2014'],
-  atari7800: ['prosystem'],
-  lynx: ['handy', 'mednafen_lynx'],
-  cpc: ['cap32', 'crocods'],
-  gx4000: ['cap32'],
-  neogeo: ['fbneo', 'geolith', 'fbalpha2012'],
-  fbneo: ['fbneo', 'fbalpha2012'],
-  mame: ['mame', 'mamearcade', 'mame2010', 'mame2003_plus', 'mame2003', 'mame2003_midway', 'mame2000'],
-};
-
-/** Cœurs absents du buildbot libretro de chaque plateforme : proposés en dernier. */
-const ANDROID_UNAVAILABLE = ['bnes', 'duckstation', 'goosestation', 'azahar', 'mame', 'mupen64plus_next'];
-const WINDOWS_UNAVAILABLE = ['bnes', 'duckstation', 'goosestation', 'mamearcade', 'armsx2'];
 
 /** Émulateurs gérés par RomCloud sous Windows (managed.rs). */
 const WINDOWS_APPS = [
@@ -83,11 +26,9 @@ const WINDOWS_APPS = [
 
 /** Émulateurs Windows installés par l'utilisateur (catalog.rs). */
 const WINDOWS_EMULATORS = [
-  { id: 'rpcs3', name: 'RPCS3', systems: ['ps3'] },
   { id: 'ppsspp', name: 'PPSSPP', systems: ['pspminis'] },
   { id: 'vita3k', name: 'Vita3K', systems: ['vita'] },
   { id: 'dolphin', name: 'Dolphin', systems: ['wiiware', 'triforce'] },
-  { id: 'cemu', name: 'Cemu', systems: ['wiiu'] },
   { id: 'eden', name: 'Eden', systems: ['switch'] },
   { id: 'lichii', name: 'Lichii', systems: ['switch'] },
   { id: 'orchid', name: 'Orchid', systems: ['switch'] },
@@ -153,8 +94,11 @@ function windowsEmulators(system) {
   const list = [];
   const app = WINDOWS_APPS.find(forSystem);
   if (app) list.push({ id: `builtin:${app.core}`, name: app.name, kind: 'builtin' });
-  for (const core of ranked) list.push({ id: `builtin:${core}`, name: `RomCloud - ${core}`, kind: 'builtin' });
+  const core = (c) => ({ id: `builtin:${c}`, name: `RomCloud - ${c}`, kind: 'builtin' });
+  for (const c of ranked.filter((c) => !AFTER_EXTERNAL.includes(c))) list.push(core(c));
   for (const emu of WINDOWS_EMULATORS.filter(forSystem)) list.push({ id: `emu:${emu.id}`, name: emu.name, kind: 'external' });
+  // Cœurs pas encore essayés (xemu) : après l'émulateur externe.
+  for (const c of ranked.filter((c) => AFTER_EXTERNAL.includes(c))) list.push(core(c));
   return list;
 }
 
