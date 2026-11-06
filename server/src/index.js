@@ -7,6 +7,7 @@ import { config, screenscraperEnabled } from './config.js';
 import { defaultLanguage, t, translateToken } from './i18n.js';
 import { scanAll } from './library.js';
 import { startMirrorRefresh } from './emulator-mirror.js';
+import { cleanStoredPlayers } from './systems.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -19,6 +20,10 @@ try {
 } catch (err) {
   console.error(t(defaultLanguage, 'log.initialScanFailed', { error: translateToken(err.message, defaultLanguage) }));
 }
+
+// Émulateurs externes des consoles du moteur intégré retirés des systèmes enregistrés.
+const cleaned = cleanStoredPlayers();
+if (cleaned) console.log(`[systems] ${cleaned} émulateur(s) externe(s) retiré(s) des consoles du moteur intégré`);
 
 // Miroir des émulateurs : nouvelles versions des fichiers déjà gardés récupérées d'avance.
 startMirrorRefresh();

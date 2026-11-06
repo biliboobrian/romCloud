@@ -7,6 +7,7 @@ import { SCREENSCRAPER_SYSTEM_IDS } from './screenscraper-systems.js';
 import { DEFAULT_SYSTEM_COLORS, normalizeColor } from './system-colors.js';
 import { normalizeEmulatorOrder } from './emulator-order.js';
 import { normalizeCoreOptions, parseCoreOptions } from './core-options.js';
+import { usefulPlayers } from './extra-cores.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
@@ -148,7 +149,7 @@ export function createSystem(input) {
     validateRegex(input.filenameRegex),
     input.libretroName || null,
     input.screenscraperId ? Number(input.screenscraperId) : SCREENSCRAPER_SYSTEM_IDS[id] ?? null,
-    JSON.stringify(input.players || []),
+    JSON.stringify(usefulPlayers({ id, shortname: input.shortname || id }, input.players)),
     JSON.stringify(normalizePlatforms(input.platforms)),
     input.source || 'custom',
     input.sourceRevision ?? null,
@@ -180,6 +181,8 @@ export function updateSystem(id, input) {
     folderGames: input.folderGames !== undefined ? flag(input.folderGames) : current.folderGames,
     coreOptions: input.coreOptions !== undefined ? normalizeCoreOptions(input.coreOptions) : current.coreOptions,
   };
+  // Console du moteur intégré : émulateurs externes retirés (proposés à aucune application).
+  next.players = usefulPlayers({ id, shortname: next.shortname }, next.players);
   db.prepare(
     `UPDATE systems SET name = ?, shortname = ?, filename_regex = ?, libretro_name = ?, screenscraper_id = ?, players = ?, platforms = ?, color = ?, emulator_order = ?, folder_games = ?, core_options = ?
      WHERE id = ?`,
@@ -373,4 +376,21 @@ export async function importDaijishouPlatform({ filename, json }) {
   let folder = data.folder;
   for (let i = 2; db.prepare('SELECT 1 FROM systems WHERE folder = ?').get(folder); i++) folder = `${data.folder}-${i}`;
   return createSystem({ ...data, folder });
+}
+
+/**
+ * Systèmes déjà enregistrés : émulateurs externes des consoles du moteur intégré retirés de leurs
+ * modèles (DuckStation, melonDS, Dolphin…, importés avant qu'ils ne soient plus proposés). Renvoie
+ * le nombre de modèles retirés.
+ */
+export function cleanStoredPlayers() {
+  let removed = 0;
+  for (const row of db.prepare('SELECT id, shortname, players FROM systems').all()) {
+    const players = JSON.parse(row.players || '[]');
+    const kept = usefulPlayers(row, players);
+    if (kept.length === players.length) continue;
+    db.prepare('UPDATE systems SET players = ? WHERE id = ?').run(JSON.stringify(kept), row.id);
+    removed += players.length - kept.length;
+  }
+  return removed;
 }

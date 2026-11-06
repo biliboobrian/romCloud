@@ -523,7 +523,12 @@ async function copyPlayers() {
     const known = new Set(current.map((p) => p.uniqueId));
     const added = source.filter((p) => !known.has(p.uniqueId));
     if (!added.length) return toast(t('sys.emulatorsPresent'));
-    await savePlayers([...current, ...added], t('sys.emulatorsAdded', { n: added.length }));
+    // Console du moteur intégré : le serveur ne garde pas les émulateurs externes.
+    const before = current.length;
+    await savePlayers([...current, ...added], (saved) => {
+      const n = saved.players.length - before;
+      return n > 0 ? t('sys.emulatorsAdded', { n }) : t('sys.emulatorsNotNeeded');
+    });
   });
   btn.disabled = false;
 }
@@ -533,7 +538,7 @@ async function savePlayers(players, message) {
     state.current = await api(`/systems/${encodeURIComponent(state.current.id)}`, { method: 'PUT', body: { players } });
     renderPlayers(state.current);
     loadEmulatorCandidates();
-    toast(message);
+    toast(typeof message === 'function' ? message(state.current) : message);
     await loadSystems();
   });
 }
