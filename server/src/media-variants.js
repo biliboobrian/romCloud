@@ -1,30 +1,19 @@
 // Images allégées pour les applications : jaquettes, captures et images des systèmes réduites et
-// converties en WebP (qualité 80, transparence gardée), à la première demande puis gardées sur le
-// disque à côté de l'original (dossier « _variants »). Les grilles et listes demandent la vignette,
-// la fiche du jeu la version moyenne ; l'original reste servi sans demande de taille. Icône
+// converties en WebP (qualité 75, transparence gardée ; petites images aussi essayées sans perte,
+// la plus légère gardée : media-optimize.js), à la première demande puis gardées sur le disque à
+// côté de l'original (dossier « _variants »). Original déjà plus léger sans réduction (capture d'une
+// console 8 bits, jaquette déjà petite) : servi tel quel, marqué par un fichier vide « .same ».
+// Les grilles et listes demandent la vignette, la fiche du jeu la version moyenne ; l'original reste servi sans demande de taille. Icône
 // (« icon ») : carré PNG de 256 px, image entière sur fond transparent (raccourci d'un jeu sur le
 // bureau de Windows, glissé tel quel dans un fichier .ico).
 import fs from 'node:fs';
 import path from 'node:path';
+import { loadSharp, smallestEncoding } from './media-optimize.js';
 
 /** Tailles proposées : largeur (et hauteur) maximales en pixels ; jamais agrandi. */
 export const VARIANTS = { thumb: 400, medium: 800, icon: 256 };
 export const VARIANTS_DIR = '_variants';
-const QUALITY = 80;
-
-let sharpLoaded;
-/** Bibliothèque d'images (sharp), ou null si elle n'a pas pu être chargée (original servi). */
-async function sharp() {
-  if (sharpLoaded === undefined) {
-    try {
-      sharpLoaded = (await import('sharp')).default;
-    } catch (e) {
-      console.warn(`Images réduites indisponibles (sharp) : ${e.message}`);
-      sharpLoaded = null;
-    }
-  }
-  return sharpLoaded;
-}
+const QUALITY = 75;
 
 const pending = new Map(); // fichier à produire -> promesse (une seule conversion à la fois par image)
 
@@ -45,26 +34,40 @@ export async function mediaVariant(file, variant, dir) {
   }
   const prefix = `${path.basename(file)}.${variant}.`;
   const icon = variant === 'icon';
-  const target = path.join(dir, `${prefix}${Math.round(stat.mtimeMs)}-${stat.size}.${icon ? 'png' : 'webp'}`);
+  const stamp = `${prefix}${Math.round(stat.mtimeMs)}-${stat.size}`;
+  const target = path.join(dir, `${stamp}.${icon ? 'png' : 'webp'}`);
+  const same = path.join(dir, `${stamp}.same`);
   if (fs.existsSync(target)) return target;
+  if (fs.existsSync(same)) return file;
   if (!pending.has(target)) {
     pending.set(target, (async () => {
-      const lib = await sharp();
+      const lib = await loadSharp();
       if (!lib) return null;
       try {
         fs.mkdirSync(dir, { recursive: true });
         const part = `${target}.${process.pid}.part`;
-        const image = lib(file, { animated: false }).rotate();
-        await (icon
-          ? image.resize({ width, height: width, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png()
-          : image.resize({ width, height: width * 2, fit: 'inside', withoutEnlargement: true }).webp({ quality: QUALITY })
-        ).toFile(part);
-        fs.renameSync(part, target);
-        // Versions plus anciennes de la même image (original remplacé) : retirées.
-        for (const old of fs.readdirSync(dir)) {
-          if (old.startsWith(prefix) && path.join(dir, old) !== target) fs.rmSync(path.join(dir, old), { force: true });
+        let result = target;
+        if (icon) {
+          await lib(file, { animated: false }).rotate()
+            .resize({ width, height: width, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(part);
+          fs.renameSync(part, target);
+        } else {
+          const best = await smallestEncoding(file, { width, height: width * 2, quality: QUALITY, originalSize: stat.size });
+          if (!best) return null;
+          if (best.original) {
+            fs.writeFileSync(same, '');
+            result = file;
+          } else {
+            fs.writeFileSync(part, best.buffer);
+            fs.renameSync(part, target);
+          }
         }
-        return target;
+        // Versions plus anciennes de la même image (original remplacé) : retirées.
+        const kept = result === file ? same : target;
+        for (const old of fs.readdirSync(dir)) {
+          if (old.startsWith(prefix) && path.join(dir, old) !== kept) fs.rmSync(path.join(dir, old), { force: true });
+        }
+        return result;
       } catch (e) {
         console.warn(`Image réduite impossible (${file}) : ${e.message}`);
         return null;

@@ -78,6 +78,7 @@ async function render() {
   $('#errorsClearBtn').classList.toggle('hidden', tab !== 'errors' || detailId != null);
   $('#downloadsClearBtn').classList.toggle('hidden', tab !== 'downloads' || detailId != null);
   $('#diskRefreshBtn').classList.toggle('hidden', tab !== 'disk' || detailId != null);
+  $('#diskRecompressBtn').classList.toggle('hidden', tab !== 'disk' || detailId != null);
   $('#tokenCreateBtn').classList.toggle('hidden', tab !== 'tokens' || tokenId != null);
   const box = $('#usersContent');
   box.innerHTML = `<p class="muted">${helpers.escapeHtml(t('apks.loading'))}</p>`;
@@ -191,6 +192,12 @@ function renderDisk(box, usage) {
   for (const el of $$('details[data-disk]', box)) {
     el.addEventListener('toggle', () => (el.open ? diskOpen.add(el.dataset.disk) : diskOpen.delete(el.dataset.disk)));
   }
+  // Jaquettes et captures déjà gardées recompressées au plus léger (tâche suivie dans « Tâches »).
+  $('#diskRecompressBtn').onclick = () => helpers.guard(async () => {
+    if (!confirm(t('disk.recompressConfirm'))) return;
+    const { job } = await helpers.api('/media/recompress', { method: 'POST' });
+    helpers.toast(t(job ? 'disk.recompressStarted' : 'disk.recompressRunning'));
+  });
   $('#diskRefreshBtn').onclick = () => {
     diskRefresh = true;
     render();

@@ -30,6 +30,8 @@ import { packedFileStream } from '../folder-pack.js';
 
 export { QuotaError } from './screenscraper.js';
 
+import { optimizeOriginal } from '../media-optimize.js';
+
 export const SCRAPE_SOURCES = ['auto', 'screenscraper', 'libretro'];
 
 const EXT_BY_TYPE = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
@@ -39,11 +41,12 @@ async function downloadMedia(url, dir, baseName) {
   if (!res.ok) return null;
   const type = (res.headers.get('content-type') || '').split(';')[0].trim();
   if (!type.startsWith('image/')) return null;
-  const buffer = Buffer.from(await res.arrayBuffer());
+  // Enregistrée au plus léger (WebP, au plus 1600 px : media-optimize.js).
+  const image = await optimizeOriginal(Buffer.from(await res.arrayBuffer()), EXT_BY_TYPE[type] || '.png');
   fs.mkdirSync(dir, { recursive: true });
   for (const old of fs.readdirSync(dir)) if (old.startsWith(`${baseName}.`)) fs.rmSync(path.join(dir, old));
-  const file = `${baseName}${EXT_BY_TYPE[type] || '.png'}`;
-  fs.writeFileSync(path.join(dir, file), buffer);
+  const file = `${baseName}${image.ext}`;
+  fs.writeFileSync(path.join(dir, file), image.buffer);
   return file;
 }
 
@@ -388,14 +391,14 @@ export async function scrapeGame(gameId, source = 'auto') {
 }
 
 /** Enregistre une image fournie manuellement (upload depuis l'interface web). */
-export function saveCustomMedia(gameId, type, buffer, mimeType) {
+export async function saveCustomMedia(gameId, type, buffer, mimeType) {
   const row = requireGameRow(gameId);
-  const ext = EXT_BY_TYPE[mimeType];
-  if (!ext) throw new I18nError('errors.imageFormat');
+  if (!EXT_BY_TYPE[mimeType]) throw new I18nError('errors.imageFormat');
+  const { buffer: data, ext } = await optimizeOriginal(buffer, EXT_BY_TYPE[mimeType]);
   const dir = gameMediaDir(row.id);
   fs.mkdirSync(dir, { recursive: true });
   for (const old of fs.readdirSync(dir)) if (old.startsWith(`${type}.`)) fs.rmSync(path.join(dir, old));
-  fs.writeFileSync(path.join(dir, `${type}${ext}`), buffer);
+  fs.writeFileSync(path.join(dir, `${type}${ext}`), data);
   db.prepare(`UPDATE games SET ${type} = ?, updated_at = datetime('now') WHERE id = ?`).run(`${type}${ext}`, row.id);
   // Capture ajoutée après une place vide (« screenshot4 » sans « screenshot3 ») : remontée.
   if (SCREENSHOT_TYPES.includes(type)) compactScreenshots(row.id);

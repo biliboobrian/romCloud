@@ -20,7 +20,8 @@ import { packedFileStream, queueFolderPack } from './folder-pack.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
 import { setGroup } from './groups.js';
-import { cancelJob, enqueueScrape, listJobs } from './jobs.js';
+import { cancelJob, enqueueConvert, enqueueScrape, listJobs } from './jobs.js';
+import { recompressAll } from './media-optimize.js';
 import {
   acceptsFileName,
   deleteGame,
@@ -238,7 +239,7 @@ async function sendImage(res, file, size, variantsDir) {
 api.put(
   '/systems/:id/image',
   express.raw({ type: 'image/*', limit: '10mb' }),
-  (req, res) => res.json(setSystemImage(req.params.id, req.body, req.get('content-type')?.split(';')[0])),
+  h(async (req, res) => res.json(await setSystemImage(req.params.id, req.body, req.get('content-type')?.split(';')[0]))),
 );
 
 api.delete('/systems/:id/image', (req, res) => res.json(deleteSystemImage(req.params.id)));
@@ -646,13 +647,19 @@ api.get('/games/:id/media/:type', async (req, res) => {
 api.put(
   '/games/:id/media/:type',
   express.raw({ type: 'image/*', limit: '20mb' }),
-  (req, res) => {
+  h(async (req, res) => {
     const { type } = req.params;
     if (!MEDIA_TYPES.includes(type)) throw new HttpError(404, 'errors.unknownMediaType');
     if (!Buffer.isBuffer(req.body) || !req.body.length) throw new HttpError(400, 'errors.imageMissing');
-    res.json(saveCustomMedia(req.params.id, type, req.body, req.get('content-type')));
-  },
+    res.json(await saveCustomMedia(req.params.id, type, req.body, req.get('content-type')));
+  }),
 );
+
+// Jaquettes, captures et images des systèmes déjà gardées recompressées au plus léger (tâche, voir /jobs).
+api.post('/media/recompress', (req, res) => {
+  const job = enqueueConvert({ key: 'media-recompress', label: token('jobs.recompressImages'), systemId: null, run: recompressAll });
+  res.status(202).json({ job });
+});
 
 // Suppression d'une image (jaquette, capture : les suivantes remontent d'une place).
 api.delete('/games/:id/media/:type', (req, res) => {
