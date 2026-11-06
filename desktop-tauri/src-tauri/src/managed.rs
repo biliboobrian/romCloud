@@ -1,6 +1,6 @@
 // Émulateurs gérés par RomCloud dans le moteur intégré, pour les consoles sans cœur libretro :
-// PlayStation 3 (RPCS3), PlayStation 4 (shadPS4), PlayStation 5 (KytyPS5) et Wii U (Cemu). Dernière version Windows téléchargée depuis GitHub au
-// premier lancement dans %APPDATA%\RomCloud\<émulateur> (l'émulateur y garde aussi sa configuration
+// PlayStation 3 (RPCS3), PlayStation 4 (shadPS4), PlayStation 5 (KytyPS5) et Wii U (Cemu). Dernière version Windows téléchargée depuis le
+// serveur RomCloud (qui la récupère sur GitHub et en garde une copie, mirror.rs) au premier lancement dans %APPDATA%\RomCloud\<émulateur> (l'émulateur y garde aussi sa configuration
 // et les sauvegardes), fichiers système pris dans le dossier des BIOS, jeu lancé en plein écran.
 //  - RPCS3 : firmware installé depuis PS3UPDAT.PUP, mises à jour et DLC du jeu (.pkg) installés une
 //    fois, licences RAP du serveur écrites dans dev_hdd0 (jeux et DLC PSN), jeu = ISO, EBOOT.BIN ou dossier du disque ;
@@ -12,7 +12,7 @@
 //  - Cemu : mode portable (dossier « portable »), keys.txt copié pour les jeux chiffrés (.wud, .wux),
 //    jeu = .wua, .wud, .wux, .rpx ou dossier code/content/meta.
 use crate::error::{AppError, Result};
-use crate::{account, api, catalog, folders, paths};
+use crate::{account, catalog, events, folders, mirror, paths};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -22,8 +22,6 @@ pub struct App {
     pub core: &'static str,
     pub name: &'static str,
     systems: &'static [&'static str],
-    /// Dernière version publiée, ou liste des versions (tableau : la plus récente qui a une archive Windows).
-    releases: &'static str,
     /// Fins possibles du nom de l'archive Windows publiée (minuscules), par ordre de préférence ; ou
     /// partie du nom d'une archive .zip / .7z dont la fin change à chaque version (« win64-sdl »).
     assets: &'static [&'static str],
@@ -38,7 +36,6 @@ const RPCS3: App = App {
     core: "rpcs3",
     name: "RPCS3",
     systems: &["ps3"],
-    releases: "https://api.github.com/repos/RPCS3/rpcs3-binaries-win/releases/latest",
     assets: &["_win64_msvc.7z", "_win64.7z"],
     exe: "rpcs3.exe",
     args: &["--no-gui", "--fullscreen", "{file}"],
@@ -49,7 +46,6 @@ const CEMU: App = App {
     core: "cemu",
     name: "Cemu",
     systems: &["wiiu"],
-    releases: "https://api.github.com/repos/cemu-project/Cemu/releases/latest",
     assets: &["-windows-x64.zip"],
     exe: "Cemu.exe",
     args: &["-f", "-g", "{file}"],
@@ -60,7 +56,6 @@ const SHADPS4: App = App {
     core: "shadps4",
     name: "shadPS4",
     systems: &["ps4"],
-    releases: "https://api.github.com/repos/shadps4-emu/shadPS4/releases/latest",
     // « shadps4-win64-sdl-0.19.0.zip » : la version suit le nom.
     assets: &["win64-sdl"],
     exe: "shadPS4.exe",
@@ -72,8 +67,7 @@ const KYTYPS5: App = App {
     core: "kytyps5",
     name: "KytyPS5",
     systems: &["ps5"],
-    // Versions publiées plusieurs fois par jour, pas toujours avec l'archive Windows : la liste est lue.
-    releases: "https://api.github.com/repos/KytyPS5/KytyPS5/releases?per_page=20",
+    // Versions publiées plusieurs fois par jour, pas toujours avec l'archive Windows : la plus récente qui en a une.
     // « KytyPS5-2026-10-12-df5b9b9-Windows-x64.zip ».
     assets: &["-windows-x64.zip"],
     exe: "kyty_emulator.exe",
@@ -145,7 +139,7 @@ impl App {
         let _ = std::fs::remove_file(self.exe());
     }
 
-    /// Archive Windows de la dernière version (ou de la plus récente qui en a une, pour une liste) : URL.
+    /// Archive Windows de la plus récente version qui en a une (liste du serveur, [core] : source du miroir) : URL.
     fn release_asset(&self, release: &Value) -> Option<String> {
         if let Some(list) = release.as_array() {
             return list.iter().find_map(|r| self.release_asset(r));
@@ -163,23 +157,21 @@ impl App {
         AppError::new("errors.appDownload", json!({ "name": self.name, "detail": detail.into() }))
     }
 
-    async fn get(&self, url: &str) -> Result<reqwest::Response> {
-        let res = api::client().get(url).send().await.map_err(|e| self.download_error(api::network_detail(&e)))?;
-        if !res.status().is_success() {
-            return Err(self.download_error(format!("HTTP {}", res.status().as_u16())));
-        }
-        Ok(res)
-    }
-
     /// Émulateur installé, sinon téléchargé et décompressé dans son dossier (les fichiers déjà présents,
     /// configuration et sauvegardes, sont gardés ; l'exécutable est mis en place en dernier).
     async fn ensure_installed(&'static self) -> Result<PathBuf> {
         if self.installed() {
             return Ok(self.exe());
         }
-        let release: Value = self.get(self.releases).await?.json().await.map_err(|e| self.download_error(e.to_string()))?;
-        let url = self.release_asset(&release).ok_or_else(|| self.download_error("archive Windows introuvable"))?;
-        let archive = self.get(&url).await?.bytes().await.map_err(|e| self.download_error(e.to_string()))?;
+        let releases = mirror::releases(self.core).await.map_err(|e| self.download_error(e.to_string()))?;
+        let url = self.release_asset(&releases).ok_or_else(|| self.download_error("archive Windows introuvable"))?;
+        // Archive récupérée par le serveur s'il ne l'a pas encore (progression envoyée à l'interface), puis téléchargée depuis lui.
+        mirror::wait_stored(&url, self.name, |received, total| {
+            events::emit("emulators:mirror", json!({ "name": self.name, "received": received, "total": total }));
+        })
+        .await?;
+        let archive = mirror::download(&url).await.map_err(|e| self.download_error(e.to_string()))?;
+        events::emit("emulators:mirror", json!({ "name": self.name, "done": true }));
         tokio::task::spawn_blocking(move || -> Result<()> {
             let staging = paths::user_data().join(format!("{}-download", self.core));
             let _ = std::fs::remove_dir_all(&staging);

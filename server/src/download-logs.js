@@ -4,7 +4,7 @@
 // comme reprise. Statistiques pour l'administration : par type, appareil, profil, jeu et jour.
 import { db } from './db.js';
 
-export const DOWNLOAD_KINDS = ['game', 'bios', 'apk'];
+export const DOWNLOAD_KINDS = ['game', 'bios', 'apk', 'emulator'];
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS download_logs (

@@ -68,6 +68,9 @@ class EmulatorReleasesTest {
     fun `site du gestionnaire de versions`() {
         assertEquals("git.eden-emu.dev", EmulatorReleases.SOURCES.getValue("dev.eden.eden_emulator").host)
         assertEquals("github.com", EmulatorReleases.SOURCES.getValue("com.flycast.emulator").host)
-        assertTrue(EmulatorReleases.SOURCES.values.all { it.api.startsWith("https://") })
+        // Sources du miroir du serveur (SOURCES de emulator-mirror.js) : Eden et ses variantes, même source.
+        assertEquals("eden", EmulatorReleases.SOURCES.getValue("dev.legacy.eden_emulator").mirror)
+        assertEquals("vita3k-android", EmulatorReleases.SOURCES.getValue("org.vita3k.emulator").mirror)
+        assertTrue(EmulatorReleases.SOURCES.values.all { it.mirror.matches(Regex("[a-z0-9-]+")) })
     }
 }

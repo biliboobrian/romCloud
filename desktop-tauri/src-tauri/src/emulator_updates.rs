@@ -1,16 +1,16 @@
 // Mises à jour des émulateurs du catalogue publiés avec des Releases : dernière version comparée à
 // celle installée (lue dans l'exécutable), puis téléchargée et décompressée à la place de
-// l'ancienne. Eden (et eden-cli, même archive) : Releases de git.eden-emu.dev, archive Windows de
+// l'ancienne. Versions et fichiers demandés au serveur RomCloud (mirror.rs), qui les récupère sur
+// Internet et en garde une copie : une mise à jour n'est proposée qu'une fois sur le serveur. Eden (et eden-cli, même archive) : Releases de git.eden-emu.dev, archive Windows de
 // la même variante que celle installée (MSVC, clang PGO ou GCC ; PGO, recommandée par Eden, sinon).
 // Forks d'Eden pour la Switch 2 (Lichii, Orchid) : Releases GitHub (préversions comprises : Lichii
 // ne publie que des « build-75 » en préversion), la plus récente qui a une archive Windows.
 use crate::error::{AppError, Result};
-use crate::{api, launcher, paths, settings};
+use crate::{launcher, mirror, paths, settings};
 use serde_json::{json, Value};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-const EDEN_RELEASES: &str = "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest";
 /// Variantes Windows d'Eden, de la plus recommandée à la moins (PGO : « peuvent améliorer les performances »).
 const EDEN_VARIANTS: &[&str] = &["clang-pgo", "msvc-standard", "gcc-standard", "clang-standard"];
 
@@ -18,8 +18,6 @@ const EDEN_VARIANTS: &[&str] = &["clang-pgo", "msvc-standard", "gcc-standard", "
 pub struct Nx2Fork {
     pub id: &'static str,
     pub name: &'static str,
-    /// Liste des Releases (préversions comprises : « releases/latest » de GitHub les ignore).
-    releases: &'static str,
     /// Début du nom des archives (« lichii-windows-x86_64.zip », « orchid-v0.7.4-windows-x86_64.zip »).
     prefix: &'static str,
     /// Exécutable de l'interface (jeux lancés avec lui : il lit nx2_switches.txt).
@@ -29,8 +27,9 @@ pub struct Nx2Fork {
 }
 
 pub const NX2_FORKS: &[Nx2Fork] = &[
-    Nx2Fork { id: "orchid", name: "Orchid", releases: "https://api.github.com/repos/MythosOfs/Orchid/releases?per_page=10", prefix: "orchid", exe: "orchid.exe", marker: b"Orchid " },
-    Nx2Fork { id: "lichii", name: "Lichii", releases: "https://api.github.com/repos/zortos293/Lichii/releases?per_page=10", prefix: "lichii", exe: "lichii.exe", marker: b"Lichii " },
+    // Releases des dépôts MythosOfs/Orchid et zortos293/Lichii (préversions comprises), via le serveur.
+    Nx2Fork { id: "orchid", name: "Orchid", prefix: "orchid", exe: "orchid.exe", marker: b"Orchid " },
+    Nx2Fork { id: "lichii", name: "Lichii", prefix: "lichii", exe: "lichii.exe", marker: b"Lichii " },
 ];
 
 /// Archives Windows des forks Switch 2, de la plus recommandée à la moins : la standard d'abord,
@@ -211,29 +210,26 @@ fn default_dir(id: &str) -> PathBuf {
     PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default()).join("Programs").join(display_name(id))
 }
 
-async fn get_json(url: &str) -> Result<Value> {
-    let res = api::client()
-        .get(url)
-        .header("Accept", "application/json")
-        .header("User-Agent", "RomCloud")
-        .timeout(std::time::Duration::from_secs(20))
-        .send()
-        .await
-        .map_err(|e| AppError::new("errors.unreachable", json!({ "detail": api::network_detail(&e) })))?;
-    if !res.status().is_success() {
-        return Err(AppError::new("errors.http", json!({ "status": res.status().as_u16() })));
-    }
-    Ok(res.json().await?)
-}
-
-async fn latest_release(id: &str) -> Result<Value> {
+/// Dernière version (liste du serveur, la plus récente d'abord) qui a une archive Windows pour l'émulateur [id].
+pub fn latest_in(id: &str, releases: &Value, variant: &str) -> Value {
     if let Some(fork) = nx2_fork(id) {
-        return Ok(nx2_release(fork, &get_json(fork.releases).await?));
+        return nx2_release(fork, releases);
     }
-    get_json(EDEN_RELEASES).await
+    releases
+        .as_array()
+        .and_then(|list| list.iter().find(|r| pick_asset(r, variant).is_some()))
+        .cloned()
+        .unwrap_or_else(|| json!({}))
 }
 
-/// État : { installed, variant, latest, asset, updateAvailable, dir }.
+async fn latest_release(id: &str, variant: &str) -> Result<Value> {
+    Ok(latest_in(id, &mirror::releases(id).await?, variant))
+}
+
+/// État : { installed, variant, latest, asset, updateAvailable, dir, server, preparing, serverReceived,
+/// serverTotal, serverError } ; [server] : état de l'archive sur le serveur (stored, fetching, remote,
+/// error). Version plus récente pas encore sur le serveur : récupération demandée au serveur
+/// (preparing), mise à jour proposée (updateAvailable) une fois qu'il l'a.
 pub async fn check(id: &str) -> Result<Value> {
     if !supported(id) {
         return Err(AppError::new("errors.unknownEmulator", json!({ "id": id })));
@@ -263,17 +259,29 @@ pub async fn check(id: &str) -> Result<Value> {
         .or_else(|| setting_map("emulatorVariants").get(id).and_then(Value::as_str).map(String::from))
         .or(detected)
         .unwrap_or_else(|| default_variant(id).into());
-    let release = latest_release(id).await?;
+    let release = latest_release(id, &wanted_variant(id, &variant)).await?;
     let latest = release["tag_name"].as_str().unwrap_or("").to_string();
     let asset = asset_for(id, &release, &wanted_variant(id, &variant));
     let replace_variant = fork.is_some() && installed.is_some() && asset.as_ref().is_some_and(|(_, _, v)| *v != variant);
-    let update = asset.is_some() && (replace_variant || installed.as_deref().is_none_or(|v| newer(id, &latest, v)));
+    let newer_build = asset.is_some() && (replace_variant || installed.as_deref().is_none_or(|v| newer(id, &latest, v)));
+    // Archive sur le serveur : sinon demandée (le serveur la récupère, l'interface suit la progression).
+    let mut server = asset.as_ref().and_then(|(name, _, _)| mirror::asset(&release, name)).cloned().unwrap_or_else(|| json!({}));
+    if let (true, Some((_, url, _))) = (newer_build && !mirror::is_stored(&server), &asset) {
+        server = mirror::prepare(url).await?;
+    }
+    let stored = mirror::is_stored(&server);
+    let server_state = server["state"].as_str().unwrap_or("remote");
     Ok(json!({
+        "server": server_state,
+        "preparing": newer_build && server_state == "fetching",
+        "serverReceived": server["received"].as_u64().unwrap_or(0),
+        "serverTotal": server["total"].as_u64().unwrap_or(0),
+        "serverError": server["error"].as_str(),
         "installed": installed,
         "variant": variant,
         "latest": latest,
         "asset": asset.map(|(name, _, _)| name),
-        "updateAvailable": update,
+        "updateAvailable": newer_build && stored,
         "dir": exe.and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned())).unwrap_or_else(|| default_dir(id).to_string_lossy().into_owned()),
     }))
 }
@@ -310,20 +318,12 @@ fn extract(zip: &[u8], dir: &Path, name: &str) -> Result<()> {
 /// emplacement enregistré (dossier d'Eden, exécutable d'un fork : lichii.exe, orchid.exe) ; renvoie le nouvel état ([check]).
 pub async fn install(id: &str, dir: Option<&str>) -> Result<Value> {
     let state = check(id).await?;
-    let release = latest_release(id).await?;
     let variant = wanted_variant(id, state["variant"].as_str().unwrap_or(default_variant(id)));
+    let release = latest_release(id, &variant).await?;
     let (name, url, picked) = asset_for(id, &release, &variant).ok_or_else(|| AppError::msg("archive Windows introuvable".to_string()))?;
-    let res = api::client()
-        .get(&url)
-        .header("User-Agent", "RomCloud")
-        .timeout(std::time::Duration::from_secs(1800))
-        .send()
-        .await
-        .map_err(|e| AppError::new("errors.unreachable", json!({ "detail": api::network_detail(&e) })))?;
-    if !res.status().is_success() {
-        return Err(AppError::new("errors.http", json!({ "status": res.status().as_u16() })));
-    }
-    let zip = res.bytes().await?.to_vec();
+    // Archive récupérée par le serveur (si ce n'est pas déjà fait), puis téléchargée depuis lui.
+    mirror::wait_stored(&url, &name, |_, _| {}).await?;
+    let zip = mirror::download(&url).await?;
     let dir = PathBuf::from(dir.map(str::trim).filter(|d| !d.is_empty()).unwrap_or(state["dir"].as_str().unwrap_or("")));
     {
         let dir = dir.clone();
@@ -471,6 +471,19 @@ mod tests {
         assert!(newer("orchid", "v0.7.10", "v0.7.4"));
         assert!(!newer("orchid", "v0.7.4", "v0.7.4"));
         assert_eq!(orchid.exe, "orchid.exe");
+    }
+
+    #[test]
+    fn derniere_version_du_serveur_avec_une_archive_windows() {
+        // Liste du serveur : Release Android seule d'abord, puis la dernière avec archives Windows.
+        let list = json!([
+            { "tag_name": "v0.3.0-android", "assets": [{ "name": "Eden-Android-v0.3.0-standard.apk", "browser_download_url": "u" }] },
+            release(),
+        ]);
+        assert_eq!(latest_in("eden", &list, "amd64-clang-pgo")["tag_name"], "v0.2.1");
+        assert_eq!(latest_in("eden", &json!([]), "amd64-clang-pgo"), json!({}));
+        let forks = json!([github_release("build-75", &["lichii-windows-x86_64.zip"])]);
+        assert_eq!(latest_in("lichii", &forks, "x86_64")["tag_name"], "build-75");
     }
 
     #[test]

@@ -21,6 +21,7 @@ mod keyboard;
 mod launcher;
 mod library;
 mod lobby;
+mod mirror;
 mod managed;
 mod netplay;
 mod pads;
