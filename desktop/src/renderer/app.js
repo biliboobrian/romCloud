@@ -1973,7 +1973,7 @@
   }
 
   /** Émulateurs des jeux de la Switch 2 (launcher.rs) ; avec ceux-là, émulateurs qui ont une aide de configuration. */
-  const SWITCH2_EMULATORS = ['orchid', 'lichii'];
+  const SWITCH2_EMULATORS = ['orchid', 'fritchii', 'lichii'];
   const SETUP_HELP_EMULATORS = ['eden', ...SWITCH2_EMULATORS];
 
   /** Émulateur du catalogue introuvable : le télécharger ou indiquer son emplacement. */

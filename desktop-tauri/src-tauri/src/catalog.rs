@@ -53,6 +53,10 @@ pub static EMULATORS: &[Emulator] = &[
     // Orchid : fork de Lichii (même fonctionnement) qui corrige le rendu d'Ocarina of Time (Switch 2).
     emu!("orchid", "Orchid", ["switch"], "https://github.com/MythosOfs/Orchid/releases", ["orchid.exe"], ["Orchid", "orchid"],
         ["-f", "-g", "{file}"]),
+    // Fritchii : fork de Lichii (même fonctionnement, exécutable lichii.exe : reconnu à son dossier
+    // « Fritchii… ») qui corrige aussi Ocarina of Time (eau, zones surexposées) et ajoute DLSS.
+    emu!("fritchii", "Fritchii", ["switch"], "https://github.com/Frizti/Fritchii/releases", ["lichii.exe"], ["Fritchii", "fritchii"],
+        ["-f", "-g", "{file}"]),
     emu!("ryujinx", "Ryujinx", ["switch"], "https://ryujinx.app/download", ["Ryujinx.exe"], ["Ryujinx", "ryujinx"],
         ["--fullscreen", "{file}"]),
     emu!("snes9x", "Snes9x", ["satellaview"], "https://www.snes9x.com/", ["snes9x-x64.exe", "snes9x.exe"], ["Snes9x", "snes9x"], ["{file}"]),
@@ -246,7 +250,15 @@ fn detect_in(env: Env, emulators: &[&Emulator]) -> HashMap<String, String> {
             if e.file_type().map(|t| t.is_file()).unwrap_or(false) {
                 // Lichii et Orchid contiennent aussi un eden-cli.exe : leur dossier n'est pas celui d'Eden.
                 let fork = entries.iter().any(|f| ["lichii.exe", "orchid.exe"].iter().any(|x| f.file_name().to_string_lossy().eq_ignore_ascii_case(x)));
-                for emu in by_exe.get(&e.file_name().to_string_lossy().to_lowercase()).into_iter().flatten().filter(|emu| !(fork && emu.id == "eden")) {
+                // lichii.exe : Fritchii dans un dossier « Fritchii… » (celui de son archive), Lichii sinon.
+                let fritchii = dir.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase().starts_with("fritchii"));
+                let owner = |emu: &&&Emulator| match emu.id {
+                    "eden" => !fork,
+                    "lichii" => !fritchii,
+                    "fritchii" => fritchii,
+                    _ => true,
+                };
+                for emu in by_exe.get(&e.file_name().to_string_lossy().to_lowercase()).into_iter().flatten().filter(owner) {
                     found.entry(emu.id.into()).or_insert_with(|| e.path().to_string_lossy().into_owned());
                 }
             }
@@ -314,7 +326,7 @@ mod tests {
         assert_eq!(names(json!({ "id": "wiiware", "shortname": "wiiware" })), ["dolphin"]);
         assert_eq!(names(json!({ "id": "naomi", "shortname": "naomi" })), ["flycast", "mame"]);
         assert_eq!(names(json!({ "id": "vita", "shortname": "vita" })), ["vita3k"]);
-        assert_eq!(names(json!({ "id": "switch", "shortname": "switch" })), ["eden", "lichii", "orchid", "ryujinx"]);
+        assert_eq!(names(json!({ "id": "switch", "shortname": "switch" })), ["eden", "lichii", "orchid", "fritchii", "ryujinx"]);
         assert!(names(json!({ "id": "custom", "shortname": "custom" })).is_empty());
     }
 
@@ -344,6 +356,7 @@ mod tests {
         put(&["home", "Downloads", "lichii-windows-x86_64", "eden-cli.exe"]); // pas Eden
         let orchid = put(&["home", "Downloads", "orchid-v0.7.4-windows-x86_64", "orchid.exe"]);
         put(&["home", "Downloads", "orchid-v0.7.4-windows-x86_64", "eden-cli.exe"]); // pas Eden
+        let fritchii = put(&["home", "Downloads", "Fritchii-v4.1", "lichii.exe"]); // pas Lichii
         let supermodel = put(&["home", "Downloads", "Supermodel_0.3a", "bin", "SUPERMODEL.EXE"]);
         put(&["home", "Downloads", "a", "b", "c", "xemu.exe"]); // trop profond
         let vars = HashMap::from([
@@ -353,7 +366,7 @@ mod tests {
         ]);
         let env = |name: &str| vars.get(name).map(|p| p.to_string_lossy().into_owned());
         assert_eq!(default_location_in(by_id("dolphin").unwrap(), &env), dolphin);
-        let emulators = [by_id("dolphin").unwrap(), by_id("supermodel").unwrap(), by_id("xemu").unwrap(), by_id("eden").unwrap(), by_id("lichii").unwrap(), by_id("orchid").unwrap()];
+        let emulators = [by_id("dolphin").unwrap(), by_id("supermodel").unwrap(), by_id("xemu").unwrap(), by_id("eden").unwrap(), by_id("lichii").unwrap(), by_id("orchid").unwrap(), by_id("fritchii").unwrap()];
         let found = detect_in(&env, &emulators);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(found.get("dolphin"), Some(&dolphin.to_string_lossy().into_owned()));
@@ -361,6 +374,7 @@ mod tests {
         assert_eq!(found.get("xemu"), None);
         assert_eq!(found.get("lichii"), Some(&lichii.to_string_lossy().into_owned()));
         assert_eq!(found.get("orchid"), Some(&orchid.to_string_lossy().into_owned()));
+        assert_eq!(found.get("fritchii"), Some(&fritchii.to_string_lossy().into_owned()));
         assert_eq!(found.get("eden"), None);
     }
 
