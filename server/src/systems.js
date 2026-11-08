@@ -9,6 +9,7 @@ import { normalizeEmulatorOrder } from './emulator-order.js';
 import { normalizeCoreOptions, parseCoreOptions } from './core-options.js';
 import { usefulPlayers } from './extra-cores.js';
 import { optimizeOriginal } from './media-optimize.js';
+import { chdDisc } from './chd-systems.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
@@ -51,6 +52,8 @@ function rowToSystem(row, stats) {
     coreOptions: parseCoreOptions(row.core_options),
     // Jeux en dossiers (PC Windows) : un sous-dossier par jeu, lancé par son exécutable.
     folderGames: Boolean(row.folder_games),
+    // Jeux convertibles en CHD (chd.js) : « cd », « dvd » (PS2) ; null : non.
+    chd: chdDisc({ id: row.id, shortname: row.shortname, folderGames: Boolean(row.folder_games) }),
     source: row.source,
     hasImage: Boolean(row.image),
     // Nom du fichier image : change à chaque envoi, sert à invalider les caches.
