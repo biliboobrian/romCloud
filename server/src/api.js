@@ -17,6 +17,7 @@ import { deleteGamesOfSystem, systemDuplicates } from './duplicates.js';
 import { profileStats } from './profile-stats.js';
 import { BUNDLE_ID_RE, bundlePath, fileInFolder, packExtension, packManifestEntry } from './folder-games.js';
 import { packedFileStream, queueFolderPack } from './folder-pack.js';
+import { queueChdConversion } from './chd.js';
 import { HttpError } from './http-error.js';
 import { LANGUAGES, localize, requestLanguage, token } from './i18n.js';
 import { setGroup } from './groups.js';
@@ -624,6 +625,13 @@ api.get('/games/:id/bundle', (req, res, next) => {
 // retour en clair ({ mode: "flat" }), en tâche de fond (voir /jobs).
 api.post('/games/:id/pack', (req, res) => {
   const job = queueFolderPack(req.params.id, req.body?.mode);
+  res.status(202).json({ job });
+});
+
+// Jeu sur CD (système où chd n'est pas null) : conversion en CHD du jeu et de ses autres disques, en
+// tâche de fond (voir /jobs) ; la fiche est gardée, le fichier d'origine remplacé par « Jeu.chd ».
+api.post('/games/:id/chd', (req, res) => {
+  const job = queueChdConversion(req.params.id);
   res.status(202).json({ job });
 });
 

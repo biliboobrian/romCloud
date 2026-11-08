@@ -812,6 +812,7 @@ function fillGameDialog(game, bust = '') {
  * les applications) ou retour en clair, en tâche de fond ; état, format et tailles compressée et installée.
  */
 function fillGamePack(game) {
+  fillGameChd(game);
   $('#gamePack').classList.toggle('hidden', !game.folder);
   if (!game.folder) return;
   const packed = game.packed ?? 'flat';
@@ -836,6 +837,30 @@ function fillGamePack(game) {
   unpack.classList.toggle('hidden', packed === 'flat');
   unpack.textContent = t('pack.unpack');
   unpack.onclick = () => start('flat');
+}
+
+/** Fichiers convertibles en CHD (chd-systems.js) : images de disque, ou archive .zip qui en contient une. */
+const CHD_SOURCE_RE = /\.(cue|gdi|toc|iso|zip)$/i;
+
+/**
+ * Jeu sur CD (PS1, Saturn, Mega-CD, Dreamcast, PC Engine CD ; PS2 : DVD) : conversion en CHD sur le
+ * serveur, avec ses autres disques, en tâche de fond ; la fiche est gardée.
+ */
+function fillGameChd(game) {
+  const system = (state.systems || []).find((s) => s.id === game.systemId);
+  const files = [game, ...(game.parts || [])].filter((g) => CHD_SOURCE_RE.test(g.fileName));
+  const show = Boolean(system?.chd) && !game.folder && files.length > 0;
+  $('#gameChd').classList.toggle('hidden', !show);
+  if (!show) return;
+  const size = files.reduce((n, g) => n + g.size, 0);
+  $('#gameChdInfo').textContent = t(files.length > 1 ? 'chd.infoDiscs' : 'chd.info', { count: files.length, size: formatSize(size) });
+  $('#gameChdBtn').onclick = () =>
+    guard(async () => {
+      if (!confirm(t('chd.confirm', { title: game.title, count: files.length }))) return;
+      const { job } = await api(`/games/${game.id}/chd`, { method: 'POST' });
+      toast(t(job ? 'pack.queued' : 'pack.alreadyQueued'));
+      refreshJobs();
+    });
 }
 
 /** Titre comparable (minuscules, sans accents ni ponctuation) : dossiers d'un même jeu. */
