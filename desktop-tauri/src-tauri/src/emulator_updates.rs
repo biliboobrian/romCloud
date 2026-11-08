@@ -3,8 +3,8 @@
 // l'ancienne. Versions et fichiers demandés au serveur RomCloud (mirror.rs), qui les récupère sur
 // Internet et en garde une copie : une mise à jour n'est proposée qu'une fois sur le serveur. Eden (et eden-cli, même archive) : Releases de git.eden-emu.dev, archive Windows de
 // la même variante que celle installée (MSVC, clang PGO ou GCC ; PGO, recommandée par Eden, sinon).
-// Forks d'Eden pour la Switch 2 (Lichii, Orchid) : Releases GitHub (préversions comprises : Lichii
-// ne publie que des « build-75 » en préversion), la plus récente qui a une archive Windows.
+// Forks d'Eden pour la Switch 2 (Lichii, Orchid, Fritchii) : Releases GitHub (préversions comprises :
+// Lichii ne publie que des « build-75 » en préversion), la plus récente qui a une archive Windows.
 use crate::error::{AppError, Result};
 use crate::{launcher, mirror, paths, settings};
 use serde_json::{json, Value};
@@ -18,24 +18,32 @@ const EDEN_VARIANTS: &[&str] = &["clang-pgo", "msvc-standard", "gcc-standard", "
 pub struct Nx2Fork {
     pub id: &'static str,
     pub name: &'static str,
-    /// Début du nom des archives (« lichii-windows-x86_64.zip », « orchid-v0.7.4-windows-x86_64.zip »).
-    prefix: &'static str,
+    /// Noms des archives Windows : {tag} (nom de la Release), {version} (sans [tag_prefix]), {variant}.
+    archives: &'static [&'static str],
+    /// Variantes Windows, de la plus recommandée à la moins.
+    variants: &'static [&'static str],
+    /// Début du nom des Releases avant la version (« fritchii-v4.1 » -> « v4.1 »).
+    tag_prefix: &'static str,
     /// Exécutable de l'interface (jeux lancés avec lui : il lit nx2_switches.txt).
     pub exe: &'static str,
-    /// Version écrite dans l'exécutable : « Lichii build-75 », « Orchid v0.7.4 ».
+    /// Version écrite dans l'exécutable : « Lichii build-75 », « Orchid v0.7.4 », « Fritchii v4.1 ».
     marker: &'static [u8],
 }
 
-pub const NX2_FORKS: &[Nx2Fork] = &[
-    // Releases des dépôts MythosOfs/Orchid et zortos293/Lichii (préversions comprises), via le serveur.
-    Nx2Fork { id: "orchid", name: "Orchid", prefix: "orchid", exe: "orchid.exe", marker: b"Orchid " },
-    Nx2Fork { id: "lichii", name: "Lichii", prefix: "lichii", exe: "lichii.exe", marker: b"Lichii " },
-];
-
-/// Archives Windows des forks Switch 2, de la plus recommandée à la moins : la standard d'abord,
+/// Archives Windows de Lichii et d'Orchid, de la plus recommandée à la moins : la standard d'abord,
 /// seule à contenir le décodeur AV1 (dav1d) des vidéos des jeux de la Switch 2 (sans lui, écran
 /// noir pendant la vidéo d'ouverture : Ocarina of Time), la PGO à défaut.
 const NX2_VARIANTS: &[&str] = &["x86_64", "x86_64-pgo"];
+
+pub const NX2_FORKS: &[Nx2Fork] = &[
+    // Releases des dépôts MythosOfs/Orchid, zortos293/Lichii et Frizti/Fritchii (préversions comprises), via le serveur.
+    Nx2Fork { id: "orchid", name: "Orchid", archives: &["orchid-windows-{variant}.zip", "orchid-{tag}-windows-{variant}.zip"], variants: NX2_VARIANTS, tag_prefix: "", exe: "orchid.exe", marker: b"Orchid " },
+    Nx2Fork { id: "lichii", name: "Lichii", archives: &["lichii-windows-{variant}.zip", "lichii-{tag}-windows-{variant}.zip"], variants: NX2_VARIANTS, tag_prefix: "", exe: "lichii.exe", marker: b"Lichii " },
+    // Fritchii : fork de Lichii (exécutable lichii.exe), une seule archive Windows (avec dav1d), ses
+    // fichiers dans un dossier « Fritchii-v4.1 » (retiré à l'extraction) ; Releases « fritchii-v4.1 »
+    // (les « frizti-v3 » d'avant, archives « Lichii-Frizti-… », ignorées).
+    Nx2Fork { id: "fritchii", name: "Fritchii", archives: &["Fritchii-{version}-Windows-{variant}.zip"], variants: &["x64"], tag_prefix: "fritchii-", exe: "lichii.exe", marker: b"Fritchii " },
+];
 
 pub fn nx2_fork(id: &str) -> Option<&'static Nx2Fork> {
     NX2_FORKS.iter().find(|f| f.id == id)
@@ -65,19 +73,30 @@ pub fn nx2_version(fork: &Nx2Fork, exe: &[u8]) -> Option<String> {
     })
 }
 
-/// Variante d'un exécutable de fork : standard avec le décodeur AV1 (dav1d), sinon PGO.
-pub fn nx2_variant(exe: &[u8]) -> &'static str {
+/// Variante d'un exécutable de fork : standard avec le décodeur AV1 (dav1d), sinon PGO ; la seule publiée (Fritchii).
+pub fn nx2_variant(fork: &Nx2Fork, exe: &[u8]) -> &'static str {
     let marker = b"dav1d";
-    if exe.windows(marker.len()).any(|w| w == marker) { NX2_VARIANTS[0] } else { NX2_VARIANTS[1] }
+    match fork.variants {
+        [standard, pgo, ..] => if exe.windows(marker.len()).any(|w| w == marker) { standard } else { pgo },
+        [only] => only,
+        [] => "",
+    }
+}
+
+/// Version d'une Release : son nom sans le début propre au fork (« fritchii-v4.1 » -> « v4.1 »).
+fn release_version(id: &str, tag: &str) -> String {
+    let prefix = nx2_fork(id).map(|f| f.tag_prefix).unwrap_or("");
+    tag.strip_prefix(prefix).unwrap_or(tag).to_string()
 }
 
 /// Archive Windows du fork pour la variante voulue, sinon la plus recommandée : (nom, adresse, variante).
 pub fn nx2_asset(fork: &Nx2Fork, release: &Value, wanted: &str) -> Option<(String, String, String)> {
     let assets = release["assets"].as_array()?;
     let tag = release["tag_name"].as_str().unwrap_or("");
-    std::iter::once(wanted).chain(NX2_VARIANTS.iter().copied()).filter(|v| !v.is_empty()).find_map(|variant| {
+    let version = release_version(fork.id, tag);
+    std::iter::once(wanted).chain(fork.variants.iter().copied()).filter(|v| !v.is_empty()).find_map(|variant| {
         // Avec ou sans la version dans le nom (« orchid-v0.7.4-windows-x86_64.zip »).
-        let names = [format!("{}-windows-{variant}.zip", fork.prefix), format!("{}-{tag}-windows-{variant}.zip", fork.prefix)];
+        let names: Vec<String> = fork.archives.iter().map(|a| a.replace("{tag}", tag).replace("{version}", &version).replace("{variant}", variant)).collect();
         let asset = assets.iter().find(|a| a["name"].as_str().is_some_and(|n| names.iter().any(|x| x == n)))?;
         Some((asset["name"].as_str()?.to_string(), asset["browser_download_url"].as_str()?.to_string(), variant.to_string()))
     })
@@ -120,7 +139,7 @@ fn wanted_variant(id: &str, installed: &str) -> String {
 }
 
 fn default_variant(id: &str) -> &'static str {
-    if nx2_fork(id).is_some() { NX2_VARIANTS[0] } else { "amd64-clang-pgo" }
+    nx2_fork(id).map(|f| f.variants[0]).unwrap_or("amd64-clang-pgo")
 }
 
 /// Version d'Eden écrite dans son exécutable (« Eden v0.2.1 » -> « v0.2.1 »).
@@ -243,7 +262,7 @@ pub async fn check(id: &str) -> Result<Value> {
                 // eden.exe de préférence (version et variante identiques à celles d'eden-cli).
                 let data = std::fs::read(&path).unwrap_or_default();
                 if let Some(fork) = fork {
-                    (nx2_version(fork, &data), Some(nx2_variant(&data).to_string()))
+                    (nx2_version(fork, &data), Some(nx2_variant(fork, &data).to_string()))
                 } else {
                     (eden_version(&data), eden_variant(&data))
                 }
@@ -260,7 +279,7 @@ pub async fn check(id: &str) -> Result<Value> {
         .or(detected)
         .unwrap_or_else(|| default_variant(id).into());
     let release = latest_release(id, &wanted_variant(id, &variant)).await?;
-    let latest = release["tag_name"].as_str().unwrap_or("").to_string();
+    let latest = release_version(id, release["tag_name"].as_str().unwrap_or(""));
     let asset = asset_for(id, &release, &wanted_variant(id, &variant));
     let replace_variant = fork.is_some() && installed.is_some() && asset.as_ref().is_some_and(|(_, _, v)| *v != variant);
     let newer_build = asset.is_some() && (replace_variant || installed.as_deref().is_none_or(|v| newer(id, &latest, v)));
@@ -286,12 +305,22 @@ pub async fn check(id: &str) -> Result<Value> {
     }))
 }
 
-/// Extrait l'archive dans [dir] (fichiers remplacés) ; refusé si l'émulateur [name] est ouvert (fichier utilisé).
+/// Dossier qui contient tous les fichiers de l'archive (« Fritchii-v4.1/ »), sinon None.
+fn common_root(names: &[PathBuf]) -> Option<PathBuf> {
+    let root = PathBuf::from(names.first()?.components().next()?.as_os_str());
+    names.iter().all(|n| n == &root || (n.starts_with(&root) && n.components().count() > 1)).then_some(root).filter(|r| names.iter().any(|n| n != r))
+}
+
+/// Extrait l'archive dans [dir] (fichiers remplacés), sans le dossier qui contiendrait tous ses
+/// fichiers (Fritchii) ; refusé si l'émulateur [name] est ouvert (fichier utilisé).
 fn extract(zip: &[u8], dir: &Path, name: &str) -> Result<()> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).map_err(|e| AppError::msg(e.to_string()))?;
+    let names: Vec<PathBuf> = (0..archive.len()).filter_map(|i| archive.by_index(i).ok()?.enclosed_name()).collect();
+    let root = common_root(&names);
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| AppError::msg(e.to_string()))?;
         let Some(relative) = entry.enclosed_name() else { continue };
+        let relative = root.as_ref().and_then(|r| relative.strip_prefix(r).ok()).map(Path::to_path_buf).unwrap_or(relative);
         let target = dir.join(relative);
         if entry.is_dir() {
             std::fs::create_dir_all(&target)?;
@@ -435,8 +464,8 @@ mod tests {
         assert_eq!(latest["tag_name"], "build-75");
         assert_eq!(nx2_asset(lichii, &latest, "").unwrap().0, "lichii-windows-x86_64.zip"); // standard d'abord (AV1)
         assert_eq!(wanted_variant("lichii", "x86_64-pgo"), "x86_64");
-        assert_eq!(nx2_variant(b"..libdav1d 1.5.1.."), "x86_64");
-        assert_eq!(nx2_variant(b"..h264_.."), "x86_64-pgo");
+        assert_eq!(nx2_variant(lichii, b"..libdav1d 1.5.1.."), "x86_64");
+        assert_eq!(nx2_variant(lichii, b"..h264_.."), "x86_64-pgo");
         let pgo = nx2_asset(lichii, &latest, "x86_64-pgo").unwrap();
         assert_eq!((pgo.0.as_str(), pgo.1.as_str(), pgo.2.as_str()), ("lichii-windows-x86_64-pgo.zip", "https://x/build-75/lichii-windows-x86_64-pgo.zip", "x86_64-pgo"));
         assert_eq!(nx2_asset(lichii, &latest, "arm64").unwrap().2, "x86_64"); // absente : la standard
@@ -449,7 +478,7 @@ mod tests {
         assert_eq!(nx2_version(lichii, &exe), None);
         assert!(newer("lichii", "build-100", "build-75"));
         assert!(!newer("lichii", "build-75", "build-75"));
-        assert!(supported("lichii") && supported("orchid") && supported("eden") && !supported("ryujinx"));
+        assert!(supported("lichii") && supported("orchid") && supported("fritchii") && supported("eden") && !supported("ryujinx"));
     }
 
     #[test]
@@ -471,6 +500,64 @@ mod tests {
         assert!(newer("orchid", "v0.7.10", "v0.7.4"));
         assert!(!newer("orchid", "v0.7.4", "v0.7.4"));
         assert_eq!(orchid.exe, "orchid.exe");
+    }
+
+    #[test]
+    fn releases_de_fritchii() {
+        let fritchii = nx2_fork("fritchii").unwrap();
+        // Préversions « fritchii-v4.1 » ; avant, « frizti-v3 » (archives « Lichii-Frizti-… », ignorées).
+        let releases = json!([
+            github_release("fritchii-v4.2", &["Fritchii-v4.2-debug-symbols-not-needed-to-play.zip"]), // pas encore d'archive Windows
+            github_release("fritchii-v4.1", &["Fritchii-v4.1-debug-symbols-not-needed-to-play.zip", "Fritchii-v4.1-Windows-x64.zip"]),
+            github_release("frizti-v3", &["Lichii-Frizti-v3-Windows-x64.zip"]),
+        ]);
+        let latest = nx2_release(fritchii, &releases);
+        assert_eq!(latest["tag_name"], "fritchii-v4.1");
+        assert_eq!(release_version("fritchii", "fritchii-v4.1"), "v4.1");
+        assert_eq!(release_version("orchid", "v0.7.4"), "v0.7.4");
+        let asset = asset_for("fritchii", &latest, &wanted_variant("fritchii", "x64")).unwrap();
+        assert_eq!((asset.0.as_str(), asset.2.as_str()), ("Fritchii-v4.1-Windows-x64.zip", "x64"));
+        assert_eq!(nx2_release(fritchii, &json!([github_release("frizti-v3", &["Lichii-Frizti-v3-Windows-x64.zip"])])), json!({}));
+        // Version de l'exécutable (« Fritchii {} », « Fritchii v%2. »… ignorés) ; une seule variante.
+        let exe = b"Fritchii {}\0Fritchii v%2.\0Fritchii will download\0Fritchii v4.1  v4.1 hotfix/v4.1\0".to_vec();
+        assert_eq!(nx2_version(fritchii, &exe).as_deref(), Some("v4.1"));
+        assert_eq!(nx2_version(fritchii, b"Fritchii v4  v4 oot-gat").as_deref(), Some("v4"));
+        assert_eq!(nx2_variant(fritchii, b"..h264_.."), "x64");
+        assert!(newer("fritchii", "v4.1", "v4") && !newer("fritchii", "v4.1", "v4.1"));
+        assert_eq!(fritchii.exe, "lichii.exe");
+    }
+
+    /// Exécutable réel : `ROMCLOUD_FRITCHII_EXE=C:\…\lichii.exe cargo test -- --ignored fritchii_installe`.
+    #[test]
+    #[ignore]
+    fn fritchii_installe() {
+        let data = std::fs::read(std::env::var("ROMCLOUD_FRITCHII_EXE").unwrap()).unwrap();
+        let fritchii = nx2_fork("fritchii").unwrap();
+        println!("version {:?}, variante {:?}", nx2_version(fritchii, &data), nx2_variant(fritchii, &data));
+        assert!(nx2_version(fritchii, &data).is_some());
+    }
+
+    #[test]
+    fn dossier_commun_de_l_archive_retire() {
+        use std::io::Write;
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.add_directory("Fritchii-v4.1/", options).unwrap();
+        for (name, data) in [("Fritchii-v4.1/lichii.exe", "v4.1"), ("Fritchii-v4.1/platforms/qwindows.dll", "qt")] {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(data.as_bytes()).unwrap();
+        }
+        let bytes = zip.finish().unwrap().into_inner();
+        let dir = std::env::temp_dir().join(format!("romcloud-fritchiizip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        extract(&bytes, &dir, "Fritchii").unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("lichii.exe")).unwrap(), "v4.1");
+        assert!(dir.join("platforms").join("qwindows.dll").is_file() && !dir.join("Fritchii-v4.1").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+        // Archive à plat (Eden) ou d'un seul fichier : rien de retiré.
+        assert_eq!(common_root(&[PathBuf::from("eden.exe"), PathBuf::from("LICENSES/GPL.txt")]), None);
+        assert_eq!(common_root(&[PathBuf::from("LICENSES/GPL.txt"), PathBuf::from("eden.exe")]), None);
+        assert_eq!(common_root(&[PathBuf::from("eden.exe")]), None);
     }
 
     #[test]

@@ -137,6 +137,8 @@ test('variante d\'un fichier, sans ses numéros de version', () => {
   assert.equal(v('KytyPS5-2026-10-12-df5b9b9-Windows-x64.zip'), v('KytyPS5-2026-11-01-0a1b2c3-Windows-x64.zip'));
   assert.equal(v('ARMSX2-1.2-sdk30.apk'), v('ARMSX2-1.3-sdk30.apk'));
   assert.notEqual(v('ARMSX2-1.2-sdk30.apk'), v('ARMSX2-1.2-sdk33.apk'));
+  assert.equal(v('Fritchii-v4-Windows-x64.zip'), v('Fritchii-v4.1-Windows-x64.zip'));
+  assert.notEqual(v('Fritchii-v4.1-Windows-x64.zip'), v('Fritchii-v4.1-debug-symbols-not-needed-to-play.zip'));
 });
 
 test('rafraîchissement : nouvelle version des variantes gardées récupérée d\'avance', async () => {

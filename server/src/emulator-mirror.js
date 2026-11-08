@@ -38,13 +38,14 @@ const EDEN = 'https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases?limit
 
 /**
  * Sources des émulateurs : [releases] liste des versions (API GitHub, ou Forgejo, même format),
- * [prereleases] : préversions proposées (Lichii ne publie qu'elles, KytyPS5 plusieurs par jour).
+ * [prereleases] : préversions proposées (Lichii et Fritchii ne publient qu'elles, KytyPS5 plusieurs par jour).
  */
 export const SOURCES = {
   // Windows (RomCloud pour Windows) et Android (Eden : même dépôt).
   eden: { name: 'Eden', releases: EDEN, platforms: ['windows', 'android'] },
   lichii: { name: 'Lichii', releases: github('zortos293/Lichii'), prereleases: true, platforms: ['windows'] },
   orchid: { name: 'Orchid', releases: github('MythosOfs/Orchid'), prereleases: true, platforms: ['windows'] },
+  fritchii: { name: 'Fritchii', releases: github('Frizti/Fritchii'), prereleases: true, platforms: ['windows'] },
   rpcs3: { name: 'RPCS3', releases: github('RPCS3/rpcs3-binaries-win'), platforms: ['windows'] },
   shadps4: { name: 'shadPS4', releases: github('shadps4-emu/shadPS4'), platforms: ['windows'] },
   kytyps5: { name: 'KytyPS5', releases: github('KytyPS5/KytyPS5'), prereleases: true, platforms: ['windows'] },
@@ -335,7 +336,8 @@ export function mirrorSummary() {
 /**
  * Variante d'un fichier, sans ses numéros de version : « Eden-Windows-v0.2.1-amd64-clang-pgo.zip » ->
  * « eden-windows-v#.#.#-amd#-clang-pgo.zip » ; empreintes de commit (« df5b9b9 ») ignorées aussi,
- * variantes Android « -sdk33 » gardées.
+ * variantes Android « -sdk33 » gardées ; numéros à plusieurs parties confondus (« Fritchii-v4- » et
+ * « Fritchii-v4.1- » : même variante).
  */
 export function variantOf(name) {
   return String(name)
@@ -343,6 +345,7 @@ export function variantOf(name) {
     .replace(/sdk(\d+)/g, 'sdk~$1~')
     .replace(/(?<![a-z0-9])(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}(?![a-z0-9])/g, '#')
     .replace(/(?<!~)\d+(?!~)/g, '#')
+    .replace(/#(?:\.#)+/g, '#')
     .replace(/~/g, '');
 }
 

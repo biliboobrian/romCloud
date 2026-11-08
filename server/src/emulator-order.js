@@ -32,6 +32,7 @@ const WINDOWS_EMULATORS = [
   { id: 'eden', name: 'Eden', systems: ['switch'] },
   { id: 'lichii', name: 'Lichii', systems: ['switch'] },
   { id: 'orchid', name: 'Orchid', systems: ['switch'] },
+  { id: 'fritchii', name: 'Fritchii', systems: ['switch'] },
   { id: 'ryujinx', name: 'Ryujinx', systems: ['switch'] },
   { id: 'snes9x', name: 'Snes9x', systems: ['satellaview'] },
   { id: 'ares', name: 'ares', systems: ['coleco', 'msx'] },
