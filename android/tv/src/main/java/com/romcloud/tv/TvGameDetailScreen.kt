@@ -78,6 +78,7 @@ import com.romcloud.app.launch.PcSettings
 import com.romcloud.app.data.screenshotTypes
 import com.romcloud.app.data.starsText
 import com.romcloud.app.ui.DownloadedGreen
+import com.romcloud.app.ui.EmulatorConfigAction
 import com.romcloud.app.ui.GameDetailViewModel
 import com.romcloud.app.ui.GameFact
 import com.romcloud.app.ui.OfflineBadge
@@ -387,6 +388,12 @@ fun TvGameDetailScreen(
                     if (selected != null && state.canOpenEmulator) {
                         SecondaryButton(stringResource(R.string.action_open_emulator, selected.name), Icons.AutoMirrored.Filled.OpenInNew) {
                             viewModel.openEmulator(activity)?.let(onMessage)
+                        }
+                    }
+                    // Eden, Dolphin : principaux réglages modifiés depuis RomCloud (EmulatorConfigUi.kt).
+                    state.emulatorConfig?.let { target ->
+                        EmulatorConfigAction(target, viewModel.settings, onMessage = onMessage) { onClick ->
+                            SecondaryButton(stringResource(R.string.emulator_configure, target.name), Icons.Filled.Settings, onClick = onClick)
                         }
                     }
                     if (state.downloaded && download !is DownloadState.Running) {

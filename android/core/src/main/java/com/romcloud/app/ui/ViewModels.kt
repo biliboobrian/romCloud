@@ -624,6 +624,9 @@ class GameDetailViewModel(
     private val gameId: Long,
 ) : ViewModel() {
 
+    /** Réglages de l'application (dossiers des émulateurs autorisés pour « Configurer … »). */
+    val settings get() = app.settings
+
     data class UiState(
         val loading: Boolean = true,
         val system: GameSystem? = null,
@@ -646,6 +649,8 @@ class GameDetailViewModel(
         val launchCommand: String? = null,
         /** Émulateur externe choisi, installé et ouvrable seul (RomCloud PC n'a pas d'écran d'accueil). */
         val canOpenEmulator: Boolean = false,
+        /** Émulateur externe installé dont RomCloud sait modifier les réglages (« Configurer … »). */
+        val emulatorConfig: EmulatorConfigTarget? = null,
         /** Émulateur externe choisi à mettre à jour soi-même (APK hors Play Store) : bouton de mise à jour. */
         val canUpdateEmulator: Boolean = false,
         val bios: List<BiosFile> = emptyList(),
@@ -825,6 +830,8 @@ class GameDetailViewModel(
                     // Jeu PC : son exécutable, lancé avec Winlator.
                     launchCommand = if (game.folder) I18n.get(R.string.pc_exe) + "\n" + (game.exe ?: "—") else selected?.let { p -> app.launcher.describe(p, file) },
                     canOpenEmulator = selected?.takeIf { it.libretroCore == null }?.let(app.launcher::canOpen) == true,
+                    emulatorConfig = selected?.takeIf { it.libretroCore == null && app.launcher.canOpen(it) }
+                        ?.let { p -> app.launcher.packageOf(p)?.let { pkg -> emulatorConfigTarget(app, pkg, p.name) } },
                     canUpdateEmulator = selected?.let(app.launcher::manualUpdatePackage) != null,
                     missingBios = missingBios,
                     canResume = canResume,

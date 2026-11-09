@@ -1,0 +1,1326 @@
+{
+  "_comment": "Réglages des émulateurs externes proposés par « Configurer … » : application Windows (renderer/app.js, fichiers écrits par desktop-tauri/src-tauri/src/emulator_config.rs) et applications Android (core : EmulatorConfig.kt, copié dans les assets par core/build.gradle.kts). Eden : valeurs des énumérations de src/common/settings_enums.h d'Eden, écrites en nombres. « platforms » : réglage ou valeur propre à une plateforme (windows, android). Notes : {name} = nom de l'émulateur.",
+  "schemas": {
+    "eden": {
+      "style": "eden",
+      "notes": {
+        "windows": {
+          "en": "Settings shared by Eden, Lichii, Orchid and Fritchii (same qt-config.ini). Close {name} before saving: it rewrites its settings when it closes. Games started by RomCloud use them; a game’s own settings (right-click › Properties in {name}) take precedence.",
+          "fr": "Réglages communs à Eden, Lichii, Orchid et Fritchii (même qt-config.ini). Fermez {name} avant d’enregistrer : il réécrit ses réglages en se fermant. Les jeux lancés par RomCloud les utilisent ; les réglages propres à un jeu (clic droit › Propriétés dans {name}) passent avant."
+        },
+        "android": {
+          "en": "Close {name} before saving (swipe it away from the recent apps): it rewrites its settings when it closes. A game’s own settings (long press on the game in {name} › Game settings) take precedence.",
+          "fr": "Fermez {name} avant d’enregistrer (balayez-le des applications récentes) : il réécrit ses réglages en se fermant. Les réglages propres à un jeu (appui long sur le jeu dans {name} › Paramètres du jeu) passent avant."
+        }
+      },
+      "groups": [
+        {
+          "title": {
+            "en": "Graphics",
+            "fr": "Graphismes"
+          },
+          "fields": [
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "backend",
+              "label": {
+                "en": "Graphics API",
+                "fr": "API graphique"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "1",
+                  "label": "Vulkan"
+                },
+                {
+                  "value": "0",
+                  "label": "OpenGL (GLSL)",
+                  "platforms": [
+                    "windows"
+                  ]
+                },
+                {
+                  "value": "3",
+                  "label": "OpenGL (GLASM)",
+                  "platforms": [
+                    "windows"
+                  ]
+                },
+                {
+                  "value": "4",
+                  "label": "OpenGL (SPIR-V)",
+                  "platforms": [
+                    "windows"
+                  ]
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "resolution_setup",
+              "label": {
+                "en": "Resolution",
+                "fr": "Résolution"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": "0.25×"
+                },
+                {
+                  "value": "1",
+                  "label": "0.5× (360p / 540p)"
+                },
+                {
+                  "value": "2",
+                  "label": "0.75× (540p / 810p)"
+                },
+                {
+                  "value": "3",
+                  "label": {
+                    "en": "1× (720p / 1080p, native)",
+                    "fr": "1× (720p / 1080p, native)"
+                  }
+                },
+                {
+                  "value": "4",
+                  "label": "1.25×"
+                },
+                {
+                  "value": "5",
+                  "label": "1.5× (1080p / 1620p)"
+                },
+                {
+                  "value": "6",
+                  "label": "2× (1440p / 2160p)"
+                },
+                {
+                  "value": "7",
+                  "label": "3× (2160p / 3240p)"
+                },
+                {
+                  "value": "8",
+                  "label": "4×"
+                },
+                {
+                  "value": "9",
+                  "label": "5×"
+                },
+                {
+                  "value": "10",
+                  "label": "6×"
+                },
+                {
+                  "value": "11",
+                  "label": "7×"
+                },
+                {
+                  "value": "12",
+                  "label": "8×"
+                }
+              ],
+              "hint": {
+                "en": "Handheld / docked. Above 1×: sharper picture, more demanding.",
+                "fr": "Portable / station d’accueil. Au-delà de 1× : image plus fine, plus gourmand."
+              }
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "scaling_filter",
+              "label": {
+                "en": "Window adapting filter",
+                "fr": "Filtre de mise à l’échelle"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Nearest neighbor",
+                    "fr": "Plus proche voisin"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Bilinear",
+                    "fr": "Bilinéaire"
+                  }
+                },
+                {
+                  "value": "2",
+                  "label": {
+                    "en": "Bicubic",
+                    "fr": "Bicubique"
+                  }
+                },
+                {
+                  "value": "3",
+                  "label": "Gaussian"
+                },
+                {
+                  "value": "4",
+                  "label": "Lanczos"
+                },
+                {
+                  "value": "5",
+                  "label": "ScaleForce"
+                },
+                {
+                  "value": "6",
+                  "label": "AMD FidelityFX Super Resolution (FSR)"
+                },
+                {
+                  "value": "7",
+                  "label": "Area"
+                },
+                {
+                  "value": "8",
+                  "label": "Zero-Tangent"
+                },
+                {
+                  "value": "9",
+                  "label": "B-Spline"
+                },
+                {
+                  "value": "10",
+                  "label": "Mitchell"
+                },
+                {
+                  "value": "11",
+                  "label": "Spline-1"
+                },
+                {
+                  "value": "12",
+                  "label": "MMPX"
+                },
+                {
+                  "value": "13",
+                  "label": "Snapdragon GSR"
+                },
+                {
+                  "value": "14",
+                  "label": "Snapdragon GSR (edge)"
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "fsr_sharpening_slider",
+              "label": {
+                "en": "FSR sharpness",
+                "fr": "Netteté de FSR"
+              },
+              "type": "number",
+              "min": 0,
+              "max": 200,
+              "unit": "%"
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "anti_aliasing",
+              "label": {
+                "en": "Anti-aliasing",
+                "fr": "Anticrénelage"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "None",
+                    "fr": "Aucun"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": "FXAA"
+                },
+                {
+                  "value": "2",
+                  "label": "SMAA"
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "aspect_ratio",
+              "label": {
+                "en": "Aspect ratio",
+                "fr": "Format d’image"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "16:9 (default)",
+                    "fr": "16:9 (par défaut)"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": "4:3"
+                },
+                {
+                  "value": "2",
+                  "label": "21:9"
+                },
+                {
+                  "value": "3",
+                  "label": "16:10"
+                },
+                {
+                  "value": "4",
+                  "label": {
+                    "en": "Stretch to window",
+                    "fr": "Étiré à la fenêtre"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "fullscreen_mode",
+              "label": {
+                "en": "Full screen mode",
+                "fr": "Mode plein écran"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Borderless window",
+                    "fr": "Fenêtre sans bordure"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Exclusive full screen",
+                    "fr": "Plein écran exclusif"
+                  }
+                }
+              ],
+              "platforms": [
+                "windows"
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "use_vsync",
+              "label": {
+                "en": "VSync",
+                "fr": "Synchronisation verticale"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "2",
+                  "label": {
+                    "en": "FIFO (VSync on)",
+                    "fr": "FIFO (activée)"
+                  }
+                },
+                {
+                  "value": "3",
+                  "label": {
+                    "en": "FIFO relaxed",
+                    "fr": "FIFO souple"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Mailbox (low latency)",
+                    "fr": "Mailbox (faible latence)"
+                  }
+                },
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Immediate (off)",
+                    "fr": "Immédiate (désactivée)"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "max_anisotropy",
+              "label": {
+                "en": "Anisotropic filtering",
+                "fr": "Filtrage anisotrope"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Automatic",
+                    "fr": "Automatique"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Game default",
+                    "fr": "Celui du jeu"
+                  }
+                },
+                {
+                  "value": "2",
+                  "label": "2×"
+                },
+                {
+                  "value": "3",
+                  "label": "4×"
+                },
+                {
+                  "value": "4",
+                  "label": "8×"
+                },
+                {
+                  "value": "5",
+                  "label": "16×"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": {
+            "en": "Graphics (advanced)",
+            "fr": "Graphismes (avancé)"
+          },
+          "fields": [
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "gpu_accuracy",
+              "label": {
+                "en": "GPU accuracy",
+                "fr": "Précision du GPU"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "High",
+                    "fr": "Élevée"
+                  }
+                },
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Low (faster)",
+                    "fr": "Faible (plus rapide)"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "use_disk_shader_cache",
+              "label": {
+                "en": "Disk shader cache",
+                "fr": "Cache des shaders sur le disque"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "use_asynchronous_shaders",
+              "label": {
+                "en": "Asynchronous shader building (less stutter, brief glitches)",
+                "fr": "Compilation asynchrone des shaders (moins de saccades, défauts passagers)"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "accelerate_astc",
+              "label": {
+                "en": "ASTC texture decoding",
+                "fr": "Décodage des textures ASTC"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "1",
+                  "label": "GPU"
+                },
+                {
+                  "value": "0",
+                  "label": "CPU"
+                },
+                {
+                  "value": "2",
+                  "label": {
+                    "en": "CPU, asynchronous",
+                    "fr": "CPU, asynchrone"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "astc_recompression",
+              "label": {
+                "en": "ASTC recompression",
+                "fr": "Recompression ASTC"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Uncompressed (best quality)",
+                    "fr": "Non compressé (meilleure qualité)"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "BC1 (low quality)",
+                    "fr": "BC1 (qualité faible)"
+                  }
+                },
+                {
+                  "value": "2",
+                  "label": {
+                    "en": "BC3 (medium quality)",
+                    "fr": "BC3 (qualité moyenne)"
+                  }
+                }
+              ],
+              "hint": {
+                "en": "BC1 / BC3 save video memory on graphics cards with 4 GB or less.",
+                "fr": "BC1 / BC3 économisent la mémoire vidéo des cartes graphiques de 4 Go ou moins."
+              }
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "vram_usage_mode",
+              "label": {
+                "en": "Video memory use",
+                "fr": "Usage de la mémoire vidéo"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Conservative",
+                    "fr": "Modéré"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Aggressive",
+                    "fr": "Agressif"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "nvdec_emulation",
+              "label": {
+                "en": "Video decoding (NVDEC)",
+                "fr": "Décodage des vidéos (NVDEC)"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "1",
+                  "label": "CPU"
+                },
+                {
+                  "value": "2",
+                  "label": "GPU"
+                },
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Off (no in-game videos)",
+                    "fr": "Désactivé (pas de vidéos)"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Renderer",
+              "key": "dyna_state",
+              "label": {
+                "en": "Extended dynamic state (Vulkan)",
+                "fr": "État dynamique étendu (Vulkan)"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Disabled",
+                    "fr": "Désactivé"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": "EDS1"
+                },
+                {
+                  "value": "2",
+                  "label": {
+                    "en": "EDS2 (default)",
+                    "fr": "EDS2 (par défaut)"
+                  }
+                },
+                {
+                  "value": "3",
+                  "label": "EDS3"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": {
+            "en": "System",
+            "fr": "Système"
+          },
+          "fields": [
+            {
+              "file": "qt-config.ini",
+              "section": "System",
+              "key": "use_docked_mode",
+              "label": {
+                "en": "Console mode",
+                "fr": "Mode de la console"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Docked (TV)",
+                    "fr": "Station d’accueil (TV)"
+                  }
+                },
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Handheld",
+                    "fr": "Portable"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "System",
+              "key": "language_index",
+              "label": {
+                "en": "Console language",
+                "fr": "Langue de la console"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "2",
+                  "label": "Français"
+                },
+                {
+                  "value": "13",
+                  "label": "Français (Canada)"
+                },
+                {
+                  "value": "1",
+                  "label": "English (US)"
+                },
+                {
+                  "value": "12",
+                  "label": "English (UK)"
+                },
+                {
+                  "value": "3",
+                  "label": "Deutsch"
+                },
+                {
+                  "value": "4",
+                  "label": "Italiano"
+                },
+                {
+                  "value": "5",
+                  "label": "Español"
+                },
+                {
+                  "value": "14",
+                  "label": "Español (Latinoamérica)"
+                },
+                {
+                  "value": "8",
+                  "label": "Nederlands"
+                },
+                {
+                  "value": "9",
+                  "label": "Português"
+                },
+                {
+                  "value": "17",
+                  "label": "Português (Brasil)"
+                },
+                {
+                  "value": "10",
+                  "label": "Русский"
+                },
+                {
+                  "value": "18",
+                  "label": "Polski"
+                },
+                {
+                  "value": "19",
+                  "label": "ไทย"
+                },
+                {
+                  "value": "0",
+                  "label": "日本語"
+                },
+                {
+                  "value": "7",
+                  "label": "한국어"
+                },
+                {
+                  "value": "6",
+                  "label": "中文"
+                },
+                {
+                  "value": "15",
+                  "label": "简体中文"
+                },
+                {
+                  "value": "16",
+                  "label": "繁體中文"
+                },
+                {
+                  "value": "11",
+                  "label": "台灣"
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "System",
+              "key": "region_index",
+              "label": {
+                "en": "Console region",
+                "fr": "Région de la console"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "2",
+                  "label": {
+                    "en": "Europe",
+                    "fr": "Europe"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "USA",
+                    "fr": "États-Unis"
+                  }
+                },
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Japan",
+                    "fr": "Japon"
+                  }
+                },
+                {
+                  "value": "3",
+                  "label": {
+                    "en": "Australia",
+                    "fr": "Australie"
+                  }
+                },
+                {
+                  "value": "4",
+                  "label": {
+                    "en": "China",
+                    "fr": "Chine"
+                  }
+                },
+                {
+                  "value": "5",
+                  "label": {
+                    "en": "Korea",
+                    "fr": "Corée"
+                  }
+                },
+                {
+                  "value": "6",
+                  "label": {
+                    "en": "Taiwan",
+                    "fr": "Taïwan"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": {
+            "en": "Performance",
+            "fr": "Performances"
+          },
+          "fields": [
+            {
+              "file": "qt-config.ini",
+              "section": "Core",
+              "key": "use_multi_core",
+              "label": {
+                "en": "Multicore CPU emulation",
+                "fr": "Émulation multicœur du processeur"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Core",
+              "key": "memory_layout_mode",
+              "label": {
+                "en": "Console memory",
+                "fr": "Mémoire de la console"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "4 GB (default)",
+                    "fr": "4 Go (par défaut)"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "6 GB (unsafe)",
+                    "fr": "6 Go (risqué)"
+                  }
+                },
+                {
+                  "value": "2",
+                  "label": {
+                    "en": "8 GB (unsafe)",
+                    "fr": "8 Go (risqué)"
+                  }
+                },
+                {
+                  "value": "3",
+                  "label": {
+                    "en": "10 GB (unsafe)",
+                    "fr": "10 Go (risqué)"
+                  }
+                },
+                {
+                  "value": "4",
+                  "label": {
+                    "en": "12 GB (unsafe)",
+                    "fr": "12 Go (risqué)"
+                  }
+                }
+              ],
+              "hint": {
+                "en": "More memory helps high-resolution mods; some games refuse to start with it.",
+                "fr": "Plus de mémoire aide les mods en haute résolution ; certains jeux refusent alors de démarrer."
+              }
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Core",
+              "key": "use_speed_limit",
+              "label": {
+                "en": "Limit speed",
+                "fr": "Limiter la vitesse"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Core",
+              "key": "speed_limit",
+              "label": {
+                "en": "Speed limit",
+                "fr": "Vitesse maximale"
+              },
+              "type": "number",
+              "min": 1,
+              "max": 9999,
+              "unit": "%"
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Cpu",
+              "key": "cpu_accuracy",
+              "label": {
+                "en": "CPU accuracy",
+                "fr": "Précision du processeur"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Auto",
+                    "fr": "Automatique"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Accurate",
+                    "fr": "Précise"
+                  }
+                },
+                {
+                  "value": "2",
+                  "label": {
+                    "en": "Unsafe (faster)",
+                    "fr": "Risquée (plus rapide)"
+                  }
+                },
+                {
+                  "value": "3",
+                  "label": {
+                    "en": "Paranoid (slow)",
+                    "fr": "Paranoïaque (lente)"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": {
+            "en": "Audio",
+            "fr": "Son"
+          },
+          "fields": [
+            {
+              "file": "qt-config.ini",
+              "section": "Audio",
+              "key": "output_engine",
+              "label": {
+                "en": "Output engine",
+                "fr": "Moteur de sortie"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Auto",
+                    "fr": "Automatique"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": "Cubeb"
+                },
+                {
+                  "value": "2",
+                  "label": "SDL3"
+                },
+                {
+                  "value": "3",
+                  "label": {
+                    "en": "None (muted)",
+                    "fr": "Aucun (muet)"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Audio",
+              "key": "volume",
+              "label": {
+                "en": "Volume",
+                "fr": "Volume"
+              },
+              "type": "number",
+              "min": 0,
+              "max": 200,
+              "unit": "%"
+            },
+            {
+              "file": "qt-config.ini",
+              "section": "Audio",
+              "key": "audio_muted",
+              "label": {
+                "en": "Mute",
+                "fr": "Couper le son"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            }
+          ]
+        }
+      ]
+    },
+    "dolphin": {
+      "style": "spaced",
+      "notes": {
+        "windows": {
+          "en": "Close Dolphin before saving: it rewrites its settings when it closes. Controllers are set in Dolphin (Controllers); a game’s own settings (right-click › Properties) take precedence.",
+          "fr": "Fermez Dolphin avant d’enregistrer : il réécrit ses réglages en se fermant. Les manettes se règlent dans Dolphin (Manettes) ; les réglages propres à un jeu (clic droit › Propriétés) passent avant."
+        },
+        "android": {
+          "en": "Close Dolphin before saving (swipe it away from the recent apps): it rewrites its settings when it closes. Controllers are set in Dolphin (Settings › Controller Settings); a game’s own settings (long press on the game) take precedence.",
+          "fr": "Fermez Dolphin avant d’enregistrer (balayez-le des applications récentes) : il réécrit ses réglages en se fermant. Les manettes se règlent dans Dolphin (Paramètres › Manettes) ; les réglages propres à un jeu (appui long sur le jeu) passent avant."
+        }
+      },
+      "groups": [
+        {
+          "title": {
+            "en": "Graphics",
+            "fr": "Graphismes"
+          },
+          "fields": [
+            {
+              "file": "Dolphin.ini",
+              "section": "Core",
+              "key": "GFXBackend",
+              "label": {
+                "en": "Graphics backend",
+                "fr": "Moteur graphique"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "Vulkan",
+                  "label": "Vulkan"
+                },
+                {
+                  "value": "D3D12",
+                  "label": "Direct3D 12",
+                  "platforms": [
+                    "windows"
+                  ]
+                },
+                {
+                  "value": "D3D",
+                  "label": "Direct3D 11",
+                  "platforms": [
+                    "windows"
+                  ]
+                },
+                {
+                  "value": "OGL",
+                  "label": "OpenGL"
+                }
+              ]
+            },
+            {
+              "file": "GFX.ini",
+              "section": "Settings",
+              "key": "InternalResolution",
+              "label": {
+                "en": "Internal resolution",
+                "fr": "Résolution interne"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Native (640×528)",
+                    "fr": "Native (640×528)"
+                  }
+                },
+                {
+                  "value": "2",
+                  "label": "2× (720p)"
+                },
+                {
+                  "value": "3",
+                  "label": "3× (1080p)"
+                },
+                {
+                  "value": "4",
+                  "label": "4× (1440p)"
+                },
+                {
+                  "value": "5",
+                  "label": "5×"
+                },
+                {
+                  "value": "6",
+                  "label": "6× (4K)"
+                },
+                {
+                  "value": "7",
+                  "label": "7×"
+                },
+                {
+                  "value": "8",
+                  "label": "8× (5K)"
+                }
+              ]
+            },
+            {
+              "file": "GFX.ini",
+              "section": "Settings",
+              "key": "AspectRatio",
+              "label": {
+                "en": "Aspect ratio",
+                "fr": "Format d’image"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Auto",
+                    "fr": "Automatique"
+                  }
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Force 16:9",
+                    "fr": "Forcer 16:9"
+                  }
+                },
+                {
+                  "value": "2",
+                  "label": {
+                    "en": "Force 4:3",
+                    "fr": "Forcer 4:3"
+                  }
+                },
+                {
+                  "value": "3",
+                  "label": {
+                    "en": "Stretch to window",
+                    "fr": "Étiré à la fenêtre"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "GFX.ini",
+              "section": "Settings",
+              "key": "wideScreenHack",
+              "label": {
+                "en": "Widescreen hack",
+                "fr": "Astuce écran large"
+              },
+              "type": "bool",
+              "on": "True",
+              "off": "False"
+            },
+            {
+              "file": "GFX.ini",
+              "section": "Settings",
+              "key": "MSAA",
+              "label": {
+                "en": "Anti-aliasing (MSAA)",
+                "fr": "Anticrénelage (MSAA)"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "None",
+                    "fr": "Aucun"
+                  }
+                },
+                {
+                  "value": "2",
+                  "label": "2×"
+                },
+                {
+                  "value": "4",
+                  "label": "4×"
+                },
+                {
+                  "value": "8",
+                  "label": "8×"
+                }
+              ]
+            },
+            {
+              "file": "GFX.ini",
+              "section": "Enhancements",
+              "key": "MaxAnisotropy",
+              "label": {
+                "en": "Anisotropic filtering",
+                "fr": "Filtrage anisotrope"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0",
+                  "label": "1×"
+                },
+                {
+                  "value": "1",
+                  "label": "2×"
+                },
+                {
+                  "value": "2",
+                  "label": "4×"
+                },
+                {
+                  "value": "3",
+                  "label": "8×"
+                },
+                {
+                  "value": "4",
+                  "label": "16×"
+                }
+              ]
+            },
+            {
+              "file": "GFX.ini",
+              "section": "Hardware",
+              "key": "VSync",
+              "label": {
+                "en": "VSync",
+                "fr": "Synchronisation verticale"
+              },
+              "type": "bool",
+              "on": "True",
+              "off": "False"
+            },
+            {
+              "file": "GFX.ini",
+              "section": "Settings",
+              "key": "ShowFPS",
+              "label": {
+                "en": "Show FPS",
+                "fr": "Afficher les images par seconde"
+              },
+              "type": "bool",
+              "on": "True",
+              "off": "False"
+            }
+          ]
+        },
+        {
+          "title": {
+            "en": "General",
+            "fr": "Général"
+          },
+          "fields": [
+            {
+              "file": "Dolphin.ini",
+              "section": "Display",
+              "key": "Fullscreen",
+              "label": {
+                "en": "Start games in full screen",
+                "fr": "Jeux en plein écran"
+              },
+              "type": "bool",
+              "on": "True",
+              "off": "False",
+              "platforms": [
+                "windows"
+              ]
+            },
+            {
+              "file": "Dolphin.ini",
+              "section": "Core",
+              "key": "CPUThread",
+              "label": {
+                "en": "Dual core (faster)",
+                "fr": "Double cœur (plus rapide)"
+              },
+              "type": "bool",
+              "on": "True",
+              "off": "False"
+            },
+            {
+              "file": "Dolphin.ini",
+              "section": "Interface",
+              "key": "ConfirmStop",
+              "label": {
+                "en": "Confirm before stopping a game",
+                "fr": "Confirmer l’arrêt d’un jeu"
+              },
+              "type": "bool",
+              "on": "True",
+              "off": "False",
+              "platforms": [
+                "windows"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "windows": {
+    "eden": "eden",
+    "lichii": "eden",
+    "orchid": "eden",
+    "fritchii": "eden",
+    "dolphin": "dolphin"
+  },
+  "android": {
+    "packages": [
+      {
+        "prefix": "dev.eden.eden_emulator",
+        "schema": "eden"
+      },
+      {
+        "prefix": "dev.legacy.eden_emulator",
+        "schema": "eden"
+      },
+      {
+        "prefix": "org.dolphinemu.dolphinemu",
+        "schema": "dolphin"
+      }
+    ],
+    "files": {
+      "qt-config.ini": "config/config.ini",
+      "Dolphin.ini": "Config/Dolphin.ini",
+      "GFX.ini": "Config/GFX.ini"
+    }
+  }
+}
