@@ -1293,6 +1293,525 @@
           ]
         }
       ]
+    },
+    "vita3k": {
+      "style": "yaml",
+      "notes": {
+        "windows": {
+          "en": "Close Vita3K before saving: it saves its settings again when they are changed in its window. A game’s own settings (right-click › Configure in Vita3K) take precedence. RomCloud installs the firmware from the server and skips the welcome window before starting a game.",
+          "fr": "Fermez Vita3K avant d’enregistrer : il réenregistre ses réglages quand ils sont changés dans sa fenêtre. Les réglages propres à un jeu (clic droit › Configurer dans Vita3K) passent avant. RomCloud installe le firmware du serveur et passe la fenêtre de bienvenue avant de démarrer un jeu."
+        }
+      },
+      "groups": [
+        {
+          "title": {
+            "en": "Graphics",
+            "fr": "Graphismes"
+          },
+          "fields": [
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "backend-renderer",
+              "label": {
+                "en": "Graphics backend",
+                "fr": "Moteur graphique"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "Vulkan",
+                  "label": "Vulkan"
+                },
+                {
+                  "value": "OpenGL",
+                  "label": "OpenGL"
+                }
+              ]
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "resolution-multiplier",
+              "label": {
+                "en": "Resolution",
+                "fr": "Résolution"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "0.5",
+                  "label": "0.5× (480×272)"
+                },
+                {
+                  "value": "0.75",
+                  "label": "0.75×"
+                },
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "1× (960×544, native)",
+                    "fr": "1× (960×544, native)"
+                  }
+                },
+                {
+                  "value": "1.25",
+                  "label": "1.25×"
+                },
+                {
+                  "value": "1.5",
+                  "label": "1.5× (1440×816)"
+                },
+                {
+                  "value": "1.75",
+                  "label": "1.75×"
+                },
+                {
+                  "value": "2",
+                  "label": "2× (1920×1088)"
+                },
+                {
+                  "value": "2.5",
+                  "label": "2.5×"
+                },
+                {
+                  "value": "3",
+                  "label": "3× (2880×1632)"
+                },
+                {
+                  "value": "4",
+                  "label": "4× (3840×2176)"
+                },
+                {
+                  "value": "6",
+                  "label": "6×"
+                },
+                {
+                  "value": "8",
+                  "label": "8×"
+                }
+              ]
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "screen-filter",
+              "label": {
+                "en": "Screen filter",
+                "fr": "Filtre de l’image"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "Bilinear",
+                  "label": {
+                    "en": "Bilinear",
+                    "fr": "Bilinéaire"
+                  }
+                },
+                {
+                  "value": "Nearest",
+                  "label": {
+                    "en": "Nearest",
+                    "fr": "Plus proche voisin"
+                  }
+                },
+                {
+                  "value": "Bicubic",
+                  "label": {
+                    "en": "Bicubic",
+                    "fr": "Bicubique"
+                  }
+                },
+                {
+                  "value": "FXAA",
+                  "label": "FXAA"
+                },
+                {
+                  "value": "FSR",
+                  "label": {
+                    "en": "FSR (Vulkan)",
+                    "fr": "FSR (Vulkan)"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "anisotropic-filtering",
+              "label": {
+                "en": "Anisotropic filtering",
+                "fr": "Filtrage anisotrope"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "1",
+                  "label": "1×"
+                },
+                {
+                  "value": "2",
+                  "label": "2×"
+                },
+                {
+                  "value": "4",
+                  "label": "4×"
+                },
+                {
+                  "value": "8",
+                  "label": "8×"
+                },
+                {
+                  "value": "16",
+                  "label": "16×"
+                }
+              ]
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "v-sync",
+              "label": {
+                "en": "VSync",
+                "fr": "Synchronisation verticale"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "stretch_the_display_area",
+              "label": {
+                "en": "Stretch the display area",
+                "fr": "Étirer l’image à l’écran"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "fullscreen_hd_res_pixel_perfect",
+              "label": {
+                "en": "Pixel-perfect full screen",
+                "fr": "Plein écran au pixel près"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "performance-overlay",
+              "label": {
+                "en": "Performance overlay (FPS)",
+                "fr": "Affichage des performances (images par seconde)"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            }
+          ]
+        },
+        {
+          "title": {
+            "en": "Graphics (advanced)",
+            "fr": "Graphismes (avancé)"
+          },
+          "fields": [
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "disable-surface-sync",
+              "label": {
+                "en": "Disable surface sync (faster, glitches in some games)",
+                "fr": "Désactiver la synchronisation des surfaces (plus rapide, défauts dans certains jeux)"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "memory-mapping",
+              "label": {
+                "en": "Memory mapping",
+                "fr": "Accès à la mémoire"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "double-buffer",
+                  "label": {
+                    "en": "Double buffer (default)",
+                    "fr": "Double tampon (par défaut)"
+                  }
+                },
+                {
+                  "value": "external-host",
+                  "label": "External host"
+                },
+                {
+                  "value": "page-table",
+                  "label": "Page table"
+                },
+                {
+                  "value": "native-buffer",
+                  "label": "Native buffer"
+                },
+                {
+                  "value": "disabled",
+                  "label": {
+                    "en": "Disabled",
+                    "fr": "Désactivé"
+                  }
+                }
+              ],
+              "hint": {
+                "en": "Only the methods supported by the graphics card are used.",
+                "fr": "Seules les méthodes prises en charge par la carte graphique sont utilisées."
+              }
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "high-accuracy",
+              "label": {
+                "en": "High accuracy (slower)",
+                "fr": "Haute précision (plus lent)"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "shader-cache",
+              "label": {
+                "en": "Shader cache",
+                "fr": "Cache des shaders"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "async-pipeline-compilation",
+              "label": {
+                "en": "Asynchronous pipeline compilation (less stutter)",
+                "fr": "Compilation asynchrone (moins de saccades)"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "texture-cache",
+              "label": {
+                "en": "Texture cache",
+                "fr": "Cache des textures"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "fps-hack",
+              "label": {
+                "en": "FPS hack (games locked at 30 FPS)",
+                "fr": "Astuce FPS (jeux bloqués à 30 images par seconde)"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            }
+          ]
+        },
+        {
+          "title": {
+            "en": "System",
+            "fr": "Système"
+          },
+          "fields": [
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "sys-lang",
+              "label": {
+                "en": "Console language",
+                "fr": "Langue de la console"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "2",
+                  "label": "Français"
+                },
+                {
+                  "value": "1",
+                  "label": "English (US)"
+                },
+                {
+                  "value": "18",
+                  "label": "English (UK)"
+                },
+                {
+                  "value": "4",
+                  "label": "Deutsch"
+                },
+                {
+                  "value": "5",
+                  "label": "Italiano"
+                },
+                {
+                  "value": "3",
+                  "label": "Español"
+                },
+                {
+                  "value": "6",
+                  "label": "Nederlands"
+                },
+                {
+                  "value": "7",
+                  "label": "Português"
+                },
+                {
+                  "value": "17",
+                  "label": "Português (Brasil)"
+                },
+                {
+                  "value": "8",
+                  "label": "Русский"
+                },
+                {
+                  "value": "16",
+                  "label": "Polski"
+                },
+                {
+                  "value": "12",
+                  "label": "Suomi"
+                },
+                {
+                  "value": "13",
+                  "label": "Svenska"
+                },
+                {
+                  "value": "14",
+                  "label": "Dansk"
+                },
+                {
+                  "value": "15",
+                  "label": "Norsk"
+                },
+                {
+                  "value": "19",
+                  "label": "Türkçe"
+                },
+                {
+                  "value": "0",
+                  "label": "日本語"
+                },
+                {
+                  "value": "9",
+                  "label": "한국어"
+                },
+                {
+                  "value": "11",
+                  "label": "简体中文"
+                },
+                {
+                  "value": "10",
+                  "label": "繁體中文"
+                }
+              ]
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "sys-button",
+              "label": {
+                "en": "Confirm button",
+                "fr": "Bouton de validation"
+              },
+              "type": "select",
+              "options": [
+                {
+                  "value": "1",
+                  "label": {
+                    "en": "Cross (Europe, USA)",
+                    "fr": "Croix (Europe, États-Unis)"
+                  }
+                },
+                {
+                  "value": "0",
+                  "label": {
+                    "en": "Circle (Japan)",
+                    "fr": "Rond (Japon)"
+                  }
+                }
+              ]
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "pstv-mode",
+              "label": {
+                "en": "PlayStation TV mode",
+                "fr": "Mode PlayStation TV"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            }
+          ]
+        },
+        {
+          "title": {
+            "en": "Audio",
+            "fr": "Son"
+          },
+          "fields": [
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "audio-volume",
+              "label": {
+                "en": "Volume",
+                "fr": "Volume"
+              },
+              "type": "number",
+              "min": 0,
+              "max": 100,
+              "unit": "%"
+            },
+            {
+              "file": "config.yml",
+              "section": "",
+              "key": "ngs-enable",
+              "label": {
+                "en": "NGS audio (needed by most games)",
+                "fr": "Son NGS (nécessaire à la plupart des jeux)"
+              },
+              "type": "bool",
+              "on": "true",
+              "off": "false"
+            }
+          ]
+        }
+      ]
     }
   },
   "windows": {
@@ -1300,7 +1819,8 @@
     "lichii": "eden",
     "orchid": "eden",
     "fritchii": "eden",
-    "dolphin": "dolphin"
+    "dolphin": "dolphin",
+    "vita3k": "vita3k"
   },
   "android": {
     "packages": [

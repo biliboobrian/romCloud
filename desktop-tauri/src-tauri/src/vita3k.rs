@@ -136,6 +136,52 @@ pub fn set_license(game_id: &Value, zrif: &str) -> Value {
     json!(zrif)
 }
 
+/// Fichier des réglages de Vita3K : <dossier de Vita3K>/portable/config.yml s'il existe un dossier
+/// portable, sinon config.yml à côté de l'exécutable.
+pub fn config_dir(exe: &str) -> PathBuf {
+    let dir = PathBuf::from(paths::dirname(exe));
+    if dir.join("portable").is_dir() { dir.join("portable") } else { dir }
+}
+
+/// Dossier non vide (Vita3K : firmware installé quand vs0 n'est pas vide, polices quand sa0 ne l'est pas).
+fn has_content(dir: &Path) -> bool {
+    std::fs::read_dir(dir).map(|mut entries| entries.next().is_some()).unwrap_or(false)
+}
+
+/**
+ * Firmware (vita/firmware/PSVUPDAT.PUP) et polices (vita/firmware/PSP2UPDAT.PUP) de la zone « system » du dossier
+ * RomCloud ([system]) pas encore installés dans Vita3K : à installer avant le jeu (« --firmware »).
+ */
+pub fn missing_firmware(exe: &str, system: &Path) -> Vec<PathBuf> {
+    let fs = vita_fs(exe);
+    [("PSVUPDAT.PUP", "vs0"), ("PSP2UPDAT.PUP", "sa0")]
+        .iter()
+        .map(|(file, dir)| (system.join("vita").join("firmware").join(file), fs.join(dir)))
+        .filter(|(pup, dir)| pup.is_file() && !has_content(dir))
+        .map(|(pup, _)| pup)
+        .collect()
+}
+
+/// Arguments qui installent le firmware [pup] dans Vita3K (sans fenêtre ; Vita3K quitte ensuite).
+pub fn firmware_args(pup: &Path) -> Vec<String> {
+    vec!["--firmware".into(), pup.to_string_lossy().into_owned()]
+}
+
+/**
+ * Fenêtre de bienvenue de Vita3K désactivée (« show-welcome: false » dans config.yml) : affichée à
+ * chaque démarrage tant qu'elle n'est pas décochée, elle bloque le jeu lancé par RomCloud. Renvoie
+ * vrai si config.yml a changé.
+ */
+pub fn skip_welcome(exe: &str) -> bool {
+    let path = config_dir(exe).join("config.yml");
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    if text.lines().any(|l| l.trim_end() == "show-welcome: false") {
+        return false;
+    }
+    let updated = crate::emulator_config::set_yaml(&text, "show-welcome", "false");
+    std::fs::write(&path, updated).is_ok()
+}
+
 /// Étape du lancement.
 pub enum Step {
     /// Jeu installé : « -F -r <identifiant> ».
@@ -183,6 +229,44 @@ pub fn status(exe: Option<&str>, file: &Path, game: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn firmware_a_installer_et_bienvenue_desactivee() {
+        let root = std::env::temp_dir().join(format!("romcloud-vita3k-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let exe = root.join("Vita3K").join("Vita3K.exe");
+        let fs = root.join("Vita3K").join("portable").join("fs");
+        std::fs::create_dir_all(&fs).unwrap();
+        let exe = exe.to_string_lossy().into_owned();
+        let system = root.join("system");
+        // Rien sur le serveur : rien à installer.
+        assert!(missing_firmware(&exe, &system).is_empty());
+        let firmware = system.join("vita").join("firmware");
+        std::fs::create_dir_all(&firmware).unwrap();
+        std::fs::write(firmware.join("PSVUPDAT.PUP"), "SCEUF").unwrap();
+        std::fs::write(firmware.join("PSP2UPDAT.PUP"), "SCEUF").unwrap();
+        assert_eq!(missing_firmware(&exe, &system), [firmware.join("PSVUPDAT.PUP"), firmware.join("PSP2UPDAT.PUP")]);
+        // vs0 rempli (firmware installé) : polices seulement ; vs0 vide : toujours à installer.
+        std::fs::create_dir_all(fs.join("sa0")).unwrap();
+        std::fs::create_dir_all(fs.join("vs0").join("sys")).unwrap();
+        assert_eq!(missing_firmware(&exe, &system), [firmware.join("PSP2UPDAT.PUP")]);
+        assert_eq!(firmware_args(&firmware.join("PSP2UPDAT.PUP"))[0], "--firmware");
+
+        let config = root.join("Vita3K").join("portable").join("config.yml");
+        std::fs::write(&config, "---
+show-welcome: true
+sys-lang: 2
+...
+").unwrap();
+        assert!(skip_welcome(&exe));
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), "---
+show-welcome: false
+sys-lang: 2
+...
+");
+        assert!(!skip_welcome(&exe));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn identifiant_lu_dans_le_nom() {
