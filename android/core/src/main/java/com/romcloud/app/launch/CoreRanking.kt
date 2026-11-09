@@ -36,6 +36,7 @@ internal object CoreRanking {
         "psx" to listOf("mednafen_psx_hw", "swanstation", "mednafen_psx", "pcsx_rearmed", "duckstation", "goosestation"),
         "ps2" to listOf("pcsx2", "pcee2", "play", "armsx2"),
         "psp" to listOf("ppsspp"),
+        "pspminis" to listOf("ppsspp"),
         "tg16" to listOf("mednafen_pce", "mednafen_pce_fast", "mednafen_supergrafx"),
         "tgcd" to listOf("mednafen_pce", "mednafen_pce_fast", "mednafen_supergrafx"),
         "supergrafx" to listOf("mednafen_supergrafx", "mednafen_pce"),

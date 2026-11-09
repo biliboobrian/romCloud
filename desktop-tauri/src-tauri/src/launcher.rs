@@ -105,6 +105,8 @@ pub fn list_emulators() -> Value {
                     "folder": catalog::folder_exes(emu.id).is_some(),
                     // RomCloud sait vérifier et installer sa dernière version (emulator_updates.rs).
                     "updatable": crate::emulator_updates::supported(emu.id),
+                    // Réglages modifiables depuis RomCloud (emulator_config.rs).
+                    "configurable": crate::emulator_config::supported(emu.id),
                     "defaultLocation": catalog::default_location(emu).to_string_lossy(),
                     "direct": args.is_some(),
                     "defaultArgs": catalog::args_line(emu.args),

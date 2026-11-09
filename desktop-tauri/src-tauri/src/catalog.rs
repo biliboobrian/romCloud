@@ -35,8 +35,6 @@ macro_rules! emu {
 // aussi d'autres systèmes n'est proposé que pour ceux-là. PS3, PS4, PS5 et Wii U : émulateurs gérés
 // par RomCloud (managed.rs : RPCS3, shadPS4, KytyPS5, Cemu), pas d'émulateur externe non plus.
 pub static EMULATORS: &[Emulator] = &[
-    emu!("ppsspp", "PPSSPP", ["pspminis"], "https://www.ppsspp.org/download/", ["PPSSPPWindows64.exe", "PPSSPPWindows.exe"],
-        ["PPSSPP"], ["--fullscreen", "{file}"]),
     // Jeux installés dans Vita3K puis démarrés par leur identifiant (vita3k.rs) : pas de ligne de commande fixe.
     emu!("vita3k", "Vita3K", ["vita"], "https://vita3k.org/", ["Vita3K.exe"], ["Vita3K"], None),
     emu!("dolphin", "Dolphin", ["wiiware", "triforce"], "https://dolphin-emu.org/download/", ["Dolphin.exe"],

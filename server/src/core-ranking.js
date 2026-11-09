@@ -40,6 +40,7 @@ export const RANKING = {
   psx: ['mednafen_psx_hw', 'swanstation', 'mednafen_psx', 'pcsx_rearmed', 'duckstation', 'goosestation'],
   ps2: ['pcsx2', 'pcee2', 'play', 'armsx2'],
   psp: ['ppsspp'],
+  pspminis: ['ppsspp'],
   tg16: PCE,
   tgcd: PCE,
   supergrafx: ['mednafen_supergrafx', 'mednafen_pce'],

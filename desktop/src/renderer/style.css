@@ -146,7 +146,7 @@ body.systems-screen { --bg: #000; background: linear-gradient(135deg, #2e1a6b 0%
 /* Fenêtre « Filtres » : une rangée de puces par critère. */
 .criteria-section h4 { font-size: 13px; color: var(--accent); margin: 4px 0 8px; }
 .criteria-values { display: flex; flex-wrap: wrap; gap: 8px; }
-input[type=text], input[type=password], input[type=search], select, textarea {
+input[type=text], input[type=password], input[type=search], input[type=number], select, textarea {
   font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
   border-radius: 8px; padding: 8px 12px; width: 100%; user-select: text;
 }
@@ -387,6 +387,10 @@ body.pad-nav .list-row:focus { outline: none; background: var(--surface); box-sh
 .emu-block { display: flex; flex-direction: column; gap: 8px; }
 .emu-block label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .emu-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.emu-config h4 { color: var(--accent); margin: 12px 0 8px; font-size: 14px; }
+.emu-config h4:first-child { margin-top: 0; }
+.emu-config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 14px; }
+.emu-config-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 .emu-list { display: flex; flex-direction: column; gap: 10px; }
 .emu-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface, transparent); }
 .emu-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
