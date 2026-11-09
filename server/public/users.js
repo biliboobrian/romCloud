@@ -1,7 +1,7 @@
 // Page « Utilisateurs » de l'administration : profils des joueurs (création, mot de passe,
 // désactivation, suppression), détail d'un profil (sessions par appareil, connexions, temps de jeu,
 // sauvegardes en ligne, erreurs), journal de toutes les connexions et des erreurs des applications,
-// téléchargements (ROM, BIOS, APK) : qui télécharge quoi, statistiques par profil, appareil, jeu et jour,
+// téléchargements (ROM, BIOS, émulateurs du miroir) : qui télécharge quoi, statistiques par profil, appareil, jeu et jour,
 // clés d'accès générées (nombre d'appareils permis, appareils qui les utilisent).
 import { formatSize, getLanguage, t } from './i18n.js';
 
@@ -81,7 +81,7 @@ async function render() {
   $('#diskRecompressBtn').classList.toggle('hidden', tab !== 'disk' || detailId != null);
   $('#tokenCreateBtn').classList.toggle('hidden', tab !== 'tokens' || tokenId != null);
   const box = $('#usersContent');
-  box.innerHTML = `<p class="muted">${helpers.escapeHtml(t('apks.loading'))}</p>`;
+  box.innerHTML = `<p class="muted">${helpers.escapeHtml(t('app.loading'))}</p>`;
   await helpers.guard(async () => {
     if (detailId != null) return renderDetail(box, await helpers.api(`/users/${detailId}`));
     if (tab === 'users') return renderList(box, await helpers.api('/users'));
@@ -221,7 +221,7 @@ function renderDownloads(box, stats, rows) {
   box.innerHTML = `
     <div class="line dl-filters">
       ${select('days', [[7, t('downloads.days', { n: 7 })], [30, t('downloads.days', { n: 30 })], [90, t('downloads.days', { n: 90 })], [0, t('downloads.allTime')]], dlFilters.days)}
-      ${select('kind', [['', t('downloads.allKinds')], ...['game', 'bios', 'apk', 'emulator'].map((k) => [k, kindLabel(k)])], dlFilters.kind)}
+      ${select('kind', [['', t('downloads.allKinds')], ...['game', 'bios', 'emulator'].map((k) => [k, kindLabel(k)])], dlFilters.kind)}
       ${active.map((a) => `<span class="tag">${e(a)}</span>`).join('')}
       ${active.length ? `<button class="btn small" data-dl-reset>${e(t('downloads.resetFilters'))}</button>` : ''}
     </div>

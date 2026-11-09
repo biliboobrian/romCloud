@@ -85,7 +85,12 @@ data class BiosPrompt(
     val launch: PendingLaunch,
 )
 
-class GameLauncher(private val context: Context, private val settings: Settings) {
+/** [mirrorSource] : source du miroir des émulateurs d'un paquet ([EmulatorReleases.source]), null sans miroir. */
+class GameLauncher(
+    private val context: Context,
+    private val settings: Settings,
+    private val mirrorSource: (String) -> EmulatorReleases.Source? = { null },
+) {
 
     private companion object {
         /** Installateur des applications du Google Play Store. */
@@ -125,12 +130,12 @@ class GameLauncher(private val context: Context, private val settings: Settings)
 
     /**
      * Paquet de l'émulateur externe installé que l'utilisateur doit mettre à jour lui-même : APK publié
-     * sur un gestionnaire de versions ([EmulatorReleases.SOURCES], RomCloud PC, Winlator Cmod, Eden…)
+     * sur un gestionnaire de versions (miroir des émulateurs du serveur : RomCloud PC, Winlator Cmod, Eden…)
      * et non installé par le Play Store (qui le met à jour seul) ; null sinon.
      */
     fun manualUpdatePackage(player: Player): String? {
         if (player.libretroCore != null) return null
-        val pkg = packageOf(player)?.takeIf { it in EmulatorReleases.SOURCES && isPackageInstalled(it) } ?: return null
+        val pkg = packageOf(player)?.takeIf { mirrorSource(it) != null && isPackageInstalled(it) } ?: return null
         return pkg.takeIf { installerOf(it) != PLAY_STORE }
     }
 

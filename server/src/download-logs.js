@@ -1,10 +1,10 @@
-// Journal des téléchargements (ROM, BIOS, APK) : qui (profil connecté ou anonyme, appareil,
+// Journal des téléchargements (ROM, BIOS, émulateurs du miroir) : qui (profil connecté ou anonyme, appareil,
 // plateforme, version de l'application, IP), quoi (jeu, système, fichier) et combien d'octets ont été
 // envoyés. Une ligne par requête : un téléchargement repris (requête Range) en ajoute une, marquée
 // comme reprise. Statistiques pour l'administration : par type, appareil, profil, jeu et jour.
 import { db } from './db.js';
 
-export const DOWNLOAD_KINDS = ['game', 'bios', 'apk', 'emulator'];
+export const DOWNLOAD_KINDS = ['game', 'bios', 'emulator'];
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS download_logs (
@@ -29,6 +29,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS download_logs_at ON download_logs(at);
   CREATE INDEX IF NOT EXISTS download_logs_user ON download_logs(user_id);
 `);
+// Téléchargements des APK envoyés à la main (« Émulateurs Android », remplacés par le miroir) : retirés.
+db.prepare("DELETE FROM download_logs WHERE kind = 'apk'").run();
 
 /** Début de la plage demandée (« bytes=1048576- » -> 1048576), 0 sans requête Range. */
 export function rangeStart(header) {

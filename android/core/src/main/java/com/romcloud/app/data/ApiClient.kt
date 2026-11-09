@@ -212,10 +212,6 @@ class ApiClient(private val settings: Settings, val platform: String, val device
 
     fun biosFileUrl(bios: BiosFile): String = url("/api/bios/${bios.id}/file")
 
-    /** APK des émulateurs Android disponibles sur le serveur. */
-    suspend fun apksRaw(): String = get("/api/apks")
-
-    fun apkFileUrl(apk: EmulatorApk): String = url("/api/apks/${apk.id}/file")
 }
 
 /** Tailles des images allégées du serveur (server/src/media-variants.js). */

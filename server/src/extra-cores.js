@@ -8,8 +8,10 @@
 // OpenGL ES seulement), n'est pas envoyé à cette plateforme, même s'il vient d'un modèle enregistré.
 import { CORES, SYSTEM_EXTRA } from './extra-cores-data.js';
 import { coveredOnAndroid, withoutCoveredExternals } from './core-ranking.js';
+import { isMirroredPackage } from './emulator-mirror.js';
 
 const ALL_PLATFORMS = ['android', 'androidtv', 'windows'];
+const ANDROID_PLATFORMS = ['android', 'androidtv'];
 
 /** Découpe une ligne de commande en arguments (guillemets gérés), comme les applications. */
 function tokenize(input) {
@@ -103,7 +105,29 @@ export function playersFor(system, platform) {
   const added = extraCores(system)
     .filter((c) => c.platforms.includes(platform))
     .map((c) => corePlayer(system, c.core));
-  return withoutCoveredExternals(system, [...own, ...added], platform, coreOf);
+  const players = withoutCoveredExternals(system, [...own, ...added], platform, coreOf);
+  return ANDROID_PLATFORMS.includes(platform) ? mirroredFirst(players) : players;
+}
+
+/** Paquet Android d'un modèle d'émulateur externe (option -n ou -p de ses arguments), null sinon. */
+export function packageOfPlayer(player) {
+  const args = player?.amStartArguments || '';
+  const m = /(?:^|\s)-n\s+([\w.]+)\//.exec(args) || /(?:^|\s)-p\s+([\w.]+)/.exec(args);
+  return m ? m[1] : null;
+}
+
+/**
+ * Android : émulateurs externes publiés par le miroir du serveur (emulator-mirror.js, installés et mis
+ * à jour depuis le serveur) avant les autres (Play Store), chacun gardant sa place parmi les siens ;
+ * modèles de cœur à leur place.
+ */
+function mirroredFirst(players) {
+  const slots = players.map((p, i) => (coreOf(p) ? -1 : i)).filter((i) => i >= 0);
+  const externals = slots.map((i) => players[i]);
+  const sorted = [...externals.filter((p) => isMirroredPackage(packageOfPlayer(p))), ...externals.filter((p) => !isMirroredPackage(packageOfPlayer(p)))];
+  const out = [...players];
+  slots.forEach((slot, k) => { out[slot] = sorted[k]; });
+  return out;
 }
 
 /** Système tel qu'envoyé à l'application de la plateforme [platform] (inconnue : inchangé). */

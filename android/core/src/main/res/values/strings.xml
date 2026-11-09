@@ -298,8 +298,6 @@
     <string name="action_play_anyway">Play anyway</string>
     <string name="action_download_and_play">Download and play</string>
     <!-- APK des émulateurs -->
-    <string name="apk_available">Available on your RomCloud server: %1$s %2$s (%3$s).</string>
-    <string name="apk_not_on_server">Not available on your RomCloud server: install it from the Play Store.</string>
     <string name="update_title">RomCloud update</string>
     <string name="update_changes">Changes from %1$s to %2$s</string>
     <string name="update_text">RomCloud %1$s is available (installed version: %2$s, download: %3$s). The update keeps your settings and downloaded games.</string>
@@ -307,7 +305,6 @@
     <string name="update_companion_text">RomCloud PC %1$s is available (installed version: %2$s, download: %3$s). It runs your PC games: update it before playing to get the latest fixes. Your containers and settings are kept.</string>
     <string name="action_update">Update</string>
     <string name="action_later">Later</string>
-    <string name="action_install_from_server">Install from RomCloud</string>
     <string name="apk_downloading_title">Downloading %1$s</string>
     <string name="apk_permission_title">Allow installing apps</string>
     <string name="apk_permission_text">To install %1$s, Android must allow RomCloud to install apps. Enable “Allow from this source” for RomCloud, then come back: the installation will continue.</string>
@@ -315,6 +312,9 @@
     <string name="apk_install_failed">Installation of %1$s failed: %2$s</string>
     <string name="apk_wrong_package">the downloaded APK installs %1$s instead of %2$s</string>
     <string name="apk_release_available">Latest version on %4$s: %1$s %2$s (%3$s).</string>
+    <string name="emulator_play_store_only">Not in the emulator mirror of your RomCloud server: install it from the Play Store.</string>
+    <string name="emulator_mirror_failed">The RomCloud server could not get the latest version of %1$s (Internet unreachable, or no version published).</string>
+    <string name="emulator_mirror_failed_store">The RomCloud server could not get the latest version of %1$s: install it from the Play Store instead.</string>
     <string name="apk_server_fetching">The RomCloud server is fetching the latest version of %1$s…</string>
     <string name="update_emulator_title">Update %1$s</string>
     <string name="update_emulator_installed">Installed version: %1$s.</string>

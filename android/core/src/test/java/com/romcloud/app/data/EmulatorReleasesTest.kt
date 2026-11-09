@@ -15,7 +15,7 @@ class EmulatorReleasesTest {
     ).jsonObject
 
     private fun pick(packageName: String, sdk: Int, vararg names: String) =
-        EmulatorReleases.pickAsset(release(*names), EmulatorReleases.SOURCES.getValue(packageName).asset, sdk)
+        EmulatorReleases.pickAsset(release(*names), EmulatorReleases.FALLBACK.getValue(packageName).asset, sdk)
             ?.get("name")?.jsonPrimitive?.content
 
     @Test
@@ -40,32 +40,50 @@ class EmulatorReleasesTest {
     fun `pas d'emulateur externe des consoles de LibretroDroid`() {
         // 3DS, DS, Game Boy : cœurs Citra, melonDS, mGBA… du moteur intégré.
         for (pkg in listOf("org.azahar_emu.azahar", "io.github.lime3ds.android", "me.magnum.melonds", "com.sky.SkyEmu")) {
-            assertNull(pkg, EmulatorReleases.SOURCES[pkg])
+            assertNull(pkg, EmulatorReleases.FALLBACK[pkg])
         }
     }
 
     @Test
-    fun `variante d'ARMSX2 selon la version d'Android`() {
-        val armsx2 = arrayOf(
-            "ARMSX2-2.8.2-a11-armv8.2-sdk30.apk", "ARMSX2-2.8.2-a13-armv8.2-sdk33.apk",
-            "ARMSX2-2.8.2-a15-armv8.2-sdk35.apk", "ARMSX2-2.8.2-legacy-armv8.0-sdk26.apk",
+    fun `applications du miroir declarees par le serveur`() {
+        // Réponse de « /api/emulators/android » (emulator-mirror.js, androidPackages).
+        val sources = EmulatorReleases.parseSources(
+            """[
+              { "package": "com.armsx3", "name": "ARMSX3", "source": "armsx3", "host": "github.com",
+                "asset": "ARMSX3-.*-a\\d+-armv8\\.2-sdk\\d+\\.apk", "playStore": false },
+              { "package": "dev.eden.eden_emulator", "name": "Eden", "source": "eden", "host": "git.eden-emu.dev",
+                "asset": "Eden-Android-.*-standard\\.apk", "playStore": true },
+              { "package": "sans.motif", "source": "x", "asset": "(" }
+            ]""",
         )
-        assertEquals("ARMSX2-2.8.2-a15-armv8.2-sdk35.apk", pick("com.armsx2", 36, *armsx2))
-        assertEquals("ARMSX2-2.8.2-a13-armv8.2-sdk33.apk", pick("com.armsx2", 34, *armsx2))
-        assertEquals("ARMSX2-2.8.2-legacy-armv8.0-sdk26.apk", pick("com.armsx2", 28, *armsx2))
-        assertNull(pick("com.armsx2", 24, *armsx2))
+        assertEquals(setOf("com.armsx3", "dev.eden.eden_emulator"), sources.keys)
+        val armsx3 = sources.getValue("com.armsx3")
+        assertEquals(false, armsx3.playStore)
+        assertEquals("armsx3", armsx3.mirror)
+        assertEquals("git.eden-emu.dev", sources.getValue("dev.eden.eden_emulator").host)
+        // Une variante par version d'Android : la plus récente acceptée, jamais « legacy ».
+        val names = arrayOf(
+            "ARMSX3-1.6.7-a11-armv8.2-sdk30.apk", "ARMSX3-1.6.7-a13-armv8.2-sdk33.apk",
+            "ARMSX3-1.6.7-a15-armv8.2-sdk35.apk", "ARMSX3-1.6.7-legacy-armv8.1-sdk30.apk",
+        )
+        fun pick(sdk: Int) = EmulatorReleases.pickAsset(release(*names), armsx3.asset, sdk)?.get("name")?.jsonPrimitive?.content
+        assertEquals("ARMSX3-1.6.7-a15-armv8.2-sdk35.apk", pick(36))
+        assertEquals("ARMSX3-1.6.7-a13-armv8.2-sdk33.apk", pick(34))
+        assertEquals("ARMSX3-1.6.7-a11-armv8.2-sdk30.apk", pick(30))
+        assertNull(pick(28))
+        assertTrue(EmulatorReleases.parseSources("{}").isEmpty())
     }
 
     @Test
     fun `RomCloud PC, APK de la Release de RomCloud`() {
         assertEquals("RomCloud-PC-1.63.0.apk", pick("com.romcloud.wine", 34, "RomCloud-1.63.0.apk", "RomCloud-TV-1.63.0.apk", "RomCloud-PC-1.63.0.apk"))
-        assertEquals(false, EmulatorReleases.SOURCES.getValue("com.romcloud.wine").playStore)
+        assertEquals(false, EmulatorReleases.FALLBACK.getValue("com.romcloud.wine").playStore)
     }
 
     @Test
     fun `Winlator Cmod, APK de GitHub hors Play Store`() {
         assertEquals("Winlator-Cmod-v13.1.1.apk", pick("com.winlator.cmod", 34, "cmod-hotfix-checklist-08-07-2025.png", "Winlator-Cmod-v13.1.1.apk"))
-        assertEquals(false, EmulatorReleases.SOURCES.getValue("com.winlator.cmod").playStore)
+        assertEquals(false, EmulatorReleases.FALLBACK.getValue("com.winlator.cmod").playStore)
         assertEquals("13.1", EmulatorReleases.versionOf("cmod_v13.1"))
         assertEquals("0.0.3", EmulatorReleases.versionOf("v0.0.3"))
         assertEquals("2122.1", EmulatorReleases.versionOf("2122.1"))
@@ -73,11 +91,11 @@ class EmulatorReleasesTest {
 
     @Test
     fun `site du gestionnaire de versions`() {
-        assertEquals("git.eden-emu.dev", EmulatorReleases.SOURCES.getValue("dev.eden.eden_emulator").host)
-        assertEquals("github.com", EmulatorReleases.SOURCES.getValue("com.flycast.emulator").host)
+        assertEquals("git.eden-emu.dev", EmulatorReleases.FALLBACK.getValue("dev.eden.eden_emulator").host)
+        assertEquals("github.com", EmulatorReleases.FALLBACK.getValue("com.flycast.emulator").host)
         // Sources du miroir du serveur (SOURCES de emulator-mirror.js) : Eden et ses variantes, même source.
-        assertEquals("eden", EmulatorReleases.SOURCES.getValue("dev.legacy.eden_emulator").mirror)
-        assertEquals("vita3k-android", EmulatorReleases.SOURCES.getValue("org.vita3k.emulator").mirror)
-        assertTrue(EmulatorReleases.SOURCES.values.all { it.mirror.matches(Regex("[a-z0-9-]+")) })
+        assertEquals("eden", EmulatorReleases.FALLBACK.getValue("dev.legacy.eden_emulator").mirror)
+        assertEquals("vita3k-android", EmulatorReleases.FALLBACK.getValue("org.vita3k.emulator").mirror)
+        assertTrue(EmulatorReleases.FALLBACK.values.all { it.mirror.matches(Regex("[a-z0-9-]+")) })
     }
 }

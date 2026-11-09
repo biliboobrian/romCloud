@@ -39,10 +39,23 @@ const EDEN = 'https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases?limit
 /**
  * Sources des émulateurs : [releases] liste des versions (API GitHub, ou Forgejo, même format),
  * [prereleases] : préversions proposées (Lichii et Fritchii ne publient qu'elles, KytyPS5 plusieurs par jour).
+ * [android] : applications Android publiées par la source, envoyées aux applications (« /emulators/android ») :
+ * [package] paquet des modèles d'émulateurs Daijishou, [asset] nom de l'APK dans la Release (expression
+ * régulière ; variantes « -sdkNN » : la plus récente acceptée par l'appareil), [name] nom affiché (celui
+ * de la source sinon), [playStore] faux pour une application absente du Google Play Store (pas de repli
+ * vers le Play Store quand le miroir ne la trouve pas). Un émulateur du miroir passe devant les autres
+ * émulateurs externes du système (playersFor, extra-cores.js).
  */
 export const SOURCES = {
   // Windows (RomCloud pour Windows) et Android (Eden : même dépôt).
-  eden: { name: 'Eden', releases: EDEN, platforms: ['windows', 'android'] },
+  eden: {
+    name: 'Eden', releases: EDEN, platforms: ['windows', 'android'],
+    android: [
+      { package: 'dev.eden.eden_emulator', asset: String.raw`Eden-Android-.*-standard\.apk` },
+      { package: 'dev.legacy.eden_emulator', name: 'Eden (Legacy)', asset: String.raw`Eden-Android-.*-legacy\.apk` },
+      { package: 'com.miHoYo.Yuanshen', name: 'Eden (Optimized)', asset: String.raw`Eden-Android-.*-optimized\.apk` },
+    ],
+  },
   lichii: { name: 'Lichii', releases: github('zortos293/Lichii'), prereleases: true, platforms: ['windows'] },
   orchid: { name: 'Orchid', releases: github('MythosOfs/Orchid'), prereleases: true, platforms: ['windows'] },
   fritchii: { name: 'Fritchii', releases: github('Frizti/Fritchii'), prereleases: true, platforms: ['windows'] },
@@ -50,17 +63,97 @@ export const SOURCES = {
   shadps4: { name: 'shadPS4', releases: github('shadps4-emu/shadPS4'), platforms: ['windows'] },
   kytyps5: { name: 'KytyPS5', releases: github('KytyPS5/KytyPS5'), prereleases: true, platforms: ['windows'] },
   cemu: { name: 'Cemu', releases: github('cemu-project/Cemu'), platforms: ['windows'] },
-  // Android, consoles sans moteur intégré seulement (3DS, DS, Game Boy : cœurs Citra, melonDS, mGBA…) :
-  // Flycast pour Naomi et Atomiswave, ARMSX2 pour le Namco System 246, MAME4droid pour les Game & Watch.
-  'romcloud-pc': { name: 'RomCloud PC', releases: github('biliboobrian/romCloud'), platforms: ['android'] },
-  'winlator-cmod': { name: 'Winlator Cmod', releases: github('coffincolors/winlator'), platforms: ['android'] },
-  flycast: { name: 'Flycast', releases: github('flyinghead/flycast'), platforms: ['android'] },
-  'vita3k-android': { name: 'Vita3K', releases: github('Vita3K/Vita3K-Android'), platforms: ['android'] },
-  armsx2: { name: 'ARMSX2', releases: github('ARMSX2/ARMSX2'), platforms: ['android'] },
-  'cemu-android': { name: 'Cemu', releases: github('SSimco/Cemu'), platforms: ['android'] },
-  aps3e: { name: 'aPS3e', releases: github('aenu1/aps3e'), platforms: ['android'] },
-  mame4droid: { name: 'MAME4droid', releases: github('seleuco/MAME4droid-Current'), platforms: ['android'] },
+  // Android, systèmes sans moteur intégré seulement (3DS, DS, Game Boy : cœurs Citra, melonDS, mGBA…).
+  // Jeux PC (Wine / Proton) : RomCloud PC (android/pc, publié avec RomCloud), Winlator Cmod, Winlator, GameNative.
+  'romcloud-pc': {
+    name: 'RomCloud PC', releases: github('biliboobrian/romCloud'), platforms: ['android'],
+    android: [{ package: 'com.romcloud.wine', asset: String.raw`RomCloud-PC-.*\.apk`, playStore: false }],
+  },
+  'winlator-cmod': {
+    name: 'Winlator Cmod', releases: github('coffincolors/winlator'), platforms: ['android'],
+    android: [{ package: 'com.winlator.cmod', asset: String.raw`Winlator-Cmod-.*\.apk`, playStore: false }],
+  },
+  winlator: {
+    name: 'Winlator', releases: github('brunodev85/winlator'), platforms: ['android'],
+    android: [{ package: 'com.winlator', asset: String.raw`Winlator_.*\.apk`, playStore: false }],
+  },
+  gamenative: {
+    name: 'GameNative', releases: github('utkarshdalal/GameNative'), platforms: ['android'],
+    // Version standard (pas « -legacy-xr », casques Quest).
+    android: [{ package: 'app.gamenative', asset: String.raw`gamenative-v[\d.]+\.apk`, playStore: false }],
+  },
+  // Switch : Eden Duo (Eden avec deux écrans).
+  'eden-duo': {
+    name: 'Eden Duo', releases: github('igawa6/eden-duo'), platforms: ['android'],
+    android: [{ package: 'dev.igawa6.edenduo', asset: String.raw`EdenDuo-.*\.apk`, playStore: false }],
+  },
+  // Naomi et Atomiswave.
+  flycast: {
+    name: 'Flycast', releases: github('flyinghead/flycast'), platforms: ['android'],
+    android: [{ package: 'com.flycast.emulator', asset: String.raw`flycast-.*\.apk` }],
+  },
+  'vita3k-android': {
+    name: 'Vita3K', releases: github('Vita3K/Vita3K-Android'), platforms: ['android'],
+    android: [{ package: 'org.vita3k.emulator', asset: String.raw`vita3k-android-.*\.apk` }],
+  },
+  'cemu-android': {
+    name: 'Cemu', releases: github('SSimco/Cemu'), platforms: ['android'],
+    android: [{ package: 'info.cemu.cemu', asset: String.raw`Cemu-.*\.apk` }],
+  },
+  // PS3 : aPS3e, ARMSX3 (une variante par version d'Android, « -sdk30 », « -sdk33 »… ; pas « legacy »).
+  aps3e: {
+    name: 'aPS3e', releases: github('aenu1/aps3e'), platforms: ['android'],
+    android: [{ package: 'aenu.aps3e', asset: String.raw`[\w.-]+\.apk` }],
+  },
+  armsx3: {
+    name: 'ARMSX3', releases: github('ARMSX2/ARMSX3'), platforms: ['android'],
+    android: [{ package: 'com.armsx3', asset: String.raw`ARMSX3-.*-a\d+-armv8\.2-sdk\d+\.apk`, playStore: false }],
+  },
+  // Xbox : X1 Box (xemu), hakuX ; Xbox et Xbox 360 : Xenra (édition Green, la Gold n'est plus publiée) ; Xbox 360 : XenDroid.
+  x1box: {
+    name: 'X1 Box', releases: github('izzy2lost/xemu'), platforms: ['android'],
+    android: [{ package: 'com.izzy2lost.x1box', asset: String.raw`app-release\.apk`, playStore: false }],
+  },
+  hakux: {
+    name: 'hakuX', releases: github('rfandango/hakuX'), platforms: ['android'],
+    android: [{ package: 'com.rfandango.haku_x', asset: String.raw`hakuX-.*\.apk`, playStore: false }],
+  },
+  xenra: {
+    name: 'Xenra', releases: github('Yebot32/xenra'), platforms: ['android'],
+    android: [{ package: 'Ali.Xanite.green', name: 'Xenra (Green)', asset: String.raw`Xenra-.*-green-release\.apk`, playStore: false }],
+  },
+  xendroid: {
+    name: 'XenDroid', releases: github('rfandango/XenDroid'), platforms: ['android'],
+    android: [{ package: 'xendroid.compose', asset: String.raw`XenDroid_Release_.*\.apk`, playStore: false }],
+  },
+  // Game & Watch.
+  mame4droid: {
+    name: 'MAME4droid', releases: github('seleuco/MAME4droid-Current'), platforms: ['android'],
+    android: [{ package: 'com.seleuco.mame4d2024', asset: String.raw`MAME4droid.*\.apk` }],
+  },
 };
+
+/**
+ * Applications Android du miroir : [{ package, name, source, host, asset, playStore }] (applications
+ * Android : quelle version télécharger, et si le Play Store peut servir de repli).
+ */
+export function androidPackages() {
+  return Object.entries(SOURCES).flatMap(([id, source]) =>
+    (source.android || []).map((a) => ({
+      package: a.package,
+      name: a.name || source.name,
+      source: id,
+      host: hostOf(id),
+      asset: a.asset,
+      playStore: a.playStore !== false,
+    })),
+  );
+}
+
+const ANDROID_PACKAGES = new Set(Object.values(SOURCES).flatMap((s) => (s.android || []).map((a) => a.package)));
+
+/** Paquet Android publié par une source du miroir. */
+export const isMirroredPackage = (pkg) => ANDROID_PACKAGES.has(pkg);
 
 export const mirrorDir = () => path.join(config.dataDir, 'emulators');
 

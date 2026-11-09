@@ -212,13 +212,6 @@ class Repository(
         return if (gpuDrivers()) files else files.filterNot { it.isDriver }
     }
 
-    /** APK d'émulateurs du serveur (dernière liste connue hors ligne, liste vide en cas d'erreur). */
-    suspend fun apks(): List<EmulatorApk> = runCatching {
-        loadWithCache("apks.json", api::apksRaw) {
-            api.json.decodeFromString(ListSerializer(EmulatorApk.serializer()), it)
-        }.data
-    }.getOrDefault(emptyList())
-
     suspend fun system(systemId: String): GameSystem? =
         systemsMemory[systemId] ?: runCatching { systems() }.getOrNull()?.data?.find { it.id == systemId }
 

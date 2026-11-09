@@ -42,7 +42,6 @@ export const DEFAULT_SYSTEM_COLORS = {
   mame: '#4a1240',
   master: '#4a0e14',
   megaduck: '#2a3a2a',
-  model3: '#14284a',
   msx: '#1a2a4a',
   n64: '#14402a',
   naomi: '#4a2a0a',

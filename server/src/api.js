@@ -8,7 +8,6 @@ import * as accounts from './accounts.js';
 import * as apiTokens from './api-tokens.js';
 import * as play from './play.js';
 import * as lobbies from './lobbies.js';
-import { addApk, apkFilePath, deleteApk, emulatorPackages, listApks, requireApk, updateApk } from './apks.js';
 import { addBiosFiles, biosFilePath, deleteBios, fetchBiosFromSource, importBiosPack, requireBios, systemBios } from './bios.js';
 import { config, screenscraperEnabled } from './config.js';
 import { diskUsage } from './disk-usage.js';
@@ -61,7 +60,7 @@ import {
   updateSystem,
 } from './systems.js';
 import { emulatorCandidates } from './emulator-order.js';
-import { deleteFile as deleteEmulatorFile, listReleases, mirrorSummary, prepareFile, refreshMirror, requireSource, storedFile } from './emulator-mirror.js';
+import { androidPackages, deleteFile as deleteEmulatorFile, listReleases, mirrorSummary, prepareFile, refreshMirror, requireSource, storedFile } from './emulator-mirror.js';
 import { listCatalog, reportCatalog, systemCatalog } from './core-options.js';
 import { systemFor } from './extra-cores.js';
 
@@ -351,60 +350,12 @@ api.delete('/bios/:id', (req, res) => {
   res.status(204).end();
 });
 
-// ---- APK des émulateurs Android ----
-api.get('/apks', (req, res) => res.json(listApks()));
-
-// Émulateurs utilisés par les systèmes (paquets des modèles), avec l'APK disponible le cas échéant.
-api.get('/apks/emulators', (req, res) => res.json(emulatorPackages()));
-
-const apkUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const dir = path.join(config.dataDir, 'apks', '.upload');
-      fs.mkdirSync(dir, { recursive: true });
-      cb(null, dir);
-    },
-    filename: (req, file, cb) => cb(null, crypto.randomUUID()),
-  }),
-  limits: { fileSize: config.maxUploadMb * 1024 * 1024 },
-});
-
-// Envoi d'APK (champ « files ») : paquet et version lus dans le manifeste de chaque APK.
-api.post(
-  '/apks',
-  apkUpload.array('files'),
-  h(async (req, res) => {
-    const files = req.files || [];
-    try {
-      if (!files.length) throw new HttpError(400, 'errors.noFiles');
-      const saved = [];
-      for (const f of files) saved.push(await addApk(f.path, Buffer.from(f.originalname, 'latin1').toString('utf8')));
-      res.status(201).json(saved);
-    } finally {
-      for (const f of files) fs.rmSync(f.path, { force: true });
-    }
-  }),
-);
-
-api.put('/apks/:id', (req, res) => res.json(updateApk(req.params.id, req.body || {})));
-
-api.delete('/apks/:id', (req, res) => {
-  deleteApk(req.params.id);
-  res.status(204).end();
-});
-
-api.get('/apks/:id/file', (req, res, next) => {
-  const row = requireApk(req.params.id);
-  logDownload(req, res, { kind: 'apk', itemId: row.id, label: `${row.package_name} ${row.version_name || ''}`.trim(), fileSize: row.size });
-  res.type('application/vnd.android.package-archive');
-  res.download(apkFilePath(row), `${row.package_name}-${row.version_name || row.version_code}.apk`, { dotfiles: 'allow' }, (err) => {
-    if (err && !res.headersSent) next(new HttpError(404, 'errors.fileNotFound'));
-  });
-});
-
 // ---- Miroir des émulateurs externes (emulator-mirror.js) ----
 // Sources et fichiers gardés (administration).
 api.get('/emulators', (req, res) => res.json(mirrorSummary()));
+
+// Applications Android du miroir (paquet, source, APK, Play Store en repli) : applications Android.
+api.get('/emulators/android', (req, res) => res.json(androidPackages()));
 
 // Nouvelles versions des fichiers gardés récupérées maintenant.
 api.post('/emulators/refresh', h(async (req, res) => res.json(await refreshMirror())));
@@ -980,7 +931,7 @@ api.delete('/tokens/:id/devices/:deviceId', (req, res) => {
 });
 api.get('/logs/logins', (req, res) => res.json(accounts.adminLoginLog(req.query.limit)));
 api.get('/logs/errors', (req, res) => res.json(accounts.adminErrorLog(req.query.limit)));
-// Journal des téléchargements (ROM, BIOS, APK) et statistiques ; filtres : kind, userId (« anonymous »), device, days.
+// Journal des téléchargements (ROM, BIOS, émulateurs du miroir) et statistiques ; filtres : kind, userId (« anonymous »), device, days.
 api.get('/logs/downloads', (req, res) => res.json(listDownloads(req.query)));
 api.get('/logs/downloads/stats', (req, res) => res.json(downloadStats(req.query)));
 // Espace disque utilisé, en arborescence (ROMs par système, sauvegardes par profil…) ; ?refresh=1 : recalculé.

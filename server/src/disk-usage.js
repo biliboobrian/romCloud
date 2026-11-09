@@ -1,5 +1,5 @@
 // Espace disque utilisé par le serveur, en arborescence : ROMs (par système), sauvegardes et
-// historique des états (par profil), BIOS (par système), images, APK, caches, base de données et
+// historique des états (par profil), BIOS (par système), images, caches, base de données et
 // tout autre dossier du répertoire de données ; place libre sur les disques concernés.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -101,7 +101,7 @@ export async function diskUsage({ refresh = false } = {}) {
   const bios = node('bios', 'bios', biosDir, subdirs(biosDir).map((id) =>
     node(`bios/${id}`, systemById.get(id)?.name ?? id, path.join(biosDir, id))));
 
-  const known = new Set(['saves', 'states', 'bios', 'media', 'apks', 'cache', 'launchbox']);
+  const known = new Set(['saves', 'states', 'bios', 'media', 'cache', 'launchbox']);
   const dbFiles = fs.readdirSync(data).filter((n) => n.startsWith(path.basename(config.dbFile)));
   // Autres fichiers et dossiers du répertoire de données (ROMs à part s'il s'y trouve).
   const others = fs.readdirSync(data, { withFileTypes: true })
@@ -113,7 +113,6 @@ export async function diskUsage({ refresh = false } = {}) {
     saves,
     bios,
     node('media', 'media', config.mediaDir),
-    node('apks', 'apks', path.join(data, 'apks')),
     node('cache', 'cache', null, [
       node('cache/core-info', 'core-info', path.join(data, 'cache')),
       node('cache/launchbox', 'launchbox', path.join(data, 'launchbox')),

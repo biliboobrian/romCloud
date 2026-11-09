@@ -7,12 +7,15 @@ import { config, screenscraperEnabled } from './config.js';
 import { defaultLanguage, t, translateToken } from './i18n.js';
 import { scanAll } from './library.js';
 import { startMirrorRefresh } from './emulator-mirror.js';
-import { cleanStoredPlayers } from './systems.js';
+import { cleanStoredPlayers, purgeDroppedSystems } from './systems.js';
 
 const app = express();
 app.disable('x-powered-by');
 app.use('/api', api);
 app.use(express.static(path.join(config.rootDir, 'public')));
+
+// Systèmes abandonnés par RomCloud (systems.js, DROPPED_SYSTEMS) : supprimés, avant le scan de leurs dossiers.
+for (const name of purgeDroppedSystems()) console.log(`[systems] système abandonné supprimé : ${name}`);
 
 // Synchronise la base avec les dossiers au démarrage (ROMs copiées à la main, etc.).
 try {
