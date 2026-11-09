@@ -85,13 +85,17 @@ public:
 
     StreamState getState() override;
 
+    int32_t getDeviceId() const override;
+
+    std::vector<int32_t> getDeviceIds() const override;
+
     AudioApi getAudioApi() const override {
         return AudioApi::AAudio;
     }
 
-    DataCallbackResult callOnAudioReady(AAudioStream *stream,
-                                                   void *audioData,
-                                                   int32_t numFrames);
+    DataCallbackResult callOnAudioReady(AAudioStream *stream, void *audioData, int32_t numFrames);
+
+    int32_t callOnPartialAudioReady(AAudioStream *stream, void *audioData, int32_t numFrames);
 
     bool isMMapUsed();
 
@@ -108,11 +112,53 @@ public:
         return oboe::Result::OK;
     }
 
+    oboe::Result notifyWorkloadIncrease(bool cpu, bool gpu, const char* debugName) override {
+        if (!isPerformanceHintEnabled()) {
+            return oboe::Result::ErrorInvalidState;
+        }
+        return mAdpfWrapper.notifyWorkloadIncrease(cpu, gpu, debugName);
+    }
+
+    oboe::Result notifyWorkloadSpike(bool cpu, bool gpu, const char* debugName) override {
+        if (!isPerformanceHintEnabled()) {
+            return oboe::Result::ErrorInvalidState;
+        }
+        return mAdpfWrapper.notifyWorkloadSpike(cpu, gpu, debugName);
+    }
+
+    oboe::Result notifyWorkloadReset(bool cpu, bool gpu, const char* debugName) override {
+        if (!isPerformanceHintEnabled()) {
+            return oboe::Result::ErrorInvalidState;
+        }
+        return mAdpfWrapper.notifyWorkloadReset(cpu, gpu, debugName);
+    }
+
+    Result setOffloadDelayPadding(int32_t delayInFrames, int32_t paddingInFrames) override;
+    ResultWithValue<int32_t> getOffloadDelay() override;
+    ResultWithValue<int32_t> getOffloadPadding() override;
+    Result setOffloadEndOfStream() override;
+
+    ResultWithValue<int64_t> flushFromFrame(
+            FlushFromAccuracy accuracy, int64_t positionInFrames) override;
+
+    oboe::Result setPlaybackParameters(const PlaybackParameters& parameters) override;
+    ResultWithValue<PlaybackParameters> getPlaybackParameters() override;
+
 protected:
     static void internalErrorCallback(
             AAudioStream *stream,
             void *userData,
             aaudio_result_t error);
+
+    static void internalPresentationEndCallback(
+            AAudioStream *stream,
+            void *userData);
+
+    static void internalRoutingChangedCallback(
+            AAudioStream *stream,
+            void *userData,
+            const int32_t *deviceIds,
+            int32_t numDevices);
 
     void *getUnderlyingStream() const override {
         return mAAudioStream.load();
@@ -127,6 +173,8 @@ protected:
 
     void endPerformanceHintInCallback(int32_t numFrames) override;
 
+    void onRoutingChanged(std::vector<int32_t> deviceIds);
+
     // set by callback (or app when idle)
     std::atomic<bool>    mAdpfOpenAttempted{false};
     AdpfWrapper          mAdpfWrapper;
@@ -139,6 +187,8 @@ private:
      * Launch a thread that will stop the stream.
      */
     void launchStopThread();
+
+    void updateDeviceIds();
 
 private:
 
@@ -153,6 +203,16 @@ private:
 
     // We may not use this but it is so small that it is not worth allocating dynamically.
     AudioStreamErrorCallback mDefaultErrorCallback;
+
+    // With AAudio introduce routing changed callback in Android 17, aaudio may not disconnect
+    // the stream when routing is changed. In that case, UpdatedDeviceIds is introduced to track
+    // the device ids. When there is routing callback, set the value to `deviceIds[idx^1]` and then
+    // flip the `idx` to `idx^1`. The get device query will then return `deviceIds[idx]`.
+    struct UpdatedDeviceIds {
+        std::atomic<int> idx{0};
+        std::vector<std::vector<int32_t>> deviceIds{ {}, {} };
+    };
+    UpdatedDeviceIds mUpdatedDeviceIds;
 };
 
 } // namespace oboe

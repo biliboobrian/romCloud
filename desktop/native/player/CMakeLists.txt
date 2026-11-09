@@ -21,7 +21,7 @@ set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 set(SDL_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
   SDL3
-  URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
+  URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(SDL3)
@@ -34,7 +34,7 @@ endif()
 # lancement, sans lien à la compilation (VK_NO_PROTOTYPES).
 FetchContent_Declare(
   VulkanHeaders
-  URL https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.296.tar.gz
+  URL https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.4.363.tar.gz
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 set(VULKAN_HEADERS_ENABLE_MODULE OFF CACHE BOOL "" FORCE)

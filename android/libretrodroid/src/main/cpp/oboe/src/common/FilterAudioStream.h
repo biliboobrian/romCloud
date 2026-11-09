@@ -58,10 +58,13 @@ public:
         mSharingMode = mChildStream->getSharingMode();
         mInputPreset = mChildStream->getInputPreset();
         mFramesPerBurst = mChildStream->getFramesPerBurst();
-        mDeviceId = mChildStream->getDeviceId();
+        mDeviceIds = mChildStream->getDeviceIds();
         mHardwareSampleRate = mChildStream->getHardwareSampleRate();
         mHardwareChannelCount = mChildStream->getHardwareChannelCount();
         mHardwareFormat = mChildStream->getHardwareFormat();
+
+        // Link child to parent so parent can be retained in callbacks.
+        mChildStream->setParentStream(this);
     }
 
     virtual ~FilterAudioStream() = default;
@@ -117,6 +120,14 @@ public:
 
     StreamState getState() override {
         return mChildStream->getState();
+    }
+
+    int32_t getDeviceId() const override {
+        return mChildStream->getDeviceId();
+    }
+
+    std::vector<int32_t> getDeviceIds() const override {
+        return mChildStream->getDeviceIds();
     }
 
     Result waitForStateChange(

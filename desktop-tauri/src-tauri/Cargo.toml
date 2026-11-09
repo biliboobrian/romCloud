@@ -29,7 +29,7 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 ruzstd = "0.9"
 # CRC32 de chaque fichier d'une archive regroupée.
 crc32fast = "1"
-lzma-rust2 = { version = "0.22", default-features = false, features = ["std", "xz", "optimization"] }
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz", "optimization"] }
 hex = "0.4"
 base64 = "0.23"
 # Sauvegardes et Ã©tats compressÃ©s avant l'envoi (gzip), dÃ©compressÃ©s Ã  la rÃ©ception.
@@ -43,11 +43,11 @@ if-addrs = "0.15"
 filetime = "0.2"
 urlencoding = "2"
 # Archives .7z de RPCS3 (PlayStation 3 du moteur intÃ©grÃ©, voir managed.rs).
-sevenz-rust2 = { version = "0.24", default-features = false, features = ["util"] }
+sevenz-rust2 = { version = "0.25", default-features = false, features = ["util"] }
 
 [dev-dependencies]
 # Tests : archives xz écrites comme celles du serveur.
-lzma-rust2 = { version = "0.22", default-features = false, features = ["std", "xz", "encoder"] }
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz", "encoder"] }
 
 [profile.release]
 opt-level = "s"
