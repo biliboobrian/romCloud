@@ -45,24 +45,28 @@ const EDEN = 'https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases?limit
  * de la source sinon), [playStore] faux pour une application absente du Google Play Store (pas de repli
  * vers le Play Store quand le miroir ne la trouve pas). Un émulateur du miroir passe devant les autres
  * émulateurs externes du système (playersFor, extra-cores.js).
+ * [windows] : archive Windows installée par défaut par l'application (emulator_updates.rs, managed.rs :
+ * Eden PGO, Lichii et Orchid standard…), expressions régulières du nom ; avec [android], fichiers
+ * récupérés par « Récupérer les dernières versions » ([fetchAllLatest]).
  */
 export const SOURCES = {
   // Windows (RomCloud pour Windows) et Android (Eden : même dépôt).
   eden: {
     name: 'Eden', releases: EDEN, platforms: ['windows', 'android'],
+    windows: [String.raw`Eden-Windows-.*-amd64-clang-pgo\.zip`],
     android: [
       { package: 'dev.eden.eden_emulator', asset: String.raw`Eden-Android-.*-standard\.apk` },
       { package: 'dev.legacy.eden_emulator', name: 'Eden (Legacy)', asset: String.raw`Eden-Android-.*-legacy\.apk` },
       { package: 'com.miHoYo.Yuanshen', name: 'Eden (Optimized)', asset: String.raw`Eden-Android-.*-optimized\.apk` },
     ],
   },
-  lichii: { name: 'Lichii', releases: github('zortos293/Lichii'), prereleases: true, platforms: ['windows'] },
-  orchid: { name: 'Orchid', releases: github('MythosOfs/Orchid'), prereleases: true, platforms: ['windows'] },
-  fritchii: { name: 'Fritchii', releases: github('Frizti/Fritchii'), prereleases: true, platforms: ['windows'] },
-  rpcs3: { name: 'RPCS3', releases: github('RPCS3/rpcs3-binaries-win'), platforms: ['windows'] },
-  shadps4: { name: 'shadPS4', releases: github('shadps4-emu/shadPS4'), platforms: ['windows'] },
-  kytyps5: { name: 'KytyPS5', releases: github('KytyPS5/KytyPS5'), prereleases: true, platforms: ['windows'] },
-  cemu: { name: 'Cemu', releases: github('cemu-project/Cemu'), platforms: ['windows'] },
+  lichii: { name: 'Lichii', releases: github('zortos293/Lichii'), prereleases: true, platforms: ['windows'], windows: [String.raw`lichii-(?:.+-)?windows-x86_64\.zip`] },
+  orchid: { name: 'Orchid', releases: github('MythosOfs/Orchid'), prereleases: true, platforms: ['windows'], windows: [String.raw`orchid-(?:.+-)?windows-x86_64\.zip`] },
+  fritchii: { name: 'Fritchii', releases: github('Frizti/Fritchii'), prereleases: true, platforms: ['windows'], windows: [String.raw`Fritchii-.+-Windows-x64\.zip`] },
+  rpcs3: { name: 'RPCS3', releases: github('RPCS3/rpcs3-binaries-win'), platforms: ['windows'], windows: [String.raw`.+_win64_msvc\.7z`] },
+  shadps4: { name: 'shadPS4', releases: github('shadps4-emu/shadPS4'), platforms: ['windows'], windows: [String.raw`.*win64-sdl.*\.zip`] },
+  kytyps5: { name: 'KytyPS5', releases: github('KytyPS5/KytyPS5'), prereleases: true, platforms: ['windows'], windows: [String.raw`.+-windows-x64\.zip`] },
+  cemu: { name: 'Cemu', releases: github('cemu-project/Cemu'), platforms: ['windows'], windows: [String.raw`.+-windows-x64\.zip`] },
   // Android, systèmes sans moteur intégré seulement (3DS, DS, Game Boy : cœurs Citra, melonDS, mGBA…).
   // Jeux PC (Wine / Proton) : RomCloud PC (android/pc, publié avec RomCloud), Winlator Cmod, Winlator, GameNative.
   'romcloud-pc': {
@@ -416,8 +420,9 @@ export function mirrorSummary() {
       .filter(([key]) => key.startsWith(`${id}/`))
       .map(([key, job]) => ({ file: key.slice(id.length + 1), state: job.state, received: job.received, total: job.total, error: job.error }));
     const cached = upstreamCache.get(id);
+    const queued = (latestRun?.pending || []).filter((f) => f.source === id).map((f) => `${f.tag}/${f.name}`);
     return {
-      id, name: s.name, platforms: s.platforms, host: hostOf(id), files, fetching,
+      id, name: s.name, platforms: s.platforms, host: hostOf(id), files, fetching, queued,
       totalSize: files.reduce((n, f) => n + f.size, 0),
       upstreamError: cached?.error || null,
     };
@@ -464,6 +469,67 @@ export async function refreshMirror({ force = true } = {}) {
   }
   return started;
 }
+
+/** Fichiers par défaut d'une source : archive Windows ([windows]) et APK de chaque paquet Android. */
+function defaultPatterns(source) {
+  return [...(source.windows || []), ...(source.android || []).map((a) => a.asset)].map((p) => new RegExp(`^${p}$`));
+}
+
+/**
+ * Fichiers par défaut de la dernière version de chaque source (pour chaque motif, la version la plus
+ * récente qui en contient un) qui ne sont pas encore sur le serveur : [{ source, tag, name, size }] ;
+ * sources injoignables ignorées.
+ */
+export async function latestDefaultFiles() {
+  const files = [];
+  for (const [id, source] of Object.entries(SOURCES)) {
+    const releases = await upstreamReleases(id, { force: true });
+    if (!releases?.length) continue;
+    for (const pattern of defaultPatterns(source)) {
+      const release = releases.find((r) => r.assets.some((a) => pattern.test(a.name)));
+      for (const asset of release?.assets.filter((a) => pattern.test(a.name)) || []) {
+        if (fileState(id, release.tag, asset.name).state !== 'remote') continue;
+        if (files.some((f) => f.source === id && f.tag === release.tag && f.name === asset.name)) continue;
+        files.push({ source: id, tag: release.tag, name: asset.name, size: asset.size });
+      }
+    }
+  }
+  return files;
+}
+
+// « Récupérer les dernières versions » en cours : fichiers restant à récupérer, un à la fois.
+let latestRun = null;
+
+/**
+ * Dernières versions de tous les émulateurs récupérées d'un coup (administration) : fichiers par
+ * défaut de chaque source absents du serveur, récupérés l'un après l'autre en tâche de fond (des Go
+ * au total). Renvoie { running: déjà en cours, files : fichiers prévus }.
+ */
+export async function fetchAllLatest() {
+  if (latestRun) return { running: true, files: latestRun.pending };
+  const files = await latestDefaultFiles();
+  const run = { pending: [...files] };
+  latestRun = run;
+  run.promise = (async () => {
+    while (run.pending.length) {
+      const f = run.pending[0];
+      try {
+        await prepareFile(f.source, f.tag, f.name);
+        run.pending.shift();
+        await waitFile(f.source, f.tag, f.name);
+      } catch (err) {
+        if (run.pending[0] === f) run.pending.shift();
+        console.warn(`[emulators] ${f.source} ${f.tag} : ${f.name} non récupéré (${err.message})`);
+      }
+    }
+  })().finally(() => {
+    if (latestRun === run) latestRun = null;
+  });
+  return { running: false, files };
+}
+
+/** Fin de « Récupérer les dernières versions » (tests). */
+export const latestRunDone = () => latestRun?.promise ?? Promise.resolve();
 
 /** Rafraîchissement périodique (démarrage du serveur) ; 0 heure : désactivé. */
 export function startMirrorRefresh() {
