@@ -9,7 +9,9 @@
 //    ces réglages au lancement (emulator_files.rs) ;
 //  - Dolphin : Config\Dolphin.ini et Config\GFX.ini du dossier utilisateur (User\ à côté de
 //    l'exécutable avec portable.txt, sinon Documents\Dolphin Emulator s'il existe, sinon
-//    %APPDATA%\Dolphin Emulator), « Clé = Valeur ».
+//    %APPDATA%\Dolphin Emulator), « Clé = Valeur » ;
+//  - Vita3K : config.yml à côté de l'exécutable (portable\config.yml avec un dossier portable),
+//    « clé: valeur » au premier niveau (section vide) ; relu par Vita3K à son démarrage.
 use crate::error::{AppError, Result};
 use crate::{emulator_files, launcher, paths};
 use serde_json::{json, Map, Value};
@@ -21,6 +23,8 @@ enum Style {
     Eden,
     /// « Clé = Valeur » (Dolphin).
     Spaced,
+    /// « clé: valeur » au premier niveau, sans section (config.yml de Vita3K).
+    Yaml,
 }
 
 struct Target {
@@ -50,6 +54,7 @@ fn target_for(id: &str, exe: &Path, documents: &Path, appdata: &Path) -> Option<
             files: &["qt-config.ini"],
             style: Style::Eden,
         }),
+        "vita3k" => Some(Target { dir: crate::vita3k::config_dir(&exe.to_string_lossy()), files: &["config.yml"], style: Style::Yaml }),
         "dolphin" => Some(Target {
             dir: dolphin_user_dir(&exe_dir, documents, appdata).join("Config"),
             files: &["Dolphin.ini", "GFX.ini"],
@@ -61,7 +66,7 @@ fn target_for(id: &str, exe: &Path, documents: &Path, appdata: &Path) -> Option<
 
 /// Émulateur dont RomCloud sait modifier les réglages.
 pub fn supported(id: &str) -> bool {
-    matches!(id, "eden" | "lichii" | "orchid" | "fritchii" | "dolphin")
+    matches!(id, "eden" | "lichii" | "orchid" | "fritchii" | "dolphin" | "vita3k")
 }
 
 fn target(id: &str) -> Result<Target> {
@@ -107,7 +112,7 @@ fn set_value(text: &str, section: &str, key: &str, value: &str, style: Style) ->
     let default_key = format!("{key}\\default");
     let new_lines = match style {
         Style::Eden => vec![format!("{default_key}=false"), format!("{key}={value}")],
-        Style::Spaced => vec![format!("{key} = {value}")],
+        Style::Spaced | Style::Yaml => vec![format!("{key} = {value}")],
     };
     let mut lines: Vec<String> = text.lines().map(String::from).collect();
     let header = format!("[{section}]");
@@ -147,6 +152,40 @@ fn set_value(text: &str, section: &str, key: &str, value: &str, style: Style) ->
     lines.join(eol) + eol
 }
 
+/// Valeurs de premier niveau d'un fichier YAML : { "/clé": "valeur" } (section vide ; listes et
+/// valeurs sur plusieurs lignes ignorées).
+fn parse_yaml(text: &str) -> Map<String, Value> {
+    let mut out = Map::new();
+    for line in text.lines() {
+        if line.starts_with([' ', '\t', '-', '#']) {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once(':') {
+            let v = v.trim();
+            if !k.trim().is_empty() && !v.is_empty() {
+                out.insert(format!("/{}", k.trim()), Value::String(v.trim_matches(['"', '\'']).to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// [text] avec la clé de premier niveau [key] à [value] (ligne remplacée, sinon ajoutée à la fin du document).
+pub fn set_yaml(text: &str, key: &str, value: &str) -> String {
+    let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut lines: Vec<String> = text.lines().map(String::from).collect();
+    let line = format!("{key}: {value}");
+    match lines.iter().position(|l| !l.starts_with([' ', '\t']) && l.split_once(':').is_some_and(|(k, _)| k.trim() == key)) {
+        Some(i) => lines[i] = line,
+        // Avant la fin du document (« ... ») s'il y en a une.
+        None => match lines.iter().rposition(|l| l.trim_end() == "...") {
+            Some(end) => lines.insert(end, line),
+            None => lines.push(line),
+        },
+    }
+    lines.join(eol) + eol
+}
+
 // ---------------------------------------------------------------------------
 // Commandes
 // ---------------------------------------------------------------------------
@@ -157,7 +196,9 @@ pub fn read(id: &str) -> Result<Value> {
     let mut files = Map::new();
     for name in t.files {
         let text = std::fs::read_to_string(t.dir.join(name));
-        files.insert(name.to_string(), json!({ "exists": text.is_ok(), "values": parse(text.as_deref().unwrap_or("")) }));
+        let text_or_empty = text.as_deref().unwrap_or("");
+        let values = if t.style == Style::Yaml { parse_yaml(text_or_empty) } else { parse(text_or_empty) };
+        files.insert(name.to_string(), json!({ "exists": text.is_ok(), "values": values }));
     }
     Ok(json!({ "dir": t.dir.to_string_lossy(), "files": files }))
 }
@@ -179,10 +220,10 @@ pub fn write(id: &str, changes: &Value) -> Result<Value> {
             let field = |k: &str| c.get(k).and_then(Value::as_str).unwrap_or("").to_string();
             let (section, key, value) = (field("section"), field("key"), field("value"));
             // Pas de saut de ligne ni de crochet : une valeur ne doit pas casser le fichier.
-            if section.is_empty() || key.is_empty() || [&section, &key, &value].iter().any(|s| s.contains(['\n', '\r'])) || section.contains([']', '[']) {
+            if (section.is_empty() != (t.style == Style::Yaml)) || key.is_empty() || key.contains(':') || [&section, &key, &value].iter().any(|s| s.contains(['\n', '\r'])) || section.contains([']', '[']) {
                 return Err(AppError::msg(format!("invalid setting {section}/{key}")));
             }
-            text = set_value(&text, &section, &key, &value, t.style);
+            text = if t.style == Style::Yaml { set_yaml(&text, &key, &value) } else { set_value(&text, &section, &key, &value, t.style) };
         }
         if text != before {
             if !before.is_empty() {
@@ -240,6 +281,34 @@ mod tests {
         assert_eq!(text.lines().count(), out.lines().count());
         assert!(changed.len() <= 3);
         assert_eq!(parse(&out).get("Renderer/resolution_setup").and_then(Value::as_str), Some("6"));
+    }
+
+    #[test]
+    fn config_yml_de_vita3k() {
+        let text = "---
+backend-renderer: Vulkan
+resolution-multiplier: 1
+lle-modules:
+  []
+sys-lang: 1
+...
+";
+        let out = set_yaml(text, "resolution-multiplier", "1.5");
+        let out = set_yaml(&out, "show-welcome", "false");
+        assert_eq!(out, "---
+backend-renderer: Vulkan
+resolution-multiplier: 1.5
+lle-modules:
+  []
+sys-lang: 1
+show-welcome: false
+...
+");
+        let values = parse_yaml(&out);
+        assert_eq!(values.get("/backend-renderer").and_then(Value::as_str), Some("Vulkan"));
+        assert!(values.get("/lle-modules").is_none());
+        assert_eq!(set_yaml("", "show-welcome", "false"), "show-welcome: false
+");
     }
 
     #[test]

@@ -13,18 +13,22 @@ const platformsOk = (x) => x.platforms === undefined || (x.platforms.length > 0 
 
 test('champs complets et valeurs uniques', () => {
   // Fichiers de chaque schéma (emulator_config.rs : target_for ; Android : android.files).
-  const files = { eden: ['qt-config.ini'], dolphin: ['Dolphin.ini', 'GFX.ini'] };
+  const files = { eden: ['qt-config.ini'], dolphin: ['Dolphin.ini', 'GFX.ini'], vita3k: ['config.yml'] };
   assert.deepStrictEqual(Object.keys(CONFIG.schemas).sort(), Object.keys(files).sort());
+  const onAndroid = new Set(CONFIG.android.packages.map((p) => p.schema));
   for (const [id, schema] of Object.entries(CONFIG.schemas)) {
-    assert.ok(['eden', 'spaced'].includes(schema.style), id);
-    for (const p of PLATFORMS) assert.ok(labelled(schema.notes[p]), `${id} ${p}`);
+    assert.ok(['eden', 'spaced', 'yaml'].includes(schema.style), id);
+    // Plateformes du schéma : Windows (emulator_config.rs), Android s'il a un paquet.
+    const platforms = ['windows', ...(onAndroid.has(id) ? ['android'] : [])];
+    for (const p of platforms) assert.ok(labelled(schema.notes[p]), `${id} ${p}`);
     const seen = new Set();
     for (const group of schema.groups) {
       assert.ok(labelled(group.title), id);
       for (const f of group.fields) {
         const where = `${id} ${f.file} [${f.section}] ${f.key}`;
-        assert.ok(files[id].includes(f.file) && CONFIG.android.files[f.file], where);
-        assert.ok(f.section && f.key && labelled(f.label) && platformsOk(f), where);
+        assert.ok(files[id].includes(f.file) && (!onAndroid.has(id) || CONFIG.android.files[f.file]), where);
+        // YAML (Vita3K) : clés de premier niveau, sans section.
+        assert.ok((schema.style === 'yaml' ? f.section === '' : Boolean(f.section)) && f.key && labelled(f.label) && platformsOk(f), where);
         assert.ok(!seen.has(`${f.file}/${f.section}/${f.key}`), `${where} en double`);
         seen.add(`${f.file}/${f.section}/${f.key}`);
         if (f.type === 'select') {
@@ -47,7 +51,9 @@ test('champs complets et valeurs uniques', () => {
 
 test('émulateurs de Windows et paquets Android', () => {
   // Mêmes émulateurs que emulator_config.rs (supported).
-  assert.deepStrictEqual(CONFIG.windows, { eden: 'eden', lichii: 'eden', orchid: 'eden', fritchii: 'eden', dolphin: 'dolphin' });
+  assert.deepStrictEqual(CONFIG.windows, { eden: 'eden', lichii: 'eden', orchid: 'eden', fritchii: 'eden', dolphin: 'dolphin', vita3k: 'vita3k' });
+  // Vita3K pour Android : ni fichiers partagés ni installation de l'extérieur, pas de réglages.
+  assert.ok(!CONFIG.android.packages.some((p) => p.schema === 'vita3k'));
   for (const p of CONFIG.android.packages) assert.ok(CONFIG.schemas[p.schema] && /^[a-z][\w.]+$/.test(p.prefix), p.prefix);
 });
 

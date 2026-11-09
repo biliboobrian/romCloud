@@ -8,7 +8,7 @@
 use crate::catalog::{self, Emulator};
 use crate::error::{AppError, Result};
 use crate::library::s;
-use crate::{account, builtin, cores, library, managed, netplay, paths, settings, vita3k};
+use crate::{account, builtin, cores, folders, library, managed, netplay, paths, settings, vita3k};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -779,10 +779,12 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             Ok(json!({ "manual": true, "emulator": emulator, "file": file }))
         }
         Plan::Vita { exe, step: vita3k::Step::Run(args) | vita3k::Step::InstallAndRun(args) } => {
+            prepare_vita(&exe).await;
             spawn_detached(&exe, &args, Some(game.clone()))?;
             Ok(json!({ "manual": false }))
         }
         Plan::Vita { exe, step: vita3k::Step::InstallPkg { install, run } } => {
+            prepare_vita(&exe).await;
             // Vita3K installe le .pkg puis quitte : le jeu est ensuite démarré.
             let mut command = tokio::process::Command::new(&exe);
             command.args(&install).current_dir(paths::dirname(&exe)).stdin(std::process::Stdio::null());
@@ -794,6 +796,26 @@ pub async fn play(system: &Value, game: &Value, options: &Value) -> Result<Value
             spawn_detached(&exe, &run, Some(game.clone()))?;
             Ok(json!({ "manual": false }))
         }
+    }
+}
+
+/**
+ * Vita3K prêt à démarrer le jeu sans être ouvert avant : firmware et polices de la zone « system »
+ * (récupérés sur le serveur) installés s'ils manquent (« --firmware », Vita3K quitte ensuite), fenêtre
+ * de bienvenue désactivée (elle bloque le démarrage du jeu). Firmware absent du serveur : Vita3K
+ * prévient lui-même au démarrage du jeu.
+ */
+async fn prepare_vita(exe: &str) {
+    for pup in vita3k::missing_firmware(exe, &folders::system()) {
+        let mut command = tokio::process::Command::new(exe);
+        command.args(vita3k::firmware_args(&pup)).current_dir(paths::dirname(exe)).stdin(std::process::Stdio::null());
+        match command.status().await {
+            Ok(status) => eprintln!("[vita3k] {} installé ({status})", paths::file_name(&pup)),
+            Err(e) => eprintln!("[vita3k] {} non installé : {e}", paths::file_name(&pup)),
+        }
+    }
+    if vita3k::skip_welcome(exe) {
+        eprintln!("[vita3k] fenêtre de bienvenue désactivée (config.yml)");
     }
 }
 
