@@ -16,5 +16,5 @@ export function chdDisc(system) {
   return null;
 }
 
-/** Fichiers convertibles : images de disque lues par chdman, ou archive .zip qui en contient une. */
-export const CHD_SOURCE_RE = /\.(cue|gdi|toc|iso|zip)$/i;
+/** Fichiers convertibles : images de disque lues par chdman, ou archive .zip, .7z ou .rar qui en contient une. */
+export const CHD_SOURCE_RE = /\.(cue|gdi|toc|iso|zip|7z|rar)$/i;

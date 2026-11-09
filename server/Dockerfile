@@ -29,8 +29,9 @@ ENV NODE_ENV=production \
     PORT=8080
 
 # zstd : compression des jeux PC ; xz (XZ Utils) : lecture des compressions d'avant (folder-pack.js) ;
-# chdman : conversion des jeux sur CD en CHD (chd.js).
-RUN apk add --no-cache xz zstd
+# chdman : conversion des jeux sur CD en CHD (chd.js) ; bsdtar (libarchive-tools) : lecture des
+# archives .7z et .rar à convertir en CHD.
+RUN apk add --no-cache xz zstd libarchive-tools
 COPY --from=chdman /opt/chdman /opt/chdman
 RUN ln -s /opt/chdman/run /usr/local/bin/chdman \
  && chdman help > /tmp/chdman-help.txt 2>&1; grep -q "chdman" /tmp/chdman-help.txt || { cat /tmp/chdman-help.txt; exit 1; }; rm -f /tmp/chdman-help.txt
