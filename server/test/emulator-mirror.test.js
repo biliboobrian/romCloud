@@ -198,3 +198,36 @@ test('sources demandées par les applications connues du serveur', (t) => {
   assert.ok(ids.size >= 15, [...ids].join(', '));
   for (const id of ids) assert.ok(mirror.SOURCES[id], `source ${id} absente de emulator-mirror.js`);
 });
+
+test('dernières versions de tous les émulateurs récupérées d’un coup (fichiers par défaut, l’un après l’autre)', async () => {
+  publish('eden-emu/eden', [release('v0.4.0', '2026-11-01T00:00:00Z', [
+    'Eden-Windows-v0.4.0-amd64-clang-pgo.zip', 'Eden-Windows-v0.4.0-amd64-msvc-standard.zip',
+    'Eden-Android-v0.4.0-standard.apk', 'Eden-Android-v0.4.0-legacy.apk', 'Eden-Android-v0.4.0-optimized.apk', 'Eden-Android-v0.4.0-chromeos.apk',
+  ])]);
+  publish('ARMSX2/ARMSX3', [release('1.6.7', '2026-11-08T00:00:00Z', [
+    'ARMSX3-1.6.7-a11-armv8.2-sdk30.apk', 'ARMSX3-1.6.7-a15-armv8.2-sdk35.apk', 'ARMSX3-1.6.7-legacy-armv8.1-sdk30.apk',
+  ])]);
+  // Dernière version sans APK : la précédente qui en a un.
+  publish('utkarshdalal/GameNative', [
+    release('v1.5.0', '2026-11-09T00:00:00Z', ['notes.txt']),
+    release('v1.4.0', '2026-11-05T00:00:00Z', ['gamenative-v1.4.0.apk', 'gamenative-v1.4.0-legacy-xr.apk']),
+  ]);
+  const { running, files } = await mirror.fetchAllLatest();
+  assert.equal(running, false);
+  const names = files.map((f) => `${f.source}/${f.tag}/${f.name}`).sort();
+  assert.deepEqual(names, [
+    'armsx3/1.6.7/ARMSX3-1.6.7-a11-armv8.2-sdk30.apk', 'armsx3/1.6.7/ARMSX3-1.6.7-a15-armv8.2-sdk35.apk',
+    'eden/v0.4.0/Eden-Android-v0.4.0-legacy.apk', 'eden/v0.4.0/Eden-Android-v0.4.0-optimized.apk',
+    'eden/v0.4.0/Eden-Android-v0.4.0-standard.apk', 'eden/v0.4.0/Eden-Windows-v0.4.0-amd64-clang-pgo.zip',
+    'gamenative/v1.4.0/gamenative-v1.4.0.apk',
+  ]);
+  // Déjà en cours : rien de relancé.
+  assert.equal((await mirror.fetchAllLatest()).running, true);
+  assert.ok(mirror.mirrorSummary().some((s) => s.queued.length));
+  await mirror.latestRunDone();
+  for (const f of files) assert.equal(mirror.fileState(f.source, f.tag, f.name).state, 'stored', f.name);
+  assert.equal(downloads, files.length);
+  // Tout est là : plus rien à récupérer.
+  assert.deepEqual((await mirror.fetchAllLatest()).files, []);
+  await mirror.latestRunDone();
+});

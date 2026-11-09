@@ -60,7 +60,7 @@ import {
   updateSystem,
 } from './systems.js';
 import { emulatorCandidates } from './emulator-order.js';
-import { androidPackages, deleteFile as deleteEmulatorFile, listReleases, mirrorSummary, prepareFile, refreshMirror, requireSource, storedFile } from './emulator-mirror.js';
+import { androidPackages, deleteFile as deleteEmulatorFile, fetchAllLatest, listReleases, mirrorSummary, prepareFile, refreshMirror, requireSource, storedFile } from './emulator-mirror.js';
 import { listCatalog, reportCatalog, systemCatalog } from './core-options.js';
 import { systemFor } from './extra-cores.js';
 
@@ -356,6 +356,10 @@ api.get('/emulators', (req, res) => res.json(mirrorSummary()));
 
 // Applications Android du miroir (paquet, source, APK, Play Store en repli) : applications Android.
 api.get('/emulators/android', (req, res) => res.json(androidPackages()));
+
+// Dernières versions de tous les émulateurs (fichiers par défaut de chaque source absents du serveur),
+// récupérées l'une après l'autre en tâche de fond : { running, files }.
+api.post('/emulators/fetch-latest', h(async (req, res) => res.json(await fetchAllLatest())));
 
 // Nouvelles versions des fichiers gardés récupérées maintenant.
 api.post('/emulators/refresh', h(async (req, res) => res.json(await refreshMirror())));

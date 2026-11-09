@@ -1385,10 +1385,17 @@ function renderMirror(sources) {
   const box = $('#mirrorContent');
   box.innerHTML = '';
   const used = sources.filter((s) => s.files.length || s.fetching.length);
+  const queued = sources.reduce((n, s) => n + (s.queued?.length || 0), 0);
   const total = used.reduce((n, s) => n + s.totalSize, 0);
   const summary = document.createElement('p');
   summary.textContent = used.length ? t('mirror.summary', { n: used.length, size: formatSize(total) }) : t('mirror.empty');
   box.append(summary);
+  if (queued) {
+    const waiting = document.createElement('p');
+    waiting.className = 'muted';
+    waiting.textContent = t('mirror.queuedSummary', { n: queued });
+    box.append(waiting);
+  }
   const row = (html) => {
     const div = document.createElement('div');
     div.className = 'dup-row bios-row';
@@ -1431,11 +1438,14 @@ function renderMirror(sources) {
       });
       group.append(line);
     }
-    if (!s.files.length && !s.fetching.length) group.append(note(t('mirror.none')));
+    for (const file of s.queued || []) {
+      group.append(row(`<span class="bios-state">…</span><span class="name">${escapeHtml(file)}<br><span class="muted">${escapeHtml(t('mirror.queued'))}</span></span>`));
+    }
+    if (!s.files.length && !s.fetching.length && !s.queued?.length) group.append(note(t('mirror.none')));
     box.append(h, group);
   }
   // Récupérations en cours : progression suivie tant que la fenêtre est ouverte.
-  if (sources.some((s) => s.fetching.some((f) => f.state === 'fetching'))) {
+  if (queued || sources.some((s) => s.fetching.some((f) => f.state === 'fetching'))) {
     mirrorTimer = setTimeout(() => $('#mirrorDialog').open && guard(async () => renderMirror(await api('/emulators'))), 2000);
   }
 }
@@ -1584,6 +1594,14 @@ function bindEvents() {
     e.target.value = '';
   };
   $('#mirrorBtn').onclick = openMirror;
+  // Dernières versions de tous les émulateurs, même ceux pas encore gardés (des Go : confirmation).
+  $('#mirrorFetchLatestBtn').onclick = () => guard(async () => {
+    if (!confirm(t('mirror.fetchLatestConfirm'))) return;
+    const { running, files } = await api('/emulators/fetch-latest', { method: 'POST' });
+    const size = formatSize(files.reduce((n, f) => n + (f.size || 0), 0));
+    toast(running ? t('mirror.fetchLatestRunning', { n: files.length }) : files.length ? t('mirror.fetchLatestStarted', { n: files.length, size }) : t('mirror.fetchLatestNone'));
+    await openMirror();
+  });
   $('#mirrorRefreshBtn').onclick = () => guard(async () => {
     const started = await api('/emulators/refresh', { method: 'POST' });
     toast(started.length ? t('mirror.refreshStarted', { n: started.length }) : t('mirror.refreshNone'));
