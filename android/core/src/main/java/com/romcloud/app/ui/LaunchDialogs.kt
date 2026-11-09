@@ -49,7 +49,6 @@ import com.romcloud.core.R
 import com.romcloud.app.data.AppUpdater
 import com.romcloud.app.data.DownloadEvent
 import com.romcloud.app.data.EmulatorApk
-import com.romcloud.app.data.EmulatorReleases
 import com.romcloud.app.launch.CompanionCheck
 import com.romcloud.app.launch.LaunchException
 import com.romcloud.app.launch.Winlator
@@ -118,10 +117,11 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         }
     }
 
-    // Émulateur absent : proposer la dernière version publiée par l'émulateur (Release GitHub ou
-    // Forgejo, téléchargée depuis le miroir du serveur RomCloud, qui la récupère d'abord s'il ne l'a
-    // pas : progression affichée), à défaut l'APK envoyé sur le serveur (s'il en a un), ou le Google Play Store.
-    // Mise à jour d'un émulateur installé hors Play Store (installedVersion) : même dialogue, sans le Play Store.
+    // Émulateur absent : émulateur du miroir des émulateurs du serveur (Release GitHub ou Forgejo,
+    // récupérée d'abord par le serveur s'il ne l'a pas : progression affichée) seulement ; sans source
+    // dans le miroir, le Google Play Store ; miroir en échec, le Play Store en repli (application qui y
+    // est publiée). Mise à jour d'un émulateur installé hors Play Store (installedVersion) : même
+    // dialogue, sans le Play Store.
     val missing by app.missingEmulator.collectAsStateWithLifecycle()
     missing?.let { emulator ->
         val update = emulator.installedVersion
@@ -131,12 +131,11 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         var serverProgress by remember(emulator) { mutableStateOf<Pair<Long, Long>?>(null) }
         // null = recherche en cours.
         val apk by produceState<Result<EmulatorApk?>?>(null, emulator) {
-            val release = app.emulatorReleases.latest(emulator.packageName) { received, total -> serverProgress = received to total }
-            value = Result.success(release ?: app.repository.apks().find { it.packageName == emulator.packageName })
+            value = Result.success(app.emulatorReleases.latest(emulator.packageName) { received, total -> serverProgress = received to total })
         }
-        val found = apk?.getOrNull()
-        val release = found?.takeIf { it.source != null }
-        val serverApk = found?.takeIf { it.source == null }
+        val release = apk?.getOrNull()
+        // Source du miroir (liste relue sur le serveur pendant la recherche).
+        val mirror = apk?.let { app.emulatorReleases.source(emulator.packageName) }
         AlertDialog(
             onDismissRequest = { app.missingEmulator.value = null },
             title = {
@@ -162,26 +161,29 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                             if (total > 0) LinearProgressIndicator(progress = { received.toFloat() / total }, modifier = Modifier.fillMaxWidth())
                             else LinearProgressIndicator(Modifier.fillMaxWidth())
                         } ?: LinearProgressIndicator(Modifier.fillMaxWidth())
-                        update != null && found == null -> Text(stringResource(R.string.update_emulator_not_found), style = MaterialTheme.typography.bodySmall)
+                        update != null && release == null -> Text(stringResource(R.string.update_emulator_not_found), style = MaterialTheme.typography.bodySmall)
                         release != null -> Text(
                             stringResource(R.string.apk_release_available, release.label, release.versionName.orEmpty(), formatSize(release.size), release.source.orEmpty()),
                             color = MaterialTheme.colorScheme.primary,
                         )
-                        serverApk != null -> Text(
-                            stringResource(R.string.apk_available, serverApk.label, serverApk.versionName.orEmpty(), formatSize(serverApk.size)),
-                            color = MaterialTheme.colorScheme.primary,
+                        mirror != null -> Text(
+                            stringResource(
+                                if (mirror.playStore) R.string.emulator_mirror_failed_store else R.string.emulator_mirror_failed,
+                                emulator.playerName ?: mirror.name,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
                         )
-                        else -> Text(stringResource(R.string.apk_not_on_server), style = MaterialTheme.typography.bodySmall)
+                        else -> Text(stringResource(R.string.emulator_play_store_only), style = MaterialTheme.typography.bodySmall)
                     }
-                    if (update != null && found?.versionName != null && found.versionName == update) {
+                    if (update != null && release?.versionName != null && release.versionName == update) {
                         Text(stringResource(R.string.update_emulator_up_to_date), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
             confirmButton = {
                 Row {
-                    // Application absente du Play Store (Winlator) : seulement son APK.
-                    if (update == null && EmulatorReleases.SOURCES[emulator.packageName]?.playStore != false) {
+                    // Play Store : sans source dans le miroir, ou miroir en échec pour une application qui y est publiée.
+                    if (update == null && apk != null && release == null && mirror?.playStore != false) {
                         TextButton(onClick = {
                             app.missingEmulator.value = null
                             try {
@@ -191,16 +193,12 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
                             }
                         }) { Text(stringResource(R.string.action_open_play_store)) }
                     }
-                    found?.let { download ->
+                    release?.let { download ->
                         TextButton(onClick = {
                             app.missingEmulator.value = null
                             app.apkInstaller.install(activity, download)
                         }) {
-                            Text(stringResource(when {
-                                update != null -> R.string.action_update_emulator
-                                release != null -> R.string.action_download_latest
-                                else -> R.string.action_install_from_server
-                            }))
+                            Text(stringResource(if (update != null) R.string.action_update_emulator else R.string.action_download_latest))
                         }
                     }
                 }
@@ -236,7 +234,7 @@ fun LaunchDialogs(app: RomCloudApp, activity: ComponentActivity, snackbar: Snack
         )
     }
 
-    // Installation d'un APK (Release de l'émulateur ou serveur) : erreurs, autorisation « sources inconnues », progression.
+    // Installation d'un APK (miroir des émulateurs, mise à jour de RomCloud) : erreurs, autorisation « sources inconnues », progression.
     LaunchedEffect(Unit) {
         app.apkInstaller.errors.collect { launch { snackbar.showSnackbar(it) } }
     }

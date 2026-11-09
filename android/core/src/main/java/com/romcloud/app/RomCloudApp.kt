@@ -134,16 +134,18 @@ class RomCloudApp : Application(), ImageLoaderFactory {
         repository = Repository(api, filesDir, { settings.hideUnidentified }, { settings.gameOrder }, { settings.gpuDrivers })
         library = LocalLibrary(this, settings)
         downloader = Downloader(this, api, library, appScope)
-        launcher = GameLauncher(this, settings)
+        // Applications du miroir des émulateurs (liste du serveur, gardée pour le démarrage hors ligne).
+        emulatorReleases = EmulatorReleases(api, java.io.File(filesDir, "emulator-sources.json"))
+        launcher = GameLauncher(this, settings, emulatorReleases::source)
         apkInstaller = ApkInstaller(this, api, appScope)
         updater = AppUpdater(this, api)
-        emulatorReleases = EmulatorReleases(api)
         account = Account(this, api, appScope)
         api.clientHeaders = account::clientHeaders
         connectivity = Connectivity(this, api)
         // Processus de l'émulateur intégré : mode en ligne / hors ligne repris de l'application (pas de
         // sonde du serveur), ni envoi du temps de jeu.
         if (isMainProcess()) {
+            appScope.launch { emulatorReleases.refresh() }
             prepareFolders()
             watchConnection()
             watchScreens()

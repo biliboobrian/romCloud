@@ -41,7 +41,6 @@ export const SCREENSCRAPER_SYSTEM_IDS = {
   mame: 75,
   master: 2,
   megaduck: 90,
-  model3: 55,
   msx: 113,
   n64: 14,
   naomi: 56,

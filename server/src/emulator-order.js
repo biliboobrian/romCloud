@@ -27,7 +27,7 @@ const WINDOWS_APPS = [
 /** Émulateurs Windows installés par l'utilisateur (catalog.rs). */
 const WINDOWS_EMULATORS = [
   { id: 'vita3k', name: 'Vita3K', systems: ['vita'] },
-  { id: 'dolphin', name: 'Dolphin', systems: ['wiiware', 'triforce'] },
+  { id: 'dolphin', name: 'Dolphin', systems: ['wiiware'] },
   { id: 'eden', name: 'Eden', systems: ['switch'] },
   { id: 'lichii', name: 'Lichii', systems: ['switch'] },
   { id: 'orchid', name: 'Orchid', systems: ['switch'] },
@@ -37,7 +37,6 @@ const WINDOWS_EMULATORS = [
   { id: 'ares', name: 'ares', systems: ['coleco', 'msx'] },
   { id: 'flycast', name: 'Flycast', systems: ['naomi', 'atomiswave'] },
   { id: 'mednafen', name: 'Mednafen', systems: ['pcfx'] },
-  { id: 'supermodel', name: 'Supermodel', systems: ['model3'] },
   { id: 'mame', name: 'MAME', systems: ['cps1', 'cps2', 'cps3', 'stv', 'naomi'] },
   { id: 'xemu', name: 'xemu', systems: ['xbox'] },
   { id: 'xenia', name: 'Xenia Canary', systems: ['xbox360'] },

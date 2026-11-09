@@ -37,7 +37,7 @@ macro_rules! emu {
 pub static EMULATORS: &[Emulator] = &[
     // Jeux installés dans Vita3K puis démarrés par leur identifiant (vita3k.rs) : pas de ligne de commande fixe.
     emu!("vita3k", "Vita3K", ["vita"], "https://vita3k.org/", ["Vita3K.exe"], ["Vita3K"], None),
-    emu!("dolphin", "Dolphin", ["wiiware", "triforce"], "https://dolphin-emu.org/download/", ["Dolphin.exe"],
+    emu!("dolphin", "Dolphin", ["wiiware"], "https://dolphin-emu.org/download/", ["Dolphin.exe"],
         ["Dolphin", "Dolphin-x64", "Dolphin Emulator"], ["-b", "-e", "{file}"]),
     // Switch : clés (prod.keys) et firmware à installer dans l'émulateur.
     // Eden : indiqué par son dossier (folder_exes) ; jeux lancés avec eden-cli (sans l'interface,
@@ -62,7 +62,6 @@ pub static EMULATORS: &[Emulator] = &[
     emu!("flycast", "Flycast", ["naomi", "atomiswave"], "https://github.com/flyinghead/flycast/releases", ["flycast.exe"],
         ["Flycast", "flycast"], ["{file}"]),
     emu!("mednafen", "Mednafen", ["pcfx"], "https://mednafen.github.io/releases/", ["mednafen.exe"], ["mednafen", "Mednafen"], ["{file}"]),
-    emu!("supermodel", "Supermodel", ["model3"], "https://www.supermodel3.com/Download.html", ["Supermodel.exe"], ["Supermodel"], ["{file}"]),
     // MAME attend le nom court du jeu et le dossier qui contient le zip.
     emu!("mame", "MAME", ["cps1", "cps2", "cps3", "stv", "naomi"], "https://www.mamedev.org/release.html",
         ["mame.exe", "mame64.exe"], ["MAME", "mame"], ["-rompath", "{dir}", "{basename}"]),
@@ -145,14 +144,14 @@ pub fn args_line(args: Option<&[&str]>) -> String {
 pub fn system_name(id: &str) -> String {
     let name = match id {
         "psx" => "PlayStation", "ps2" => "PlayStation 2", "ps3" => "PlayStation 3", "psp" => "PSP", "pspminis" => "PSP Minis",
-        "vita" => "PS Vita", "ps4" => "PS4", "ps5" => "PS5", "gc" => "GameCube", "wii" => "Wii", "wiiware" => "WiiWare", "triforce" => "Triforce", "wiiu" => "Wii U",
+        "vita" => "PS Vita", "ps4" => "PS4", "ps5" => "PS5", "gc" => "GameCube", "wii" => "Wii", "wiiware" => "WiiWare", "wiiu" => "Wii U",
         "switch" => "Nintendo Switch",
         "n64" => "Nintendo 64", "nds" => "Nintendo DS", "ndsi" => "Nintendo DSi", "3ds" => "Nintendo 3DS", "gba" => "Game Boy Advance",
         "gb" => "Game Boy", "gbc" => "Game Boy Color", "snes" => "Super Nintendo", "satellaview" => "Satellaview", "nes" => "NES",
         "fds" => "Famicom Disk System", "tg16" => "PC Engine", "tgcd" => "PC Engine CD", "supergrafx" => "SuperGrafx", "pcfx" => "PC-FX",
         "master" => "Master System", "gamegear" => "Game Gear", "sg1000" => "SG-1000", "genesis" => "Mega Drive", "segacd" => "Mega-CD",
         "sega32x" => "32X", "saturn" => "Saturn", "dreamcast" => "Dreamcast", "naomi" => "Naomi", "atomiswave" => "Atomiswave",
-        "model3" => "Model 3", "stv" => "ST-V", "ws" => "WonderSwan", "wsc" => "WonderSwan Color", "ngp" => "Neo Geo Pocket",
+        "stv" => "ST-V", "ws" => "WonderSwan", "wsc" => "WonderSwan Color", "ngp" => "Neo Geo Pocket",
         "ngpc" => "Neo Geo Pocket Color", "neogeo" => "Neo Geo", "lynx" => "Lynx", "virtualboy" => "Virtual Boy", "coleco" => "ColecoVision",
         "msx" => "MSX", "atari2600" => "Atari 2600", "mame" => "Arcade (MAME)", "fbneo" => "FinalBurn Neo", "cps1" => "CPS-1",
         "cps2" => "CPS-2", "cps3" => "CPS-3", "xbox" => "Xbox", "xbox360" => "Xbox 360", "scummvm" => "ScummVM",
@@ -355,7 +354,7 @@ mod tests {
         let orchid = put(&["home", "Downloads", "orchid-v0.7.4-windows-x86_64", "orchid.exe"]);
         put(&["home", "Downloads", "orchid-v0.7.4-windows-x86_64", "eden-cli.exe"]); // pas Eden
         let fritchii = put(&["home", "Downloads", "Fritchii-v4.1", "lichii.exe"]); // pas Lichii
-        let supermodel = put(&["home", "Downloads", "Supermodel_0.3a", "bin", "SUPERMODEL.EXE"]);
+        let mednafen = put(&["home", "Downloads", "mednafen-1.32", "bin", "MEDNAFEN.EXE"]);
         put(&["home", "Downloads", "a", "b", "c", "xemu.exe"]); // trop profond
         let vars = HashMap::from([
             ("ProgramFiles", root.join("pf")),
@@ -364,11 +363,11 @@ mod tests {
         ]);
         let env = |name: &str| vars.get(name).map(|p| p.to_string_lossy().into_owned());
         assert_eq!(default_location_in(by_id("dolphin").unwrap(), &env), dolphin);
-        let emulators = [by_id("dolphin").unwrap(), by_id("supermodel").unwrap(), by_id("xemu").unwrap(), by_id("eden").unwrap(), by_id("lichii").unwrap(), by_id("orchid").unwrap(), by_id("fritchii").unwrap()];
+        let emulators = [by_id("dolphin").unwrap(), by_id("mednafen").unwrap(), by_id("xemu").unwrap(), by_id("eden").unwrap(), by_id("lichii").unwrap(), by_id("orchid").unwrap(), by_id("fritchii").unwrap()];
         let found = detect_in(&env, &emulators);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(found.get("dolphin"), Some(&dolphin.to_string_lossy().into_owned()));
-        assert_eq!(found.get("supermodel").map(|p| p.to_lowercase()), Some(supermodel.to_string_lossy().to_lowercase()));
+        assert_eq!(found.get("mednafen").map(|p| p.to_lowercase()), Some(mednafen.to_string_lossy().to_lowercase()));
         assert_eq!(found.get("xemu"), None);
         assert_eq!(found.get("lichii"), Some(&lichii.to_string_lossy().into_owned()));
         assert_eq!(found.get("orchid"), Some(&orchid.to_string_lossy().into_owned()));

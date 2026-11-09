@@ -79,7 +79,7 @@ class ApkInstaller(
                     ?.forEach { it.delete() }
                 if (!(file.isFile && file.length() == apk.size)) {
                     _progress.value = Progress(apk, 0)
-                    fetchFile(api, apk.url ?: api.apkFileUrl(apk), file, apk.size, { _progress.value = Progress(apk, it) }) {
+                    fetchFile(api, apk.url, file, apk.size, { _progress.value = Progress(apk, it) }) {
                         I18n.get(R.string.err_cannot_create, it.absolutePath)
                     }
                 }

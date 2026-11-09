@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { config } from './config.js';
 
@@ -69,19 +71,11 @@ db.exec(`
     UNIQUE (system_id, path)
   );
 
-  -- APK des émulateurs Android, stockés dans data/apks/<paquet>.apk (un par paquet).
-  CREATE TABLE IF NOT EXISTS apks (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    package_name  TEXT NOT NULL UNIQUE,
-    label         TEXT NOT NULL,
-    version_name  TEXT,
-    version_code  INTEGER,
-    size          INTEGER NOT NULL,
-    md5           TEXT,
-    file_name     TEXT,
-    added_at      TEXT NOT NULL DEFAULT (datetime('now'))
-  );
+  -- APK des émulateurs Android envoyés à la main (data/apks/), remplacés par le miroir des émulateurs.
+  DROP TABLE IF EXISTS apks;
 `);
+// Leurs fichiers aussi.
+fs.rmSync(path.join(config.dataDir, 'apks'), { recursive: true, force: true });
 
 // Profils des joueurs : comptes, sessions par appareil, journal des connexions, temps de jeu,
 // sauvegardes (fichiers dans data/saves/<utilisateur>/<jeu>/) et erreurs signalées par les applications.

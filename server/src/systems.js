@@ -269,6 +269,17 @@ export function deleteSystem(id, { deleteFiles = false } = {}) {
 let indexCache = null;
 let indexCacheAt = 0;
 
+/**
+ * Plateformes du catalogue Daijishou abandonnées par RomCloud (identifiant de la plateforme) : pas
+ * d'émulateur intégré ni du miroir, ou systèmes non utilisés (lecteurs de livres et de vidéos,
+ * streaming, Flash, N-Gage, Java ME, Model 3, Namco 246, Triforce…). Ni proposées à l'import, ni
+ * importables ; celles déjà enregistrées sont supprimées au démarrage ([purgeDroppedSystems]).
+ */
+export const DROPPED_SYSTEMS = new Set([
+  'ebook', 'elektor', 'flash', 'idtech', 'j2me', 'model3', 'moonlight', 'namcops2', 'ngage', 'ports', 'steam', 'triforce', 'videos', 'xcloud',
+]);
+const isDropped = (id) => DROPPED_SYSTEMS.has(String(id || '').toLowerCase());
+
 const LOCAL_PLATFORMS_DIR = path.join(config.rootDir, 'platforms');
 
 function localPlatformList() {
@@ -301,7 +312,7 @@ export async function listDaijishouPlatforms() {
   const daijishou = indexCache || [];
   const daijishouIds = new Set(daijishou.map((p) => p.platformUniqueId));
   const entries = [
-    ...daijishou.map((p) => ({ ...p, source: 'daijishou' })),
+    ...daijishou.filter((p) => !isDropped(p.platformUniqueId)).map((p) => ({ ...p, source: 'daijishou' })),
     // Une plateforme ajoutée plus tard au catalogue Daijishou prend le pas sur la version RomCloud.
     ...local.filter((p) => !daijishouIds.has(p.platformUniqueId)).map((p) => ({ ...p, source: 'romcloud' })),
   ].sort((a, b) => a.platformName.localeCompare(b.platformName, 'fr'));
@@ -369,6 +380,7 @@ export async function importDaijishouPlatform({ filename, json }) {
   let source = 'daijishou';
   if (!json) ({ json, source } = await fetchPlatform(filename));
   const data = platformToSystem(json, source);
+  if (isDropped(data.id)) throw new HttpError(400, 'errors.systemDropped', { name: data.name });
   const existing = getSystem(data.id);
   if (existing) {
     // Mise à jour : on conserve le dossier et les réglages de scraping saisis à la main.
@@ -381,6 +393,16 @@ export async function importDaijishouPlatform({ filename, json }) {
   let folder = data.folder;
   for (let i = 2; db.prepare('SELECT 1 FROM systems WHERE folder = ?').get(folder); i++) folder = `${data.folder}-${i}`;
   return createSystem({ ...data, folder });
+}
+
+/**
+ * Systèmes abandonnés ([DROPPED_SYSTEMS]) déjà importés : supprimés avec leurs jeux, images, BIOS et
+ * le dossier de leurs ROMs. Renvoie les noms des systèmes supprimés.
+ */
+export function purgeDroppedSystems() {
+  const dropped = db.prepare('SELECT id, name FROM systems').all().filter((row) => isDropped(row.id));
+  for (const row of dropped) deleteSystem(row.id, { deleteFiles: true });
+  return dropped.map((row) => row.name);
 }
 
 /**

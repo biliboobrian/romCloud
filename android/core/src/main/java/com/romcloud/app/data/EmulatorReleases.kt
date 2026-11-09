@@ -19,11 +19,44 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * Dernière version des émulateurs Android publiés sur leur gestionnaire de versions (Releases
  * GitHub, ou Forgejo pour Eden), téléchargée depuis le serveur RomCloud : il récupère chaque version
  * demandée sur Internet et en garde une copie (miroir, emulator-mirror.js du serveur), si bien qu'un
- * émulateur retiré d'Internet reste installable. Proposée à la place de l'APK envoyé sur le serveur
- * quand l'émulateur n'est pas installé, et pour sa mise à jour. L'APK est choisi parmi les fichiers
- * de la version d'après le paquet du modèle d'émulateur (variantes d'Eden, d'Azahar…).
+ * émulateur retiré d'Internet reste installable. Seule installation proposée par RomCloud quand
+ * l'émulateur a une source dans le miroir (installation et mise à jour) ; sinon, le Play Store.
+ * Applications du miroir déclarées par le serveur (« /api/emulators/android » : paquet, source, nom
+ * de l'APK, Play Store en repli), gardées dans [cache] pour le démarrage hors ligne ; serveur d'avant
+ * cette liste : [FALLBACK]. L'APK est choisi parmi les fichiers de la version d'après le paquet du
+ * modèle d'émulateur (variantes d'Eden, d'ARMSX3…).
  */
-class EmulatorReleases(private val api: ApiClient) {
+class EmulatorReleases(private val api: ApiClient, private val cache: java.io.File) {
+
+    @Volatile
+    private var sources: Map<String, Source> = runCatching { parseSources(cache.readText()) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: FALLBACK
+
+    @Volatile
+    private var refreshed = false
+
+    /** Source du miroir de l'application [packageName], null si elle n'en a pas (Play Store seulement). */
+    fun source(packageName: String): Source? = sources[packageName]
+
+    /**
+     * Liste des applications du miroir relue sur le serveur (gardée dans [cache]) ; serveur sans cette
+     * liste (HTTP 404) : [FALLBACK] ; injoignable : liste gardée.
+     */
+    suspend fun refresh() = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder().url(api.url("/api/emulators/android")).header("Accept", "application/json").build()
+            api.http.newCall(request).execute().use { response ->
+                when {
+                    response.isSuccessful -> {
+                        val body = response.body.string()
+                        sources = parseSources(body)
+                        cache.writeText(body)
+                    }
+                    response.code == 404 -> sources = FALLBACK
+                }
+            }
+            refreshed = true
+        }.onFailure { Log.i(TAG, "Applications du miroir non relues : ${it.message}") }
+    }
 
     /**
      * Émulateur du miroir : [mirror] identifiant de sa source sur le serveur, [host] site où il est
@@ -42,7 +75,8 @@ class EmulatorReleases(private val api: ApiClient) {
      * par le serveur, quand il ne l'a pas encore), ou null (paquet inconnu, pas d'APK, serveur injoignable).
      */
     suspend fun latest(packageName: String, progress: Progress = Progress { _, _ -> }): EmulatorApk? {
-        val source = SOURCES[packageName] ?: return null
+        if (!refreshed) refresh()
+        val source = sources[packageName] ?: return null
         return runCatching { withContext(Dispatchers.IO) { fetch(packageName, source, progress) } }
             .onFailure { Log.i(TAG, "Dernière version de $packageName introuvable : ${it.message}") }
             .getOrNull()
@@ -106,12 +140,10 @@ class EmulatorReleases(private val api: ApiClient) {
         private const val EDEN = "git.eden-emu.dev"
 
         /**
-         * Paquets des modèles d'émulateurs Daijishou -> source du miroir du serveur qui publie leur APK.
-         * Consoles sans moteur intégré seulement (3DS, DS, Game Boy… : cœurs de LibretroDroid, leurs
-         * émulateurs externes ne sont plus proposés, voir LibretroPlayers) : Flycast pour Naomi et
-         * Atomiswave, ARMSX2 pour le Namco System 246, MAME4droid pour les Game & Watch.
+         * Applications du miroir d'un serveur d'avant « /api/emulators/android » (v1.102 et avant) :
+         * paquets des modèles d'émulateurs Daijishou -> source du miroir qui publie leur APK.
          */
-        val SOURCES: Map<String, Source> = mapOf(
+        val FALLBACK: Map<String, Source> = mapOf(
             "dev.eden.eden_emulator" to Source("Eden", "eden", EDEN, Regex("""Eden-Android-.*-standard\.apk""")),
             // Jeux PC (Wine / Proton) : RomCloud PC (android/pc, publié avec RomCloud), Winlator Cmod.
             "com.romcloud.wine" to Source("RomCloud PC", "romcloud-pc", GITHUB, Regex("""RomCloud-PC-.*\.apk"""), playStore = false),
@@ -120,12 +152,25 @@ class EmulatorReleases(private val api: ApiClient) {
             "com.miHoYo.Yuanshen" to Source("Eden (Optimized)", "eden", EDEN, Regex("""Eden-Android-.*-optimized\.apk""")),
             "com.flycast.emulator" to Source("Flycast", "flycast", GITHUB, Regex("""flycast-.*\.apk""")),
             "org.vita3k.emulator" to Source("Vita3K", "vita3k-android", GITHUB, Regex("""vita3k-android-.*\.apk""")),
-            // Une variante par version d'Android (« -sdk30 », « -sdk33 »…) : la plus récente acceptée.
-            "com.armsx2" to Source("ARMSX2", "armsx2", GITHUB, Regex("""ARMSX2-.*-sdk\d+\.apk""")),
             "info.cemu.cemu" to Source("Cemu", "cemu-android", GITHUB, Regex("""Cemu-.*\.apk""")),
             "aenu.aps3e" to Source("aPS3e", "aps3e", GITHUB, Regex("""[\w.-]+\.apk""")),
             "com.seleuco.mame4d2024" to Source("MAME4droid", "mame4droid", GITHUB, Regex("""MAME4droid.*\.apk""")),
         )
+
+        /** Liste du serveur : [{ package, name, source, host, asset, playStore }] -> paquet -> source. */
+        internal fun parseSources(json: String): Map<String, Source> =
+            (Json.parseToJsonElement(json) as? JsonArray).orEmpty().mapNotNull { e ->
+                val o = e as? JsonObject ?: return@mapNotNull null
+                val pkg = o.string("package") ?: return@mapNotNull null
+                val asset = o.string("asset")?.let { runCatching { Regex(it) }.getOrNull() } ?: return@mapNotNull null
+                pkg to Source(
+                    name = o.string("name") ?: pkg,
+                    mirror = o.string("source") ?: return@mapNotNull null,
+                    host = o.string("host") ?: GITHUB,
+                    asset = asset,
+                    playStore = (o["playStore"] as? kotlinx.serialization.json.JsonPrimitive)?.content != "false",
+                )
+            }.toMap()
 
         private val SDK = Regex("""-sdk(\d+)\.apk$""")
 

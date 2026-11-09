@@ -52,6 +52,6 @@ class AppUpdaterTest {
         assertEquals("RomCloud-TV-1.12.0.apk", AppUpdater.apkName("1.12.0", tv = true))
         // RomCloud PC : même Release, même nom que la recherche de son APK (EmulatorReleases).
         assertEquals("RomCloud-PC-1.12.0.apk", AppUpdater.companionApkName("1.12.0"))
-        assertTrue(EmulatorReleases.SOURCES.getValue("com.romcloud.wine").asset.matches(AppUpdater.companionApkName("1.12.0")))
+        assertTrue(EmulatorReleases.FALLBACK.getValue("com.romcloud.wine").asset.matches(AppUpdater.companionApkName("1.12.0")))
     }
 }
