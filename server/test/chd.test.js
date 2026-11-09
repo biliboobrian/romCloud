@@ -29,7 +29,7 @@ let content = 'CHD ' + command + '\\n' + fs.readFileSync(input, 'latin1');
 for (const m of fs.readFileSync(input, 'latin1').matchAll(/FILE "([^"]+)"/g)) content += fs.readFileSync(path.join(path.dirname(input), m[1]), 'latin1');
 process.stderr.write('Compressing, 50.0% complete... (ratio=40.0%)\\r');
 if (content.includes('PLANTE')) { process.stderr.write('\\nError: corrupt track\\n'); process.exit(1); }
-fs.writeFileSync(arg('-o'), content);
+fs.writeFileSync(arg('-o'), content, 'latin1');
 process.stderr.write('Compression complete ... final ratio = 40.0%\\n');
 `,
 );
@@ -155,6 +155,56 @@ test('jeux convertis en CHD : .cue et pistes, archives .zip de plusieurs disques
     await json('/systems/snes/scan', { method: 'POST' });
     const [mario] = await gamesOf('snes');
     assert.equal((await (await json(`/games/${mario.id}/chd`, { method: 'POST' })).json()).code, 'errors.chdUnsupportedSystem');
+  } finally {
+    server.close();
+  }
+});
+
+// bsdtar (libarchive) : celui de Windows (tar.exe) ou du système ; test sauté sans lui.
+const { archiveToolAvailable, setArchiveTool } = await import('../src/chd.js');
+setArchiveTool(process.env.BSDTAR_PATH || (process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\Windows', 'System32', 'tar.exe') : 'bsdtar'));
+
+test('archives .7z et .rar (RAR5, solide ; .cue et piste dans un sous-dossier) converties en CHD', { skip: !archiveToolAvailable() && 'bsdtar absent' }, async () => {
+  const app = express();
+  app.use(express.json());
+  app.use('/api', api);
+  const server = app.listen(0);
+  const base = `http://127.0.0.1:${server.address().port}/api`;
+  const json = (url, options = {}) =>
+    fetch(`${base}${url}`, { ...options, headers: { 'Content-Type': 'application/json' }, body: options.body && JSON.stringify(options.body) });
+  const waitJobs = async () => {
+    for (let i = 0; i < 400; i++) {
+      const jobs = await (await fetch(`${base}/jobs`)).json();
+      if (!jobs.some((j) => j.status === 'queued' || j.status === 'running')) return jobs;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error('tâche trop longue');
+  };
+  try {
+    const dir = path.join(config.romsDir, 'saturn');
+    const fixtures = path.join(import.meta.dirname, 'fixtures', 'chd');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(path.join(fixtures, 'Disc (Europe).rar'), path.join(dir, 'Disc (Europe).rar'));
+    fs.copyFileSync(path.join(fixtures, 'Disc (Europe).7z'), path.join(dir, 'Seven (Japan).7z'));
+    write(path.join(dir, 'Bad (USA).rar'), 'pas une archive');
+    await json('/systems', { method: 'POST', body: { id: 'saturn', name: 'Saturn', shortname: 'saturn' } });
+    await json('/systems/saturn/scan', { method: 'POST' });
+    const games = await (await fetch(`${base}/systems/saturn/games`)).json();
+    const byName = (name) => games.find((g) => g.fileName === name);
+
+    const bad = await json(`/games/${byName('Bad (USA).rar').id}/chd`, { method: 'POST' });
+    assert.equal(bad.status, 400);
+    assert.equal((await bad.json()).code, 'errors.chdArchiveUnreadable');
+    for (const name of ['Disc (Europe).rar', 'Seven (Japan).7z']) assert.equal((await json(`/games/${byName(name).id}/chd`, { method: 'POST' })).status, 202, name);
+    const jobs = await waitJobs();
+    assert.deepEqual(jobs.filter((j) => j.label.includes('Disc') || j.label.includes('Seven')).map((j) => [j.status, j.lastError]), [['done', null], ['done', null]]);
+
+    const cue = 'FILE "Disc (Europe) (Track 1).bin" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n';
+    const bin = Buffer.from(Array.from({ length: 4704 }, (_, i) => (i * 7) & 255)).toString('latin1');
+    for (const name of ['Disc (Europe).chd', 'Seven (Japan).chd']) assert.equal(fs.readFileSync(path.join(dir, name), 'latin1'), `CHD createcd\n${cue}${bin}`, name);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['Bad (USA).rar', 'Disc (Europe).chd', 'Seven (Japan).chd']);
+    const after = await (await fetch(`${base}/systems/saturn/games`)).json();
+    assert.equal(after.find((g) => g.id === byName('Seven (Japan).7z').id).fileName, 'Seven (Japan).chd');
   } finally {
     server.close();
   }

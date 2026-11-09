@@ -839,8 +839,8 @@ function fillGamePack(game) {
   unpack.onclick = () => start('flat');
 }
 
-/** Fichiers convertibles en CHD (chd-systems.js) : images de disque, ou archive .zip qui en contient une. */
-const CHD_SOURCE_RE = /\.(cue|gdi|toc|iso|zip)$/i;
+/** Fichiers convertibles en CHD (chd-systems.js) : images de disque, ou archive .zip, .7z ou .rar qui en contient une. */
+const CHD_SOURCE_RE = /\.(cue|gdi|toc|iso|zip|7z|rar)$/i;
 
 /**
  * Jeu sur CD (PS1, Saturn, Mega-CD, Dreamcast, PC Engine CD ; PS2 : DVD) : conversion en CHD sur le

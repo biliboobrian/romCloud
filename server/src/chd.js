@@ -1,5 +1,6 @@
 // Conversion des jeux sur CD (et des DVD de la PS2) en CHD, demandée dans l'administration : image
-// de disque (.cue et ses pistes, .gdi, .toc, .iso), ou archive .zip qui en contient une, compressée
+// de disque (.cue et ses pistes, .gdi, .toc, .iso), ou archive .zip, .7z ou .rar qui en contient une
+// (.zip : lue par zip.js ; .7z et .rar : extraites par « bsdtar » de libarchive, BSDTAR_PATH), compressée
 // par l'outil « chdman » de MAME (CHDMAN_PATH pour un autre emplacement) en un seul fichier
 // « Jeu.chd », lu directement par les cœurs du moteur intégré (sans extraction) et bien plus petit
 // qu'une image brute. La fiche du jeu est gardée (nom du fichier changé : jaquettes, sauvegardes,
@@ -34,6 +35,73 @@ export function setChdman(bin, prefix = []) {
 export function chdmanAvailable() {
   available ??= !spawnSync(chdman, [...chdmanPrefix, 'help'], { stdio: 'ignore', windowsHide: true }).error;
   return available;
+}
+
+let bsdtar = process.env.BSDTAR_PATH || 'bsdtar';
+let bsdtarAvailable;
+
+/** Outil d'extraction des .7z et .rar (tests : bsdtar de Windows, tar.exe). */
+export function setArchiveTool(bin) {
+  bsdtar = bin;
+  bsdtarAvailable = undefined;
+}
+
+/** bsdtar présent (vérifié une fois). */
+export function archiveToolAvailable() {
+  bsdtarAvailable ??= spawnSync(bsdtar, ['--version'], { stdio: 'ignore', windowsHide: true }).status === 0;
+  return bsdtarAvailable;
+}
+
+/** Archives extraites par bsdtar. */
+const TOOL_ARCHIVE_RE = /\.(7z|rar)$/i;
+
+/**
+ * Fichiers d'une archive .7z ou .rar ({ name, size }, dossiers exclus) : noms exacts de « bsdtar -t »,
+ * tailles de « bsdtar -tv » (même ordre ; colonne après le propriétaire et le groupe).
+ */
+export function listArchive(file) {
+  const run = (args) => {
+    const r = spawnSync(bsdtar, [...args, file], { encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
+    if (r.error || r.status !== 0) throw new HttpError(400, 'errors.chdArchiveUnreadable', { file: path.basename(file), detail: (r.stderr || r.error?.message || '').trim().split('\n').pop() });
+    return r.stdout.split(/\r?\n/).filter(Boolean);
+  };
+  const names = run(['-tf']);
+  const long = run(['-tvf']);
+  return names
+    .map((name, i) => {
+      const m = /^(\S)\S*\s+\d+\s+\S+\s+\S+\s+(\d+)\s/.exec(long[i] ?? '');
+      return { name: name.replace(/\\/g, '/'), size: m ? Number(m[2]) : 0, dir: m ? m[1] === 'd' : name.endsWith('/') };
+    })
+    .filter((e) => !e.dir && !e.name.endsWith('/'));
+}
+
+/** Taille des fichiers du dossier [dir] (sous-dossiers compris). */
+function dirSize(dir) {
+  let total = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (entry.isFile()) total += fs.statSync(path.join(entry.parentPath ?? entry.path, entry.name), { throwIfNoEntry: false })?.size ?? 0;
+  }
+  return total;
+}
+
+/** Archive .7z ou .rar extraite dans [work] par bsdtar ; [onBytes(total)] : octets déjà écrits (relevés chaque seconde). */
+function extractWithTool(file, work, onBytes, signal) {
+  return new Promise((resolve, reject) => {
+    fs.mkdirSync(work, { recursive: true });
+    const child = spawn(bsdtar, ['-xf', file, '-C', work], { stdio: ['ignore', 'ignore', 'pipe'], signal, windowsHide: true });
+    let stderr = '';
+    child.stderr.on('data', (d) => (stderr = (stderr + d).slice(-4000)));
+    const timer = setInterval(() => onBytes(dirSize(work)), 1000);
+    child.on('error', (err) => {
+      clearInterval(timer);
+      reject(err);
+    });
+    child.on('close', (code) => {
+      clearInterval(timer);
+      if (code === 0) return resolve();
+      reject(new HttpError(400, 'errors.chdArchiveUnreadable', { file: path.basename(file), detail: stderr.trim().split('\n').pop() || `code ${code}` }));
+    });
+  });
 }
 
 /** Images de disque lues par chdman, par ordre de préférence dans une archive. */
@@ -100,7 +168,8 @@ function inside(dir, rel) {
 
 /**
  * Ce qu'il faut pour convertir le jeu [row] : fichiers d'origine (supprimés après), taille à traiter
- * et archive .zip à extraire d'abord (ses fichiers, et l'image de disque qu'elle contient).
+ * et archive à extraire d'abord (ses fichiers, l'image de disque qu'elle contient ; [tool] : .7z ou
+ * .rar, extraite par bsdtar).
  */
 function sourceOf(row) {
   const file = gameFilePath(row);
@@ -112,6 +181,13 @@ function sourceOf(row) {
     const image = discImage(entries.map((e) => e.name));
     if (!image) throw new HttpError(400, 'errors.chdNoImage', { file: row.file_name });
     return { originals: [file], entries, image, size: entries.reduce((n, e) => n + e.size, 0) };
+  }
+  if (TOOL_ARCHIVE_RE.test(ext)) {
+    if (!archiveToolAvailable()) throw new HttpError(500, 'errors.archiveToolMissing');
+    const entries = listArchive(file);
+    const image = discImage(entries.map((e) => e.name));
+    if (!image) throw new HttpError(400, 'errors.chdNoImage', { file: row.file_name });
+    return { originals: [file], entries, image, tool: true, size: entries.reduce((n, e) => n + e.size, 0) || fs.statSync(file).size };
   }
   // Image .cue, .toc, .gdi : ses pistes, à côté d'elle.
   const tracks = ext === '.iso' ? [] : trackFiles(fs.readFileSync(file, 'utf8'), ext.slice(1)).map((t) => inside(dir, t));
@@ -159,7 +235,9 @@ async function convertGame(row, source, disc, progress, signal) {
       fs.rmSync(work, { recursive: true, force: true });
       let written = 0;
       // Extraction : la moitié de l'avancement du jeu.
-      await extractZip(file, source.entries, work, (n) => progress((written += n) / Math.max(1, source.size) / 2), signal);
+      const extracted = (bytes) => progress(Math.min(1, bytes / Math.max(1, source.size)) / 2);
+      if (source.tool) await extractWithTool(file, work, extracted, signal);
+      else await extractZip(file, source.entries, work, (n) => extracted((written += n)), signal);
       image = inside(work, source.image);
     }
     // DVD de la PS2 : images .iso ; ses jeux sur CD (.cue) et les autres consoles : createcd.
