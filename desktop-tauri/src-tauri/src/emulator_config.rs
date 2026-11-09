@@ -1,6 +1,7 @@
 // Réglages des émulateurs du catalogue modifiés depuis RomCloud (fenêtre « Configurer … ») : fichiers
 // INI de l'émulateur lus et mis à jour clé par clé, le reste du fichier gardé tel quel. Les champs
-// proposés (sections, clés, valeurs) sont décrits par l'interface (renderer/emulator-config.js) ;
+// proposés (sections, clés, valeurs) sont décrits par renderer/emulator-config/emulator-config.json (commun
+// avec Android : EmulatorConfig.kt) ;
 // ici, seulement l'emplacement des fichiers et leur format :
 //  - Eden, Lichii, Orchid, Fritchii : config\qt-config.ini du dossier de données d'Eden (« user » à
 //    côté de l'exécutable, sinon %APPDATA%\eden ; partagé par les forks), « clé=valeur » précédé de

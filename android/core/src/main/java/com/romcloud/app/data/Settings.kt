@@ -119,6 +119,11 @@ class Settings(context: Context) {
         get() = prefs.getString("winlatorTree", null)
         set(value) = prefs.edit().putString("winlatorTree", value).apply()
 
+    /** Dossier de l'émulateur externe [pkg] autorisé pour « Configurer … » (EmulatorConfigFiles), null sinon. */
+    fun emulatorConfigTree(pkg: String): String? = prefs.getString("emulatorConfigTree.$pkg", null)
+
+    fun setEmulatorConfigTree(pkg: String, tree: String?) = prefs.edit().putString("emulatorConfigTree.$pkg", tree).apply()
+
     /**
      * Pilotes graphiques du serveur (Turnip, puces Adreno) téléchargés avec les BIOS et recopiés
      * pour les émulateurs qui les installent eux-mêmes (Eden, Dolphin, Vita3K…). Par défaut sur les

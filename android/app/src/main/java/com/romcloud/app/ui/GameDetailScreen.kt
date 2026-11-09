@@ -551,6 +551,16 @@ fun GameDetailScreen(
                     Text(stringResource(R.string.action_open_emulator, player.name))
                 }
             }
+            // Eden, Dolphin : principaux réglages modifiés depuis RomCloud (EmulatorConfigUi.kt).
+            state.emulatorConfig?.let { target ->
+                EmulatorConfigAction(target, viewModel.settings, onMessage = { scope.launch { snackbar.showSnackbar(it) } }) { onClick ->
+                    OutlinedButton(onClick = onClick) {
+                        Icon(Icons.Filled.Settings, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.emulator_configure, target.name))
+                    }
+                }
+            }
 
             // Jeu PC : Proton, pilote graphique, DXVK et qualité graphique au démarrage.
             state.pcSettings?.let { chosen ->

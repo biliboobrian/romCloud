@@ -2704,7 +2704,7 @@
         ${emu.path ? `<button class="btn" data-emu-launch>${icon('open', 18)} ${esc(t('emulator.launch', { name: emu.name }))}</button>` : `<button class="btn primary" data-emu-download>${icon('cloud', 18)} ${esc(t('emulator.download', { name: emu.name }))}</button>`}
         <button class="btn" data-emu-browse>${icon('folder', 18)} ${esc(t(emu.folder ? 'emulator.browseFolder' : 'emulator.browse'))}</button>
         ${emu.path ? `<button class="btn ghost" data-emu-download>${esc(t('emulator.website'))}</button>` : `<button class="btn ghost" data-emu-detect>${icon('search', 18)} ${esc(t('emulator.detect'))}</button>`}
-        ${emu.path && emu.configurable && window.EMULATOR_CONFIG?.[emu.id] ? `<button class="btn" data-emu-config>${icon('gear', 18)} ${esc(t('emulator.configure', { name: emu.name }))}</button>` : ''}
+        ${emu.path && emu.configurable ? `<button class="btn" data-emu-config>${icon('gear', 18)} ${esc(t('emulator.configure', { name: emu.name }))}</button>` : ''}
         ${emu.updatable ? `<button class="btn ghost" data-emu-check>${icon('refresh', 18)} ${esc(t('emulator.checkUpdate'))}</button>` : ''}
       </div>
       ${emu.updatable ? '<div class="emu-update" data-emu-update></div>' : ''}
@@ -2760,20 +2760,29 @@
   }
 
   /**
-   * « Configurer … » : principaux réglages de l'émulateur (emulator-config.js), lus dans ses fichiers
-   * et enregistrés à leur place (emulator_config.rs) ; seuls les réglages changés sont écrits, un
-   * réglage absent du fichier reste à la valeur par défaut de l'émulateur tant qu'il n'est pas choisi.
+   * « Configurer … » : principaux réglages de l'émulateur (emulator-config/emulator-config.json, commun
+   * avec Android), lus dans ses fichiers et enregistrés à leur place (emulator_config.rs) ; seuls les
+   * réglages changés sont écrits, un réglage absent du fichier reste à la valeur par défaut de
+   * l'émulateur tant qu'il n'est pas choisi.
    */
+  let emulatorConfigs = null;
   async function showEmulatorConfig(emu) {
-    const schema = window.EMULATOR_CONFIG?.[emu.id];
-    if (!schema) return;
     let current;
     try {
+      emulatorConfigs ??= await fetch('emulator-config/emulator-config.json').then((r) => r.json());
       current = await call(rc.emulators.config, emu.id);
     } catch (err) {
       toast(err.message, { type: 'error' });
       return;
     }
+    const all = emulatorConfigs.schemas[emulatorConfigs.windows[emu.id]];
+    if (!all) return;
+    // Réglages et valeurs de Windows seulement (« platforms » absent : toutes les plateformes).
+    const here = (x) => !x.platforms || x.platforms.includes('windows');
+    const schema = {
+      note: all.notes.windows,
+      groups: all.groups.map((g) => ({ ...g, fields: g.fields.filter(here).map((f) => (f.options ? { ...f, options: f.options.filter(here) } : f)) })),
+    };
     const tr = (l) => (l == null || typeof l === 'string' ? l || '' : l[window.I18N.language] || l.en);
     const fields = schema.groups.flatMap((g) => g.fields);
     const raw = (f) => current.files?.[f.file]?.values?.[`${f.section}/${f.key}`];
@@ -2810,7 +2819,7 @@
     const missing = Object.values(current.files || {}).some((f) => !f.exists);
     const root = modal({
       title: t('emulator.configTitle', { name: emu.name }),
-      body: `<p class="muted small">${esc(tr(schema.note))}</p>
+      body: `<p class="muted small">${esc(tr(schema.note).replaceAll('{name}', emu.name))}</p>
         ${missing ? `<p class="muted small">${esc(t('emulator.configNoFile', { name: emu.name }))}</p>` : ''}
         <div class="emu-config">${groups}</div>
         <p class="muted small mono">${esc(current.dir)}</p>`,

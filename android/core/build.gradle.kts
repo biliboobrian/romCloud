@@ -29,6 +29,12 @@ android {
     buildFeatures {
         compose = true
     }
+    // Réglages des émulateurs externes (« Configurer … ») : même fichier que l'application Windows.
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("../../desktop/src/renderer/emulator-config")
+        }
+    }
 }
 
 dependencies {
