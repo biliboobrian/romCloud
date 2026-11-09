@@ -1972,9 +1972,13 @@
     });
   }
 
-  /** Émulateurs des jeux de la Switch 2 (launcher.rs) ; avec ceux-là, émulateurs qui ont une aide de configuration. */
+  /** Émulateurs des jeux de la Switch 2 (launcher.rs). */
   const SWITCH2_EMULATORS = ['orchid', 'fritchii', 'lichii'];
-  const SETUP_HELP_EMULATORS = ['eden', ...SWITCH2_EMULATORS];
+  /** Aide de configuration de l'émulateur (« emulator.<id>Setup »), vide s'il n'en a pas. */
+  const setupHelp = (id) => {
+    const text = t(`emulator.${id}Setup`);
+    return text === `emulator.${id}Setup` ? '' : text;
+  };
 
   /** Émulateur du catalogue introuvable : le télécharger ou indiquer son emplacement. */
   async function showEmulatorMissing(id) {
@@ -2029,7 +2033,7 @@
         <label>${esc(t('emulator.installDir'))}<span class="line"><input type="text" id="emuInstallDir" value="${esc(u.dir)}">
         <button class="btn" id="emuInstallBrowse">${esc(t('settings.browse'))}</button></span></label>
         <p class="muted small">${esc(t('emulator.installDirHint'))}</p>
-        ${SETUP_HELP_EMULATORS.includes(emu.id) ? `<p class="muted small">${esc(t(`emulator.${emu.id}Setup`))}</p>` : ''}`,
+        ${setupHelp(emu.id) ? `<p class="muted small">${esc(setupHelp(emu.id))}</p>` : ''}`,
       buttons: [
         { label: t('app.cancel'), kind: 'ghost', left: true },
         { label: t('emulator.website'), keepOpen: true, onClick: () => rc.shell.openExternal(emu.url) },
@@ -2700,10 +2704,11 @@
         ${emu.path ? `<button class="btn" data-emu-launch>${icon('open', 18)} ${esc(t('emulator.launch', { name: emu.name }))}</button>` : `<button class="btn primary" data-emu-download>${icon('cloud', 18)} ${esc(t('emulator.download', { name: emu.name }))}</button>`}
         <button class="btn" data-emu-browse>${icon('folder', 18)} ${esc(t(emu.folder ? 'emulator.browseFolder' : 'emulator.browse'))}</button>
         ${emu.path ? `<button class="btn ghost" data-emu-download>${esc(t('emulator.website'))}</button>` : `<button class="btn ghost" data-emu-detect>${icon('search', 18)} ${esc(t('emulator.detect'))}</button>`}
+        ${emu.path && emu.configurable && window.EMULATOR_CONFIG?.[emu.id] ? `<button class="btn" data-emu-config>${icon('gear', 18)} ${esc(t('emulator.configure', { name: emu.name }))}</button>` : ''}
         ${emu.updatable ? `<button class="btn ghost" data-emu-check>${icon('refresh', 18)} ${esc(t('emulator.checkUpdate'))}</button>` : ''}
       </div>
       ${emu.updatable ? '<div class="emu-update" data-emu-update></div>' : ''}
-      ${SETUP_HELP_EMULATORS.includes(emu.id) ? `<div class="muted small">${esc(t(`emulator.${emu.id}Setup`))}</div>` : ''}
+      ${setupHelp(emu.id) ? `<div class="muted small">${esc(setupHelp(emu.id))}</div>` : ''}
       ${args}
     </div>`;
   }
@@ -2751,6 +2756,99 @@
       refresh();
     });
     $('[data-emu-check]', block)?.addEventListener('click', (e) => checkEmulatorUpdate(emu, block, e.currentTarget, refresh));
+    $('[data-emu-config]', block)?.addEventListener('click', () => showEmulatorConfig(emu));
+  }
+
+  /**
+   * « Configurer … » : principaux réglages de l'émulateur (emulator-config.js), lus dans ses fichiers
+   * et enregistrés à leur place (emulator_config.rs) ; seuls les réglages changés sont écrits, un
+   * réglage absent du fichier reste à la valeur par défaut de l'émulateur tant qu'il n'est pas choisi.
+   */
+  async function showEmulatorConfig(emu) {
+    const schema = window.EMULATOR_CONFIG?.[emu.id];
+    if (!schema) return;
+    let current;
+    try {
+      current = await call(rc.emulators.config, emu.id);
+    } catch (err) {
+      toast(err.message, { type: 'error' });
+      return;
+    }
+    const tr = (l) => (l == null || typeof l === 'string' ? l || '' : l[window.I18N.language] || l.en);
+    const fields = schema.groups.flatMap((g) => g.fields);
+    const raw = (f) => current.files?.[f.file]?.values?.[`${f.section}/${f.key}`];
+    // Valeur du fichier ramenée à celle d'une option (Dolphin écrit « 0x00000004 » pour 4).
+    const valueOf = (f) => {
+      const v = raw(f);
+      if (v == null) return '';
+      if (f.type === 'bool') return String(v).toLowerCase() === String(f.on).toLowerCase() ? f.on : f.off;
+      if (f.type === 'select') {
+        const hit = f.options.find((o) => o.value === v || (o.value !== '' && !Number.isNaN(Number(v)) && Number(o.value) === Number(v)));
+        return hit ? hit.value : v;
+      }
+      return Number.isNaN(Number(v)) ? v : String(Number(v));
+    };
+    const initial = fields.map(valueOf);
+    const unset = t('emulator.configDefault');
+    const control = (f, i) => {
+      const v = initial[i];
+      const id = `emuCfg${i}`;
+      const hint = f.hint ? `<span class="muted small">${esc(tr(f.hint))}</span>` : '';
+      if (f.type === 'bool') {
+        const options = [['', unset], [f.on, t('emulator.configOn')], [f.off, t('emulator.configOff')]];
+        return `<label>${esc(tr(f.label))}<select id="${id}">${options.map(([value, label]) => `<option value="${esc(value)}"${v === value ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>${hint}</label>`;
+      }
+      if (f.type === 'number') {
+        return `<label>${esc(tr(f.label))}${f.unit ? ` (${esc(f.unit)})` : ''}<input type="number" id="${id}" min="${f.min}" max="${f.max}" value="${esc(v)}" placeholder="${esc(unset)}">${hint}</label>`;
+      }
+      const known = v === '' || f.options.some((o) => o.value === v);
+      const options = [{ value: '', label: unset }, ...f.options, ...(known ? [] : [{ value: v, label: t('emulator.configOther', { value: v }) }])];
+      return `<label>${esc(tr(f.label))}<select id="${id}">${options.map((o) => `<option value="${esc(o.value)}"${v === o.value ? ' selected' : ''}>${esc(tr(o.label))}</option>`).join('')}</select>${hint}</label>`;
+    };
+    let index = 0;
+    const groups = schema.groups.map((g) => `<h4>${esc(tr(g.title))}</h4><div class="emu-config-grid">${g.fields.map((f) => control(f, index++)).join('')}</div>`).join('');
+    const missing = Object.values(current.files || {}).some((f) => !f.exists);
+    const root = modal({
+      title: t('emulator.configTitle', { name: emu.name }),
+      body: `<p class="muted small">${esc(tr(schema.note))}</p>
+        ${missing ? `<p class="muted small">${esc(t('emulator.configNoFile', { name: emu.name }))}</p>` : ''}
+        <div class="emu-config">${groups}</div>
+        <p class="muted small mono">${esc(current.dir)}</p>`,
+      buttons: [
+        { label: t('detail.showInFolder'), left: true, keepOpen: true, onClick: () => {
+          const file = Object.keys(current.files || {}).find((name) => current.files[name].exists);
+          rc.shell.showItem(file ? `${current.dir}\\${file}` : current.dir);
+        } },
+        { label: t('app.cancel'), kind: 'ghost' },
+        {
+          label: t('app.save'),
+          kind: 'primary',
+          keepOpen: true,
+          onClick: async (close) => {
+            const changes = [];
+            fields.forEach((f, i) => {
+              let value = $(`#emuCfg${i}`, root).value.trim();
+              if (value === '' || value === initial[i]) return;
+              if (f.type === 'number') {
+                const n = Math.round(Number(value));
+                if (Number.isNaN(n)) return;
+                value = String(Math.min(f.max, Math.max(f.min, n)));
+              }
+              changes.push({ file: f.file, section: f.section, key: f.key, value });
+            });
+            if (!changes.length) return close();
+            try {
+              await call(rc.emulators.saveConfig, emu.id, changes);
+              close();
+              toast(t('emulator.configSaved', { name: emu.name }));
+            } catch (err) {
+              toast(err.message, { type: 'error' });
+            }
+          },
+        },
+      ],
+    });
+    $('.modal', root).classList.add('wide');
   }
 
   /**

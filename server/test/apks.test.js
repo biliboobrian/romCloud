@@ -136,7 +136,7 @@ test('paquet d’un modèle d’émulateur', () => {
 });
 
 test('envoi, nom par défaut, remplacement, émulateurs des systèmes, suppression', async () => {
-  // PSP émulée par le moteur intégré (cœur ppsspp) : PPSSPP n'y est pas proposé ; PSP Minis (hors moteur intégré) : proposé.
+  // PSP et PSP Minis émulées par le moteur intégré (cœur ppsspp) : PPSSPP n'y est pas proposé ; WiiWare (hors moteur intégré) : Dolphin proposé.
   createSystem({
     id: 'psp', name: 'Sony PSP',
     players: [
@@ -152,8 +152,13 @@ test('envoi, nom par défaut, remplacement, émulateurs des systèmes, suppressi
       { name: 'pspminis - ppsspp', uniqueId: 'pspminis.core', amStartArguments: '-n com.example.frontend/.GameActivity -e LIBRETRO ppsspp' },
     ],
   });
+  createSystem({
+    id: 'wiiware', name: 'WiiWare',
+    players: [{ name: 'wiiware - Dolphin', uniqueId: 'wiiware.dolphin', amStartArguments: '-n org.dolphinemu.dolphinemu/.ui.main.MainActivity -a android.intent.action.VIEW -e AutoStartFile {file.path}' }],
+  });
   const first = await apks.addApk(writeApk('upload1', ppssppManifest), 'ppsspp-release.apk');
-  assert.equal(first.label, 'PPSSPP');
+  // Paquet utilisé par aucun modèle proposé (PSP et PSP Minis au moteur intégré) : nom du fichier.
+  assert.equal(first.label, 'ppsspp-release');
   assert.equal(first.versionName, '1.19.3');
   assert.ok(fs.existsSync(path.join(dataDir, 'apks', 'org.ppsspp.ppsspp.apk')));
 
@@ -166,9 +171,9 @@ test('envoi, nom par défaut, remplacement, émulateurs des systèmes, suppressi
   assert.equal(apks.listApks().length, 1);
 
   const emus = apks.emulatorPackages();
-  assert.deepEqual(emus.map((e) => [e.packageName, e.apkId]), [['org.ppsspp.ppsspp', first.id]]);
-  assert.deepEqual(emus[0].systems, [{ id: 'pspminis', name: 'PSP Minis' }]);
-  assert.deepEqual(emus.map((e) => e.names), [['PPSSPP']]);
+  assert.deepEqual(emus.map((e) => [e.packageName, e.apkId]), [['org.dolphinemu.dolphinemu', null]]);
+  assert.deepEqual(emus[0].systems, [{ id: 'wiiware', name: 'WiiWare' }]);
+  assert.deepEqual(emus.map((e) => e.names), [['Dolphin']]);
 
   await assert.rejects(apks.addApk(writeApk('upload3', Buffer.from('nope')), 'nope.apk'), /nope\.apk/);
   apks.deleteApk(first.id);

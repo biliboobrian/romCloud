@@ -26,7 +26,6 @@ const WINDOWS_APPS = [
 
 /** Émulateurs Windows installés par l'utilisateur (catalog.rs). */
 const WINDOWS_EMULATORS = [
-  { id: 'ppsspp', name: 'PPSSPP', systems: ['pspminis'] },
   { id: 'vita3k', name: 'Vita3K', systems: ['vita'] },
   { id: 'dolphin', name: 'Dolphin', systems: ['wiiware', 'triforce'] },
   { id: 'eden', name: 'Eden', systems: ['switch'] },

@@ -34,7 +34,7 @@ fn ranking(system: &str) -> &'static [&'static str] {
         "dreamcast" => &["flycast"],
         "psx" => &["mednafen_psx_hw", "swanstation", "mednafen_psx", "pcsx_rearmed", "duckstation", "goosestation"],
         "ps2" => &["pcsx2", "pcee2", "play", "armsx2"],
-        "psp" => &["ppsspp"],
+        "psp" | "pspminis" => &["ppsspp"],
         "tg16" | "tgcd" => &["mednafen_pce", "mednafen_pce_fast", "mednafen_supergrafx"],
         "supergrafx" => &["mednafen_supergrafx", "mednafen_pce"],
         "ngp" | "ngpc" => &["mednafen_ngp", "race"],

@@ -137,6 +137,8 @@
       detect: call('emulators:detect'),
       setPath: call('emulators:setPath'),
       setArgs: call('emulators:setArgs'),
+      config: call('emulators:config'),
+      saveConfig: call('emulators:saveConfig'),
       launch: call('emulators:launch'),
       checkUpdate: call('emulators:checkUpdate'),
       update: call('emulators:update'),

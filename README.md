@@ -134,7 +134,6 @@ Utilisation à la télécommande :
     | RPCS3 | PlayStation 3 (aussi géré par le moteur intégré) | `--no-gui {file}` |
     | Cemu | Wii U (aussi géré par le moteur intégré) | `-f -g {file}` |
     | Vita3K | PS Vita | émulateur ouvert seul (jeux à installer dans Vita3K) |
-    | PPSSPP | PSP Minis | `--fullscreen {file}` |
     | Dolphin | WiiWare, Triforce | `-b -e {file}` |
     | Flycast | Naomi, Atomiswave | `{file}` |
     | MAME | CPS-1, CPS-2, CPS-3, ST-V, Naomi | `-rompath {dir} {basename}` |

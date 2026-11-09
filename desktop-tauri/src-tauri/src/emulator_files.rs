@@ -9,7 +9,7 @@ use crate::{folders, paths};
 use std::path::{Path, PathBuf};
 
 /// Dossier des données d'Eden : « user » à côté de l'exécutable (portable), sinon %APPDATA%\eden.
-fn eden_dir(exe_dir: &Path, appdata: &Path) -> PathBuf {
+pub fn eden_dir(exe_dir: &Path, appdata: &Path) -> PathBuf {
     if exe_dir.join("user").is_dir() {
         exe_dir.join("user")
     } else {

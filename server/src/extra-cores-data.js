@@ -57,6 +57,7 @@ export const CORES = {
   playdiaemu: { name: 'Playdia (PlaydiaEmu)', ext: ['cue', 'zip', 'iso', 'bin'] },
   pocketcdg: { name: 'PocketCDG', ext: ['cdg'] },
   pokket: { name: 'Sony - PocketStation (Pokket)', ext: ['bin', 'gme', 'mcd', 'mcr', 'mcs', 'pss'] },
+  ppsspp: { name: 'Sony - PlayStation Portable (PPSSPP)', ext: ['elf', 'iso', 'cso', 'prx', 'pbp', 'chd'] },
   qemu: { name: 'QEMU', ext: ['qemu_cmd_line', 'iso', 'img', 'qcow', 'qcow2'] },
   rustynes: { name: 'Nintendo - NES / Famicom (RustyNES)', ext: ['nes', 'fds', 'unf', 'unif'] },
   spmp8000emu: { name: 'SPMP8000 (SPMP8000Emu)', ext: ['bin'] },
@@ -102,6 +103,8 @@ export const SYSTEM_EXTRA = {
   lynx: ['gearlynx'],
   atari2600: ['tia'],
   '3ds': ['citra2018'],
+  // PSP Minis : sans modèle de cœur dans Daijishou, émulés par le moteur intégré comme la PSP.
+  pspminis: ['ppsspp'],
   saturn: ['kronos'],
   stv: ['kronos'],
   coleco: ['jollycv'],
