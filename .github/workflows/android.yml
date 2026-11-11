@@ -5,7 +5,8 @@ name: Android APK
 #   RomCloud-TV-<version>.apk  Android TV (com.romcloud.app.tv)
 #   RomCloud-PC-<version>.apk  jeux PC, application compagnon (com.romcloud.wine, android/pc)
 # main et pull requests : tests et compilation seulement. Tag v* (ou lancement manuel) : APK signés,
-# joints à la Release du tag.
+# joints à la Release du tag, seulement si le code Android a changé depuis le tag v* précédent (sinon
+# la Release n'a pas d'APK : l'application cherche la Release la plus récente qui en contient un).
 
 on:
   push:
@@ -26,7 +27,35 @@ permissions:
   contents: write # création des Releases sur les tags
 
 jobs:
+  # Tag v* : les filtres « paths » ne s'appliquent pas aux tags, d'où la comparaison avec le tag v*
+  # précédent ; Android n'est compilé et publié que si son code a changé. Autres événements :
+  # déjà filtrés par « paths » (ou lancement manuel), compilé.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          fetch-depth: 0
+      - id: diff
+        run: |
+          BUILD=true
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            PREVIOUS="$(git describe --tags --abbrev=0 --match 'v*' --exclude "$GITHUB_REF_NAME" "$GITHUB_SHA" 2>/dev/null || true)"
+            if [[ -n "$PREVIOUS" ]] && git diff --quiet "$PREVIOUS" "$GITHUB_SHA" -- 'android/' 'desktop/src/renderer/emulator-config/'; then
+              BUILD=false
+              echo "::notice::Aucune modification depuis $PREVIOUS : Android n'est pas publié."
+            else
+              echo "Modifications depuis ${PREVIOUS:-le début} : Android est publié."
+            fi
+          fi
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
     env:
       PACKAGE: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}

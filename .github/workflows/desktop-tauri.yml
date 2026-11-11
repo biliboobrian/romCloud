@@ -10,7 +10,8 @@ name: Windows
 # Compilée ici avec la chaîne de Visual Studio du runner (en local : llvm-mingw, voir
 # desktop-tauri/README.md), bibliothèques d'exécution liées dans l'exe.
 # main et pull requests : moteur intégré et tests seulement. Tag v* (ou lancement manuel) : installeur
-# et latest.json, joints à la Release du tag.
+# et latest.json, joints à la Release du tag, seulement si le code Windows a changé depuis le tag v*
+# précédent (l'application cherche la Release la plus récente contenant un latest.json).
 
 on:
   push:
@@ -42,7 +43,35 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Tag v* : les filtres « paths » ne s'appliquent pas aux tags, d'où la comparaison avec le tag v*
+  # précédent ; Windows n'est compilé et publié que si son code a changé. Autres événements :
+  # déjà filtrés par « paths » (ou lancement manuel), compilé.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          fetch-depth: 0
+      - id: diff
+        run: |
+          BUILD=true
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            PREVIOUS="$(git describe --tags --abbrev=0 --match 'v*' --exclude "$GITHUB_REF_NAME" "$GITHUB_SHA" 2>/dev/null || true)"
+            if [[ -n "$PREVIOUS" ]] && git diff --quiet "$PREVIOUS" "$GITHUB_SHA" -- 'desktop-tauri/' 'desktop/src/renderer/' 'desktop/native/' 'android/libretrodroid/src/main/cpp/shadermanager.*' 'desktop/test/'; then
+              BUILD=false
+              echo "::notice::Aucune modification depuis $PREVIOUS : Windows n'est pas publié."
+            else
+              echo "Modifications depuis ${PREVIOUS:-le début} : Windows est publié."
+            fi
+          fi
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: windows-latest
     env:
       PACKAGE: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}

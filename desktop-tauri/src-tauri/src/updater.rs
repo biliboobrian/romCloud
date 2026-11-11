@@ -1,5 +1,6 @@
 // Mise à jour de l'application au démarrage, avec le plugin officiel de Tauri : le fichier latest.json
-// de la dernière Release GitHub (voir .github/workflows/desktop-tauri.yml) donne la version et
+// de la Release GitHub la plus récente qui en contient un (les Releases ne contiennent que les
+// applications modifiées, voir .github/workflows/desktop-tauri.yml) donne la version et
 // l'installeur, dont la signature est vérifiée avec la clé publique de tauri.conf.json. Sur
 // confirmation, l'installeur est téléchargé puis lancé (mode passif : barre de progression seule) et
 // RomCloud est relancé une fois à jour.
@@ -89,6 +90,36 @@ fn changes_from_compare(body: &Value, latest: &str) -> Value {
     groups.into_iter().map(|(version, items)| json!({ "version": version, "items": items })).collect()
 }
 
+/// Releases publiées, les plus récentes d'abord.
+const RELEASES: &str = "https://api.github.com/repos/biliboobrian/romCloud/releases?per_page=30";
+
+/// Adresse du latest.json de la première Release (hors brouillon et préversion) qui en contient un.
+fn latest_json_url(releases: &Value) -> Option<String> {
+    releases.as_array()?.iter().find_map(|release| {
+        if release["draft"].as_bool() == Some(true) || release["prerelease"].as_bool() == Some(true) {
+            return None;
+        }
+        release["assets"].as_array()?.iter().find(|a| a["name"] == "latest.json")?["browser_download_url"].as_str().map(String::from)
+    })
+}
+
+/// latest.json à vérifier : celui trouvé dans les Releases, sinon l'adresse de tauri.conf.json
+/// (dernière Release) si GitHub ne répond pas.
+async fn endpoint() -> Option<tauri::Url> {
+    let res = api::client()
+        .get(RELEASES)
+        .header("Accept", "application/vnd.github+json")
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .ok()?;
+    if !res.status().is_success() {
+        return None;
+    }
+    let releases = res.json::<Value>().await.ok()?;
+    latest_json_url(&releases)?.parse().ok()
+}
+
 /// Mise à jour proposée : { version, installed, size, portable, changes }, ou null (version de
 /// développement, à jour, ou hors ligne).
 pub async fn check() -> Value {
@@ -96,7 +127,11 @@ pub async fn check() -> Value {
         return Value::Null;
     }
     let Some(handle) = events::handle() else { return Value::Null };
-    let Ok(updater) = handle.updater() else { return Value::Null };
+    let updater = match endpoint().await {
+        Some(url) => handle.updater_builder().endpoints(vec![url]).and_then(|b| b.build()),
+        None => handle.updater(),
+    };
+    let Ok(updater) = updater else { return Value::Null };
     let Ok(Some(update)) = updater.check().await else { return Value::Null };
     let installed = account::version();
     let info = json!({
@@ -174,5 +209,17 @@ mod tests {
             ])
         );
         assert_eq!(changes_from_compare(&Value::Null, "1.35.7"), json!([]));
+    }
+
+    #[test]
+    fn latest_json_de_la_release_la_plus_recente_qui_en_contient_un() {
+        let releases = json!([
+            { "tag_name": "v1.106.0", "draft": true, "assets": [{ "name": "latest.json", "browser_download_url": "a" }] },
+            { "tag_name": "v1.105.0", "assets": [{ "name": "RomCloud-1.105.0.apk", "browser_download_url": "b" }] },
+            { "tag_name": "v1.104.0", "assets": [{ "name": "latest.json", "browser_download_url": "c" }] },
+            { "tag_name": "v1.103.0", "assets": [{ "name": "latest.json", "browser_download_url": "d" }] },
+        ]);
+        assert_eq!(latest_json_url(&releases).as_deref(), Some("c"));
+        assert_eq!(latest_json_url(&json!([])), None);
     }
 }
