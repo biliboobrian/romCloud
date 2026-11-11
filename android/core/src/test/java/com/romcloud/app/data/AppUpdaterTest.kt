@@ -54,4 +54,19 @@ class AppUpdaterTest {
         assertEquals("RomCloud-PC-1.12.0.apk", AppUpdater.companionApkName("1.12.0"))
         assertTrue(EmulatorReleases.FALLBACK.getValue("com.romcloud.wine").asset.matches(AppUpdater.companionApkName("1.12.0")))
     }
+
+    @Test
+    fun `APK cherché dans la Release la plus récente qui le contient`() {
+        val body = """[
+            { "tag_name": "v1.106.0", "draft": true, "assets": [{ "name": "RomCloud-1.106.0.apk" }] },
+            { "tag_name": "v1.105.0", "assets": [{ "name": "RomCloud-Windows-1.105.0-tauri-x64.exe" }] },
+            { "tag_name": "v1.104.0", "assets": [{ "name": "RomCloud-1.104.0.apk", "size": 3 }, { "name": "RomCloud-TV-1.104.0.apk" }] },
+            { "tag_name": "v1.103.0", "assets": [{ "name": "RomCloud-PC-1.103.0.apk" }] }
+        ]"""
+        val (version, asset) = AppUpdater.findApk(body) { AppUpdater.apkName(it, tv = false) }!!
+        assertEquals("1.104.0", version)
+        assertEquals("RomCloud-1.104.0.apk", asset["name"]?.toString()?.trim('"'))
+        assertEquals("1.103.0", AppUpdater.findApk(body) { AppUpdater.companionApkName(it) }?.first)
+        assertEquals(null, AppUpdater.findApk("[]") { AppUpdater.apkName(it, tv = true) })
+    }
 }

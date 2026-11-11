@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -16,8 +19,8 @@ import kotlinx.serialization.json.longOrNull
 import okhttp3.Request
 
 /**
- * Mise à jour de l'application au démarrage : la dernière Release GitHub de RomCloud est comparée
- * à la version installée ; si elle est plus récente, son APK (téléphone ou TV) est proposé et
+ * Mise à jour de l'application au démarrage : la Release GitHub la plus récente contenant l'APK de
+ * l'application est comparée à la version installée ; si elle est plus récente, son APK (téléphone ou TV) est proposé et
  * installé par [ApkInstaller]. Une version compilée sur un PC (« 1.63.0-dev ») passe avant la version
  * publiée de même numéro ; les compilations de debug (signées autrement) ne sont pas vérifiées.
  * RomCloud PC (jeux PC, publié dans la même Release) : vérifié avant chaque lancement d'un jeu PC
@@ -77,22 +80,24 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
         info.versionName
     }.getOrNull()
 
-    /** Dernière Release si elle est plus récente que [installed] : APK du paquet [packageName] (RomCloud, TV ou PC). */
+    /**
+     * Release la plus récente contenant l'APK du paquet [packageName] (RomCloud, TV ou PC), si elle est
+     * plus récente que [installed]. Les Releases ne contiennent que les applications modifiées depuis
+     * la précédente (voir .github/workflows/android.yml) : la dernière Release peut ne pas avoir d'APK.
+     */
     private fun latest(installed: String, packageName: String): Update? {
-        val request = Request.Builder().url(LATEST_RELEASE)
+        val request = Request.Builder().url(RELEASES)
             .header("Accept", "application/vnd.github+json")
             .build()
         val body = api.http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
             response.body.string()
         }
-        val release = Json.parseToJsonElement(body).jsonObject
-        val version = release["tag_name"]?.jsonPrimitive?.content?.removePrefix("v") ?: return null
-        if (!isNewer(version, installed)) return null
         val companion = packageName == COMPANION
-        val name = if (companion) companionApkName(version) else apkName(version, tv = packageName.endsWith(".tv"))
-        val asset = release["assets"]?.jsonArray?.map { it.jsonObject }
-            ?.find { it["name"]?.jsonPrimitive?.content == name } ?: return null
+        val (version, asset) = findApk(body) { version ->
+            if (companion) companionApkName(version) else apkName(version, tv = packageName.endsWith(".tv"))
+        } ?: return null
+        if (!isNewer(version, installed)) return null
         val url = asset["browser_download_url"]?.jsonPrimitive?.content ?: return null
         val size = asset["size"]?.jsonPrimitive?.longOrNull ?: return null
         val apk = EmulatorApk(
@@ -119,7 +124,8 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
 
     companion object {
         private const val TAG = "AppUpdater"
-        private const val LATEST_RELEASE = "https://api.github.com/repos/biliboobrian/romCloud/releases/latest"
+        /** Releases publiées, les plus récentes d'abord. */
+        private const val RELEASES = "https://api.github.com/repos/biliboobrian/romCloud/releases?per_page=30"
         private const val COMPARE = "https://api.github.com/repos/biliboobrian/romCloud/compare"
         /** RomCloud PC (Winlator.COMPANION), publié dans la même Release. */
         private const val COMPANION = "com.romcloud.wine"
@@ -148,6 +154,27 @@ class AppUpdater(private val context: Context, private val api: ApiClient) {
                 else groups += VersionChanges(version, items)
             }
             return groups
+        }
+
+        /**
+         * Première Release (liste de l'API GitHub, les plus récentes d'abord), hors brouillon et
+         * préversion, contenant l'APK nommé par [name] pour sa version : (version, asset) ou null.
+         */
+        internal fun findApk(body: String, name: (String) -> String): Pair<String, JsonObject>? {
+            val releases = Json.parseToJsonElement(body) as? JsonArray ?: return null
+            for (element in releases) {
+                val release = element as? JsonObject ?: continue
+                if (release["draft"]?.jsonPrimitive?.booleanOrNull == true) continue
+                if (release["prerelease"]?.jsonPrimitive?.booleanOrNull == true) continue
+                val tag = release["tag_name"]?.jsonPrimitive?.content ?: continue
+                if (!tag.startsWith("v")) continue
+                val version = tag.removePrefix("v")
+                if (parseVersion(version) == null) continue
+                val asset = release["assets"]?.jsonArray?.map { it.jsonObject }
+                    ?.find { it["name"]?.jsonPrimitive?.content == name(version) } ?: continue
+                return version to asset
+            }
+            return null
         }
 
         /** « 1.12.0 » -> [1, 12, 0] ; null pour une version de développement ou mal formée. */
