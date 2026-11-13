@@ -14,3 +14,7 @@ local.properties
 .idea/
 .vscode/
 *.iml
+
+# RomCloud Native (branche releases-decouplees) : produits de compilation
+android/romCloudNative/.cxx/
+android/romCloudNative/recompiler/target/
