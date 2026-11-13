@@ -59,18 +59,24 @@ fn display_name(id: &str) -> &'static str {
 }
 
 /// Version d'un fork écrite dans son exécutable (« Lichii build-75 » -> « build-75 », « Orchid v0.7.4 » -> « v0.7.4 »).
+/// La plus récente de celles qu'il contient : l'exécutable embarque aussi l'historique des versions
+/// (Fritchii v5.8.4 : « Fritchii v4 to v5.6 you don't need… »), qui ne cite que des versions passées.
 pub fn nx2_version(fork: &Nx2Fork, exe: &[u8]) -> Option<String> {
     let marker = fork.marker;
-    exe.windows(marker.len()).enumerate().filter(|(_, w)| *w == marker).find_map(|(i, _)| {
-        let version: String = exe[i + marker.len()..]
-            .iter()
-            .take(32)
-            .take_while(|c| c.is_ascii_alphanumeric() || **c == b'.' || **c == b'-')
-            .map(|c| *c as char)
-            .collect();
-        let valid = version.strip_prefix("build-").or_else(|| version.strip_prefix('v')).is_some_and(|n| n.starts_with(|c: char| c.is_ascii_digit()));
-        valid.then_some(version)
-    })
+    exe.windows(marker.len())
+        .enumerate()
+        .filter(|(_, w)| *w == marker)
+        .filter_map(|(i, _)| {
+            let version: String = exe[i + marker.len()..]
+                .iter()
+                .take(32)
+                .take_while(|c| c.is_ascii_alphanumeric() || **c == b'.' || **c == b'-')
+                .map(|c| *c as char)
+                .collect();
+            let valid = version.strip_prefix("build-").or_else(|| version.strip_prefix('v')).is_some_and(|n| n.starts_with(|c: char| c.is_ascii_digit()));
+            valid.then_some(version)
+        })
+        .reduce(|best, v| if newer(fork.id, &v, &best) { v } else { best })
 }
 
 /// Variante d'un exécutable de fork : standard avec le décodeur AV1 (dav1d), sinon PGO ; la seule publiée (Fritchii).
@@ -522,6 +528,9 @@ mod tests {
         let exe = b"Fritchii {}\0Fritchii v%2.\0Fritchii will download\0Fritchii v4.1  v4.1 hotfix/v4.1\0".to_vec();
         assert_eq!(nx2_version(fritchii, &exe).as_deref(), Some("v4.1"));
         assert_eq!(nx2_version(fritchii, b"Fritchii v4  v4 oot-gat").as_deref(), Some("v4"));
+        // Historique des versions embarqué avant la version de l'exécutable (Fritchii v5.8.4).
+        let exe = b"From Fritchii v4 to v5.6 you don't need\0Fritchii v5.7.\0..Fritchii v5.8.4 \0".to_vec();
+        assert_eq!(nx2_version(fritchii, &exe).as_deref(), Some("v5.8.4"));
         assert_eq!(nx2_variant(fritchii, b"..h264_.."), "x64");
         assert!(newer("fritchii", "v4.1", "v4") && !newer("fritchii", "v4.1", "v4.1"));
         assert_eq!(fritchii.exe, "lichii.exe");
