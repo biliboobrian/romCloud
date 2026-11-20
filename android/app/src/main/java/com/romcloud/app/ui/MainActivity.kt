@@ -185,8 +185,12 @@ private fun RomCloudNavHost(app: RomCloudApp, activity: ComponentActivity) {
                     onOpenSettings = { nav.navigate("settings") },
                     onOpenProfile = { nav.navigate("profile") },
                     onOpenLobby = { nav.navigate("lobby") { launchSingleTop = true } },
+                    onOpenStorage = { nav.navigate("storage") { launchSingleTop = true } },
                 )
             }
+        }
+        composable("storage") {
+            StorageScreen(viewModel = viewModel { StorageViewModel(app) }, onBack = { nav.popBackStack() })
         }
         composable("profile") {
             ProfileScreen(viewModel = viewModel { ProfileViewModel(app) }, onBack = { nav.popBackStack() })

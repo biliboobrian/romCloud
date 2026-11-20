@@ -30,4 +30,29 @@ class StorageUsageTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun `page du stockage, taille d'un fichier ou d'un dossier, totaux par catégorie`() {
+        val dir = Files.createTempDirectory("romcloud-storage").toFile()
+        try {
+            File(dir, "a.srm").writeBytes(ByteArray(10))
+            File(dir, "x.history").mkdirs()
+            File(dir, "x.history/1.state").writeBytes(ByteArray(5))
+            assertEquals(15L, StorageScanner.sizeOf(dir))
+            assertEquals(10L, StorageScanner.sizeOf(File(dir, "a.srm")))
+            assertEquals(0L, StorageScanner.sizeOf(File(dir, "absent")))
+        } finally {
+            dir.deleteRecursively()
+        }
+        val system = GameSystem(id = "snes", name = "SNES", shortname = "snes", folder = "snes")
+        val details = StorageDetails(
+            listOf(
+                SystemStorage(system, mapOf(StorageKind.GAMES to 100, StorageKind.SAVES to 5)),
+                SystemStorage(system.copy(id = "nes"), mapOf(StorageKind.GAMES to 20, StorageKind.BIOS to 1)),
+            ),
+        )
+        assertEquals(120L, details.sum(StorageKind.GAMES))
+        assertEquals(0L, details.sum(StorageKind.DRIVERS))
+        assertEquals(105L, details.systems[0].total)
+    }
 }

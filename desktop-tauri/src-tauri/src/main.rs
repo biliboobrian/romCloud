@@ -32,6 +32,7 @@ mod screencast;
 mod settings;
 mod shortcuts;
 mod states;
+mod storage;
 mod title_bar;
 mod updater;
 mod vita3k;

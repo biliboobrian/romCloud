@@ -822,4 +822,23 @@
     <string name="pc_quality_medium">Moyenne</string>
     <string name="pc_quality_high">Élevée</string>
     <string name="pc_settings_not_saved">Réglages non enregistrés dans le profil : %1$s</string>
+    <string name="storage_title">Stockage</string>
+    <string name="storage_summary">RomCloud : %1$s · %2$s libres sur %3$s</string>
+    <string name="storage_kind_games">Jeux</string>
+    <string name="storage_kind_emulators">Émulateurs</string>
+    <string name="storage_kind_bios">BIOS et firmwares</string>
+    <string name="storage_kind_drivers">Pilotes</string>
+    <string name="storage_kind_saves">Sauvegardes et états</string>
+    <string name="storage_other">Autres fichiers</string>
+    <string name="storage_free_label">Libre</string>
+    <string name="storage_empty">Aucune donnée de RomCloud sur l’appareil pour l’instant.</string>
+    <string name="storage_clear">Effacer les données de ce système</string>
+    <string name="storage_clear_title">Effacer les données de %1$s</string>
+    <string name="storage_clear_text">Données à supprimer de l’appareil :</string>
+    <string name="storage_clear_hint">Les émulateurs et pilotes communs à d’autres systèmes sont retéléchargés au besoin. Les sauvegardes non envoyées en ligne sont perdues.</string>
+    <string name="storage_clear_apps">Les applications d’émulateurs utilisées par ce seul système sont désinstallées (Android demande confirmation) : %1$s</string>
+    <string name="storage_clear_shared_apps">Gardées, utilisées aussi par d’autres systèmes : %1$s</string>
+    <string name="storage_clear_button">Effacer</string>
+    <string name="storage_cleared">%1$s libérés (%2$s)</string>
+    <string name="storage_open">Détail du stockage</string>
 </resources>

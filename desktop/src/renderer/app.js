@@ -28,6 +28,8 @@
     search: { query: '', results: [], downloaded: new Set(), offline: false, loading: false, error: null },
     // Place occupée sur le PC par système et espace de la partition des ROMs (library:usage).
     usage: { systems: {}, disk: null },
+    // Page du stockage : place par système et par catégorie (storage:details).
+    storage: null,
     games: { systemId: null, list: [], downloaded: new Set(), resumable: new Set(), offline: false, loading: false, error: null, filter: 'all', query: '', criteria: {} },
     downloads: {}, // gameId -> { status, bytes, total, title, error }
     // Jeux à lancer à la fin de leur téléchargement, avec les options du lancement (reprise…).
@@ -266,7 +268,7 @@
     applySystemColor();
     if (S.route.name !== 'game') stopPads();
     $('#main').scrollTop = 0;
-    ({ systems: renderSystems, games: renderGames, game: renderGame, settings: renderSettings, lobby: renderLobby })[S.route.name]();
+    ({ systems: renderSystems, games: renderGames, game: renderGame, settings: renderSettings, lobby: renderLobby, storage: renderStorage })[S.route.name]();
   }
 
   /** Couleur donnée à la barre de titre de la fenêtre (envoyée seulement quand elle change). */
@@ -314,6 +316,8 @@
     bar.classList.toggle('low', disk.free / disk.total < 0.1);
     bar.title = t('disk.tooltip', { free: formatSize(disk.free), total: formatSize(disk.total), dir: S.settings.rootDir });
     bar.innerHTML = `<div class="track"><div class="fill" style="width:${Math.round(used * 100)}%"></div></div><span>${esc(t('disk.free', { size: formatSize(disk.free) }))}</span>`;
+    // Clic : page du stockage (place occupée par système et par catégorie).
+    bar.onclick = () => go({ name: 'storage' });
   }
 
   // Place occupée par les jeux de chaque système sur le PC et espace de la partition, puis
@@ -3149,6 +3153,103 @@
   // ---------------------------------------------------------------------------
   // Paramètres
   // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Stockage : place occupée par système et par catégorie (clic sur la barre du disque)
+  // ---------------------------------------------------------------------------
+
+  /** Catégories de la page du stockage, dans l'ordre des barres et de la légende, et leur couleur. */
+  const STORAGE_KINDS = [
+    ['games', '#9d95ff'],
+    ['emulators', '#3fb6e8'],
+    ['bios', '#f2b84b'],
+    ['drivers', '#ff7ab8'],
+    ['saves', '#2eb872'],
+  ];
+  const storageTotal = (sizes) => STORAGE_KINDS.reduce((n, [k]) => n + (sizes[k] || 0), 0);
+
+  /** Segments d'une barre : part de chaque catégorie de [sizes] sur [scale] octets. */
+  function storageSegments(sizes, scale) {
+    return STORAGE_KINDS.filter(([k]) => sizes[k] > 0).map(([k, color]) => {
+      const width = scale ? (sizes[k] / scale) * 100 : 0;
+      return `<div class="seg" style="width:${width.toFixed(3)}%;background:${color}" title="${esc(`${t(`storage.kind.${k}`)} · ${formatSize(sizes[k])}`)}"></div>`;
+    }).join('');
+  }
+
+  async function renderStorage() {
+    setTopbar({ title: t('storage.title'), right: settingsBtn() });
+    const main = $('#main');
+    if (!S.storage) main.innerHTML = `<div class="centered"><p>${esc(t('app.loading'))}</p></div>`;
+    try {
+      S.storage = await call(rc.storage.details, S.systems);
+    } catch (err) {
+      if (S.route.name === 'storage') main.innerHTML = `<div class="centered"><p>${esc(err.message)}</p></div>`;
+      return;
+    }
+    if (S.route.name !== 'storage') return;
+    const { systems: details, disk } = S.storage;
+    const rows = Object.entries(details)
+      .map(([id, sizes]) => ({ id, sizes, total: storageTotal(sizes), system: systemById(id) }))
+      .filter((r) => r.total > 0)
+      .sort((a, b) => b.total - a.total);
+    const sums = Object.fromEntries(STORAGE_KINDS.map(([k]) => [k, rows.reduce((n, r) => n + (r.sizes[k] || 0), 0)]));
+    const romcloud = storageTotal(sums);
+    const max = rows[0]?.total || 0;
+    // Partition du dossier RomCloud : données de RomCloud par catégorie, autres fichiers, espace libre.
+    const summary = disk ? `<div class="storage-summary">
+        <div class="storage-bar big">${storageSegments(sums, disk.total)}<div class="seg other" style="width:${(Math.max(0, disk.total - disk.free - romcloud) / disk.total * 100).toFixed(3)}%" title="${esc(t('storage.other'))}"></div></div>
+        <div class="muted small">${esc(t('storage.summary', { used: formatSize(romcloud), free: formatSize(disk.free), total: formatSize(disk.total), dir: S.settings.rootDir }))}</div>
+      </div>` : '';
+    const legend = `<div class="storage-legend">${STORAGE_KINDS.map(([k, color]) => `<span><i style="background:${color}"></i>${esc(t(`storage.kind.${k}`))} <span class="muted">${esc(formatSize(sums[k]))}</span></span>`).join('')}
+      ${disk ? `<span><i class="other"></i>${esc(t('storage.other'))}</span><span><i class="free"></i>${esc(t('storage.free'))} <span class="muted">${esc(formatSize(disk.free))}</span></span>` : ''}</div>`;
+    main.innerHTML = `<div class="page storage-page">${summary}
+      ${rows.length ? `<div class="storage-list">${rows.map((r) => `<div class="storage-row">
+          <div class="name"><strong>${esc(r.system?.name || r.id)}</strong><span class="muted small">${esc(formatSize(r.total))}</span></div>
+          <div class="storage-bar">${storageSegments(r.sizes, max)}</div>
+          <button class="icon-btn danger" data-clear="${esc(r.id)}" title="${esc(t('storage.clear'))}">${icon('trash')}</button>
+        </div>`).join('')}</div>` : `<p class="muted">${esc(t('storage.empty'))}</p>`}
+      ${legend}</div>`;
+    for (const el of $$('[data-clear]', main)) {
+      const row = rows.find((r) => r.id === el.dataset.clear);
+      el.onclick = () => confirmClearSystem(row);
+    }
+  }
+
+  /** Suppression des données d'un système : catégories cochées (sauvegardes décochées par défaut). */
+  function confirmClearSystem(row) {
+    const system = row.system || { id: row.id, folder: row.id };
+    const kinds = STORAGE_KINDS.filter(([k]) => row.sizes[k] > 0);
+    const root = modal({
+      title: t('storage.clearTitle', { name: system.name || row.id }),
+      body: `<p>${esc(t('storage.clearText'))}</p><div class="storage-kinds">${kinds.map(([k, color]) => `<label class="check">
+          <input type="checkbox" data-kind="${k}"${k === 'saves' ? '' : ' checked'}><i style="background:${color}"></i>
+          ${esc(t(`storage.kind.${k}`))} <span class="muted">${esc(formatSize(row.sizes[k]))}</span></label>`).join('')}</div>
+        <p class="muted small">${esc(t('storage.clearHint'))}</p>`,
+      buttons: [
+        { label: t('app.cancel'), kind: 'ghost' },
+        {
+          label: t('storage.clearButton'),
+          kind: 'danger',
+          keepOpen: true,
+          onClick: async (close) => {
+            const chosen = $$('[data-kind]:checked', root).map((el) => el.dataset.kind);
+            if (!chosen.length) return;
+            close();
+            try {
+              const freed = await call(rc.storage.clear, system, chosen, S.systems);
+              toast(t('storage.cleared', { size: formatSize(freed), name: system.name || row.id }));
+            } catch (err) {
+              toast(err.message, { type: 'error' });
+            }
+            await refreshDownloaded();
+            loadUsage();
+            loadLocalGames();
+            if (S.route.name === 'storage') renderStorage();
+          },
+        },
+      ],
+    });
+  }
 
   async function renderSettings() {
     const s = S.settings;

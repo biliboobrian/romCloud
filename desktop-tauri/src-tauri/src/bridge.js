@@ -102,6 +102,7 @@
       systemsWithGames: call('library:systemsWithGames'),
       usage: call('library:usage'),
     },
+    storage: { details: call('storage:details'), clear: call('storage:clear') },
     connectivity: { state: call('connectivity:state'), check: call('connectivity:check'), onUpdate: on('connectivity:update') },
     netplay: { peers: call('netplay:peers'), own: call('netplay:own'), capabilities: call('netplay:capabilities'), systemAllows: call('netplay:systemAllows'), systemTogether: call('netplay:systemTogether'), onPeers: on('netplay:peers') },
     bios: { missing: call('bios:missing') },
