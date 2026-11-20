@@ -49,6 +49,14 @@ fn core_file(core: &str) -> PathBuf {
     root().join("cores").join(cores::core_dll_name(core))
 }
 
+/// Fichiers du cœur sur le PC (DLL, version, date de vérification) : page du stockage.
+pub fn core_files(core: &str) -> Vec<PathBuf> {
+    if !cores::valid_core(core) {
+        return vec![];
+    }
+    vec![core_file(core), core_version_file(core), core_checked_file(core)]
+}
+
 pub fn core_installed(core: &str) -> bool {
     cores::valid_core(core) && core_file(core).exists()
 }

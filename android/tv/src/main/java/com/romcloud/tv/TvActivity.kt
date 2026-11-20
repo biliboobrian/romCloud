@@ -139,8 +139,12 @@ private fun TvRoot(app: RomCloudApp, activity: ComponentActivity) {
                             onOpenSettings = { nav.navigate("settings") },
                             onOpenProfile = { nav.navigate("profile") },
                             onOpenLobby = openLobby,
+                            onOpenStorage = { nav.navigate("storage") { launchSingleTop = true } },
                         )
                     }
+                }
+                composable("storage") {
+                    TvStorageScreen(viewModel = viewModel { com.romcloud.app.ui.StorageViewModel(app) }, onMessage = message)
                 }
                 composable("profile") {
                     TvProfileScreen(viewModel = viewModel { ProfileViewModel(app) }, onMessage = message)

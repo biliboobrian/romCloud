@@ -78,6 +78,15 @@ pub async fn ipc(app: tauri::AppHandle, channel: String, args: Vec<Value>) -> st
         }
         "library:systemsWithGames" => json!(library::systems_with_games(&list(a, 0))),
         "library:usage" => library::usage(&list(a, 0)),
+        // Page du stockage : place par système et par catégorie, suppression des données d'un système.
+        "storage:details" => {
+            let systems = list(a, 0);
+            tokio::task::spawn_blocking(move || crate::storage::details(&systems)).await.map_err(|e| AppError::msg(e.to_string()))?
+        }
+        "storage:clear" => {
+            let (system, kinds, systems) = (arg(a, 0), list(a, 1), list(a, 2));
+            json!(tokio::task::spawn_blocking(move || crate::storage::clear(&system, &kinds, &systems)).await.map_err(|e| AppError::msg(e.to_string()))?)
+        }
         "connectivity:state" => connectivity::state(),
         "connectivity:check" => {
             connectivity::ping().await;

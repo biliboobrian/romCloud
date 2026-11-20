@@ -212,6 +212,14 @@ class Repository(
         return if (gpuDrivers()) files else files.filterNot { it.isDriver }
     }
 
+    /**
+     * Fichiers du serveur (BIOS, clés, firmwares, pilotes) du système d'après la dernière liste en
+     * cache, sans appel réseau (page du stockage) ; vide si elle n'a jamais été chargée.
+     */
+    fun cachedBios(system: GameSystem): List<BiosFile> = runCatching {
+        api.json.decodeFromString(BiosList.serializer(), cacheFile("bios-${safeName(system.id)}.json").readText()).files
+    }.getOrDefault(emptyList())
+
     suspend fun system(systemId: String): GameSystem? =
         systemsMemory[systemId] ?: runCatching { systems() }.getOrNull()?.data?.find { it.id == systemId }
 

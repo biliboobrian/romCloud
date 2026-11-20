@@ -99,6 +99,11 @@ fn location(bios: &Value) -> (&str, String) {
     }
 }
 
+/// Zone d'un fichier du serveur : « bios », « system » ou « drivers ».
+pub fn zone(bios: &Value) -> &str {
+    location(bios).0
+}
+
 /// Emplacement d'un fichier du serveur (BIOS, clés, firmware…) pour le système [system].
 pub fn bios_file(system: &Value, bios: &Value) -> PathBuf {
     match location(bios) {

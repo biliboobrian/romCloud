@@ -830,4 +830,23 @@
     <string name="pc_quality_medium">Medium</string>
     <string name="pc_quality_high">High</string>
     <string name="pc_settings_not_saved">Settings not saved to your profile: %1$s</string>
+    <string name="storage_title">Storage</string>
+    <string name="storage_summary">RomCloud: %1$s · %2$s free out of %3$s</string>
+    <string name="storage_kind_games">Games</string>
+    <string name="storage_kind_emulators">Emulators</string>
+    <string name="storage_kind_bios">BIOS and firmware</string>
+    <string name="storage_kind_drivers">Drivers</string>
+    <string name="storage_kind_saves">Saves and states</string>
+    <string name="storage_other">Other files</string>
+    <string name="storage_free_label">Free</string>
+    <string name="storage_empty">No RomCloud data on this device yet.</string>
+    <string name="storage_clear">Delete the data of this system</string>
+    <string name="storage_clear_title">Delete the data of %1$s</string>
+    <string name="storage_clear_text">Data to delete from this device:</string>
+    <string name="storage_clear_hint">Emulators and drivers shared with other systems are downloaded again when needed. Saves not sent online are lost.</string>
+    <string name="storage_clear_apps">Emulator apps used only by this system are uninstalled (Android asks for confirmation): %1$s</string>
+    <string name="storage_clear_shared_apps">Kept, also used by other systems: %1$s</string>
+    <string name="storage_clear_button">Delete</string>
+    <string name="storage_cleared">%1$s freed (%2$s)</string>
+    <string name="storage_open">Storage details</string>
 </resources>

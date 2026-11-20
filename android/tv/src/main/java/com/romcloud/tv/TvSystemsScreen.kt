@@ -89,6 +89,7 @@ fun TvSystemsScreen(
     onOpenSettings: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenLobby: () -> Unit = {},
+    onOpenStorage: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
@@ -179,7 +180,15 @@ fun TvSystemsScreen(
     Column(Modifier.fillMaxSize().padding(TvSafePadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // En-tête compact : stockage et boutons petits, pour laisser la place aux systèmes.
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(HeaderGap)) {
-            TvDiskBar(usage)
+            // Page du stockage : place occupée par système et par catégorie.
+            if (usage.known) {
+                TvButton(
+                    onClick = onOpenStorage,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    scale = ButtonDefaults.scale(focusedScale = 1.05f),
+                    modifier = Modifier.height(30.dp),
+                ) { TvDiskBar(usage) }
+            }
             OfflineBadge(size = 24.dp)
             Spacer(Modifier.weight(1f))
             if (search.active) {

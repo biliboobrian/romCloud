@@ -41,6 +41,9 @@ class LibretroCores(context: Context) {
 
     fun installed(core: String): File? = fileFor(core).takeIf { it.isFile && it.length() > 0 }
 
+    /** Fichiers du cœur sur l'appareil (bibliothèque, version, date de vérification) : page du stockage. */
+    fun files(core: String): List<File> = listOf(fileFor(core), versionFile(core), checkedFile(core))
+
     fun delete(core: String) {
         fileFor(core).delete()
         versionFile(core).delete()

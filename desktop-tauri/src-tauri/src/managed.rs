@@ -117,6 +117,11 @@ impl App {
         paths::user_data().join(self.core)
     }
 
+    /// Dossier de l'émulateur (programme, configuration, sauvegardes) : page du stockage.
+    pub fn dir(&self) -> PathBuf {
+        self.root()
+    }
+
     pub fn exe(&self) -> PathBuf {
         self.root().join(self.exe)
     }

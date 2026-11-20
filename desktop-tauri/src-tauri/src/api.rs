@@ -338,6 +338,15 @@ pub async fn games(system_id: &str) -> Result<Value> {
     visible_games(with_downloaded(load, extra).await)
 }
 
+/// Fichiers du serveur (BIOS, clés, firmwares, pilotes) du système d'après la dernière liste en
+/// cache, sans appel réseau (page du stockage) ; vide si elle n'a jamais été chargée.
+pub fn cached_bios(system: &Value) -> Vec<Value> {
+    let id = system.get("id").and_then(Value::as_str).unwrap_or("");
+    read_json(&cache_dir().join(format!("bios-{}.json", safe_name(id))))
+        .and_then(|data| data.get("files").and_then(Value::as_array).cloned())
+        .unwrap_or_default()
+}
+
 /// BIOS du système sur le serveur (liste vide si le système n'en a pas ou si le serveur est injoignable).
 pub async fn bios(system: &Value) -> Vec<Value> {
     if system.get("biosCount").and_then(Value::as_u64).unwrap_or(0) == 0 {

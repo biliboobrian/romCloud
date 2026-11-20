@@ -11,6 +11,8 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -101,6 +103,7 @@ fun SystemsScreen(
     onOpenSettings: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenLobby: () -> Unit = {},
+    onOpenStorage: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
@@ -210,13 +213,13 @@ fun SystemsScreen(
                 Surface(color = HeaderGray, contentColor = Color.White) {
                     Column(Modifier.fillMaxWidth().windowInsetsPadding(topBarInsets).padding(start = 16.dp, end = 4.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.weight(1f)) { DiskTrack(usage, Modifier.fillMaxWidth(0.6f)) }
+                            Box(Modifier.weight(1f).clickable(onClick = onOpenStorage)) { DiskTrack(usage, Modifier.fillMaxWidth(0.6f).padding(vertical = 8.dp)) }
                             netplayButton()
                             profileButton()
                             settingsButton()
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.weight(1f)) { DiskFree(usage, Color.White.copy(alpha = 0.7f)) }
+                            Box(Modifier.weight(1f).clickable(onClick = onOpenStorage)) { DiskFree(usage, Color.White.copy(alpha = 0.7f)) }
                             OfflineBadge(Modifier.padding(horizontal = 4.dp))
                             searchButton()
                             refreshButton()
@@ -247,7 +250,7 @@ fun SystemsScreen(
                             )
                             LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
                         } else {
-                            DiskBar(usage)
+                            DiskBar(usage, onOpenStorage)
                         }
                     },
                     actions = {
@@ -393,9 +396,14 @@ private fun SystemCard(system: GameSystem, imageUrl: String?, localSize: Long, o
 
 /** Espace de la partition des ROMs : barre de la place occupée et espace libre (rouge sous 10 %). */
 @Composable
-private fun DiskBar(usage: StorageUsage) {
+private fun DiskBar(usage: StorageUsage, onClick: () -> Unit) {
     if (!usage.known) return
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Clic : page du stockage (place occupée par système et par catégorie).
+    Row(
+        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = stringResource(R.string.storage_open), onClick = onClick).padding(vertical = 8.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         DiskTrack(usage, Modifier.width(72.dp))
         DiskFree(usage)
     }
