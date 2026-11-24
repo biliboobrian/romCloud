@@ -1,0 +1,56 @@
+name: Release pont
+
+# Dépôt archivé : RomCloud est maintenant publié par cinq dépôts (voir README.md). Les versions déjà
+# installées (1.105 et avant) cherchent encore leurs mises à jour ici ; sur un tag v* de ce dépôt, ce
+# workflow recopie dans sa Release les fichiers de la Release du même tag des nouveaux dépôts :
+#   romcloud-android  RomCloud-<version>.apk, RomCloud-TV-<version>.apk
+#   romcloud-pc       RomCloud-PC-<version>.apk
+#   romcloud-desktop  RomCloud-Windows-<version>-tauri-x64.exe, latest.json
+# Une fois installée, cette version cherche ses mises à jour dans les nouveaux dépôts.
+# À lancer après la publication de ces trois Releases (le tag doit exister dans chacun).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag des nouveaux dépôts à recopier (ex. v1.106.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  pont:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Fichiers des nouveaux dépôts
+        run: |
+          mkdir dist
+          gh release download "$TAG" -R biliboobrian/romcloud-android -D dist -p 'RomCloud-*.apk'
+          gh release download "$TAG" -R biliboobrian/romcloud-pc -D dist -p 'RomCloud-PC-*.apk'
+          gh release download "$TAG" -R biliboobrian/romcloud-desktop -D dist -p '*.exe' -p 'latest.json'
+          ls -la dist
+          # Les trois applications doivent être là : une Release incomplète bloquerait les mises à jour.
+          ls dist/RomCloud-"${TAG#v}".apk dist/RomCloud-TV-"${TAG#v}".apk dist/RomCloud-PC-"${TAG#v}".apk dist/latest.json
+
+      - name: Release GitHub
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG }}
+          name: RomCloud ${{ env.TAG }} (dernière version publiée ici)
+          body: |
+            Dernière version publiée par ce dépôt, archivé. RomCloud est maintenant publié par :
+            - Android et Android TV : https://github.com/biliboobrian/romcloud-android
+            - Windows : https://github.com/biliboobrian/romcloud-desktop
+            - RomCloud PC : https://github.com/biliboobrian/romcloud-pc
+            - RomCloud Native : https://github.com/biliboobrian/romcloud-native
+            - Serveur (image Docker biliboobrian/romcloud-server, inchangée) : https://github.com/biliboobrian/romcloud-server
+
+            Les applications installées depuis cette version cherchent leurs mises à jour dans les nouveaux dépôts.
+            Obtainium : remplacez l'URL de ce dépôt par celle de romcloud-android (et romcloud-pc).
+          files: dist/*
